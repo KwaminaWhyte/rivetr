@@ -26,14 +26,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Apps
         .route("/apps", get(apps::list_apps))
         .route("/apps", post(apps::create_app))
-        .route("/apps/{id}", get(apps::get_app))
-        .route("/apps/{id}", put(apps::update_app))
-        .route("/apps/{id}", delete(apps::delete_app))
+        .route("/apps/:id", get(apps::get_app))
+        .route("/apps/:id", put(apps::update_app))
+        .route("/apps/:id", delete(apps::delete_app))
         // Deployments
-        .route("/apps/{id}/deploy", post(deployments::trigger_deploy))
-        .route("/apps/{id}/deployments", get(deployments::list_deployments))
-        .route("/deployments/{id}", get(deployments::get_deployment))
-        .route("/deployments/{id}/logs", get(deployments::get_logs))
+        .route("/apps/:id/deploy", post(deployments::trigger_deploy))
+        .route("/apps/:id/deployments", get(deployments::list_deployments))
+        .route("/deployments/:id", get(deployments::get_deployment))
+        .route("/deployments/:id/logs", get(deployments::get_logs))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

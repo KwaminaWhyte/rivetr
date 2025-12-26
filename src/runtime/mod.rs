@@ -62,11 +62,44 @@ pub trait ContainerRuntime: Send + Sync {
     async fn is_available(&self) -> bool;
 }
 
+/// A no-op runtime used when no container runtime is available
+pub struct NoopRuntime;
+
+#[async_trait]
+impl ContainerRuntime for NoopRuntime {
+    async fn build(&self, _ctx: &BuildContext) -> Result<String> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn run(&self, _config: &RunConfig) -> Result<String> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn stop(&self, _container_id: &str) -> Result<()> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn remove(&self, _container_id: &str) -> Result<()> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn logs(&self, _container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn inspect(&self, _container_id: &str) -> Result<ContainerInfo> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn is_available(&self) -> bool {
+        false
+    }
+}
+
 pub async fn detect_runtime(config: &crate::config::RuntimeConfig) -> Result<Arc<dyn ContainerRuntime>> {
     match config.runtime_type {
         RuntimeType::Docker => {
-            let runtime = DockerRuntime::new(&config.docker_socket)?;
-            Ok(Arc::new(runtime))
+            match DockerRuntime::new(&config.docker_socket) {
+                Ok(runtime) => Ok(Arc::new(runtime)),
+                Err(e) => {
+                    tracing::warn!("Failed to connect to Docker: {}. Deployments will not work.", e);
+                    Ok(Arc::new(NoopRuntime))
+                }
+            }
         }
         RuntimeType::Podman => {
             let runtime = PodmanRuntime::new();
@@ -74,10 +107,11 @@ pub async fn detect_runtime(config: &crate::config::RuntimeConfig) -> Result<Arc
         }
         RuntimeType::Auto => {
             // Try Docker first
-            let docker = DockerRuntime::new(&config.docker_socket)?;
-            if docker.is_available().await {
-                tracing::info!("Auto-detected Docker runtime");
-                return Ok(Arc::new(docker));
+            if let Ok(docker) = DockerRuntime::new(&config.docker_socket) {
+                if docker.is_available().await {
+                    tracing::info!("Auto-detected Docker runtime");
+                    return Ok(Arc::new(docker));
+                }
             }
 
             // Try Podman
@@ -87,7 +121,8 @@ pub async fn detect_runtime(config: &crate::config::RuntimeConfig) -> Result<Arc
                 return Ok(Arc::new(podman));
             }
 
-            anyhow::bail!("No container runtime available (tried Docker and Podman)")
+            tracing::warn!("No container runtime available. Deployments will not work until Docker or Podman is installed.");
+            Ok(Arc::new(NoopRuntime))
         }
     }
 }

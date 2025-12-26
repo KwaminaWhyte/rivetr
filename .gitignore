@@ -28,3 +28,4 @@ rivetr.toml
 *.log
 cookies.txt
 nul
+.playwright-mcp/
