@@ -17,6 +17,16 @@ export interface LoginResponse {
   };
 }
 
+export interface SetupRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface SetupStatusResponse {
+  needs_setup: boolean;
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -102,6 +112,28 @@ class ApiClient {
     }
   }
 
+  async checkSetupStatus(): Promise<SetupStatusResponse> {
+    const response = await fetch(`${API_BASE}/auth/setup-status`);
+    return response.json();
+  }
+
+  async setup(data: SetupRequest): Promise<LoginResponse> {
+    const response = await fetch(`${API_BASE}/auth/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || "Setup failed");
+    }
+
+    const result = await response.json();
+    this.setToken(result.token);
+    return result;
+  }
+
   // Apps
   async getApps(): Promise<App[]> {
     return this.request<App[]>("/apps");
@@ -152,3 +184,4 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+export default api;

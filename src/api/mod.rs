@@ -17,7 +17,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // Auth routes (public)
     let auth_routes = Router::new()
         .route("/login", post(auth::login))
-        .route("/validate", get(auth::validate));
+        .route("/validate", get(auth::validate))
+        .route("/setup-status", get(auth::setup_status))
+        .route("/setup", post(auth::setup));
 
     // Protected API routes
     let api_routes = Router::new()

@@ -67,18 +67,12 @@ fn default_data_dir() -> PathBuf {
 pub struct AuthConfig {
     #[serde(default = "default_admin_token")]
     pub admin_token: String,
-    #[serde(default = "default_admin_email")]
-    pub admin_email: String,
-    #[serde(default = "default_admin_password")]
-    pub admin_password: String,
 }
 
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             admin_token: default_admin_token(),
-            admin_email: default_admin_email(),
-            admin_password: default_admin_password(),
         }
     }
 }
@@ -86,14 +80,6 @@ impl Default for AuthConfig {
 fn default_admin_token() -> String {
     // Generate a random token if not provided
     uuid::Uuid::new_v4().to_string()
-}
-
-fn default_admin_email() -> String {
-    "admin@localhost".to_string()
-}
-
-fn default_admin_password() -> String {
-    "admin".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]

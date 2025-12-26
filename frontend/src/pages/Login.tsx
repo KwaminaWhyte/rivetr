@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,17 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, needsSetup, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect to setup if needed
+  useEffect(() => {
+    if (needsSetup) {
+      navigate("/setup", { replace: true });
+    } else if (isAuthenticated) {
+      navigate("/", { replace: true });
+    }
+  }, [needsSetup, isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

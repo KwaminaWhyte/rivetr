@@ -56,9 +56,16 @@ The application runs as a single binary with these main subsystems:
    - Migrations in `migrations/001_initial.sql`
    - Models: `App`, `Deployment`, `DeploymentLog`, `EnvVar`
 
-5. **Proxy** (`src/proxy/`) - Route table using ArcSwap (placeholder, Phase 1.8)
+5. **Proxy** (`src/proxy/`) - HTTP reverse proxy using ArcSwap for lock-free route updates
 
-6. **UI** (`src/ui/`) - HTMX + Askama templates (placeholder, Phase 1.9)
+6. **Frontend** (`frontend/`) - React + Vite + TypeScript + shadcn/ui dashboard:
+   - Located in `frontend/` directory
+   - Build output goes to `static/dist/`
+   - Uses React Router for navigation
+   - React Query for data fetching
+   - shadcn/ui components with Tailwind CSS
+
+7. **Email Templates** (`src/ui/`) - Reserved for email notifications (Phase 2)
 
 ### Data Flow
 
@@ -96,6 +103,7 @@ Custom sub-agents are available in `.claude/agents/` for specialized tasks:
 | Agent | Purpose | When to Use |
 |-------|---------|-------------|
 | `code-reviewer` | Rust code review | After writing/modifying Rust code |
+| `frontend-reviewer` | React/TypeScript review | After writing/modifying frontend code |
 | `debugger` | Debug errors and failures | When encountering compilation errors, panics, or test failures |
 | `test-runner` | Run and fix tests | After code changes to verify tests pass |
 

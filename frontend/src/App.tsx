@@ -4,6 +4,7 @@ import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ProtectedRoute } from "@/components/providers/ProtectedRoute";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { LoginPage } from "@/pages/Login";
+import { SetupPage } from "@/pages/Setup";
 import { DashboardPage } from "@/pages/Dashboard";
 import { AppsPage } from "@/pages/Apps";
 import { AppDetailPage } from "@/pages/AppDetail";
@@ -30,6 +31,7 @@ function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/setup" element={<SetupPage />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<DashboardPage />} />

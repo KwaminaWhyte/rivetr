@@ -9,11 +9,8 @@ proxy_https_port = 443
 data_dir = "./data"
 
 [auth]
-# Generate a secure token for production!
+# API token for programmatic access (generate a secure token for production!)
 admin_token = "change-me-in-production"
-# Default admin credentials (only used if no users exist)
-admin_email = "admin@localhost"
-admin_password = "admin"
 
 [runtime]
 # Options: "auto", "docker", "podman"

@@ -16,6 +16,21 @@ use std::sync::Arc;
 
 use crate::db::{LoginRequest, LoginResponse, Session, User, UserResponse};
 use crate::AppState;
+use serde::{Deserialize, Serialize};
+
+/// Response for setup status check
+#[derive(Serialize)]
+pub struct SetupStatusResponse {
+    pub needs_setup: bool,
+}
+
+/// Request for initial setup
+#[derive(Deserialize)]
+pub struct SetupRequest {
+    pub email: String,
+    pub password: String,
+    pub name: String,
+}
 
 /// Hash a password using Argon2
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
@@ -175,31 +190,98 @@ pub async fn auth_middleware(
     }
 }
 
-/// Create a default admin user if none exists
-pub async fn ensure_admin_user(db: &sqlx::SqlitePool, email: &str, password: &str) -> anyhow::Result<()> {
-    // Check if any user exists
+/// Check if initial setup is needed (no users exist)
+pub async fn setup_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<SetupStatusResponse> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(db)
-        .await?;
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or((0,));
 
-    if count.0 == 0 {
-        let id = uuid::Uuid::new_v4().to_string();
-        let password_hash = hash_password(password)
-            .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
+    Json(SetupStatusResponse {
+        needs_setup: count.0 == 0,
+    })
+}
 
-        sqlx::query(
-            "INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(email)
-        .bind(&password_hash)
-        .bind("Admin")
-        .bind("admin")
-        .execute(db)
-        .await?;
+/// Initial setup endpoint - creates the first admin user
+pub async fn setup(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<SetupRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    // Check if any user already exists
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        tracing::info!("Created default admin user: {}", email);
+    if count.0 > 0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Setup has already been completed".to_string(),
+        ));
     }
 
-    Ok(())
+    // Validate input
+    if request.email.is_empty() || !request.email.contains('@') {
+        return Err((StatusCode::BAD_REQUEST, "Invalid email address".to_string()));
+    }
+    if request.password.len() < 8 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Password must be at least 8 characters".to_string(),
+        ));
+    }
+    if request.name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Name is required".to_string()));
+    }
+
+    // Create the admin user
+    let id = uuid::Uuid::new_v4().to_string();
+    let password_hash = hash_password(&request.password)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to hash password: {}", e)))?;
+
+    sqlx::query(
+        "INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&request.email)
+    .bind(&password_hash)
+    .bind(&request.name)
+    .bind("admin")
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!("Created admin user during setup: {}", request.email);
+
+    // Auto-login the new user
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(7))
+        .unwrap()
+        .to_rfc3339();
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&session_id)
+    .bind(&id)
+    .bind(&token_hash)
+    .bind(&expires_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(LoginResponse {
+        token,
+        user: UserResponse {
+            id,
+            email: request.email,
+            name: request.name,
+            role: "admin".to_string(),
+        },
+    }))
 }

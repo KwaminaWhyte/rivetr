@@ -56,14 +56,6 @@ async fn main() -> Result<()> {
     // Initialize database
     let db = rivetr::db::init(&config.server.data_dir).await?;
 
-    // Ensure default admin user exists
-    rivetr::api::auth::ensure_admin_user(
-        &db,
-        &config.auth.admin_email,
-        &config.auth.admin_password,
-    )
-    .await?;
-
     // Detect container runtime
     let runtime = detect_runtime(&config.runtime).await?;
 

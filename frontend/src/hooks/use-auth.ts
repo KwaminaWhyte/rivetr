@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  needsSetup: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -19,10 +20,12 @@ export function useAuth() {
 
 export function createAuthValue(
   isAuthenticated: boolean,
-  setIsAuthenticated: (value: boolean) => void
+  setIsAuthenticated: (value: boolean) => void,
+  needsSetup: boolean
 ): AuthContextType {
   return {
     isAuthenticated,
+    needsSetup,
     login: async (email: string, password: string) => {
       try {
         await api.login(email, password);
