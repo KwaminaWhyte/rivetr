@@ -1,6 +1,7 @@
 mod apps;
 pub mod auth;
 mod deployments;
+mod routes;
 mod ssh_keys;
 mod validation;
 mod webhooks;
@@ -24,6 +25,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup));
 
+    // WebSocket routes (auth handled in handlers via query param)
+    let ws_routes = Router::new()
+        .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
+        .route("/apps/:id/logs/stream", get(ws::runtime_logs_ws));
+
     // Protected API routes
     let api_routes = Router::new()
         // Apps
@@ -38,10 +44,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
         .route("/deployments/:id/rollback", post(deployments::rollback_deployment))
-        // WebSocket for streaming logs (auth handled in handler via query param)
-        .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
-        // WebSocket for streaming runtime container logs
-        .route("/apps/:id/logs/stream", get(ws::runtime_logs_ws))
         // SSH Keys
         .route("/ssh-keys", get(ssh_keys::list_ssh_keys))
         .route("/ssh-keys", post(ssh_keys::create_ssh_key))
@@ -49,11 +51,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/ssh-keys/:id", put(ssh_keys::update_ssh_key))
         .route("/ssh-keys/:id", delete(ssh_keys::delete_ssh_key))
         .route("/apps/:id/ssh-keys", get(ssh_keys::get_app_ssh_keys))
+        // Routes (proxy management)
+        .route("/routes", get(routes::list_routes))
+        .route("/routes", post(routes::add_route))
+        .route("/routes/domains", get(routes::list_domains))
+        .route("/routes/health", get(routes::routes_health))
+        .route("/routes/:domain", get(routes::get_route))
+        .route("/routes/:domain", delete(routes::remove_route))
+        .route("/routes/:domain/health", put(routes::update_route_health))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,
-        ));
+        ))
+        // Merge WS routes (they handle their own auth)
+        .merge(ws_routes);
 
     let webhook_routes = Router::new()
         .route("/github", post(webhooks::github_webhook))

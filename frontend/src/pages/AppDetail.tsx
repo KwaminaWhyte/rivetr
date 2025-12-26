@@ -1,10 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -23,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus } from "@/types/api";
+import type { App, Deployment, DeploymentStatus, UpdateAppRequest } from "@/types/api";
 import { DeploymentLogs } from "@/components/DeploymentLogs";
 import { RuntimeLogs } from "@/components/RuntimeLogs";
 
@@ -55,8 +57,10 @@ export function AppDetailPage() {
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
   const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
+  const [editFormData, setEditFormData] = useState<UpdateAppRequest>({});
 
   const {
     data: app,
@@ -132,6 +136,37 @@ export function AppDetailPage() {
     return deployment.status === "stopped" && deployment.container_id !== null;
   };
 
+  // Populate edit form when app loads
+  useEffect(() => {
+    if (app) {
+      setEditFormData({
+        name: app.name,
+        git_url: app.git_url,
+        branch: app.branch,
+        dockerfile: app.dockerfile,
+        domain: app.domain || undefined,
+        port: app.port,
+        healthcheck: app.healthcheck || undefined,
+      });
+    }
+  }, [app]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateAppRequest) => api.updateApp(id!, data),
+    onSuccess: () => {
+      toast.success("Application updated");
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+      setShowEditDialog(false);
+    },
+    onError: (error: Error) => {
+      toast.error(`Update failed: ${error.message}`);
+    },
+  });
+
+  const handleEditChange = (field: keyof UpdateAppRequest, value: string | number | undefined) => {
+    setEditFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
   if (appLoading) {
     return (
       <div className="space-y-6">
@@ -181,6 +216,12 @@ export function AppDetailPage() {
               {showRuntimeLogs ? "Hide Logs" : "View Logs"}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={() => setShowEditDialog(true)}
+          >
+            Edit
+          </Button>
           <Button
             variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
@@ -334,6 +375,96 @@ export function AppDetailPage() {
       {showRuntimeLogs && runningDeployment && app && (
         <RuntimeLogs appId={app.id} />
       )}
+
+      {/* Edit app dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Application</DialogTitle>
+            <DialogDescription>
+              Update your application settings. Changes will take effect on the next deployment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editFormData.name || ""}
+                  onChange={(e) => handleEditChange("name", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-git_url">Git URL</Label>
+                <Input
+                  id="edit-git_url"
+                  value={editFormData.git_url || ""}
+                  onChange={(e) => handleEditChange("git_url", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-branch">Branch</Label>
+                <Input
+                  id="edit-branch"
+                  value={editFormData.branch || ""}
+                  onChange={(e) => handleEditChange("branch", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-port">Port</Label>
+                <Input
+                  id="edit-port"
+                  type="number"
+                  value={editFormData.port || ""}
+                  onChange={(e) => handleEditChange("port", parseInt(e.target.value) || undefined)}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-dockerfile">Dockerfile</Label>
+                <Input
+                  id="edit-dockerfile"
+                  value={editFormData.dockerfile || ""}
+                  onChange={(e) => handleEditChange("dockerfile", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-domain">Domain</Label>
+                <Input
+                  id="edit-domain"
+                  placeholder="app.example.com"
+                  value={editFormData.domain || ""}
+                  onChange={(e) => handleEditChange("domain", e.target.value || undefined)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-healthcheck">Healthcheck Path</Label>
+              <Input
+                id="edit-healthcheck"
+                placeholder="/health"
+                value={editFormData.healthcheck || ""}
+                onChange={(e) => handleEditChange("healthcheck", e.target.value || undefined)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateMutation.mutate(editFormData)}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Rollback confirmation dialog */}
       <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>

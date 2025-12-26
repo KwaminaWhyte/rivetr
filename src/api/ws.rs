@@ -1,25 +1,71 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, State,
+        Path, Query, State,
     },
+    http::StatusCode,
     response::IntoResponse,
 };
 use futures::{SinkExt, StreamExt};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
-use crate::db::{Deployment, DeploymentLog};
+use crate::db::{Deployment, DeploymentLog, Session};
 use crate::runtime::LogStream;
 use crate::AppState;
+
+#[derive(Deserialize)]
+pub struct WsAuthQuery {
+    token: Option<String>,
+}
+
+/// Hash a token for comparison
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Validate a token from query params
+async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
+    let token = match &query.token {
+        Some(t) => t,
+        None => return false,
+    };
+
+    // Check admin token first
+    if token == &state.config.auth.admin_token {
+        return true;
+    }
+
+    // Check session token
+    let token_hash = hash_token(token);
+    let session: Option<Session> = sqlx::query_as(
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    session.is_some()
+}
 
 /// WebSocket endpoint for streaming deployment logs
 pub async fn deployment_logs_ws(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     Path(deployment_id): Path<String>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_log_stream(socket, state, deployment_id))
+    Query(query): Query<WsAuthQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Validate token from query params
+    if !validate_ws_token(&state, &query).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(ws.on_upgrade(move |socket| handle_log_stream(socket, state, deployment_id)))
 }
 
 async fn handle_log_stream(socket: WebSocket, state: Arc<AppState>, deployment_id: String) {
@@ -141,8 +187,13 @@ pub async fn runtime_logs_ws(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_runtime_log_stream(socket, state, app_id))
+    Query(query): Query<WsAuthQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Validate token from query params
+    if !validate_ws_token(&state, &query).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(ws.on_upgrade(move |socket| handle_runtime_log_stream(socket, state, app_id)))
 }
 
 async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_id: String) {

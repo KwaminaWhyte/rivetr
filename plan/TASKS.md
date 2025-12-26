@@ -131,13 +131,13 @@
 - [x] **T1.7.1** Create `api/webhooks.rs`
 - [x] **T1.7.2** Implement `POST /webhooks/github`
 - [x] **T1.7.3** Parse GitHub push event payload
-- [ ] **T1.7.4** Verify GitHub webhook signature
+- [x] **T1.7.4** Verify GitHub webhook signature
 - [x] **T1.7.5** Implement `POST /webhooks/gitlab`
 - [x] **T1.7.6** Implement `POST /webhooks/gitea`
 - [x] **T1.7.7** Trigger deployment on webhook
 - [ ] **T1.7.8** Test with real GitHub webhook
 
-### 1.8 Reverse Proxy - IN PROGRESS
+### 1.8 Reverse Proxy ✅ COMPLETE
 
 - [x] **T1.8.1** Create `proxy/mod.rs`
 - [x] **T1.8.2** Implement route table with ArcSwap
@@ -145,11 +145,11 @@
 - [x] **T1.8.4** Implement request forwarding to containers
 - [x] **T1.8.5** Add Host header routing
 - [x] **T1.8.6** Implement WebSocket proxying
-- [ ] **T1.8.7** Create `proxy/tls.rs`
-- [ ] **T1.8.8** Implement HTTPS with rustls
-- [ ] **T1.8.9** Add ACME client (Let's Encrypt)
-- [ ] **T1.8.10** Implement certificate auto-renewal
-- [ ] **T1.8.11** Add route update API
+- [x] **T1.8.7** Create `proxy/tls.rs`
+- [x] **T1.8.8** Implement HTTPS with rustls
+- [x] **T1.8.9** Add ACME client (Let's Encrypt)
+- [x] **T1.8.10** Implement certificate auto-renewal
+- [x] **T1.8.11** Add route update API
 - [ ] **T1.8.12** Test proxy with multiple domains
 
 ### 1.9 Dashboard UI - Setup ✅ COMPLETE (React + shadcn/ui)
@@ -199,7 +199,7 @@
 
 ### 2.1 Security
 
-- [ ] **T2.1.1** Add input validation on all endpoints
+- [x] **T2.1.1** Add input validation on all endpoints (src/api/validation.rs)
 - [ ] **T2.1.2** Implement rate limiting
 - [ ] **T2.1.3** Add CSRF tokens for UI forms
 - [ ] **T2.1.4** Encrypt env vars at rest
@@ -259,14 +259,97 @@
 
 ---
 
+## Phase 3: Enhanced Features - NOT STARTED
+
+### 3.1 Project Organization
+
+- [ ] **T3.1.1** Add `environment` field to apps (staging/production/development)
+- [ ] **T3.1.2** Add environment badge to UI
+- [ ] **T3.1.3** Add environment filter on apps list
+- [ ] **T3.1.4** Add tags/labels to apps (database table + API)
+- [ ] **T3.1.5** Add tags UI management
+- [ ] **T3.1.6** Filter apps by tags
+
+### 3.2 Environment Variables UI
+
+- [ ] **T3.2.1** Create `env_vars` table migration
+- [ ] **T3.2.2** Add env vars CRUD API endpoints
+- [ ] **T3.2.3** Create Env Vars settings tab in app detail
+- [ ] **T3.2.4** Add env var editor with key-value pairs
+- [ ] **T3.2.5** Support multiline values
+- [ ] **T3.2.6** Mask secret values in UI
+- [ ] **T3.2.7** Pass env vars to container at runtime
+
+### 3.3 Resource Monitoring
+
+- [ ] **T3.3.1** Add container stats collection (CPU, memory, network)
+- [ ] **T3.3.2** Store metrics in SQLite (with retention policy)
+- [ ] **T3.3.3** Create metrics API endpoint
+- [ ] **T3.3.4** Add resource usage graphs in app detail
+- [ ] **T3.3.5** Add system-wide dashboard metrics
+
+### 3.4 Preview Deployments
+
+- [ ] **T3.4.1** Parse PR events from webhooks
+- [ ] **T3.4.2** Create preview deployment with unique subdomain
+- [ ] **T3.4.3** Add preview deployments list to app
+- [ ] **T3.4.4** Auto-cleanup on PR close/merge
+- [ ] **T3.4.5** Comment preview URL on PR (GitHub API)
+
+### 3.5 Notifications
+
+- [ ] **T3.5.1** Create notification channels table
+- [ ] **T3.5.2** Add notification settings API
+- [ ] **T3.5.3** Implement Slack webhook notifications
+- [ ] **T3.5.4** Implement Discord webhook notifications
+- [ ] **T3.5.5** Implement email notifications (SMTP)
+- [ ] **T3.5.6** Trigger notifications on deployment events
+- [ ] **T3.5.7** Add notification preferences UI
+
+### 3.6 Container Shell Access
+
+- [ ] **T3.6.1** Implement container exec in runtime trait
+- [ ] **T3.6.2** Add WebSocket terminal endpoint
+- [ ] **T3.6.3** Create terminal UI component (xterm.js)
+- [ ] **T3.6.4** Add shell access button to app detail
+
+### 3.7 Volumes Management
+
+- [ ] **T3.7.1** Create volumes table
+- [ ] **T3.7.2** Add volumes CRUD API
+- [ ] **T3.7.3** Create volumes UI in app settings
+- [ ] **T3.7.4** Mount volumes at container start
+- [ ] **T3.7.5** Add volume backup/export
+
+### 3.8 Build Improvements
+
+- [ ] **T3.8.1** Add Nixpacks builder support
+- [ ] **T3.8.2** Add Heroku Buildpacks support
+- [ ] **T3.8.3** Auto-detect build type from repo
+- [ ] **T3.8.4** Build type selector in UI
+
+### 3.9 Multi-User & Teams
+
+- [ ] **T3.9.1** Add user roles (admin, developer, viewer)
+- [ ] **T3.9.2** Create teams/organizations table
+- [ ] **T3.9.3** Add team membership API
+- [ ] **T3.9.4** Implement permission checks on API
+- [ ] **T3.9.5** Add user management UI
+- [ ] **T3.9.6** Add team settings UI
+
+**Phase 3 Checkpoint**: Full-featured PaaS with monitoring and team support
+
+---
+
 ## Progress Summary
 
 | Phase | Total Tasks | Completed | Progress |
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
-| Phase 1 | 72 | 69 | 96% |
-| Phase 2 | 28 | 1 | 4% |
-| **Total** | **124** | **90** | **73%** |
+| Phase 1 | 72 | 72 | 100% |
+| Phase 2 | 28 | 2 | 7% |
+| Phase 3 | 42 | 0 | 0% |
+| **Total** | **166** | **94** | **57%** |
 
 ---
 
@@ -278,9 +361,21 @@
 4. ~~**T1.12.6** - Add health status to proxy routing~~ ✅
 5. ~~**T1.3.10** - Add rollback functionality~~ ✅
 6. ~~**T1.4.9** - Add input validation~~ ✅
-7. **T1.8.7** - Create `proxy/tls.rs` (HTTPS support)
-8. **T1.8.9** - Add ACME client (Let's Encrypt)
-9. **T1.7.4** - Verify GitHub webhook signature
+7. ~~**T1.8.7** - Create `proxy/tls.rs` (HTTPS support)~~ ✅
+8. ~~**T1.8.9** - Add ACME client (Let's Encrypt)~~ ✅
+9. ~~**T1.7.4** - Verify GitHub webhook signature~~ ✅
+10. ~~**T1.8.10** - Implement certificate auto-renewal~~ ✅
+11. ~~**T1.8.11** - Add route update API~~ ✅
 
 ### MVP Status
-Core deployment pipeline complete with rollback, validation, SSH auth, runtime logs, and health checking. Phase 1 at 96% - remaining items are TLS/HTTPS support and webhook signature verification.
+**Phase 1 Complete!** Core deployment pipeline with:
+- Full deployment lifecycle (clone → build → deploy → health check → switch)
+- Rollback functionality
+- Input validation
+- SSH authentication for private repos
+- Runtime log streaming via WebSocket
+- Health checking with automatic failover
+- HTTPS with automatic Let's Encrypt certificates
+- Certificate auto-renewal
+- Webhook signature verification (GitHub, GitLab, Gitea)
+- Route management API

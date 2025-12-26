@@ -1,14 +1,57 @@
 use axum::{
+    body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
-    Json,
 };
+use hmac::{Hmac, Mac};
 use serde::Deserialize;
+use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::App;
 use crate::AppState;
+
+type HmacSha256 = Hmac<Sha256>;
+
+/// Verify GitHub webhook signature (X-Hub-Signature-256 header)
+fn verify_github_signature(secret: &str, signature_header: &str, payload: &[u8]) -> bool {
+    // Signature format: sha256=<hex>
+    let signature = match signature_header.strip_prefix("sha256=") {
+        Some(sig) => sig,
+        None => return false,
+    };
+
+    let expected = match hex::decode(signature) {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    mac.update(payload);
+
+    // Use constant-time comparison
+    mac.verify_slice(&expected).is_ok()
+}
+
+/// Verify Gitea webhook signature (X-Gitea-Signature header) - uses HMAC-SHA256
+fn verify_gitea_signature(secret: &str, signature_header: &str, payload: &[u8]) -> bool {
+    let expected = match hex::decode(signature_header) {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    mac.update(payload);
+
+    mac.verify_slice(&expected).is_ok()
+}
 
 #[derive(Debug, Deserialize)]
 pub struct GitHubPushEvent {
@@ -35,9 +78,33 @@ pub struct GitHubCommit {
 
 pub async fn github_webhook(
     State(state): State<Arc<AppState>>,
-    _headers: HeaderMap, // TODO: Verify webhook signature
-    Json(payload): Json<GitHubPushEvent>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    // Verify signature if secret is configured
+    if let Some(ref secret) = state.config.webhooks.github_secret {
+        let signature = headers
+            .get("X-Hub-Signature-256")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| {
+                tracing::warn!("GitHub webhook missing X-Hub-Signature-256 header");
+                StatusCode::UNAUTHORIZED
+            })?;
+
+        if !verify_github_signature(secret, signature, &body) {
+            tracing::warn!("GitHub webhook signature verification failed");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        tracing::debug!("GitHub webhook signature verified");
+    }
+
+    // Parse the JSON payload
+    let payload: GitHubPushEvent = serde_json::from_slice(&body)
+        .map_err(|e| {
+            tracing::error!("Failed to parse GitHub webhook payload: {}", e);
+            StatusCode::BAD_REQUEST
+        })?;
+
     // Extract branch from ref (refs/heads/main -> main)
     let branch = payload
         .git_ref
@@ -122,8 +189,33 @@ pub struct GitLabCommit {
 
 pub async fn gitlab_webhook(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<GitLabPushEvent>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    // Verify token if configured (GitLab uses X-Gitlab-Token header)
+    if let Some(ref expected_token) = state.config.webhooks.gitlab_token {
+        let token = headers
+            .get("X-Gitlab-Token")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| {
+                tracing::warn!("GitLab webhook missing X-Gitlab-Token header");
+                StatusCode::UNAUTHORIZED
+            })?;
+
+        if token != expected_token {
+            tracing::warn!("GitLab webhook token verification failed");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        tracing::debug!("GitLab webhook token verified");
+    }
+
+    // Parse the JSON payload
+    let payload: GitLabPushEvent = serde_json::from_slice(&body)
+        .map_err(|e| {
+            tracing::error!("Failed to parse GitLab webhook payload: {}", e);
+            StatusCode::BAD_REQUEST
+        })?;
+
     let branch = payload
         .git_ref
         .strip_prefix("refs/heads/")
@@ -198,8 +290,33 @@ pub struct GiteaCommit {
 
 pub async fn gitea_webhook(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<GiteaPushEvent>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    // Verify signature if secret is configured (Gitea uses X-Gitea-Signature header)
+    if let Some(ref secret) = state.config.webhooks.gitea_secret {
+        let signature = headers
+            .get("X-Gitea-Signature")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| {
+                tracing::warn!("Gitea webhook missing X-Gitea-Signature header");
+                StatusCode::UNAUTHORIZED
+            })?;
+
+        if !verify_gitea_signature(secret, signature, &body) {
+            tracing::warn!("Gitea webhook signature verification failed");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        tracing::debug!("Gitea webhook signature verified");
+    }
+
+    // Parse the JSON payload
+    let payload: GiteaPushEvent = serde_json::from_slice(&body)
+        .map_err(|e| {
+            tracing::error!("Failed to parse Gitea webhook payload: {}", e);
+            StatusCode::BAD_REQUEST
+        })?;
+
     let branch = payload
         .git_ref
         .strip_prefix("refs/heads/")

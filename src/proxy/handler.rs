@@ -15,15 +15,21 @@ use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio_rustls::server::TlsStream;
 use tracing::{debug, error, info, warn};
 
+use super::acme::AcmeChallenges;
 use super::{Backend, ProxyService, RouteTable};
+
+/// ACME HTTP-01 challenge path prefix
+const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
 
 /// Handles incoming proxy connections
 #[derive(Clone)]
 pub struct ProxyHandler {
     routes: Arc<ArcSwap<RouteTable>>,
     proxy_service: ProxyService,
+    acme_challenges: Option<AcmeChallenges>,
 }
 
 impl ProxyHandler {
@@ -31,7 +37,14 @@ impl ProxyHandler {
         Self {
             routes,
             proxy_service: ProxyService::new(),
+            acme_challenges: None,
         }
+    }
+
+    /// Create a new handler with ACME challenge support
+    pub fn with_acme(mut self, challenges: AcmeChallenges) -> Self {
+        self.acme_challenges = Some(challenges);
+        self
     }
 
     /// Handle a single TCP connection
@@ -43,7 +56,29 @@ impl ProxyHandler {
         let io = TokioIo::new(stream);
         let handler = self.clone();
 
-        // Enable upgrades for WebSocket support
+        http1::Builder::new()
+            .serve_connection(
+                io,
+                service_fn(move |req| {
+                    let handler = handler.clone();
+                    async move { handler.handle_request(req, remote_addr).await }
+                }),
+            )
+            .with_upgrades()
+            .await?;
+
+        Ok(())
+    }
+
+    /// Handle a TLS connection
+    pub async fn handle_tls_connection(
+        &self,
+        stream: TlsStream<TcpStream>,
+        remote_addr: SocketAddr,
+    ) -> anyhow::Result<()> {
+        let io = TokioIo::new(stream);
+        let handler = self.clone();
+
         http1::Builder::new()
             .serve_connection(
                 io,
@@ -66,6 +101,13 @@ impl ProxyHandler {
     ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
         let method = req.method().clone();
         let uri = req.uri().clone();
+        let path = uri.path();
+
+        // Check for ACME HTTP-01 challenge
+        if let Some(response) = self.handle_acme_challenge(path) {
+            return Ok(response);
+        }
+
         let host = self.extract_host(&req);
         let is_websocket = self.is_websocket_upgrade(&req);
 
@@ -172,6 +214,51 @@ impl ProxyHandler {
                     StatusCode::BAD_GATEWAY,
                     "WebSocket upgrade failed",
                 ))
+            }
+        }
+    }
+
+    /// Handle ACME HTTP-01 challenge requests
+    fn handle_acme_challenge(&self, path: &str) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
+        // Check if this is an ACME challenge request
+        if !path.starts_with(ACME_CHALLENGE_PREFIX) {
+            return None;
+        }
+
+        // Extract the token from the path
+        let token = &path[ACME_CHALLENGE_PREFIX.len()..];
+
+        if token.is_empty() {
+            return Some(
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Full::new(Bytes::from("Missing token")).map_err(|e| match e {}).boxed())
+                    .unwrap(),
+            );
+        }
+
+        // Look up the challenge
+        let challenges = self.acme_challenges.as_ref()?;
+
+        match challenges.get(token) {
+            Some(key_auth) => {
+                info!(token = %token, "Serving ACME challenge");
+                Some(
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "text/plain")
+                        .body(Full::new(Bytes::from(key_auth)).map_err(|e| match e {}).boxed())
+                        .unwrap(),
+                )
+            }
+            None => {
+                debug!(token = %token, "ACME challenge not found");
+                Some(
+                    Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Full::new(Bytes::from("Challenge not found")).map_err(|e| match e {}).boxed())
+                        .unwrap(),
+                )
             }
         }
     }

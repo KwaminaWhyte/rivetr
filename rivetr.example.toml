@@ -19,11 +19,28 @@ runtime_type = "auto"
 docker_socket = "/var/run/docker.sock"
 
 [proxy]
-# Email for Let's Encrypt certificates
+# Enable automatic HTTPS with Let's Encrypt
+acme_enabled = false
+# Email for Let's Encrypt account registration (required if acme_enabled = true)
 # acme_email = "admin@example.com"
-# Use staging for testing (avoids rate limits)
+# Use Let's Encrypt staging environment for testing (avoids rate limits)
 acme_staging = true
+# Directory to store ACME account and certificates
+acme_cache_dir = "./data/acme"
+# Health check settings
+health_check_interval = 30
+health_check_timeout = 5
+health_check_threshold = 3
 
 [logging]
 # Options: "trace", "debug", "info", "warn", "error"
 level = "info"
+
+[webhooks]
+# Webhook secrets for signature verification (optional but recommended)
+# GitHub: Used to verify X-Hub-Signature-256 header (HMAC-SHA256)
+# github_secret = "your-github-webhook-secret"
+# GitLab: Token to match X-Gitlab-Token header
+# gitlab_token = "your-gitlab-webhook-token"
+# Gitea: Used to verify X-Gitea-Signature header (HMAC-SHA256)
+# gitea_secret = "your-gitea-webhook-secret"

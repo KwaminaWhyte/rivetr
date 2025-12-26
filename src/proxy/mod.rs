@@ -3,9 +3,11 @@
 // This module implements an HTTP reverse proxy that routes requests
 // to containers based on the Host header.
 
+pub mod acme;
 mod handler;
 mod health_checker;
 mod service;
+pub mod tls;
 
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
@@ -14,9 +16,11 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
+pub use acme::{AcmeChallenges, AcmeClient, AcmeConfig, CertificateRenewalManager, CertificateResult};
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
+pub use tls::{CertStore, TlsConfig};
 
 /// Backend target for proxied requests
 #[derive(Debug, Clone)]
@@ -175,7 +179,7 @@ impl ProxyServer {
         self.routes.clone()
     }
 
-    /// Start the proxy server
+    /// Start the proxy server (HTTP)
     pub async fn run(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(self.bind_addr).await?;
         info!("Proxy server listening on http://{}", self.bind_addr);
@@ -194,6 +198,62 @@ impl ProxyServer {
                 }
                 Err(e) => {
                     error!(error = %e, "Error accepting connection");
+                }
+            }
+        }
+    }
+}
+
+/// HTTPS proxy server that listens for TLS connections
+pub struct HttpsProxyServer {
+    routes: Arc<ArcSwap<RouteTable>>,
+    bind_addr: SocketAddr,
+    tls_config: tls::TlsConfig,
+}
+
+impl HttpsProxyServer {
+    pub fn new(
+        bind_addr: SocketAddr,
+        routes: Arc<ArcSwap<RouteTable>>,
+        tls_config: tls::TlsConfig,
+    ) -> Self {
+        Self {
+            routes,
+            bind_addr,
+            tls_config,
+        }
+    }
+
+    /// Start the HTTPS proxy server
+    pub async fn run(self) -> anyhow::Result<()> {
+        let listener = TcpListener::bind(self.bind_addr).await?;
+        info!("Proxy server listening on https://{}", self.bind_addr);
+
+        let handler = ProxyHandler::new(self.routes.clone());
+        let acceptor = self.tls_config.acceptor;
+
+        loop {
+            match listener.accept().await {
+                Ok((stream, remote_addr)) => {
+                    let handler = handler.clone();
+                    let acceptor = acceptor.clone();
+
+                    tokio::spawn(async move {
+                        // Perform TLS handshake
+                        match acceptor.accept(stream).await {
+                            Ok(tls_stream) => {
+                                if let Err(e) = handler.handle_tls_connection(tls_stream, remote_addr).await {
+                                    error!(error = %e, "Error handling HTTPS proxy connection");
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, remote = %remote_addr, "TLS handshake failed");
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    error!(error = %e, "Error accepting HTTPS connection");
                 }
             }
         }

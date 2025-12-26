@@ -26,10 +26,15 @@ bollard = "0.18"
 # Git
 git2 = "0.19"
 
-# Proxy & HTTP (TLS to be added in Phase 2)
+# Proxy & HTTP
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
+
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+rustls-pemfile = "2"
 
 # State management
 arc-swap = "1"
@@ -67,6 +72,13 @@ argon2 = "0.5"
 rand = "0.9"
 sha2 = "0.10"
 hex = "0.4"
+hmac = "0.12"
+
+# ACME (Let's Encrypt) - using ring for key generation
+rcgen = { version = "0.13", default-features = false, features = ["ring"] }
+base64 = "0.22"
+ring = "0.17"
+pem = "3"
 
 [dev-dependencies]
 tokio-test = "0.4"

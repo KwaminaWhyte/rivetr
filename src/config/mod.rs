@@ -15,6 +15,8 @@ pub struct Config {
     pub proxy: ProxyConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub webhooks: WebhookConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -121,9 +123,17 @@ pub enum RuntimeType {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProxyConfig {
+    /// Enable HTTPS with automatic Let's Encrypt certificates
+    #[serde(default)]
+    pub acme_enabled: bool,
+    /// Email for Let's Encrypt account registration and notifications
     pub acme_email: Option<String>,
+    /// Use Let's Encrypt staging environment for testing (avoids rate limits)
     #[serde(default)]
     pub acme_staging: bool,
+    /// Directory to store ACME account and certificates (default: ./data/acme)
+    #[serde(default = "default_acme_cache_dir")]
+    pub acme_cache_dir: PathBuf,
     /// Interval between health checks in seconds (default: 30)
     #[serde(default = "default_health_check_interval")]
     pub health_check_interval: u64,
@@ -133,6 +143,10 @@ pub struct ProxyConfig {
     /// Number of consecutive failures before marking backend as unhealthy (default: 3)
     #[serde(default = "default_health_check_threshold")]
     pub health_check_threshold: u32,
+}
+
+fn default_acme_cache_dir() -> PathBuf {
+    PathBuf::from("./data/acme")
 }
 
 fn default_health_check_interval() -> u64 {
@@ -150,8 +164,10 @@ fn default_health_check_threshold() -> u32 {
 impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
+            acme_enabled: false,
             acme_email: None,
             acme_staging: false,
+            acme_cache_dir: default_acme_cache_dir(),
             health_check_interval: default_health_check_interval(),
             health_check_timeout: default_health_check_timeout(),
             health_check_threshold: default_health_check_threshold(),
@@ -177,6 +193,26 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebhookConfig {
+    /// Secret for verifying GitHub webhook signatures (HMAC-SHA256)
+    pub github_secret: Option<String>,
+    /// Secret token for GitLab webhook verification (X-Gitlab-Token header)
+    pub gitlab_token: Option<String>,
+    /// Secret for verifying Gitea webhook signatures (HMAC-SHA256)
+    pub gitea_secret: Option<String>,
+}
+
+impl Default for WebhookConfig {
+    fn default() -> Self {
+        Self {
+            github_secret: None,
+            gitlab_token: None,
+            gitea_secret: None,
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -199,6 +235,7 @@ impl Config {
             runtime: RuntimeConfig::default(),
             proxy: ProxyConfig::default(),
             logging: LoggingConfig::default(),
+            webhooks: WebhookConfig::default(),
         }
     }
 }
