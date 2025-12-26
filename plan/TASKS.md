@@ -272,12 +272,12 @@
 
 ## Next Priority Tasks
 
-1. **T1.11.5** - Add live deployment status polling
-2. **T1.11.6** - Add real-time log streaming (WebSocket)
-3. **T1.8.6** - Implement WebSocket proxying
+1. ~~**T1.11.5** - Add live deployment status polling~~ ✅
+2. ~~**T1.11.6** - Add real-time log streaming (WebSocket)~~ ✅
+3. ~~**T1.8.6** - Implement WebSocket proxying~~ ✅
 4. **T1.12.6** - Add health status to proxy routing
+5. **T1.3.10** - Add rollback functionality
+6. **T1.4.9** - Add input validation
 
-### Critical Path to MVP
-```
-T1.11.5 → T1.11.6 → T1.8.6
-```
+### MVP Status
+Core deployment pipeline complete. Remaining items are polish and production-ready features.
