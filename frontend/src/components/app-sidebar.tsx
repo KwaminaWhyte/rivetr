@@ -2,13 +2,13 @@ import * as React from "react";
 import {
   LayoutDashboard,
   FolderKanban,
-  Package,
   Settings,
   Activity,
+  BarChart3,
+  Bell,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
-import { NavApps } from "@/components/nav-apps";
 import { NavUser } from "@/components/nav-user";
 import { NavBrand } from "@/components/nav-brand";
 import {
@@ -31,18 +31,24 @@ const navMain: NavMainItem[] = [
     icon: FolderKanban,
   },
   {
-    title: "Applications",
-    url: "/apps",
-    icon: Package,
-    items: [
-      { title: "All Applications", url: "/apps" },
-      { title: "New Application", url: "/apps/new" },
-    ],
-  },
-  {
     title: "Deployments",
     url: "/deployments",
     icon: Activity,
+  },
+  {
+    title: "Monitoring",
+    url: "/monitoring",
+    icon: BarChart3,
+    items: [
+      { title: "Overview", url: "/monitoring" },
+      { title: "Metrics", url: "/monitoring/metrics" },
+      { title: "Logs", url: "/monitoring/logs" },
+    ],
+  },
+  {
+    title: "Notifications",
+    url: "/notifications",
+    icon: Bell,
   },
   {
     title: "Settings",
@@ -54,6 +60,7 @@ const navMain: NavMainItem[] = [
       { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },
+      { title: "Backups", url: "/settings/backups" },
     ],
   },
 ];
@@ -66,7 +73,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavApps />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

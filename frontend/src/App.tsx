@@ -8,7 +8,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { LoginPage } from "@/pages/Login";
 import { SetupPage } from "@/pages/Setup";
 import { DashboardPage } from "@/pages/Dashboard";
-import { AppsPage } from "@/pages/Apps";
 import { AppDetailPage } from "@/pages/AppDetail";
 import { NewAppPage } from "@/pages/NewApp";
 import { DeploymentsPage } from "@/pages/Deployments";
@@ -19,6 +18,8 @@ import { SettingsSshKeysPage } from "@/pages/SettingsSshKeys";
 import { SettingsGitProvidersPage } from "@/pages/SettingsGitProviders";
 import { ProjectsPage } from "@/pages/Projects";
 import { ProjectDetailPage } from "@/pages/ProjectDetail";
+import { MonitoringPage } from "@/pages/Monitoring";
+import { NotificationsPage } from "@/pages/Notifications";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -42,17 +43,29 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<DashboardPage />} />
+                {/* Projects - main entry point for apps */}
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
-                <Route path="/apps" element={<AppsPage />} />
-                <Route path="/apps/new" element={<NewAppPage />} />
+                <Route path="/projects/:projectId/apps/new" element={<NewAppPage />} />
+                {/* App detail - accessible via project or direct link */}
                 <Route path="/apps/:id" element={<AppDetailPage />} />
+                {/* Deployments - cross-project view */}
                 <Route path="/deployments" element={<DeploymentsPage />} />
+                {/* Monitoring */}
+                <Route path="/monitoring" element={<MonitoringPage />} />
+                <Route path="/monitoring/metrics" element={<MonitoringPage />} />
+                <Route path="/monitoring/logs" element={<MonitoringPage />} />
+                {/* Notifications */}
+                <Route path="/notifications" element={<NotificationsPage />} />
+                {/* Settings */}
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/webhooks" element={<SettingsWebhooksPage />} />
                 <Route path="/settings/tokens" element={<SettingsTokensPage />} />
                 <Route path="/settings/ssh-keys" element={<SettingsSshKeysPage />} />
                 <Route path="/settings/git-providers" element={<SettingsGitProvidersPage />} />
+                {/* Legacy redirects */}
+                <Route path="/apps" element={<Navigate to="/projects" replace />} />
+                <Route path="/apps/new" element={<Navigate to="/projects" replace />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -243,10 +243,18 @@ export function ProjectDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Applications</CardTitle>
-          <Button onClick={() => setIsAddAppDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add App to Project
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Existing App
+            </Button>
+            <Button asChild>
+              <Link to={`/projects/${id}/apps/new`}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create New App
+              </Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {project.apps.length === 0 ? (
@@ -254,10 +262,18 @@ export function ProjectDetailPage() {
               <p className="text-muted-foreground mb-4">
                 No applications in this project yet.
               </p>
-              <Button onClick={() => setIsAddAppDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add App
-              </Button>
+              <div className="flex gap-2 justify-center">
+                <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Existing
+                </Button>
+                <Button asChild>
+                  <Link to={`/projects/${id}/apps/new`}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create New App
+                  </Link>
+                </Button>
+              </div>
             </div>
           ) : (
             <Table>

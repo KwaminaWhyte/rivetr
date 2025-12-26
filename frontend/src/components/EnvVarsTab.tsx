@@ -167,21 +167,14 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
 
   const handleToggleReveal = (envVar: EnvVar) => {
     if (revealedKeys.has(envVar.key)) {
-      // Hide it - just remove from revealed set and use cached masked value
+      // Hide it - just remove from revealed set
       setRevealedKeys((prev) => {
         const next = new Set(prev);
         next.delete(envVar.key);
         return next;
       });
-      // Reset to masked value in cache
-      queryClient.setQueryData<EnvVar[]>(["env-vars", appId], (old) => {
-        if (!old) return old;
-        return old.map((v) =>
-          v.key === envVar.key ? { ...v, value: "********" } : v
-        );
-      });
     } else {
-      // Reveal it
+      // Reveal it - fetch the actual value
       revealMutation.mutate(envVar.key);
     }
   };
@@ -290,28 +283,27 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
                     <div className="flex items-center gap-2">
                       <span
                         className={`font-mono text-sm ${
-                          envVar.is_secret && !revealedKeys.has(envVar.key)
+                          !revealedKeys.has(envVar.key)
                             ? "text-muted-foreground"
                             : ""
-                        } ${isMultiline(envVar.value) ? "whitespace-pre-wrap" : "truncate max-w-[300px]"}`}
+                        } ${revealedKeys.has(envVar.key) && isMultiline(envVar.value) ? "whitespace-pre-wrap" : "truncate max-w-[300px]"}`}
                       >
-                        {envVar.value}
+                        {revealedKeys.has(envVar.key) ? envVar.value : "••••••••"}
                       </span>
-                      {envVar.is_secret && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleReveal(envVar)}
-                          disabled={revealMutation.isPending}
-                          className="h-6 w-6 p-0"
-                        >
-                          {revealedKeys.has(envVar.key) ? (
-                            <EyeOff className="h-3 w-3" />
-                          ) : (
-                            <Eye className="h-3 w-3" />
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleReveal(envVar)}
+                        disabled={revealMutation.isPending}
+                        className="h-6 w-6 p-0"
+                        title={revealedKeys.has(envVar.key) ? "Hide value" : "Reveal value"}
+                      >
+                        {revealedKeys.has(envVar.key) ? (
+                          <EyeOff className="h-3 w-3" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                      </Button>
                     </div>
                   </TableCell>
                   <TableCell>

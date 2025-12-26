@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
 
 export function NewAppPage() {
   const navigate = useNavigate();
+  const { projectId } = useParams<{ projectId?: string }>();
   const [formData, setFormData] = useState<CreateAppRequest>({
     name: "",
     git_url: "",
@@ -34,8 +35,15 @@ export function NewAppPage() {
     cpu_limit: "1",
     memory_limit: "512m",
     environment: "development",
-    project_id: undefined,
+    project_id: projectId || undefined,
   });
+
+  // Set project_id when coming from a project context
+  useEffect(() => {
+    if (projectId) {
+      setFormData((prev) => ({ ...prev, project_id: projectId }));
+    }
+  }, [projectId]);
   const [error, setError] = useState("");
 
   // Fetch projects for the selector
@@ -143,18 +151,19 @@ export function NewAppPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project">Project (Optional)</Label>
+              <Label htmlFor="project">Project {projectId ? "" : "(Optional)"}</Label>
               <Select
                 value={formData.project_id || "none"}
                 onValueChange={(value) =>
                   handleChange("project_id", value === "none" ? "" : value)
                 }
+                disabled={!!projectId}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a project" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No Project</SelectItem>
+                  {!projectId && <SelectItem value="none">No Project</SelectItem>}
                   {projects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}
@@ -163,7 +172,9 @@ export function NewAppPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Optionally assign this app to a project for organization
+                {projectId
+                  ? "This app will be added to the selected project"
+                  : "Optionally assign this app to a project for organization"}
               </p>
             </div>
 
@@ -281,7 +292,7 @@ export function NewAppPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate("/apps")}
+                onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}
               >
                 Cancel
               </Button>

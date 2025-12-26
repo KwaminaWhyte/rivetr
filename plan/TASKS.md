@@ -395,11 +395,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [ ] **Auto-scaling** - Scale containers based on load
 
 ### UI/UX Improvements (from Dokploy)
-- [ ] **Simplified app creation flow** - Fewer steps, smart defaults
+- [x] **Simplified app creation flow** - Project-centric flow, create apps within projects
 - [ ] **Quick actions menu** - Fast access to common operations
 - [x] **Deployment timeline view** - Visual history of deployments (DeploymentTimeline.tsx with toggle)
 - [x] **App grouping/projects** - Organize related apps together (Projects page with cards, service counts)
 - [x] **Activity feed** - Recent actions across all apps (Recent Events in Dashboard)
+- [x] **Project-centric navigation** - Apps accessed through projects, cleaner sidebar structure
 
 ---
 
@@ -410,8 +411,8 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 85 | 85 | 100% |
 | Phase 2 | 28 | 9 | 32% |
-| Phase 3 | 42 | 15 | 36% |
-| **Total** | **179** | **129** | **72%** |
+| Phase 3 | 42 | 17 | 40% |
+| **Total** | **179** | **131** | **73%** |
 
 ---
 

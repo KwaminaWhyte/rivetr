@@ -8,8 +8,8 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Axum API   │  │  HTMX UI     │  │  Embedded Proxy      │  │
-│  │   (REST)     │  │  (Dashboard) │  │  (Pingora/Hyper)     │  │
+│  │   Axum API   │  │  React UI    │  │  Embedded Proxy      │  │
+│  │   (REST)     │  │  (Dashboard) │  │  (Hyper + rustls)    │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
 │         │                 │                      │              │
 │         └────────────┬────┴──────────────────────┘              │
@@ -46,11 +46,13 @@
 - Authentication via API tokens
 - WebSocket support for real-time log streaming
 
-#### Dashboard UI (HTMX + Askama)
-- Server-rendered HTML templates
-- HTMX for SPA-like interactivity without JavaScript complexity
-- Real-time updates via SSE/WebSocket
-- Minimal client-side code
+#### Dashboard UI (React + shadcn/ui)
+- Vite + React + TypeScript frontend
+- shadcn/ui components with Tailwind CSS v4
+- React Query for data fetching and caching
+- React Router for SPA navigation
+- Real-time updates via WebSocket
+- Static files served by tower-http
 
 ### 2. Core Engine
 
@@ -132,10 +134,11 @@ struct Backend {
 ```
 
 #### Features
-- Dynamic route updates (no restarts)
-- Automatic HTTPS via ACME (Let's Encrypt)
-- Health-aware routing
-- Request buffering and timeouts
+- Dynamic route updates (no restarts) via ArcSwap
+- Automatic HTTPS via ACME (Let's Encrypt) with auto-renewal
+- Health-aware routing with background health checker
+- WebSocket proxying support
+- Route management API (GET/POST/DELETE /api/routes)
 
 ### 5. Data Models
 
@@ -146,10 +149,29 @@ struct App {
     name: String,
     git_url: String,
     branch: String,
+    dockerfile: String,
     domain: Option<String>,
     port: u16,
-    env_vars: HashMap<String, String>,
+    healthcheck: Option<String>,
+    cpu_limit: Option<String>,      // e.g., "1", "0.5", "2"
+    memory_limit: Option<String>,   // e.g., "512m", "1g"
+    environment: AppEnvironment,    // development, staging, production
+    project_id: Option<Uuid>,
     created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+```
+
+#### EnvVar
+```rust
+struct EnvVar {
+    id: Uuid,
+    app_id: Uuid,
+    key: String,
+    value: String,          // Stored encrypted at rest
+    is_secret: bool,        // UI masking indicator
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 ```
 
@@ -193,9 +215,8 @@ rivetr/
 │   │   ├── apps.rs          # App CRUD
 │   │   ├── deployments.rs   # Deployment management
 │   │   └── auth.rs          # Authentication
-│   ├── ui/                  # Dashboard
-│   │   ├── mod.rs
-│   │   └── templates/       # Askama templates
+│   ├── ui/                  # Reserved for email templates
+│   │   └── mod.rs
 │   ├── engine/              # Core deployment logic
 │   │   ├── mod.rs
 │   │   ├── pipeline.rs      # Deployment pipeline
@@ -216,8 +237,14 @@ rivetr/
 │   └── utils/               # Shared utilities
 │       ├── mod.rs
 │       └── git.rs           # Git operations
-├── templates/               # Askama HTML templates
-├── static/                  # Static assets (CSS, minimal JS)
+├── frontend/                # React + Vite + TypeScript dashboard
+│   ├── src/
+│   │   ├── components/      # React components (shadcn/ui)
+│   │   ├── pages/           # Page components
+│   │   ├── lib/             # API client, utilities
+│   │   └── types/           # TypeScript types
+│   └── vite.config.ts
+├── static/dist/             # Built frontend assets (served by tower-http)
 ├── migrations/              # SQLx migrations
 └── tests/
     ├── integration/
