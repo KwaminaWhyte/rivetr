@@ -1,4 +1,5 @@
 use anyhow::Result;
+use arc_swap::ArcSwap;
 use clap::Parser;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -9,9 +10,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::config::Config;
 use rivetr::engine::DeploymentEngine;
-use rivetr::proxy::{HealthChecker, HealthCheckerConfig, ProxyServer};
-use rivetr::runtime::detect_runtime;
+use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
+use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::AppState;
+use rivetr::DbPool;
 
 #[derive(Parser, Debug)]
 #[command(name = "rivetr")]
@@ -68,6 +70,11 @@ async fn main() -> Result<()> {
         .expect("Invalid proxy address");
     let proxy_server = ProxyServer::new(proxy_addr);
     let routes = proxy_server.routes();
+
+    // Restore routes from running containers
+    if let Err(e) = restore_routes(&db, &runtime, &routes).await {
+        tracing::warn!("Failed to restore routes: {}", e);
+    }
 
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone()));
@@ -145,4 +152,50 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("Shutdown signal received");
+}
+
+/// Restore proxy routes from running containers on startup
+async fn restore_routes(
+    db: &DbPool,
+    runtime: &Arc<dyn ContainerRuntime>,
+    routes: &Arc<ArcSwap<RouteTable>>,
+) -> Result<()> {
+    // Get all apps with domains from the database
+    let apps: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT name, domain, healthcheck FROM apps WHERE domain IS NOT NULL AND domain != ''"
+    )
+    .fetch_all(db)
+    .await?;
+
+    tracing::info!("Checking {} apps with domains for running containers", apps.len());
+
+    // List all running rivetr containers
+    let containers = runtime.list_containers("rivetr-").await?;
+
+    for (app_name, domain, healthcheck) in apps {
+        let container_name = format!("rivetr-{}", app_name);
+
+        // Find the running container for this app
+        if let Some(container) = containers.iter().find(|c| c.name == container_name) {
+            if let Some(port) = container.port {
+                let backend = Backend::new(
+                    container.id.clone(),
+                    "127.0.0.1".to_string(),
+                    port,
+                )
+                .with_healthcheck(healthcheck);
+
+                routes.load().add_route(domain.clone(), backend);
+                tracing::info!(
+                    domain = %domain,
+                    port = port,
+                    container = %container_name,
+                    "Restored proxy route for app {}",
+                    app_name
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

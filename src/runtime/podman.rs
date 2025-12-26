@@ -157,4 +157,40 @@ impl ContainerRuntime for PodmanRuntime {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>> {
+        let output = self
+            .run_command(&[
+                "ps".to_string(),
+                "--filter".to_string(),
+                format!("name={}", name_prefix),
+                "--format".to_string(),
+                "{{.ID}}|{{.Names}}|{{.State}}|{{.Ports}}".to_string(),
+            ])
+            .await?;
+
+        let mut result = Vec::new();
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() >= 3 {
+                // Parse port from format like "0.0.0.0:32768->3000/tcp"
+                let port = parts.get(3).and_then(|ports| {
+                    ports
+                        .split("->")
+                        .next()
+                        .and_then(|host_part| host_part.split(':').last())
+                        .and_then(|p| p.parse().ok())
+                });
+
+                result.push(ContainerInfo {
+                    id: parts[0].to_string(),
+                    name: parts[1].to_string(),
+                    status: parts[2].to_string(),
+                    port,
+                });
+            }
+        }
+
+        Ok(result)
+    }
 }

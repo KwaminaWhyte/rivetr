@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bollard::container::{
-    Config, CreateContainerOptions, LogOutput, LogsOptions, RemoveContainerOptions,
+    Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions, RemoveContainerOptions,
     StopContainerOptions,
 };
 use bollard::Docker;
@@ -211,6 +211,51 @@ impl ContainerRuntime for DockerRuntime {
 
     async fn is_available(&self) -> bool {
         self.client.ping().await.is_ok()
+    }
+
+    async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>> {
+        let mut filters = HashMap::new();
+        filters.insert("status".to_string(), vec!["running".to_string()]);
+        filters.insert("name".to_string(), vec![name_prefix.to_string()]);
+
+        let options = ListContainersOptions {
+            all: false,
+            filters,
+            ..Default::default()
+        };
+
+        let containers = self
+            .client
+            .list_containers(Some(options))
+            .await
+            .context("Failed to list containers")?;
+
+        let mut result = Vec::new();
+        for container in containers {
+            let name = container
+                .names
+                .and_then(|names| names.first().cloned())
+                .unwrap_or_default()
+                .trim_start_matches('/')
+                .to_string();
+
+            // Get port mapping
+            let port = container.ports.and_then(|ports| {
+                ports
+                    .iter()
+                    .find(|p| p.public_port.is_some())
+                    .and_then(|p| p.public_port.map(|port| port as u16))
+            });
+
+            result.push(ContainerInfo {
+                id: container.id.unwrap_or_default(),
+                name,
+                status: container.state.unwrap_or_default(),
+                port,
+            });
+        }
+
+        Ok(result)
     }
 }
 

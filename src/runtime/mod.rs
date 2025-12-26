@@ -60,6 +60,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
     async fn inspect(&self, container_id: &str) -> Result<ContainerInfo>;
     async fn is_available(&self) -> bool;
+    /// List running containers with names matching the given prefix
+    async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>>;
 }
 
 /// A no-op runtime used when no container runtime is available
@@ -87,6 +89,9 @@ impl ContainerRuntime for NoopRuntime {
     }
     async fn is_available(&self) -> bool {
         false
+    }
+    async fn list_containers(&self, _name_prefix: &str) -> Result<Vec<ContainerInfo>> {
+        Ok(vec![])
     }
 }
 
