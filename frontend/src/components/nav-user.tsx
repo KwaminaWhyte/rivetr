@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router";
-import { ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import { ChevronsUpDown, LogOut, Settings, Moon, Sun, Monitor } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -8,6 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
@@ -16,10 +20,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 export function NavUser() {
   const { isMobile } = useSidebar();
   const { logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -62,6 +68,41 @@ export function NavUser() {
                 Settings
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                {theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) ? (
+                  <Moon className="mr-2 h-4 w-4" />
+                ) : (
+                  <Sun className="mr-2 h-4 w-4" />
+                )}
+                Theme
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem
+                    onClick={() => setTheme("light")}
+                    className={theme === "light" ? "bg-accent" : ""}
+                  >
+                    <Sun className="mr-2 h-4 w-4" />
+                    Light
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setTheme("dark")}
+                    className={theme === "dark" ? "bg-accent" : ""}
+                  >
+                    <Moon className="mr-2 h-4 w-4" />
+                    Dark
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setTheme("system")}
+                    className={theme === "system" ? "bg-accent" : ""}
+                  >
+                    <Monitor className="mr-2 h-4 w-4" />
+                    System
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />

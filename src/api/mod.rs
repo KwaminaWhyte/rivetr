@@ -1,6 +1,7 @@
 mod apps;
 pub mod auth;
 mod deployments;
+mod git_providers;
 mod routes;
 mod ssh_keys;
 mod validation;
@@ -23,7 +24,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/login", post(auth::login))
         .route("/validate", get(auth::validate))
         .route("/setup-status", get(auth::setup_status))
-        .route("/setup", post(auth::setup));
+        .route("/setup", post(auth::setup))
+        // OAuth routes
+        .route("/oauth/:provider/authorize", get(git_providers::get_auth_url))
+        .route("/oauth/:provider/callback", get(git_providers::oauth_callback));
 
     // WebSocket routes (auth handled in handlers via query param)
     let ws_routes = Router::new()
@@ -59,6 +63,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/routes/:domain", get(routes::get_route))
         .route("/routes/:domain", delete(routes::remove_route))
         .route("/routes/:domain/health", put(routes::update_route_health))
+        // Git Providers (OAuth connections)
+        .route("/git-providers", get(git_providers::list_providers))
+        .route("/git-providers/:id", get(git_providers::get_provider))
+        .route("/git-providers/:id", delete(git_providers::delete_provider))
+        .route("/git-providers/:id/repos", get(git_providers::list_repos))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

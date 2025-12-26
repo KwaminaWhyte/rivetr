@@ -172,7 +172,7 @@
 - [x] **T1.10.7** Create Settings page (placeholder)
 - [x] **T1.10.8** Create sidebar layout
 
-### 1.11 Dashboard UI - React Features - IN PROGRESS
+### 1.11 Dashboard UI - React Features ✅ COMPLETE
 
 - [x] **T1.11.1** Add React Query for data fetching
 - [x] **T1.11.2** Add React Router for navigation
@@ -180,6 +180,22 @@
 - [x] **T1.11.4** Add delete confirmation dialogs
 - [x] **T1.11.5** Add live deployment status polling
 - [x] **T1.11.6** Add real-time log streaming (WebSocket)
+- [x] **T1.11.7** Add deployment error display with tooltips
+- [x] **T1.11.8** Add theme switching (light/dark/system) with localStorage persistence
+- [x] **T1.11.9** Add build logs viewer dialog for all deployments
+
+### 1.13 Git Provider Integration ✅ COMPLETE
+
+- [x] **T1.13.1** Create `git_providers` table migration (005_git_providers.sql)
+- [x] **T1.13.2** Add OAuth config to configuration system
+- [x] **T1.13.3** Implement OAuth flow for GitHub
+- [x] **T1.13.4** Implement OAuth flow for GitLab
+- [x] **T1.13.5** Implement OAuth flow for Bitbucket
+- [x] **T1.13.6** Add `GET /api/git-providers` endpoint
+- [x] **T1.13.7** Add `GET /api/git-providers/:id` endpoint
+- [x] **T1.13.8** Add `DELETE /api/git-providers/:id` endpoint
+- [x] **T1.13.9** Add `GET /api/git-providers/:id/repos` endpoint
+- [x] **T1.13.10** Create Git Providers settings page in frontend
 
 ### 1.12 Health Checks ✅ COMPLETE
 
@@ -341,31 +357,77 @@
 
 ---
 
+## Competitive Research: Coolify & Dokploy
+
+Research conducted to identify feature gaps and improvement opportunities.
+
+### Features Rivetr Already Has
+- [x] Git provider OAuth integration (GitHub, GitLab, Bitbucket)
+- [x] Push-to-deploy via webhooks
+- [x] Dark/Light theme switching
+- [x] Real-time deployment logs
+- [x] SSL/TLS with Let's Encrypt auto-renewal
+- [x] Docker and Podman runtime support
+- [x] Environment variables support
+- [x] Health checks with automatic failover
+- [x] Rollback functionality
+
+### Priority Features to Add (from Coolify/Dokploy)
+
+**High Priority:**
+- [ ] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml
+- [ ] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.)
+- [ ] **Pull request preview deployments** - Auto-deploy PRs with unique URLs
+- [ ] **Browser terminal** - In-browser shell access to containers (xterm.js)
+- [ ] **Repository browser** - Select repos from connected Git providers in app creation
+
+**Medium Priority:**
+- [ ] **Build cache** - Speed up builds with layer caching
+- [ ] **Resource limits UI** - Set CPU/memory limits per app from dashboard
+- [ ] **Deployment scheduling** - Schedule deployments for specific times
+- [ ] **S3 backup integration** - Backup volumes and databases to S3
+- [ ] **Custom domains per app** - Multiple domains pointing to one app
+
+**Lower Priority:**
+- [ ] **Multi-server support** - Deploy to multiple servers from one dashboard
+- [ ] **Service dependencies** - Define app startup order and dependencies
+- [ ] **Build from Dockerfile path** - Specify custom Dockerfile location
+- [ ] **Auto-scaling** - Scale containers based on load
+
+### UI/UX Improvements (from Dokploy)
+- [ ] **Simplified app creation flow** - Fewer steps, smart defaults
+- [ ] **Quick actions menu** - Fast access to common operations
+- [ ] **Deployment timeline view** - Visual history of deployments
+- [ ] **App grouping/projects** - Organize related apps together
+- [ ] **Activity feed** - Recent actions across all apps
+
+---
+
 ## Progress Summary
 
 | Phase | Total Tasks | Completed | Progress |
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
-| Phase 1 | 72 | 72 | 100% |
+| Phase 1 | 85 | 85 | 100% |
 | Phase 2 | 28 | 2 | 7% |
 | Phase 3 | 42 | 0 | 0% |
-| **Total** | **166** | **94** | **57%** |
+| **Total** | **179** | **107** | **60%** |
 
 ---
 
 ## Next Priority Tasks
 
-1. ~~**T1.11.5** - Add live deployment status polling~~ ✅
-2. ~~**T1.11.6** - Add real-time log streaming (WebSocket)~~ ✅
-3. ~~**T1.8.6** - Implement WebSocket proxying~~ ✅
-4. ~~**T1.12.6** - Add health status to proxy routing~~ ✅
-5. ~~**T1.3.10** - Add rollback functionality~~ ✅
-6. ~~**T1.4.9** - Add input validation~~ ✅
-7. ~~**T1.8.7** - Create `proxy/tls.rs` (HTTPS support)~~ ✅
-8. ~~**T1.8.9** - Add ACME client (Let's Encrypt)~~ ✅
-9. ~~**T1.7.4** - Verify GitHub webhook signature~~ ✅
-10. ~~**T1.8.10** - Implement certificate auto-renewal~~ ✅
-11. ~~**T1.8.11** - Add route update API~~ ✅
+**Phase 2 - Production Ready:**
+1. **T2.1.2** - Implement rate limiting
+2. **T2.2.1** - Create consistent error responses
+3. **T2.3.1** - Add container CPU limits
+4. **T2.3.2** - Add container memory limits
+5. **T2.4.1** - Add Prometheus metrics endpoint
+
+**Phase 3 - Enhanced Features:**
+6. **T3.1.1** - Add `environment` field to apps (staging/production)
+7. **T3.2.1** - Create `env_vars` table migration
+8. **T3.3.1** - Add container stats collection
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -379,3 +441,7 @@
 - Certificate auto-renewal
 - Webhook signature verification (GitHub, GitLab, Gitea)
 - Route management API
+- **Deployment error display** in UI with error tooltips
+- **Git Provider OAuth integration** (GitHub, GitLab, Bitbucket) for direct repo access
+- **Theme switching** (light/dark/system) with localStorage persistence
+- **Build logs viewer** for all historical deployments

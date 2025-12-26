@@ -10,7 +10,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus } from "@/types/api";
 import { Link } from "react-router";
@@ -131,11 +138,26 @@ export function DeploymentsPage() {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className={`${statusColors[deploy.status]} text-white`}
-                      >
-                        {deploy.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={`${statusColors[deploy.status]} text-white`}
+                        >
+                          {deploy.status}
+                        </Badge>
+                        {deploy.status === "failed" && deploy.error_message && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertCircle className="h-4 w-4 text-red-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-sm">
+                                <p className="font-medium text-red-500 mb-1">Error</p>
+                                <p className="text-sm whitespace-pre-wrap">{deploy.error_message}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{formatDate(deploy.started_at)}</TableCell>
                     <TableCell>

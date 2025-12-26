@@ -4,6 +4,10 @@ import type {
   CreateSshKeyRequest,
   Deployment,
   DeploymentLog,
+  GitProvider,
+  GitProviderType,
+  GitRepository,
+  OAuthAuthorizationResponse,
   SshKey,
   UpdateAppRequest,
   UpdateSshKeyRequest,
@@ -225,6 +229,29 @@ class ApiClient {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const token = this.getToken();
     return `${protocol}//${window.location.host}/api/apps/${appId}/logs/stream?token=${token}`;
+  }
+
+  // Git Providers (OAuth)
+  async getGitProviders(): Promise<GitProvider[]> {
+    return this.request<GitProvider[]>("/git-providers");
+  }
+
+  async getGitProvider(id: string): Promise<GitProvider> {
+    return this.request<GitProvider>(`/git-providers/${id}`);
+  }
+
+  async deleteGitProvider(id: string): Promise<void> {
+    return this.request<void>(`/git-providers/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getOAuthAuthorizationUrl(provider: GitProviderType): Promise<OAuthAuthorizationResponse> {
+    return this.request<OAuthAuthorizationResponse>(`/auth/oauth/${provider}/authorize`);
+  }
+
+  async getProviderRepos(providerId: string): Promise<GitRepository[]> {
+    return this.request<GitRepository[]>(`/git-providers/${providerId}/repos`);
   }
 }
 

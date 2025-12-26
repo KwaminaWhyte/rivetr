@@ -17,6 +17,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub webhooks: WebhookConfig,
+    #[serde(default)]
+    pub oauth: OAuthConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -213,6 +215,36 @@ impl Default for WebhookConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct OAuthConfig {
+    #[serde(default)]
+    pub github: Option<OAuthProviderConfig>,
+    #[serde(default)]
+    pub gitlab: Option<OAuthProviderConfig>,
+    #[serde(default)]
+    pub bitbucket: Option<OAuthProviderConfig>,
+}
+
+impl Default for OAuthConfig {
+    fn default() -> Self {
+        Self {
+            github: None,
+            gitlab: None,
+            bitbucket: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OAuthProviderConfig {
+    /// OAuth client ID
+    pub client_id: String,
+    /// OAuth client secret
+    pub client_secret: String,
+    /// OAuth redirect URI (callback URL)
+    pub redirect_uri: Option<String>,
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -236,6 +268,7 @@ impl Config {
             proxy: ProxyConfig::default(),
             logging: LoggingConfig::default(),
             webhooks: WebhookConfig::default(),
+            oauth: OAuthConfig::default(),
         }
     }
 }

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ProtectedRoute } from "@/components/providers/ProtectedRoute";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Toaster } from "@/components/ui/sonner";
@@ -15,6 +16,7 @@ import { SettingsPage } from "@/pages/Settings";
 import { SettingsWebhooksPage } from "@/pages/SettingsWebhooks";
 import { SettingsTokensPage } from "@/pages/SettingsTokens";
 import { SettingsSshKeysPage } from "@/pages/SettingsSshKeys";
+import { SettingsGitProvidersPage } from "@/pages/SettingsGitProviders";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -29,8 +31,9 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
+      <ThemeProvider>
+        <BrowserRouter>
+          <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/setup" element={<SetupPage />} />
@@ -45,13 +48,15 @@ function App() {
                 <Route path="/settings/webhooks" element={<SettingsWebhooksPage />} />
                 <Route path="/settings/tokens" element={<SettingsTokensPage />} />
                 <Route path="/settings/ssh-keys" element={<SettingsSshKeysPage />} />
+                <Route path="/settings/git-providers" element={<SettingsGitProvidersPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <Toaster position="top-right" richColors />
-        </AuthProvider>
-      </BrowserRouter>
+          </AuthProvider>
+        </BrowserRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

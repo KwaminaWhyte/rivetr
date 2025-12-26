@@ -21,6 +21,8 @@ const routeTitles: Record<string, { parent?: string; parentUrl?: string; title: 
   "/apps/new": { parent: "Applications", parentUrl: "/apps", title: "New Application" },
   "/deployments": { title: "Deployments" },
   "/settings": { title: "Settings" },
+  "/settings/git-providers": { parent: "Settings", parentUrl: "/settings", title: "Git Providers" },
+  "/settings/ssh-keys": { parent: "Settings", parentUrl: "/settings", title: "SSH Keys" },
   "/settings/webhooks": { parent: "Settings", parentUrl: "/settings", title: "Webhooks" },
   "/settings/tokens": { parent: "Settings", parentUrl: "/settings", title: "API Tokens" },
 };

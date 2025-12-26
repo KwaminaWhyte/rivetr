@@ -84,6 +84,24 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         }
     }
 
+    // Migration 005: Add git_providers table for OAuth connections
+    let has_git_providers_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='git_providers'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_git_providers_table.is_none() {
+        let migration_005 = include_str!("../../migrations/005_git_providers.sql");
+        // Execute each statement separately since SQLite doesn't support multiple statements
+        for statement in migration_005.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
     info!("Migrations completed");
     Ok(())
 }

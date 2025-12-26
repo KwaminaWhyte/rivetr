@@ -87,3 +87,36 @@ export interface UpdateSshKeyRequest {
   app_id?: string | null;
   is_global?: boolean;
 }
+
+// Git Provider types
+export type GitProviderType = "github" | "gitlab" | "bitbucket";
+
+export interface GitProvider {
+  id: string;
+  provider: GitProviderType;
+  username: string;
+  display_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  scopes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GitRepository {
+  id: string;
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
+  private: boolean;
+  owner: string;
+}
+
+export interface OAuthAuthorizationResponse {
+  authorization_url: string;
+  state: string;
+}

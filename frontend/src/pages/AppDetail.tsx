@@ -23,9 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle, FileText } from "lucide-react";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus, UpdateAppRequest } from "@/types/api";
+import type { App, Deployment, DeploymentStatus, DeploymentLog, UpdateAppRequest } from "@/types/api";
 import { DeploymentLogs } from "@/components/DeploymentLogs";
 import { RuntimeLogs } from "@/components/RuntimeLogs";
 
@@ -58,9 +65,17 @@ export function AppDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
   const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
   const [editFormData, setEditFormData] = useState<UpdateAppRequest>({});
+
+  // Fetch build logs for selected deployment
+  const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
+    queryKey: ["deployment-logs", selectedDeploymentId],
+    queryFn: () => api.getDeploymentLogs(selectedDeploymentId!),
+    enabled: !!selectedDeploymentId && showBuildLogsDialog,
+  });
 
   const {
     data: app,
@@ -336,11 +351,26 @@ export function AppDetailPage() {
                 {deployments.map((deploy) => (
                   <TableRow key={deploy.id}>
                     <TableCell>
-                      <Badge
-                        className={`${statusColors[deploy.status]} text-white`}
-                      >
-                        {deploy.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={`${statusColors[deploy.status]} text-white`}
+                        >
+                          {deploy.status}
+                        </Badge>
+                        {deploy.status === "failed" && deploy.error_message && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertCircle className="h-4 w-4 text-red-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-sm">
+                                <p className="font-medium text-red-500 mb-1">Error</p>
+                                <p className="text-sm whitespace-pre-wrap">{deploy.error_message}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{formatDate(deploy.started_at)}</TableCell>
                     <TableCell>
@@ -350,18 +380,37 @@ export function AppDetailPage() {
                       {deploy.container_id?.slice(0, 12) || "-"}
                     </TableCell>
                     <TableCell>
-                      {canRollback(deploy) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedDeploymentId(deploy.id);
-                            setShowRollbackDialog(true);
-                          }}
-                        >
-                          Rollback
-                        </Button>
-                      )}
+                      <div className="flex gap-1">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDeploymentId(deploy.id);
+                                  setShowBuildLogsDialog(true);
+                                }}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View build logs</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        {canRollback(deploy) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedDeploymentId(deploy.id);
+                              setShowRollbackDialog(true);
+                            }}
+                          >
+                            Rollback
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -530,6 +579,58 @@ export function AppDetailPage() {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Build logs dialog */}
+      <Dialog open={showBuildLogsDialog} onOpenChange={(open) => {
+        setShowBuildLogsDialog(open);
+        if (!open) setSelectedDeploymentId(null);
+      }}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Build Logs</DialogTitle>
+            <DialogDescription>
+              Deployment logs for {selectedDeploymentId?.slice(0, 8)}...
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-gray-900 rounded-lg p-4 max-h-[50vh] overflow-y-auto font-mono text-sm">
+            {buildLogsLoading ? (
+              <div className="text-gray-500 text-center py-4">Loading logs...</div>
+            ) : buildLogs.length === 0 ? (
+              <div className="text-gray-500 text-center py-4">No logs available</div>
+            ) : (
+              <div className="space-y-1">
+                {buildLogs.map((log) => (
+                  <div key={log.id} className="flex gap-2 text-gray-300">
+                    <span className="text-gray-500 flex-shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-xs text-white flex-shrink-0 ${
+                        log.level === "error" ? "bg-red-500" :
+                        log.level === "warn" ? "bg-yellow-500" :
+                        log.level === "info" ? "bg-blue-500" : "bg-gray-500"
+                      }`}
+                    >
+                      {log.level.toUpperCase()}
+                    </span>
+                    <span className="whitespace-pre-wrap break-all">
+                      {log.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowBuildLogsDialog(false);
+              setSelectedDeploymentId(null);
+            }}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
