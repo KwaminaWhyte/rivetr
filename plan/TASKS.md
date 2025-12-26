@@ -144,7 +144,7 @@
 - [x] **T1.8.3** Create HTTP proxy handler
 - [x] **T1.8.4** Implement request forwarding to containers
 - [x] **T1.8.5** Add Host header routing
-- [ ] **T1.8.6** Implement WebSocket proxying
+- [x] **T1.8.6** Implement WebSocket proxying
 - [ ] **T1.8.7** Create `proxy/tls.rs`
 - [ ] **T1.8.8** Implement HTTPS with rustls
 - [ ] **T1.8.9** Add ACME client (Let's Encrypt)

@@ -1,11 +1,13 @@
 // Proxy connection handler
 //
 // Handles incoming HTTP connections, parses requests, and forwards them to backends.
+// Supports WebSocket upgrade for real-time applications.
 
 use arc_swap::ArcSwap;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
+use hyper::header::{CONNECTION, UPGRADE};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
@@ -15,7 +17,7 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tracing::{debug, error, info, warn};
 
-use super::{ProxyService, RouteTable};
+use super::{Backend, ProxyService, RouteTable};
 
 /// Handles incoming proxy connections
 #[derive(Clone)]
@@ -41,6 +43,7 @@ impl ProxyHandler {
         let io = TokioIo::new(stream);
         let handler = self.clone();
 
+        // Enable upgrades for WebSocket support
         http1::Builder::new()
             .serve_connection(
                 io,
@@ -49,6 +52,7 @@ impl ProxyHandler {
                     async move { handler.handle_request(req, remote_addr).await }
                 }),
             )
+            .with_upgrades()
             .await?;
 
         Ok(())
@@ -63,12 +67,14 @@ impl ProxyHandler {
         let method = req.method().clone();
         let uri = req.uri().clone();
         let host = self.extract_host(&req);
+        let is_websocket = self.is_websocket_upgrade(&req);
 
         debug!(
             method = %method,
             uri = %uri,
             host = ?host,
             remote = %remote_addr,
+            websocket = is_websocket,
             "Incoming proxy request"
         );
 
@@ -88,8 +94,14 @@ impl ProxyHandler {
                     uri = %uri,
                     host = ?host,
                     backend = %backend.addr(),
+                    websocket = is_websocket,
                     "Forwarding request"
                 );
+
+                // Handle WebSocket upgrades specially
+                if is_websocket {
+                    return self.handle_websocket_upgrade(req, &backend).await;
+                }
 
                 match self.proxy_service.forward(req, &backend).await {
                     Ok(response) => Ok(response),
@@ -117,6 +129,48 @@ impl ProxyHandler {
                         "No application found for host: {}",
                         host.as_deref().unwrap_or("unknown")
                     ),
+                ))
+            }
+        }
+    }
+
+    /// Check if the request is a WebSocket upgrade
+    fn is_websocket_upgrade<T>(&self, req: &Request<T>) -> bool {
+        let headers = req.headers();
+
+        // Check for Upgrade: websocket header
+        let has_upgrade = headers
+            .get(UPGRADE)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("websocket"))
+            .unwrap_or(false);
+
+        // Check for Connection: upgrade header
+        let has_connection_upgrade = headers
+            .get(CONNECTION)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_lowercase().contains("upgrade"))
+            .unwrap_or(false);
+
+        has_upgrade && has_connection_upgrade
+    }
+
+    /// Handle WebSocket upgrade requests
+    async fn handle_websocket_upgrade(
+        &self,
+        req: Request<Incoming>,
+        backend: &Backend,
+    ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
+        info!(backend = %backend.addr(), "Handling WebSocket upgrade");
+
+        // Forward the WebSocket upgrade request to the backend
+        match self.proxy_service.forward_websocket(req, backend).await {
+            Ok(response) => Ok(response),
+            Err(e) => {
+                error!(error = %e, "WebSocket upgrade failed");
+                Ok(self.error_response(
+                    StatusCode::BAD_GATEWAY,
+                    "WebSocket upgrade failed",
                 ))
             }
         }
