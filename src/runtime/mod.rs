@@ -51,6 +51,21 @@ pub enum LogStream {
     Stderr,
 }
 
+/// Container resource statistics
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ContainerStats {
+    /// CPU usage percentage (0-100, can exceed 100 on multi-core)
+    pub cpu_percent: f64,
+    /// Current memory usage in bytes
+    pub memory_usage: u64,
+    /// Memory limit in bytes (0 if no limit)
+    pub memory_limit: u64,
+    /// Network bytes received
+    pub network_rx: u64,
+    /// Network bytes transmitted
+    pub network_tx: u64,
+}
+
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
@@ -62,6 +77,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn is_available(&self) -> bool;
     /// List running containers with names matching the given prefix
     async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>>;
+    /// Get container resource statistics (CPU, memory, network)
+    async fn stats(&self, container_id: &str) -> Result<ContainerStats>;
 }
 
 /// A no-op runtime used when no container runtime is available
@@ -92,6 +109,9 @@ impl ContainerRuntime for NoopRuntime {
     }
     async fn list_containers(&self, _name_prefix: &str) -> Result<Vec<ContainerInfo>> {
         Ok(vec![])
+    }
+    async fn stats(&self, _container_id: &str) -> Result<ContainerStats> {
+        anyhow::bail!("No container runtime available")
     }
 }
 

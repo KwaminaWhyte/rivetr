@@ -6,7 +6,7 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, LogLine, LogStream, RunConfig};
+use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, LogLine, LogStream, RunConfig};
 
 pub struct PodmanRuntime;
 
@@ -193,4 +193,125 @@ impl ContainerRuntime for PodmanRuntime {
 
         Ok(result)
     }
+
+    async fn stats(&self, container_id: &str) -> Result<ContainerStats> {
+        // Use podman stats with JSON output for reliable parsing
+        let output = Command::new("podman")
+            .args([
+                "stats",
+                "--no-stream",
+                "--format",
+                "json",
+                container_id,
+            ])
+            .output()
+            .await
+            .context("Failed to execute podman stats")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Podman stats failed: {}", stderr);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Podman stats returns an array of stats objects
+        let stats: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+            .context("Failed to parse podman stats JSON")?;
+
+        if stats.is_empty() {
+            anyhow::bail!("No stats returned for container");
+        }
+
+        let stat = &stats[0];
+
+        // Parse CPU percentage (e.g., "5.23%")
+        let cpu_percent = stat
+            .get("cpu_percent")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.trim_end_matches('%').parse::<f64>().ok())
+            .or_else(|| {
+                // Fallback: try getting it as a number directly
+                stat.get("CPUPerc")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.trim_end_matches('%').parse::<f64>().ok())
+            })
+            .unwrap_or(0.0);
+
+        // Parse memory usage and limit
+        // Podman returns mem_usage like "128.5MiB / 512MiB"
+        let (memory_usage, memory_limit) = stat
+            .get("mem_usage")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                let parts: Vec<&str> = s.split('/').collect();
+                let usage = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                let limit = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                (usage, limit)
+            })
+            .or_else(|| {
+                // Alternative field names
+                stat.get("MemUsage").and_then(|v| v.as_str()).map(|s| {
+                    let parts: Vec<&str> = s.split('/').collect();
+                    let usage = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    let limit = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    (usage, limit)
+                })
+            })
+            .unwrap_or((0, 0));
+
+        // Parse network I/O (e.g., "648kB / 0B")
+        let (network_rx, network_tx) = stat
+            .get("net_io")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                let parts: Vec<&str> = s.split('/').collect();
+                let rx = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                let tx = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                (rx, tx)
+            })
+            .or_else(|| {
+                stat.get("NetIO").and_then(|v| v.as_str()).map(|s| {
+                    let parts: Vec<&str> = s.split('/').collect();
+                    let rx = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    let tx = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    (rx, tx)
+                })
+            })
+            .unwrap_or((0, 0));
+
+        Ok(ContainerStats {
+            cpu_percent,
+            memory_usage,
+            memory_limit,
+            network_rx,
+            network_tx,
+        })
+    }
+}
+
+/// Parse size strings like "128.5MiB", "512MB", "1.2GiB", "648kB"
+fn parse_podman_size(s: &str) -> u64 {
+    let s = s.trim();
+
+    // Try to find where the number ends and unit begins
+    let (num_str, unit) = s
+        .chars()
+        .position(|c| c.is_alphabetic())
+        .map(|i| s.split_at(i))
+        .unwrap_or((s, ""));
+
+    let num: f64 = num_str.trim().parse().unwrap_or(0.0);
+    let unit = unit.to_lowercase();
+
+    let multiplier: f64 = match unit.as_str() {
+        "b" => 1.0,
+        "kb" | "kib" => 1024.0,
+        "mb" | "mib" => 1024.0 * 1024.0,
+        "gb" | "gib" => 1024.0 * 1024.0 * 1024.0,
+        "tb" | "tib" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        _ => 1.0,
+    };
+
+    (num * multiplier) as u64
 }

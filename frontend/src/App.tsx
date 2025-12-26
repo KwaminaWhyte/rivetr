@@ -17,6 +17,8 @@ import { SettingsWebhooksPage } from "@/pages/SettingsWebhooks";
 import { SettingsTokensPage } from "@/pages/SettingsTokens";
 import { SettingsSshKeysPage } from "@/pages/SettingsSshKeys";
 import { SettingsGitProvidersPage } from "@/pages/SettingsGitProviders";
+import { ProjectsPage } from "@/pages/Projects";
+import { ProjectDetailPage } from "@/pages/ProjectDetail";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -40,6 +42,8 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<DashboardPage />} />
+                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/projects/:id" element={<ProjectDetailPage />} />
                 <Route path="/apps" element={<AppsPage />} />
                 <Route path="/apps/new" element={<NewAppPage />} />
                 <Route path="/apps/:id" element={<AppDetailPage />} />

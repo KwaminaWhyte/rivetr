@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   LayoutDashboard,
+  FolderKanban,
   Package,
   Settings,
   Activity,
@@ -23,6 +24,11 @@ const navMain: NavMainItem[] = [
     title: "Dashboard",
     url: "/",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Projects",
+    url: "/projects",
+    icon: FolderKanban,
   },
   {
     title: "Applications",

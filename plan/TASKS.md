@@ -216,7 +216,7 @@
 ### 2.1 Security
 
 - [x] **T2.1.1** Add input validation on all endpoints (src/api/validation.rs)
-- [ ] **T2.1.2** Implement rate limiting
+- [x] **T2.1.2** Implement rate limiting (src/api/rate_limit.rs - sliding window algorithm, per-tier limits)
 - [ ] **T2.1.3** Add CSRF tokens for UI forms
 - [ ] **T2.1.4** Encrypt env vars at rest
 - [ ] **T2.1.5** Secure session cookies
@@ -224,7 +224,7 @@
 
 ### 2.2 Error Handling
 
-- [ ] **T2.2.1** Create consistent error responses
+- [x] **T2.2.1** Create consistent error responses (src/api/error.rs - ApiError with ErrorCode enum, ValidationErrorBuilder)
 - [ ] **T2.2.2** Add deployment failure recovery
 - [ ] **T2.2.3** Implement container restart on crash
 - [ ] **T2.2.4** Add startup self-checks
@@ -232,8 +232,8 @@
 
 ### 2.3 Resource Management
 
-- [ ] **T2.3.1** Add container CPU limits
-- [ ] **T2.3.2** Add container memory limits
+- [x] **T2.3.1** Add container CPU limits (cpu_limit field in App model, Docker NanoCPUs, Podman --cpus)
+- [x] **T2.3.2** Add container memory limits (memory_limit field in App model, supports m/mb/g/gb/b suffixes)
 - [ ] **T2.3.3** Add build resource limits
 - [ ] **T2.3.4** Add disk space monitoring
 - [ ] **T2.3.5** Implement old deployment cleanup
@@ -241,9 +241,9 @@
 
 ### 2.4 Observability
 
-- [ ] **T2.4.1** Add Prometheus metrics endpoint
-- [ ] **T2.4.2** Add request duration metrics
-- [ ] **T2.4.3** Add deployment counter metrics
+- [x] **T2.4.1** Add Prometheus metrics endpoint (GET /metrics)
+- [x] **T2.4.2** Add request duration metrics (http_request_duration_seconds histogram)
+- [x] **T2.4.3** Add deployment counter metrics (deployments_total with status label)
 - [ ] **T2.4.4** Add container resource metrics
 - [ ] **T2.4.5** Add health check metrics
 
@@ -279,29 +279,29 @@
 
 ### 3.1 Project Organization
 
-- [ ] **T3.1.1** Add `environment` field to apps (staging/production/development)
-- [ ] **T3.1.2** Add environment badge to UI
-- [ ] **T3.1.3** Add environment filter on apps list
+- [x] **T3.1.1** Add `environment` field to apps (staging/production/development) - migration 006, model, validation
+- [x] **T3.1.2** Add environment badge to UI (EnvironmentBadge.tsx - color-coded: gray/yellow/green)
+- [x] **T3.1.3** Add environment filter on apps list (dropdown filter in Apps.tsx)
 - [ ] **T3.1.4** Add tags/labels to apps (database table + API)
 - [ ] **T3.1.5** Add tags UI management
 - [ ] **T3.1.6** Filter apps by tags
 
-### 3.2 Environment Variables UI
+### 3.2 Environment Variables UI ✅ COMPLETE
 
-- [ ] **T3.2.1** Create `env_vars` table migration
-- [ ] **T3.2.2** Add env vars CRUD API endpoints
-- [ ] **T3.2.3** Create Env Vars settings tab in app detail
-- [ ] **T3.2.4** Add env var editor with key-value pairs
-- [ ] **T3.2.5** Support multiline values
-- [ ] **T3.2.6** Mask secret values in UI
-- [ ] **T3.2.7** Pass env vars to container at runtime
+- [x] **T3.2.1** Create `env_vars` table migration (006_env_vars_update.sql - is_secret, updated_at columns)
+- [x] **T3.2.2** Add env vars CRUD API endpoints (src/api/env_vars.rs - full CRUD with reveal option)
+- [x] **T3.2.3** Create Env Vars settings tab in app detail (EnvVarsTab.tsx component)
+- [x] **T3.2.4** Add env var editor with key-value pairs (table with add/edit/delete dialogs)
+- [x] **T3.2.5** Support multiline values (textarea in edit dialog)
+- [x] **T3.2.6** Mask secret values in UI (********  with reveal button)
+- [x] **T3.2.7** Pass env vars to container at runtime (already in engine pipeline)
 
 ### 3.3 Resource Monitoring
 
-- [ ] **T3.3.1** Add container stats collection (CPU, memory, network)
+- [x] **T3.3.1** Add container stats collection (CPU, memory, network) - ContainerStats in runtime trait
 - [ ] **T3.3.2** Store metrics in SQLite (with retention policy)
-- [ ] **T3.3.3** Create metrics API endpoint
-- [ ] **T3.3.4** Add resource usage graphs in app detail
+- [x] **T3.3.3** Create metrics API endpoint (GET /api/apps/:id/stats)
+- [x] **T3.3.4** Add resource usage graphs in app detail (ResourceMonitor.tsx with sparklines)
 - [ ] **T3.3.5** Add system-wide dashboard metrics
 
 ### 3.4 Preview Deployments
@@ -383,7 +383,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 
 **Medium Priority:**
 - [ ] **Build cache** - Speed up builds with layer caching
-- [ ] **Resource limits UI** - Set CPU/memory limits per app from dashboard
+- [x] **Resource limits UI** - Set CPU/memory limits per app from dashboard (ResourceLimitsCard.tsx)
 - [ ] **Deployment scheduling** - Schedule deployments for specific times
 - [ ] **S3 backup integration** - Backup volumes and databases to S3
 - [ ] **Custom domains per app** - Multiple domains pointing to one app
@@ -397,9 +397,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 ### UI/UX Improvements (from Dokploy)
 - [ ] **Simplified app creation flow** - Fewer steps, smart defaults
 - [ ] **Quick actions menu** - Fast access to common operations
-- [ ] **Deployment timeline view** - Visual history of deployments
-- [ ] **App grouping/projects** - Organize related apps together
-- [ ] **Activity feed** - Recent actions across all apps
+- [x] **Deployment timeline view** - Visual history of deployments (DeploymentTimeline.tsx with toggle)
+- [x] **App grouping/projects** - Organize related apps together (Projects page with cards, service counts)
+- [x] **Activity feed** - Recent actions across all apps (Recent Events in Dashboard)
 
 ---
 
@@ -409,25 +409,25 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 85 | 85 | 100% |
-| Phase 2 | 28 | 2 | 7% |
-| Phase 3 | 42 | 0 | 0% |
-| **Total** | **179** | **107** | **60%** |
+| Phase 2 | 28 | 9 | 32% |
+| Phase 3 | 42 | 15 | 36% |
+| **Total** | **179** | **129** | **72%** |
 
 ---
 
 ## Next Priority Tasks
 
 **Phase 2 - Production Ready:**
-1. **T2.1.2** - Implement rate limiting
-2. **T2.2.1** - Create consistent error responses
-3. **T2.3.1** - Add container CPU limits
-4. **T2.3.2** - Add container memory limits
-5. **T2.4.1** - Add Prometheus metrics endpoint
+1. **T2.1.3** - Add CSRF tokens for UI forms
+2. **T2.2.2** - Add deployment failure recovery
+3. **T2.3.3** - Add build resource limits
+4. **T2.3.5** - Implement old deployment cleanup
 
 **Phase 3 - Enhanced Features:**
-6. **T3.1.1** - Add `environment` field to apps (staging/production)
-7. **T3.2.1** - Create `env_vars` table migration
-8. **T3.3.1** - Add container stats collection
+5. **T3.1.4** - Add tags/labels to apps
+6. **T3.3.2** - Store metrics history in SQLite
+7. **T3.4.1** - Parse PR events for preview deployments
+8. **T3.6.1** - Implement container shell access (browser terminal)
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -445,3 +445,15 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Git Provider OAuth integration** (GitHub, GitLab, Bitbucket) for direct repo access
 - **Theme switching** (light/dark/system) with localStorage persistence
 - **Build logs viewer** for all historical deployments
+
+### Recent Additions (Phase 2-3)
+- **System Overview Dashboard** - Stats cards, resource utilization chart, recent events feed
+- **Projects feature** - Group related apps, project cards with service counts
+- **Environment field** - Development/Staging/Production with color-coded badges
+- **Resource Limits UI** - Configure CPU/memory limits from dashboard
+- **Environment Variables UI** - Full CRUD with secret masking
+- **Container Resource Metrics** - Live CPU/memory monitoring with sparklines
+- **Deployment Timeline** - Visual deployment history with status indicators
+- **Rate Limiting** - Sliding window algorithm with per-tier limits
+- **Consistent Error Responses** - ApiError with ErrorCode enum
+- **Prometheus Metrics** - /metrics endpoint with request/deployment counters

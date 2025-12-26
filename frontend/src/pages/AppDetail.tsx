@@ -30,11 +30,29 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, FileText } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus, DeploymentLog, UpdateAppRequest } from "@/types/api";
+import type { App, AppEnvironment, Deployment, DeploymentStatus, DeploymentLog, UpdateAppRequest } from "@/types/api";
 import { DeploymentLogs } from "@/components/DeploymentLogs";
 import { RuntimeLogs } from "@/components/RuntimeLogs";
+import { ResourceLimitsCard } from "@/components/ResourceLimitsCard";
+import { ResourceMonitor } from "@/components/ResourceMonitor";
+import { DeploymentTimeline } from "@/components/DeploymentTimeline";
+import { EnvVarsTab } from "@/components/EnvVarsTab";
+import { EnvironmentBadge } from "@/components/EnvironmentBadge";
+
+const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
+  { value: "development", label: "Development" },
+  { value: "staging", label: "Staging" },
+  { value: "production", label: "Production" },
+];
 
 // Active deployment statuses that require frequent polling
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
@@ -69,6 +87,7 @@ export function AppDetailPage() {
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
   const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
   const [editFormData, setEditFormData] = useState<UpdateAppRequest>({});
+  const [deploymentView, setDeploymentView] = useState<"timeline" | "table">("timeline");
 
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
@@ -170,6 +189,7 @@ export function AppDetailPage() {
         domain: app.domain || undefined,
         port: app.port,
         healthcheck: app.healthcheck || undefined,
+        environment: app.environment,
       });
     }
   }, [app]);
@@ -221,7 +241,10 @@ export function AppDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{app.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{app.name}</h1>
+            <EnvironmentBadge environment={app.environment} />
+          </div>
           <p className="text-muted-foreground">{app.git_url}</p>
         </div>
         <div className="flex gap-2">
@@ -262,6 +285,12 @@ export function AppDetailPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <div className="text-sm text-muted-foreground">Environment</div>
+                <div className="font-medium mt-1">
+                  <EnvironmentBadge environment={app.environment} />
+                </div>
+              </div>
+              <div>
                 <div className="text-sm text-muted-foreground">Branch</div>
                 <div className="font-medium">{app.branch}</div>
               </div>
@@ -280,6 +309,10 @@ export function AppDetailPage() {
               <div>
                 <div className="text-sm text-muted-foreground">Healthcheck</div>
                 <div className="font-medium">{app.healthcheck || "-"}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">CPU Limit</div>
+                <div className="font-medium">{app.cpu_limit ? `${app.cpu_limit} cores` : "-"}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Memory Limit</div>
@@ -310,20 +343,65 @@ export function AppDetailPage() {
         </Card>
       </div>
 
+      <ResourceLimitsCard app={app} />
+
+      {/* Resource Monitor - only show when app has a running deployment */}
+      {runningDeployment && (
+        <ResourceMonitor appId={app.id} />
+      )}
+
+      {/* Environment Variables */}
+      <EnvVarsTab appId={app.id} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Deployments
-            {hasActiveDeployment && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              Deployments
+              {hasActiveDeployment && (
+                <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                  </span>
+                  In Progress
                 </span>
-                In Progress
-              </span>
-            )}
-          </CardTitle>
+              )}
+            </CardTitle>
+            {/* View Toggle */}
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={deploymentView === "timeline" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={() => setDeploymentView("timeline")}
+                    >
+                      <GitGraph className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Timeline view</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={deploymentView === "table" ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={() => setDeploymentView("table")}
+                    >
+                      <LayoutList className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Table view</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {deploymentsLoading ? (
@@ -332,6 +410,20 @@ export function AppDetailPage() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
+          ) : deploymentView === "timeline" ? (
+            <DeploymentTimeline
+              deployments={deployments}
+              branch={app.branch}
+              onViewLogs={(deploymentId) => {
+                setSelectedDeploymentId(deploymentId);
+                setShowBuildLogsDialog(true);
+              }}
+              onRollback={(deploymentId) => {
+                setSelectedDeploymentId(deploymentId);
+                setShowRollbackDialog(true);
+              }}
+              canRollback={canRollback}
+            />
           ) : deployments.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center">
               No deployments yet. Click Deploy to start your first deployment.
@@ -341,8 +433,9 @@ export function AppDetailPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Status</TableHead>
+                  <TableHead>Commit</TableHead>
                   <TableHead>Started</TableHead>
-                  <TableHead>Finished</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead>Container ID</TableHead>
                   <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
@@ -372,9 +465,35 @@ export function AppDetailPage() {
                         )}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {deploy.commit_sha ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-mono text-xs cursor-help">
+                                {deploy.commit_sha.slice(0, 7)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-sm">
+                              <p className="text-sm">{deploy.commit_message || "No commit message"}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
                     <TableCell>{formatDate(deploy.started_at)}</TableCell>
                     <TableCell>
-                      {deploy.finished_at ? formatDate(deploy.finished_at) : "-"}
+                      {(() => {
+                        const start = new Date(deploy.started_at).getTime();
+                        const end = deploy.finished_at ? new Date(deploy.finished_at).getTime() : Date.now();
+                        const durationMs = end - start;
+                        const seconds = Math.floor(durationMs / 1000);
+                        const minutes = Math.floor(seconds / 60);
+                        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+                        return `${seconds}s`;
+                      })()}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {deploy.container_id?.slice(0, 12) || "-"}
@@ -499,14 +618,34 @@ export function AppDetailPage() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-healthcheck">Healthcheck Path</Label>
-              <Input
-                id="edit-healthcheck"
-                placeholder="/health"
-                value={editFormData.healthcheck || ""}
-                onChange={(e) => handleEditChange("healthcheck", e.target.value || undefined)}
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-healthcheck">Healthcheck Path</Label>
+                <Input
+                  id="edit-healthcheck"
+                  placeholder="/health"
+                  value={editFormData.healthcheck || ""}
+                  onChange={(e) => handleEditChange("healthcheck", e.target.value || undefined)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-environment">Environment</Label>
+                <Select
+                  value={editFormData.environment || "development"}
+                  onValueChange={(value) => handleEditChange("environment", value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ENVIRONMENT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <DialogFooter>

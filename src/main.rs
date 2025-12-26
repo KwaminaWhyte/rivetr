@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use rivetr::api::rate_limit::spawn_cleanup_task;
 use rivetr::config::Config;
 use rivetr::engine::DeploymentEngine;
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
@@ -52,6 +53,10 @@ async fn main() -> Result<()> {
 
     tracing::info!("Starting Rivetr v{}", env!("CARGO_PKG_VERSION"));
 
+    // Initialize Prometheus metrics
+    let metrics_handle = rivetr::api::metrics::init_metrics();
+    tracing::info!("Prometheus metrics initialized at /metrics");
+
     // Ensure data directory exists
     rivetr::utils::ensure_dir(&config.server.data_dir)?;
 
@@ -77,7 +82,22 @@ async fn main() -> Result<()> {
     }
 
     // Create app state (now includes routes for rollback functionality)
-    let state = Arc::new(AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone()));
+    let state = Arc::new(
+        AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone())
+            .with_metrics(metrics_handle)
+    );
+
+    // Start rate limiter cleanup task
+    spawn_cleanup_task(
+        state.rate_limiter.clone(),
+        config.rate_limit.cleanup_interval,
+    );
+    tracing::info!(
+        "Rate limiting enabled: {} req/min (API), {} req/min (webhooks), {} req/min (auth)",
+        config.rate_limit.api_requests_per_window,
+        config.rate_limit.webhook_requests_per_window,
+        config.rate_limit.auth_requests_per_window
+    );
 
     // Start deployment engine with route table
     let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx);

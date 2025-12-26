@@ -1,13 +1,27 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
-import type { CreateAppRequest } from "@/types/api";
+import type { AppEnvironment, CreateAppRequest, Project } from "@/types/api";
+import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/ResourceLimitsCard";
+
+const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
+  { value: "development", label: "Development" },
+  { value: "staging", label: "Staging" },
+  { value: "production", label: "Production" },
+];
 
 export function NewAppPage() {
   const navigate = useNavigate();
@@ -17,8 +31,18 @@ export function NewAppPage() {
     branch: "main",
     dockerfile: "Dockerfile",
     port: 3000,
+    cpu_limit: "1",
+    memory_limit: "512m",
+    environment: "development",
+    project_id: undefined,
   });
   const [error, setError] = useState("");
+
+  // Fetch projects for the selector
+  const { data: projects = [] } = useQuery<Project[]>({
+    queryKey: ["projects"],
+    queryFn: () => api.getProjects(),
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: CreateAppRequest) => api.createApp(data),
@@ -96,6 +120,53 @@ export function NewAppPage() {
               </p>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="environment">Environment</Label>
+              <Select
+                value={formData.environment || "development"}
+                onValueChange={(value) => handleChange("environment", value)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select environment" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENVIRONMENT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The deployment environment for this application
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="project">Project (Optional)</Label>
+              <Select
+                value={formData.project_id || "none"}
+                onValueChange={(value) =>
+                  handleChange("project_id", value === "none" ? "" : value)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Project</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Optionally assign this app to a project for organization
+              </p>
+            </div>
+
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="branch">Branch</Label>
@@ -152,6 +223,52 @@ export function NewAppPage() {
               <p className="text-xs text-muted-foreground">
                 Optional endpoint to check if the app is healthy
               </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cpu_limit">CPU Limit</Label>
+                <Select
+                  value={formData.cpu_limit || "1"}
+                  onValueChange={(value) => handleChange("cpu_limit", value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select CPU limit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CPU_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Maximum CPU cores for this container
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="memory_limit">Memory Limit</Label>
+                <Select
+                  value={formData.memory_limit || "512m"}
+                  onValueChange={(value) => handleChange("memory_limit", value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select memory limit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MEMORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Maximum memory for this container
+                </p>
+              </div>
             </div>
 
             <div className="flex gap-4">

@@ -20,31 +20,34 @@ Rivetr is a **single-binary PaaS** that lets you deploy applications from Git wi
 
 ### Resource Comparison
 
-| System | RAM (Idle) | Dependencies |
-|--------|------------|--------------|
-| Coolify | 400-800MB | PostgreSQL, Redis, Traefik |
-| **Rivetr** | **30-80MB** | Docker or Podman |
+| System     | RAM (Idle)  | Dependencies               |
+| ---------- | ----------- | -------------------------- |
+| Coolify    | 400-800MB   | PostgreSQL, Redis, Traefik |
+| **Rivetr** | **30-80MB** | Docker or Podman           |
 
 ## Quick Start
 
 ### Using Setup Script
 
 **Linux/macOS:**
+
 ```bash
-git clone https://github.com/yourusername/rivetr.git
+git clone https://github.com/Kwaminawhyte/rivetr.git
 cd rivetr
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
-git clone https://github.com/yourusername/rivetr.git
+git clone https://github.com/Kwaminawhyte/rivetr.git
 cd rivetr
 .\scripts\setup.ps1
 ```
 
 The setup script will:
+
 1. Check prerequisites (Rust, Git, Docker/Podman)
 2. Create necessary directories
 3. Set up configuration
@@ -55,7 +58,7 @@ The setup script will:
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/rivetr.git
+git clone https://github.com/Kwaminawhyte/rivetr.git
 cd rivetr
 
 # Build

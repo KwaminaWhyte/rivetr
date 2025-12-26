@@ -2,14 +2,14 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions, RemoveContainerOptions,
-    StopContainerOptions,
+    StatsOptions, StopContainerOptions,
 };
 use bollard::Docker;
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, LogLine, LogStream, RunConfig};
+use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, LogLine, LogStream, RunConfig};
 
 pub struct DockerRuntime {
     client: Docker,
@@ -257,6 +257,69 @@ impl ContainerRuntime for DockerRuntime {
 
         Ok(result)
     }
+
+    async fn stats(&self, container_id: &str) -> Result<ContainerStats> {
+        let options = StatsOptions {
+            stream: false,
+            one_shot: true,
+        };
+
+        let mut stream = self.client.stats(container_id, Some(options));
+
+        if let Some(result) = stream.next().await {
+            let stats = result.context("Failed to get container stats")?;
+
+            // Calculate CPU percentage
+            // CPU percentage = (container_delta / system_delta) * num_cpus * 100
+            let cpu_stats = &stats.cpu_stats;
+            let precpu_stats = &stats.precpu_stats;
+
+            let cpu_delta = cpu_stats.cpu_usage.total_usage as f64
+                - precpu_stats.cpu_usage.total_usage as f64;
+
+            let system_delta = cpu_stats.system_cpu_usage.unwrap_or(0) as f64
+                - precpu_stats.system_cpu_usage.unwrap_or(0) as f64;
+
+            let num_cpus = cpu_stats
+                .online_cpus
+                .or(cpu_stats.cpu_usage.percpu_usage.as_ref().map(|v: &Vec<u64>| v.len() as u64))
+                .unwrap_or(1) as f64;
+
+            let cpu_percent = if system_delta > 0.0 && cpu_delta > 0.0 {
+                (cpu_delta / system_delta) * num_cpus * 100.0
+            } else {
+                0.0
+            };
+
+            // Get memory stats
+            let memory_stats = &stats.memory_stats;
+            let memory_usage = memory_stats.usage.unwrap_or(0);
+            let memory_limit = memory_stats.limit.unwrap_or(0);
+
+            // Get network stats
+            let (network_rx, network_tx) = if let Some(networks) = &stats.networks {
+                let mut rx: u64 = 0;
+                let mut tx: u64 = 0;
+                for (_name, net_stats) in networks {
+                    rx += net_stats.rx_bytes;
+                    tx += net_stats.tx_bytes;
+                }
+                (rx, tx)
+            } else {
+                (0, 0)
+            };
+
+            Ok(ContainerStats {
+                cpu_percent,
+                memory_usage,
+                memory_limit,
+                network_rx,
+                network_tx,
+            })
+        } else {
+            anyhow::bail!("No stats received for container")
+        }
+    }
 }
 
 fn parse_memory(s: &str) -> Option<i64> {
@@ -266,12 +329,35 @@ fn parse_memory(s: &str) -> Option<i64> {
             .parse::<i64>()
             .ok()
             .map(|n| n * 1024 * 1024 * 1024)
+    } else if s.ends_with("g") {
+        s.trim_end_matches("g")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024 * 1024)
     } else if s.ends_with("mb") {
         s.trim_end_matches("mb")
             .parse::<i64>()
             .ok()
             .map(|n| n * 1024 * 1024)
+    } else if s.ends_with("m") {
+        s.trim_end_matches("m")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024)
+    } else if s.ends_with("kb") {
+        s.trim_end_matches("kb")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024)
+    } else if s.ends_with("k") {
+        s.trim_end_matches("k")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024)
+    } else if s.ends_with("b") {
+        s.trim_end_matches("b").parse().ok()
     } else {
+        // Assume raw bytes if no suffix
         s.parse().ok()
     }
 }

@@ -1,15 +1,25 @@
 import type {
   App,
+  ContainerStats,
   CreateAppRequest,
+  CreateEnvVarRequest,
+  CreateProjectRequest,
   CreateSshKeyRequest,
   Deployment,
   DeploymentLog,
+  EnvVar,
   GitProvider,
   GitProviderType,
   GitRepository,
   OAuthAuthorizationResponse,
+  Project,
+  ProjectWithApps,
+  RecentEvent,
   SshKey,
+  SystemStats,
   UpdateAppRequest,
+  UpdateEnvVarRequest,
+  UpdateProjectRequest,
   UpdateSshKeyRequest,
 } from "@/types/api";
 
@@ -170,6 +180,42 @@ class ApiClient {
     });
   }
 
+  // Projects
+  async getProjects(): Promise<Project[]> {
+    return this.request<Project[]>("/projects");
+  }
+
+  async getProject(id: string): Promise<ProjectWithApps> {
+    return this.request<ProjectWithApps>(`/projects/${id}`);
+  }
+
+  async createProject(data: CreateProjectRequest): Promise<Project> {
+    return this.request<Project>("/projects", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(id: string, data: UpdateProjectRequest): Promise<Project> {
+    return this.request<Project>(`/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    return this.request<void>(`/projects/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async assignAppToProject(appId: string, projectId: string | null): Promise<App> {
+    return this.request<App>(`/apps/${appId}`, {
+      method: "PUT",
+      body: JSON.stringify({ project_id: projectId }),
+    });
+  }
+
   // Deployments
   async triggerDeploy(appId: string): Promise<Deployment> {
     return this.request<Deployment>(`/apps/${appId}/deploy`, {
@@ -193,6 +239,11 @@ class ApiClient {
     return this.request<Deployment>(`/deployments/${id}/rollback`, {
       method: "POST",
     });
+  }
+
+  // Container Stats
+  async getAppStats(appId: string): Promise<ContainerStats> {
+    return this.request<ContainerStats>(`/apps/${appId}/stats`);
   }
 
   // SSH Keys
@@ -252,6 +303,46 @@ class ApiClient {
 
   async getProviderRepos(providerId: string): Promise<GitRepository[]> {
     return this.request<GitRepository[]>(`/git-providers/${providerId}/repos`);
+  }
+
+  // Environment Variables
+  async getEnvVars(appId: string, reveal: boolean = false): Promise<EnvVar[]> {
+    const params = reveal ? "?reveal=true" : "";
+    return this.request<EnvVar[]>(`/apps/${appId}/env-vars${params}`);
+  }
+
+  async getEnvVar(appId: string, key: string, reveal: boolean = false): Promise<EnvVar> {
+    const params = reveal ? "?reveal=true" : "";
+    return this.request<EnvVar>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}${params}`);
+  }
+
+  async createEnvVar(appId: string, data: CreateEnvVarRequest): Promise<EnvVar> {
+    return this.request<EnvVar>(`/apps/${appId}/env-vars`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateEnvVar(appId: string, key: string, data: UpdateEnvVarRequest): Promise<EnvVar> {
+    return this.request<EnvVar>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteEnvVar(appId: string, key: string): Promise<void> {
+    return this.request<void>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+    });
+  }
+
+  // System Stats and Events
+  async getSystemStats(): Promise<SystemStats> {
+    return this.request<SystemStats>("/system/stats");
+  }
+
+  async getRecentEvents(): Promise<RecentEvent[]> {
+    return this.request<RecentEvent[]>("/events/recent");
   }
 }
 

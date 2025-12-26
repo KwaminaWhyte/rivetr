@@ -3,6 +3,7 @@ mod pipeline;
 pub use pipeline::*;
 
 use arc_swap::ArcSwap;
+use crate::api::metrics::{record_deployment_failed, record_deployment_success};
 use crate::db::App;
 use crate::proxy::{Backend, RouteTable};
 use crate::runtime::ContainerRuntime;
@@ -46,6 +47,9 @@ impl DeploymentEngine {
             tokio::spawn(async move {
                 match run_deployment(&db, runtime.clone(), &deployment_id, &app).await {
                     Ok(container_info) => {
+                        // Record successful deployment metric
+                        record_deployment_success();
+
                         // Update proxy routes on successful deployment
                         if let Some(domain) = &app.domain {
                             if let Some(port) = container_info.port {
@@ -67,6 +71,9 @@ impl DeploymentEngine {
                         }
                     }
                     Err(e) => {
+                        // Record failed deployment metric
+                        record_deployment_failed();
+
                         tracing::error!("Deployment {} failed: {}", deployment_id, e);
                         let _ = update_deployment_status(&db, &deployment_id, "failed", Some(&e.to_string())).await;
                     }

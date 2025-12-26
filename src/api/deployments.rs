@@ -10,8 +10,10 @@ use uuid::Uuid;
 use crate::db::{App, Deployment, DeploymentLog};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
+use crate::runtime::ContainerStats;
 use crate::AppState;
 
+use super::error::ApiError;
 use super::validation::validate_uuid;
 
 /// Request body for rollback endpoint
@@ -25,19 +27,18 @@ pub struct RollbackRequest {
 pub async fn trigger_deploy(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
-) -> Result<(StatusCode, Json<Deployment>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<Deployment>), ApiError> {
     // Validate app_id format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
-        return Err((StatusCode::BAD_REQUEST, e));
+        return Err(ApiError::validation_field("app_id", e));
     }
 
     // Check if app exists
     let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&app_id)
         .fetch_optional(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "App not found".to_string()))?;
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
 
     // Check if there's already a deployment in progress
     let in_progress: Option<Deployment> = sqlx::query_as(
@@ -45,14 +46,13 @@ pub async fn trigger_deploy(
     )
     .bind(&app_id)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    .await?;
 
     if let Some(existing) = in_progress {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("A deployment is already in progress (id: {})", existing.id),
-        ));
+        return Err(ApiError::conflict(format!(
+            "A deployment is already in progress (id: {})",
+            existing.id
+        )));
     }
 
     let deployment_id = Uuid::new_v4().to_string();
@@ -68,23 +68,18 @@ pub async fn trigger_deploy(
     .bind(&app_id)
     .bind(&now)
     .execute(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create deployment".to_string()))?;
+    .await?;
 
     // Queue the deployment job
     if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app)).await {
         tracing::error!("Failed to queue deployment: {}", e);
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to queue deployment job".to_string(),
-        ));
+        return Err(ApiError::internal("Failed to queue deployment job"));
     }
 
     let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
         .bind(&deployment_id)
         .fetch_one(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch deployment".to_string()))?;
+        .await?;
 
     Ok((StatusCode::ACCEPTED, Json(deployment)))
 }
@@ -92,21 +87,20 @@ pub async fn trigger_deploy(
 pub async fn list_deployments(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
-) -> Result<Json<Vec<Deployment>>, (StatusCode, String)> {
+) -> Result<Json<Vec<Deployment>>, ApiError> {
     // Validate app_id format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
-        return Err((StatusCode::BAD_REQUEST, e));
+        return Err(ApiError::validation_field("app_id", e));
     }
 
     // Verify the app exists
     let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
         .bind(&app_id)
         .fetch_optional(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+        .await?;
 
     if app_exists.is_none() {
-        return Err((StatusCode::NOT_FOUND, "App not found".to_string()));
+        return Err(ApiError::not_found("App not found"));
     }
 
     let deployments = sqlx::query_as::<_, Deployment>(
@@ -114,8 +108,7 @@ pub async fn list_deployments(
     )
     .bind(&app_id)
     .fetch_all(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch deployments".to_string()))?;
+    .await?;
 
     Ok(Json(deployments))
 }
@@ -123,18 +116,17 @@ pub async fn list_deployments(
 pub async fn get_deployment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Deployment>, (StatusCode, String)> {
+) -> Result<Json<Deployment>, ApiError> {
     // Validate deployment_id format
     if let Err(e) = validate_uuid(&id, "deployment_id") {
-        return Err((StatusCode::BAD_REQUEST, e));
+        return Err(ApiError::validation_field("deployment_id", e));
     }
 
     let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Deployment not found".to_string()))?;
+        .await?
+        .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
 
     Ok(Json(deployment))
 }
@@ -142,10 +134,10 @@ pub async fn get_deployment(
 pub async fn get_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<DeploymentLog>>, (StatusCode, String)> {
+) -> Result<Json<Vec<DeploymentLog>>, ApiError> {
     // Validate deployment_id format
     if let Err(e) = validate_uuid(&id, "deployment_id") {
-        return Err((StatusCode::BAD_REQUEST, e));
+        return Err(ApiError::validation_field("deployment_id", e));
     }
 
     // Verify the deployment exists
@@ -153,11 +145,10 @@ pub async fn get_logs(
         sqlx::query_as("SELECT id FROM deployments WHERE id = ?")
             .bind(&id)
             .fetch_optional(&state.db)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+            .await?;
 
     if deployment_exists.is_none() {
-        return Err((StatusCode::NOT_FOUND, "Deployment not found".to_string()));
+        return Err(ApiError::not_found("Deployment not found"));
     }
 
     let logs = sqlx::query_as::<_, DeploymentLog>(
@@ -165,8 +156,7 @@ pub async fn get_logs(
     )
     .bind(&id)
     .fetch_all(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch logs".to_string()))?;
+    .await?;
 
     Ok(Json(logs))
 }
@@ -182,10 +172,10 @@ pub async fn rollback_deployment(
     State(state): State<Arc<AppState>>,
     Path(deployment_id): Path<String>,
     Json(body): Json<Option<RollbackRequest>>,
-) -> Result<(StatusCode, Json<Deployment>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<Deployment>), ApiError> {
     // Validate deployment_id format
     if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
-        return Err((StatusCode::BAD_REQUEST, e));
+        return Err(ApiError::validation_field("deployment_id", e));
     }
 
     // Get the current deployment
@@ -194,17 +184,15 @@ pub async fn rollback_deployment(
     )
     .bind(&deployment_id)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Deployment not found".to_string()))?;
+    .await?
+    .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
 
     // Get the app
     let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&current_deployment.app_id)
         .fetch_optional(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "App not found".to_string()))?;
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
 
     // Check if there's already a deployment in progress
     let in_progress: Option<Deployment> = sqlx::query_as(
@@ -212,14 +200,13 @@ pub async fn rollback_deployment(
     )
     .bind(&current_deployment.app_id)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    .await?;
 
     if let Some(existing) = in_progress {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("A deployment is already in progress (id: {})", existing.id),
-        ));
+        return Err(ApiError::conflict(format!(
+            "A deployment is already in progress (id: {})",
+            existing.id
+        )));
     }
 
     // Determine target deployment
@@ -227,7 +214,7 @@ pub async fn rollback_deployment(
         if let Some(ref target_id) = req.target_deployment_id {
             // Validate target_deployment_id format
             if let Err(e) = validate_uuid(target_id, "target_deployment_id") {
-                return Err((StatusCode::BAD_REQUEST, e));
+                return Err(ApiError::validation_field("target_deployment_id", e));
             }
 
             // Fetch the specified target deployment
@@ -237,9 +224,8 @@ pub async fn rollback_deployment(
             .bind(target_id)
             .bind(&current_deployment.app_id)
             .fetch_optional(&state.db)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-            .ok_or((StatusCode::NOT_FOUND, "Target deployment not found or was not successful".to_string()))?
+            .await?
+            .ok_or_else(|| ApiError::not_found("Target deployment not found or was not successful"))?
         } else {
             // Find the previous successful deployment
             find_previous_successful_deployment(&state, &current_deployment).await?
@@ -251,9 +237,8 @@ pub async fn rollback_deployment(
 
     // Verify target has an image_tag (required for rollback)
     if target_deployment.image_tag.is_none() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Target deployment has no image tag - cannot rollback. This deployment may have been created before rollback support was added.".to_string(),
+        return Err(ApiError::bad_request(
+            "Target deployment has no image tag - cannot rollback. This deployment may have been created before rollback support was added."
         ));
     }
 
@@ -273,8 +258,7 @@ pub async fn rollback_deployment(
     .bind(format!("Rollback to deployment {}", target_deployment.id))
     .bind(&now)
     .execute(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create rollback deployment".to_string()))?;
+    .await?;
 
     // Run the rollback in a background task
     let db = state.db.clone();
@@ -323,8 +307,7 @@ pub async fn rollback_deployment(
     let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
         .bind(&rollback_id)
         .fetch_one(&state.db)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch deployment".to_string()))?;
+        .await?;
 
     Ok((StatusCode::ACCEPTED, Json(deployment)))
 }
@@ -333,7 +316,7 @@ pub async fn rollback_deployment(
 async fn find_previous_successful_deployment(
     state: &Arc<AppState>,
     current: &Deployment,
-) -> Result<Deployment, (StatusCode, String)> {
+) -> Result<Deployment, ApiError> {
     // Find the most recent successful deployment before the current one
     sqlx::query_as::<_, Deployment>(
         r#"
@@ -349,7 +332,55 @@ async fn find_previous_successful_deployment(
     .bind(&current.app_id)
     .bind(&current.id)
     .fetch_optional(&state.db)
-    .await
-    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "No previous successful deployment found to rollback to".to_string()))
+    .await?
+    .ok_or_else(|| ApiError::not_found("No previous successful deployment found to rollback to"))
+}
+
+/// Get container resource stats for a running app
+/// GET /api/apps/:id/stats
+///
+/// Returns current CPU, memory, and network statistics for the container.
+/// Only available for apps with a running deployment.
+pub async fn get_app_stats(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+) -> Result<Json<ContainerStats>, ApiError> {
+    // Validate app_id format
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Find the currently running deployment for this app
+    let running_deployment: Option<Deployment> = sqlx::query_as(
+        "SELECT * FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&app_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let deployment = running_deployment
+        .ok_or_else(|| ApiError::not_found("No running deployment found for this app"))?;
+
+    let container_id = deployment
+        .container_id
+        .ok_or_else(|| ApiError::not_found("Running deployment has no container ID"))?;
+
+    // Get stats from the container runtime
+    let stats = state
+        .runtime
+        .stats(&container_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
+            ApiError::internal(format!("Failed to get container stats: {}", e))
+        })?;
+
+    Ok(Json(stats))
 }

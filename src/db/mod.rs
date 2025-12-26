@@ -102,6 +102,58 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         }
     }
 
+    // Migration 006: Add environment field to apps
+    let has_environment: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'environment'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_environment.is_none() {
+        let migration_006 = include_str!("../../migrations/006_environment.sql");
+        for statement in migration_006.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 007: Add projects table and project_id to apps
+    let has_projects_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_projects_table.is_none() {
+        let migration_007 = include_str!("../../migrations/007_projects.sql");
+        // Execute each statement separately since SQLite doesn't support multiple statements
+        for statement in migration_007.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 008: Add is_secret and updated_at columns to env_vars
+    let has_is_secret: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('env_vars') WHERE name = 'is_secret'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_is_secret.is_none() {
+        let migration_008 = include_str!("../../migrations/008_env_vars_update.sql");
+        for statement in migration_008.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
     info!("Migrations completed");
     Ok(())
 }

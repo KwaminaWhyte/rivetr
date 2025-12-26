@@ -1,3 +1,5 @@
+export type AppEnvironment = "development" | "staging" | "production";
+
 export interface App {
   id: string;
   name: string;
@@ -9,8 +11,33 @@ export interface App {
   healthcheck: string | null;
   memory_limit: string | null;
   cpu_limit: string | null;
+  environment: AppEnvironment;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Project types
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectWithApps extends Project {
+  apps: App[];
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateProjectRequest {
+  name?: string;
+  description?: string;
 }
 
 export interface Deployment {
@@ -21,6 +48,8 @@ export interface Deployment {
   finished_at: string | null;
   container_id: string | null;
   error_message: string | null;
+  commit_sha: string | null;
+  commit_message: string | null;
 }
 
 export type DeploymentStatus =
@@ -49,6 +78,10 @@ export interface CreateAppRequest {
   domain?: string;
   port?: number;
   healthcheck?: string;
+  cpu_limit?: string;
+  memory_limit?: string;
+  environment?: AppEnvironment;
+  project_id?: string;
 }
 
 export interface UpdateAppRequest {
@@ -60,6 +93,10 @@ export interface UpdateAppRequest {
   port?: number;
   healthcheck?: string;
   ssh_key_id?: string | null;
+  cpu_limit?: string;
+  memory_limit?: string;
+  environment?: AppEnvironment;
+  project_id?: string | null;
 }
 
 export interface SshKey {
@@ -119,4 +156,76 @@ export interface GitRepository {
 export interface OAuthAuthorizationResponse {
   authorization_url: string;
   state: string;
+}
+
+// Environment Variables
+export interface EnvVar {
+  id: string;
+  app_id: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEnvVarRequest {
+  key: string;
+  value: string;
+  is_secret?: boolean;
+}
+
+export interface UpdateEnvVarRequest {
+  value?: string;
+  is_secret?: boolean;
+}
+
+// Container resource statistics
+export interface ContainerStats {
+  /** CPU usage percentage (0-100, can exceed 100 on multi-core) */
+  cpu_percent: number;
+  /** Current memory usage in bytes */
+  memory_usage: number;
+  /** Memory limit in bytes (0 if no limit) */
+  memory_limit: number;
+  /** Network bytes received */
+  network_rx: number;
+  /** Network bytes transmitted */
+  network_tx: number;
+}
+
+// System-wide statistics for dashboard
+export interface SystemStats {
+  /** Number of apps with a running deployment */
+  running_apps_count: number;
+  /** Total number of apps */
+  total_apps_count: number;
+  /** Aggregate CPU usage percentage across all running containers */
+  total_cpu_percent: number;
+  /** Aggregate memory usage in bytes across all running containers */
+  memory_used_bytes: number;
+  /** Total memory limit in bytes (sum of all container limits) */
+  memory_total_bytes: number;
+  /** Server uptime in seconds */
+  uptime_seconds: number;
+  /** Uptime percentage based on health checks */
+  uptime_percent: number;
+}
+
+// Recent event for dashboard feed
+export interface RecentEvent {
+  /** Unique event ID */
+  id: string;
+  /** App name this event is associated with */
+  app_name: string;
+  /** App ID */
+  app_id: string;
+  /** Type of event: "deployed", "failed", "building", "pending", "stopped" */
+  event_type: string;
+  /** Event status for display: "success", "error", "warning", "info" */
+  status: "success" | "error" | "warning" | "info";
+  /** Human-readable message */
+  message: string;
+  /** When the event occurred (ISO 8601 timestamp) */
+  timestamp: string;
 }

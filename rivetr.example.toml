@@ -44,3 +44,17 @@ level = "info"
 # gitlab_token = "your-gitlab-webhook-token"
 # Gitea: Used to verify X-Gitea-Signature header (HMAC-SHA256)
 # gitea_secret = "your-gitea-webhook-secret"
+
+[rate_limit]
+# Enable rate limiting (default: true)
+enabled = true
+# Requests per window for general API endpoints (default: 100)
+api_requests_per_window = 100
+# Requests per window for webhook endpoints (default: 500)
+webhook_requests_per_window = 500
+# Requests per window for auth endpoints - stricter to prevent brute force (default: 20)
+auth_requests_per_window = 20
+# Window duration in seconds (default: 60)
+window_seconds = 60
+# Cleanup interval for expired rate limit entries in seconds (default: 300)
+cleanup_interval = 300

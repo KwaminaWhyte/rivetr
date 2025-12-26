@@ -19,6 +19,8 @@ pub struct Config {
     pub webhooks: WebhookConfig,
     #[serde(default)]
     pub oauth: OAuthConfig,
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -245,6 +247,65 @@ pub struct OAuthProviderConfig {
     pub redirect_uri: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitConfig {
+    /// Enable rate limiting (default: true)
+    #[serde(default = "default_rate_limit_enabled")]
+    pub enabled: bool,
+    /// Requests per window for general API endpoints (default: 100)
+    #[serde(default = "default_api_requests_per_window")]
+    pub api_requests_per_window: u32,
+    /// Requests per window for webhook endpoints (default: 500)
+    #[serde(default = "default_webhook_requests_per_window")]
+    pub webhook_requests_per_window: u32,
+    /// Requests per window for auth endpoints (default: 20)
+    #[serde(default = "default_auth_requests_per_window")]
+    pub auth_requests_per_window: u32,
+    /// Window duration in seconds (default: 60)
+    #[serde(default = "default_window_seconds")]
+    pub window_seconds: u64,
+    /// Cleanup interval for expired entries in seconds (default: 300)
+    #[serde(default = "default_cleanup_interval")]
+    pub cleanup_interval: u64,
+}
+
+fn default_rate_limit_enabled() -> bool {
+    true
+}
+
+fn default_api_requests_per_window() -> u32 {
+    100
+}
+
+fn default_webhook_requests_per_window() -> u32 {
+    500
+}
+
+fn default_auth_requests_per_window() -> u32 {
+    20
+}
+
+fn default_window_seconds() -> u64 {
+    60
+}
+
+fn default_cleanup_interval() -> u64 {
+    300
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_rate_limit_enabled(),
+            api_requests_per_window: default_api_requests_per_window(),
+            webhook_requests_per_window: default_webhook_requests_per_window(),
+            auth_requests_per_window: default_auth_requests_per_window(),
+            window_seconds: default_window_seconds(),
+            cleanup_interval: default_cleanup_interval(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -269,6 +330,7 @@ impl Config {
             logging: LoggingConfig::default(),
             webhooks: WebhookConfig::default(),
             oauth: OAuthConfig::default(),
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }

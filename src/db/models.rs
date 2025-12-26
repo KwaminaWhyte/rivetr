@@ -1,6 +1,50 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+/// Environment type for applications
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Environment {
+    Development,
+    Staging,
+    Production,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self::Development
+    }
+}
+
+impl std::fmt::Display for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Development => write!(f, "development"),
+            Self::Staging => write!(f, "staging"),
+            Self::Production => write!(f, "production"),
+        }
+    }
+}
+
+impl std::str::FromStr for Environment {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "development" | "dev" => Ok(Self::Development),
+            "staging" | "stage" => Ok(Self::Staging),
+            "production" | "prod" => Ok(Self::Production),
+            _ => Err(format!("Unknown environment: {}", s)),
+        }
+    }
+}
+
+impl From<String> for Environment {
+    fn from(s: String) -> Self {
+        s.parse().unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct App {
     pub id: String,
@@ -14,6 +58,8 @@ pub struct App {
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
     pub ssh_key_id: Option<String>,
+    pub environment: String,
+    pub project_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -24,7 +70,54 @@ pub struct EnvVar {
     pub app_id: String,
     pub key: String,
     pub value: String,
+    pub is_secret: i32,
     pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Response DTO that masks secret values
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvVarResponse {
+    pub id: String,
+    pub app_id: String,
+    pub key: String,
+    pub value: String,
+    pub is_secret: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl EnvVar {
+    pub fn to_response(&self, reveal_secret: bool) -> EnvVarResponse {
+        let value = if self.is_secret != 0 && !reveal_secret {
+            "********".to_string()
+        } else {
+            self.value.clone()
+        };
+        EnvVarResponse {
+            id: self.id.clone(),
+            app_id: self.app_id.clone(),
+            key: self.key.clone(),
+            value,
+            is_secret: self.is_secret != 0,
+            created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateEnvVarRequest {
+    pub key: String,
+    pub value: String,
+    #[serde(default)]
+    pub is_secret: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateEnvVarRequest {
+    pub value: Option<String>,
+    pub is_secret: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -117,6 +210,9 @@ pub struct CreateAppRequest {
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
     pub ssh_key_id: Option<String>,
+    #[serde(default)]
+    pub environment: Environment,
+    pub project_id: Option<String>,
 }
 
 fn default_branch() -> String {
@@ -143,6 +239,8 @@ pub struct UpdateAppRequest {
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
     pub ssh_key_id: Option<String>,
+    pub environment: Option<Environment>,
+    pub project_id: Option<String>,
 }
 
 // User models
@@ -365,4 +463,55 @@ pub struct OAuthCallbackRequest {
 pub struct OAuthAuthorizationResponse {
     pub authorization_url: String,
     pub state: String,
+}
+
+// Project models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Project with app count for list view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectWithAppCount {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub app_count: i64,
+}
+
+/// Project with its apps for detail view
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectWithApps {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub apps: Vec<App>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateProjectRequest {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProjectRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+/// Request to assign/unassign an app to a project
+#[derive(Debug, Deserialize)]
+pub struct AssignAppProjectRequest {
+    pub project_id: Option<String>,
 }

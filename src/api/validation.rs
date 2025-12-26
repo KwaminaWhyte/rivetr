@@ -2,57 +2,12 @@
 //!
 //! This module provides validation functions for API request data,
 //! ensuring all inputs meet the required format and constraints.
+//!
+//! For collecting multiple validation errors and returning them as an ApiError,
+//! use the `ValidationErrorBuilder` from the `error` module.
 
-use axum::http::StatusCode;
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::Serialize;
-
-/// Structured validation error response
-#[derive(Debug, Serialize)]
-pub struct ValidationError {
-    pub field: String,
-    pub message: String,
-}
-
-/// Collection of validation errors
-#[derive(Debug, Serialize)]
-pub struct ValidationErrors {
-    pub errors: Vec<ValidationError>,
-}
-
-impl ValidationErrors {
-    pub fn new() -> Self {
-        Self { errors: Vec::new() }
-    }
-
-    pub fn add(&mut self, field: &str, message: &str) {
-        self.errors.push(ValidationError {
-            field: field.to_string(),
-            message: message.to_string(),
-        });
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    /// Convert to an HTTP response tuple
-    pub fn into_response(self) -> (StatusCode, String) {
-        let messages: Vec<String> = self
-            .errors
-            .iter()
-            .map(|e| format!("{}: {}", e.field, e.message))
-            .collect();
-        (StatusCode::BAD_REQUEST, messages.join("; "))
-    }
-}
-
-impl Default for ValidationErrors {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 lazy_static! {
     /// Regex for validating HTTP/HTTPS Git URLs
@@ -80,9 +35,9 @@ lazy_static! {
         r"^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$"
     ).unwrap();
 
-    /// Regex for validating memory limit format (e.g., 256m, 1g, 512M, 2G)
+    /// Regex for validating memory limit format (e.g., 256m, 1g, 512M, 2G, 256mb, 1gb)
     static ref MEMORY_LIMIT_REGEX: Regex = Regex::new(
-        r"^[1-9]\d*[mMgG]$"
+        r"^[1-9]\d*([mMgG][bB]?|[bB])$"
     ).unwrap();
 
     /// Regex for validating CPU limit format (e.g., 0.5, 1, 2.0)
@@ -247,7 +202,7 @@ pub fn validate_memory_limit(memory_limit: &Option<String>) -> Result<(), String
         }
 
         if !MEMORY_LIMIT_REGEX.is_match(m) {
-            return Err("Invalid memory limit format. Use format like '256m', '1g', '512M', '2G'".to_string());
+            return Err("Invalid memory limit format. Use format like '256m', '1g', '512M', '2G', '256mb', '1gb'".to_string());
         }
     }
 
@@ -289,6 +244,21 @@ pub fn validate_uuid(id: &str, field_name: &str) -> Result<(), String> {
         return Err(format!("Invalid {} format", field_name));
     }
 
+    Ok(())
+}
+
+/// Valid environment values
+const VALID_ENVIRONMENTS: [&str; 3] = ["development", "staging", "production"];
+
+/// Validate an environment value
+pub fn validate_environment(environment: &str) -> Result<(), String> {
+    let env_lower = environment.to_lowercase();
+    if !VALID_ENVIRONMENTS.contains(&env_lower.as_str()) {
+        return Err(format!(
+            "Invalid environment. Must be one of: {}",
+            VALID_ENVIRONMENTS.join(", ")
+        ));
+    }
     Ok(())
 }
 
@@ -369,12 +339,23 @@ mod tests {
 
     #[test]
     fn test_validate_memory_limit() {
+        // Single letter suffix
         assert!(validate_memory_limit(&Some("256m".to_string())).is_ok());
         assert!(validate_memory_limit(&Some("1g".to_string())).is_ok());
         assert!(validate_memory_limit(&Some("512M".to_string())).is_ok());
         assert!(validate_memory_limit(&Some("2G".to_string())).is_ok());
+        // Double letter suffix (mb, gb)
+        assert!(validate_memory_limit(&Some("256mb".to_string())).is_ok());
+        assert!(validate_memory_limit(&Some("1gb".to_string())).is_ok());
+        assert!(validate_memory_limit(&Some("512MB".to_string())).is_ok());
+        assert!(validate_memory_limit(&Some("2GB".to_string())).is_ok());
+        // Bytes
+        assert!(validate_memory_limit(&Some("1024b".to_string())).is_ok());
+        assert!(validate_memory_limit(&Some("1024B".to_string())).is_ok());
+        // None/empty
         assert!(validate_memory_limit(&None).is_ok());
 
+        // Invalid formats
         assert!(validate_memory_limit(&Some("invalid".to_string())).is_err());
         assert!(validate_memory_limit(&Some("256".to_string())).is_err());
         assert!(validate_memory_limit(&Some("0m".to_string())).is_err());
@@ -396,5 +377,20 @@ mod tests {
         assert!(validate_uuid("550e8400-e29b-41d4-a716-446655440000", "app_id").is_ok());
         assert!(validate_uuid("", "app_id").is_err());
         assert!(validate_uuid("not-a-uuid", "app_id").is_err());
+    }
+
+    #[test]
+    fn test_validate_environment() {
+        assert!(validate_environment("development").is_ok());
+        assert!(validate_environment("staging").is_ok());
+        assert!(validate_environment("production").is_ok());
+        // Case insensitive
+        assert!(validate_environment("Development").is_ok());
+        assert!(validate_environment("STAGING").is_ok());
+        assert!(validate_environment("Production").is_ok());
+
+        assert!(validate_environment("").is_err());
+        assert!(validate_environment("invalid").is_err());
+        assert!(validate_environment("test").is_err());
     }
 }
