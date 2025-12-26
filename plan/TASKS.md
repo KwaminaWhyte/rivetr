@@ -184,6 +184,18 @@
 - [x] **T1.11.8** Add theme switching (light/dark/system) with localStorage persistence
 - [x] **T1.11.9** Add build logs viewer dialog for all deployments
 
+### 1.12 React Router Framework Migration ✅ COMPLETE
+
+- [x] **T1.12.1** Migrate from React Router library mode to Framework mode
+- [x] **T1.12.2** Set up SSR with server-side loaders and actions
+- [x] **T1.12.3** Implement cookie-based session authentication
+- [x] **T1.12.4** Create api.server.ts for server-side API calls
+- [x] **T1.12.5** Create session.server.ts for session management
+- [x] **T1.12.6** Convert all pages to route modules with loaders/actions
+- [x] **T1.12.7** Add React Query with SSR initial data hydration
+- [x] **T1.12.8** Configure Vite for SSR build
+- [x] **T1.12.9** Add dynamic imports for server modules to prevent client bundle issues
+
 ### 1.13 Git Provider Integration ✅ COMPLETE
 
 - [x] **T1.13.1** Create `git_providers` table migration (005_git_providers.sql)
@@ -409,10 +421,10 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase | Total Tasks | Completed | Progress |
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
-| Phase 1 | 85 | 85 | 100% |
+| Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 9 | 32% |
 | Phase 3 | 42 | 17 | 40% |
-| **Total** | **179** | **131** | **73%** |
+| **Total** | **188** | **140** | **74%** |
 
 ---
 
@@ -458,3 +470,4 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Rate Limiting** - Sliding window algorithm with per-tier limits
 - **Consistent Error Responses** - ApiError with ErrorCode enum
 - **Prometheus Metrics** - /metrics endpoint with request/deployment counters
+- **React Router Framework Mode** - Full SSR with server loaders, cookie-based sessions, dynamic imports
