@@ -1,0 +1,30 @@
+# Rust
+/target/
+
+# IDE
+.idea/
+.vscode/
+.claude/settings.local.json
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rivetr
+/data/
+rivetr.toml
+*.db
+*.db-wal
+*.db-shm
+
+# Build artifacts
+*.tar
+*.tar.gz
+
+# Logs
+*.log
+cookies.txt
+nul

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}New Application - Rivetr{% endblock %}
+
+{% block body %}
+<div class="layout">
+    <aside class="sidebar">
+        <div class="logo">Rivetr</div>
+        <nav class="nav">
+            <a href="/dashboard" class="nav-item">Dashboard</a>
+            <a href="/dashboard/apps" class="nav-item active">Applications</a>
+            <a href="/dashboard/settings" class="nav-item">Settings</a>
+        </nav>
+        <div style="padding: 20px; border-top: 1px solid #374151;">
+            <a href="/dashboard/logout" class="nav-item" style="padding: 0;">Logout</a>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="header">
+            <h1 class="header-title">New Application</h1>
+        </header>
+
+        <div class="content">
+            <div class="card" style="max-width: 600px;">
+                {% match error %}
+                {% when Some with (err) %}
+                <div style="background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
+                    {{ err }}
+                </div>
+                {% when None %}
+                {% endmatch %}
+
+                <form method="POST" action="/dashboard/apps/new">
+                    <div class="form-group">
+                        <label class="form-label" for="name">Application Name *</label>
+                        <input
+                            type="text"
+                            id="name"
+                            name="name"
+                            class="form-input"
+                            placeholder="my-app"
+                            required
+                            pattern="[a-z0-9-]+"
+                            title="Lowercase letters, numbers, and hyphens only"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="git_url">Git Repository URL *</label>
+                        <input
+                            type="url"
+                            id="git_url"
+                            name="git_url"
+                            class="form-input"
+                            placeholder="https://github.com/user/repo.git"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="branch">Branch</label>
+                        <input
+                            type="text"
+                            id="branch"
+                            name="branch"
+                            class="form-input"
+                            placeholder="main"
+                            value="main"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="domain">Domain (optional)</label>
+                        <input
+                            type="text"
+                            id="domain"
+                            name="domain"
+                            class="form-input"
+                            placeholder="myapp.example.com"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="port">Container Port</label>
+                        <input
+                            type="number"
+                            id="port"
+                            name="port"
+                            class="form-input"
+                            placeholder="3000"
+                            value="3000"
+                            min="1"
+                            max="65535"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="dockerfile">Dockerfile Path</label>
+                        <input
+                            type="text"
+                            id="dockerfile"
+                            name="dockerfile"
+                            class="form-input"
+                            placeholder="Dockerfile"
+                            value="Dockerfile"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="healthcheck">Health Check Path (optional)</label>
+                        <input
+                            type="text"
+                            id="healthcheck"
+                            name="healthcheck"
+                            class="form-input"
+                            placeholder="/health"
+                        >
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 30px;">
+                        <button type="submit" class="btn btn-primary">Create Application</button>
+                        <a href="/dashboard/apps" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

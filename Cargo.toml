@@ -1,0 +1,80 @@
+[package]
+name = "rivetr"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "A fast, lightweight deployment engine"
+license = "MIT"
+repository = "https://github.com/yourusername/rivetr"
+keywords = ["deployment", "paas", "docker", "devops"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["cookie"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "fs"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# Docker
+bollard = "0.18"
+
+# Git
+git2 = "0.19"
+
+# Proxy & HTTP (TLS to be added in Phase 2)
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+
+# State management
+arc-swap = "1"
+dashmap = "6"
+parking_lot = "0.12"
+
+# Templates
+askama = { version = "0.12", features = ["with-axum"] }
+askama_axum = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+tar = "0.4"
+async-stream = "0.3"
+futures = "0.3"
+bytes = "1"
+async-trait = "0.1"
+
+# Auth
+argon2 = "0.5"
+rand = "0.9"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

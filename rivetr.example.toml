@@ -1,0 +1,32 @@
+# Rivetr Configuration Example
+# Copy this file to rivetr.toml and customize
+
+[server]
+host = "0.0.0.0"
+api_port = 8080
+proxy_port = 80
+proxy_https_port = 443
+data_dir = "./data"
+
+[auth]
+# Generate a secure token for production!
+admin_token = "change-me-in-production"
+# Default admin credentials (only used if no users exist)
+admin_email = "admin@localhost"
+admin_password = "admin"
+
+[runtime]
+# Options: "auto", "docker", "podman"
+runtime_type = "auto"
+# Docker socket path (Linux default shown)
+docker_socket = "/var/run/docker.sock"
+
+[proxy]
+# Email for Let's Encrypt certificates
+# acme_email = "admin@example.com"
+# Use staging for testing (avoids rate limits)
+acme_staging = true
+
+[logging]
+# Options: "trace", "debug", "info", "warn", "error"
+level = "info"
