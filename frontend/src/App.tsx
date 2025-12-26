@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ProtectedRoute } from "@/components/providers/ProtectedRoute";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Toaster } from "@/components/ui/sonner";
 import { LoginPage } from "@/pages/Login";
 import { SetupPage } from "@/pages/Setup";
 import { DashboardPage } from "@/pages/Dashboard";
@@ -48,6 +49,7 @@ function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <Toaster position="top-right" richColors />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

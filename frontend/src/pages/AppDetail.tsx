@@ -101,14 +101,22 @@ export function AppDetailPage() {
   const deployMutation = useMutation({
     mutationFn: () => api.triggerDeploy(id!),
     onSuccess: () => {
+      toast.success("Deployment started");
       queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Deployment failed: ${error.message}`);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteApp(id!),
     onSuccess: () => {
+      toast.success("Application deleted");
       navigate("/apps");
+    },
+    onError: (error: Error) => {
+      toast.error(`Delete failed: ${error.message}`);
     },
   });
 

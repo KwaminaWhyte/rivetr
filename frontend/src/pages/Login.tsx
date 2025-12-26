@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,11 +38,14 @@ export function LoginPage() {
     try {
       const success = await login(email, password);
       if (success) {
+        toast.success("Welcome back!");
         navigate("/");
       } else {
+        toast.error("Invalid email or password");
         setError("Invalid email or password");
       }
     } catch {
+      toast.error("Failed to authenticate");
       setError("Failed to authenticate");
     } finally {
       setLoading(false);

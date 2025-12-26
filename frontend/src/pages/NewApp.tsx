@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,9 +23,11 @@ export function NewAppPage() {
   const createMutation = useMutation({
     mutationFn: (data: CreateAppRequest) => api.createApp(data),
     onSuccess: (app) => {
+      toast.success(`Application "${app.name}" created`);
       navigate(`/apps/${app.id}`);
     },
     onError: (err: Error) => {
+      toast.error(`Failed to create app: ${err.message}`);
       setError(err.message);
     },
   });
