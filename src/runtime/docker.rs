@@ -17,7 +17,9 @@ pub struct DockerRuntime {
 
 impl DockerRuntime {
     pub fn new(socket: &str) -> Result<Self> {
-        let client = if socket.starts_with("npipe://") || socket.starts_with("tcp://") {
+        // On Windows, always use local defaults (named pipe)
+        // On Unix, use socket path if specified
+        let client = if cfg!(windows) || socket.starts_with("npipe://") || socket.starts_with("tcp://") {
             Docker::connect_with_local_defaults()?
         } else {
             Docker::connect_with_socket(socket, 120, bollard::API_DEFAULT_VERSION)?

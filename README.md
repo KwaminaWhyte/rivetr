@@ -27,14 +27,45 @@ Rivetr is a **single-binary PaaS** that lets you deploy applications from Git wi
 
 ## Quick Start
 
+### Using Setup Script
+
+**Linux/macOS:**
 ```bash
-# Download
-curl -sSL https://github.com/yourusername/rivetr/releases/latest/download/rivetr-linux-amd64 -o rivetr
-chmod +x rivetr
+git clone https://github.com/yourusername/rivetr.git
+cd rivetr
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/yourusername/rivetr.git
+cd rivetr
+.\scripts\setup.ps1
+```
+
+The setup script will:
+1. Check prerequisites (Rust, Git, Docker/Podman)
+2. Create necessary directories
+3. Set up configuration
+4. Build the project
+5. Optionally start the server
+
+### Manual Setup
+
+```bash
+# Clone
+git clone https://github.com/yourusername/rivetr.git
+cd rivetr
+
+# Build
+cargo build --release
 
 # Run
-./rivetr --config rivetr.toml
+./target/release/rivetr --config rivetr.toml
 ```
+
+On first visit to `http://localhost:8080`, you'll be prompted to create your admin account.
 
 ## Configuration
 
@@ -82,22 +113,10 @@ memory = "256mb"
 
 ## Requirements
 
-- Linux (x86_64 or aarch64)
-- Docker Engine 24+ OR Podman 4+
-- Ports 80, 443, 8080 available
-
-## Building from Source
-
-```bash
-# Clone
-git clone https://github.com/yourusername/rivetr.git
-cd rivetr
-
-# Build
-cargo build --release
-
-# Binary at target/release/rivetr
-```
+- **OS**: Windows 10+, Linux (x86_64 or aarch64), macOS
+- **Runtime**: Docker Engine 24+ OR Podman 4+
+- **Build**: Rust 1.75+, Git
+- **Ports**: 80 (proxy), 8080 (API/dashboard)
 
 ## Project Structure
 
@@ -110,9 +129,10 @@ rivetr/
 │   ├── db/              # SQLite database
 │   ├── engine/          # Deployment pipeline
 │   ├── proxy/           # Reverse proxy
-│   ├── runtime/         # Container abstraction
-│   └── ui/              # Dashboard templates
-├── templates/           # Askama HTML templates
+│   ├── runtime/         # Container abstraction (Docker/Podman)
+│   └── ui/              # Email templates (reserved)
+├── frontend/            # React + Vite + shadcn/ui dashboard
+├── scripts/             # Setup scripts (setup.sh, setup.ps1)
 ├── migrations/          # Database migrations
 └── plan/                # Development roadmap
 ```
