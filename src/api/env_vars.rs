@@ -39,7 +39,7 @@ pub async fn list_env_vars(
     }
 
     let env_vars =
-        sqlx::query_as::<_, EnvVar>("SELECT * FROM env_vars WHERE app_id = ? ORDER BY key ASC")
+        sqlx::query_as::<_, EnvVar>("SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? ORDER BY key ASC")
             .bind(&app_id)
             .fetch_all(&state.db)
             .await
@@ -109,7 +109,7 @@ pub async fn create_env_var(
         }
     })?;
 
-    let env_var = sqlx::query_as::<_, EnvVar>("SELECT * FROM env_vars WHERE id = ?")
+    let env_var = sqlx::query_as::<_, EnvVar>("SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE id = ?")
         .bind(&id)
         .fetch_one(&state.db)
         .await
@@ -127,7 +127,7 @@ pub async fn update_env_var(
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
     // Check if env var exists for this app
     let existing = sqlx::query_as::<_, EnvVar>(
-        "SELECT * FROM env_vars WHERE app_id = ? AND key = ?",
+        "SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? AND key = ?",
     )
     .bind(&app_id)
     .bind(&key)
@@ -164,7 +164,7 @@ pub async fn update_env_var(
     })?;
 
     let env_var = sqlx::query_as::<_, EnvVar>(
-        "SELECT * FROM env_vars WHERE app_id = ? AND key = ?",
+        "SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? AND key = ?",
     )
     .bind(&app_id)
     .bind(&key)
@@ -205,7 +205,7 @@ pub async fn get_env_var(
     Query(query): Query<ListEnvVarsQuery>,
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
     let env_var = sqlx::query_as::<_, EnvVar>(
-        "SELECT * FROM env_vars WHERE app_id = ? AND key = ?",
+        "SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? AND key = ?",
     )
     .bind(&app_id)
     .bind(&key)
