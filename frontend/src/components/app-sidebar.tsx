@@ -44,6 +44,7 @@ const navMain: NavMainItem[] = [
     icon: Settings,
     items: [
       { title: "General", url: "/settings" },
+      { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },
     ],

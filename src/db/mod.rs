@@ -47,6 +47,43 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     let migration_002 = include_str!("../../migrations/002_users.sql");
     sqlx::query(migration_002).execute(pool).await?;
 
+    // Migration 003: Add image_tag column for rollback support
+    // Using a check to avoid "duplicate column" error on existing databases
+    let has_image_tag: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'image_tag'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_image_tag.is_none() {
+        let migration_003 = include_str!("../../migrations/003_rollback.sql");
+        // Execute each statement separately since SQLite doesn't support multiple statements
+        for statement in migration_003.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 004: Add SSH keys table for private repository authentication
+    let has_ssh_keys_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ssh_keys'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_ssh_keys_table.is_none() {
+        let migration_004 = include_str!("../../migrations/004_ssh_keys.sql");
+        // Execute each statement separately since SQLite doesn't support multiple statements
+        for statement in migration_004.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
     info!("Migrations completed");
     Ok(())
 }

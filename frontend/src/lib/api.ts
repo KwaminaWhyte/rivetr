@@ -1,9 +1,12 @@
 import type {
   App,
   CreateAppRequest,
+  CreateSshKeyRequest,
   Deployment,
   DeploymentLog,
+  SshKey,
   UpdateAppRequest,
+  UpdateSshKeyRequest,
 } from "@/types/api";
 
 const API_BASE = "/api";
@@ -180,6 +183,48 @@ class ApiClient {
 
   async getDeploymentLogs(id: string): Promise<DeploymentLog[]> {
     return this.request<DeploymentLog[]>(`/deployments/${id}/logs`);
+  }
+
+  async rollbackDeployment(id: string): Promise<Deployment> {
+    return this.request<Deployment>(`/deployments/${id}/rollback`, {
+      method: "POST",
+    });
+  }
+
+  // SSH Keys
+  async getSshKeys(): Promise<SshKey[]> {
+    return this.request<SshKey[]>("/ssh-keys");
+  }
+
+  async getSshKey(id: string): Promise<SshKey> {
+    return this.request<SshKey>(`/ssh-keys/${id}`);
+  }
+
+  async createSshKey(data: CreateSshKeyRequest): Promise<SshKey> {
+    return this.request<SshKey>("/ssh-keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSshKey(id: string, data: UpdateSshKeyRequest): Promise<SshKey> {
+    return this.request<SshKey>(`/ssh-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSshKey(id: string): Promise<void> {
+    return this.request<void>(`/ssh-keys/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Runtime logs WebSocket URL
+  getRuntimeLogsWsUrl(appId: string): string {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const token = this.getToken();
+    return `${protocol}//${window.location.host}/api/apps/${appId}/logs/stream?token=${token}`;
   }
 }
 

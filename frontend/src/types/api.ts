@@ -59,4 +59,31 @@ export interface UpdateAppRequest {
   domain?: string;
   port?: number;
   healthcheck?: string;
+  ssh_key_id?: string | null;
+}
+
+export interface SshKey {
+  id: string;
+  name: string;
+  public_key: string | null;
+  app_id: string | null;
+  is_global: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSshKeyRequest {
+  name: string;
+  private_key: string;
+  public_key?: string;
+  app_id?: string;
+  is_global?: boolean;
+}
+
+export interface UpdateSshKeyRequest {
+  name?: string;
+  private_key?: string;
+  public_key?: string;
+  app_id?: string | null;
+  is_global?: boolean;
 }

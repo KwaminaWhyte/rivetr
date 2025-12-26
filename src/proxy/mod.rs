@@ -4,6 +4,7 @@
 // to containers based on the Host header.
 
 mod handler;
+mod health_checker;
 mod service;
 
 use arc_swap::ArcSwap;
@@ -14,6 +15,7 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 pub use handler::ProxyHandler;
+pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
 
 /// Backend target for proxied requests
@@ -27,6 +29,10 @@ pub struct Backend {
     pub port: u16,
     /// Whether the backend is healthy
     pub healthy: bool,
+    /// Health check endpoint path (from app config)
+    pub healthcheck_path: Option<String>,
+    /// Consecutive failure count for health checks
+    pub failure_count: u32,
 }
 
 impl Backend {
@@ -36,12 +42,26 @@ impl Backend {
             host,
             port,
             healthy: true,
+            healthcheck_path: None,
+            failure_count: 0,
         }
+    }
+
+    /// Create a new backend with a health check path
+    pub fn with_healthcheck(mut self, path: Option<String>) -> Self {
+        self.healthcheck_path = path;
+        self
     }
 
     /// Get the backend address as a URI authority
     pub fn addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    /// Get the health check URL
+    pub fn health_url(&self) -> String {
+        let path = self.healthcheck_path.as_deref().unwrap_or("/");
+        format!("http://{}:{}{}", self.host, self.port, path)
     }
 }
 
@@ -94,9 +114,40 @@ impl RouteTable {
         }
     }
 
+    /// Update health status based on check result
+    /// Returns true if health status changed
+    pub fn update_health(&self, domain: &str, check_passed: bool, failure_threshold: u32) -> bool {
+        if let Some(mut backend) = self.routes.get_mut(domain) {
+            let was_healthy = backend.healthy;
+
+            if check_passed {
+                // Reset failure count on success
+                backend.failure_count = 0;
+                backend.healthy = true;
+            } else {
+                // Increment failure count
+                backend.failure_count += 1;
+                if backend.failure_count >= failure_threshold {
+                    backend.healthy = false;
+                }
+            }
+
+            return was_healthy != backend.healthy;
+        }
+        false
+    }
+
     /// Get all registered domains
     pub fn domains(&self) -> Vec<String> {
         self.routes.iter().map(|r| r.key().clone()).collect()
+    }
+
+    /// Get all backends with their domains for health checking
+    pub fn all_backends(&self) -> Vec<(String, Backend)> {
+        self.routes
+            .iter()
+            .map(|r| (r.key().clone(), r.value().clone()))
+            .collect()
     }
 
     /// Check if a domain is registered
@@ -187,5 +238,84 @@ mod tests {
         table.remove_route("example.com");
 
         assert!(table.get_backend("example.com").is_none());
+    }
+
+    #[test]
+    fn test_backend_health_url_default() {
+        let backend = Backend::new("container-123".into(), "127.0.0.1".into(), 3000);
+        assert_eq!(backend.health_url(), "http://127.0.0.1:3000/");
+    }
+
+    #[test]
+    fn test_backend_health_url_with_path() {
+        let backend = Backend::new("container-123".into(), "127.0.0.1".into(), 3000)
+            .with_healthcheck(Some("/health".to_string()));
+        assert_eq!(backend.health_url(), "http://127.0.0.1:3000/health");
+    }
+
+    #[test]
+    fn test_route_table_update_health_threshold() {
+        let table = RouteTable::new();
+        let backend = Backend::new("container-123".into(), "127.0.0.1".into(), 3000);
+        table.add_route("example.com".into(), backend);
+
+        // Initial state: healthy
+        let b = table.get_backend("example.com").unwrap();
+        assert!(b.healthy);
+        assert_eq!(b.failure_count, 0);
+
+        // First failure: still healthy (threshold is 3)
+        let changed = table.update_health("example.com", false, 3);
+        assert!(!changed);
+        let b = table.get_backend("example.com").unwrap();
+        assert!(b.healthy);
+        assert_eq!(b.failure_count, 1);
+
+        // Second failure: still healthy
+        let changed = table.update_health("example.com", false, 3);
+        assert!(!changed);
+        let b = table.get_backend("example.com").unwrap();
+        assert!(b.healthy);
+        assert_eq!(b.failure_count, 2);
+
+        // Third failure: now unhealthy
+        let changed = table.update_health("example.com", false, 3);
+        assert!(changed);
+        let b = table.get_backend("example.com").unwrap();
+        assert!(!b.healthy);
+        assert_eq!(b.failure_count, 3);
+    }
+
+    #[test]
+    fn test_route_table_health_recovery() {
+        let table = RouteTable::new();
+        let backend = Backend::new("container-123".into(), "127.0.0.1".into(), 3000);
+        table.add_route("example.com".into(), backend);
+
+        // Make it unhealthy first
+        table.update_health("example.com", false, 1);
+        let b = table.get_backend("example.com").unwrap();
+        assert!(!b.healthy);
+
+        // Recovery: single success makes it healthy again
+        let changed = table.update_health("example.com", true, 1);
+        assert!(changed);
+        let b = table.get_backend("example.com").unwrap();
+        assert!(b.healthy);
+        assert_eq!(b.failure_count, 0);
+    }
+
+    #[test]
+    fn test_route_table_all_backends() {
+        let table = RouteTable::new();
+
+        let backend1 = Backend::new("container-1".into(), "127.0.0.1".into(), 3000);
+        let backend2 = Backend::new("container-2".into(), "127.0.0.1".into(), 3001);
+
+        table.add_route("app1.example.com".into(), backend1);
+        table.add_route("app2.example.com".into(), backend2);
+
+        let backends = table.all_backends();
+        assert_eq!(backends.len(), 2);
     }
 }

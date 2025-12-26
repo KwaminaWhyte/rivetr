@@ -53,11 +53,13 @@ impl DeploymentEngine {
                                     container_info.container_id.clone(),
                                     "127.0.0.1".to_string(),
                                     port,
-                                );
+                                )
+                                .with_healthcheck(app.healthcheck.clone());
                                 routes.load().add_route(domain.clone(), backend);
                                 tracing::info!(
                                     domain = %domain,
                                     port = port,
+                                    healthcheck = ?app.healthcheck,
                                     "Proxy route updated for app {}",
                                     app.name
                                 );

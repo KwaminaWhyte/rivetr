@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::config::Config;
 use rivetr::engine::DeploymentEngine;
-use rivetr::proxy::ProxyServer;
+use rivetr::proxy::{HealthChecker, HealthCheckerConfig, ProxyServer};
 use rivetr::runtime::detect_runtime;
 use rivetr::AppState;
 
@@ -62,15 +62,15 @@ async fn main() -> Result<()> {
     // Create deployment channel
     let (deploy_tx, deploy_rx) = mpsc::channel(100);
 
-    // Create app state
-    let state = Arc::new(AppState::new(config.clone(), db.clone(), deploy_tx));
-
     // Start proxy server
     let proxy_addr: SocketAddr = format!("{}:{}", config.server.host, config.server.proxy_port)
         .parse()
         .expect("Invalid proxy address");
     let proxy_server = ProxyServer::new(proxy_addr);
     let routes = proxy_server.routes();
+
+    // Create app state (now includes routes for rollback functionality)
+    let state = Arc::new(AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone()));
 
     // Start deployment engine with route table
     let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx);
@@ -96,6 +96,13 @@ async fn main() -> Result<()> {
         if let Err(e) = proxy_server.run().await {
             tracing::error!(error = %e, "Proxy server error");
         }
+    });
+
+    // Start health checker for backend health monitoring
+    let health_config = HealthCheckerConfig::from_proxy_config(&config.proxy);
+    let health_checker = HealthChecker::new(routes.clone(), health_config);
+    tokio::spawn(async move {
+        health_checker.run().await;
     });
 
     // Start API server

@@ -13,6 +13,7 @@ import { DeploymentsPage } from "@/pages/Deployments";
 import { SettingsPage } from "@/pages/Settings";
 import { SettingsWebhooksPage } from "@/pages/SettingsWebhooks";
 import { SettingsTokensPage } from "@/pages/SettingsTokens";
+import { SettingsSshKeysPage } from "@/pages/SettingsSshKeys";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -42,6 +43,7 @@ function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/webhooks" element={<SettingsWebhooksPage />} />
                 <Route path="/settings/tokens" element={<SettingsTokensPage />} />
+                <Route path="/settings/ssh-keys" element={<SettingsSshKeysPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

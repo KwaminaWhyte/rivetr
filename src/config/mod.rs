@@ -124,6 +124,27 @@ pub struct ProxyConfig {
     pub acme_email: Option<String>,
     #[serde(default)]
     pub acme_staging: bool,
+    /// Interval between health checks in seconds (default: 30)
+    #[serde(default = "default_health_check_interval")]
+    pub health_check_interval: u64,
+    /// Timeout for health check requests in seconds (default: 5)
+    #[serde(default = "default_health_check_timeout")]
+    pub health_check_timeout: u64,
+    /// Number of consecutive failures before marking backend as unhealthy (default: 3)
+    #[serde(default = "default_health_check_threshold")]
+    pub health_check_threshold: u32,
+}
+
+fn default_health_check_interval() -> u64 {
+    30
+}
+
+fn default_health_check_timeout() -> u64 {
+    5
+}
+
+fn default_health_check_threshold() -> u32 {
+    3
 }
 
 impl Default for ProxyConfig {
@@ -131,6 +152,9 @@ impl Default for ProxyConfig {
         Self {
             acme_email: None,
             acme_staging: false,
+            health_check_interval: default_health_check_interval(),
+            health_check_timeout: default_health_check_timeout(),
+            health_check_threshold: default_health_check_threshold(),
         }
     }
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus } from "@/types/api";
 import { DeploymentLogs } from "@/components/DeploymentLogs";
+import { RuntimeLogs } from "@/components/RuntimeLogs";
 
 // Active deployment statuses that require frequent polling
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
@@ -52,6 +54,9 @@ export function AppDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
 
   const {
     data: app,
@@ -103,6 +108,30 @@ export function AppDetailPage() {
     },
   });
 
+  const rollbackMutation = useMutation({
+    mutationFn: (deploymentId: string) => api.rollbackDeployment(deploymentId),
+    onSuccess: () => {
+      toast.success("Rollback started");
+      queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+      setShowRollbackDialog(false);
+      setSelectedDeploymentId(null);
+    },
+    onError: (error: Error) => {
+      toast.error(`Rollback failed: ${error.message}`);
+    },
+  });
+
+  // Check if there's a running deployment (for runtime logs)
+  const runningDeployment = useMemo(() => {
+    return deployments.find((d) => d.status === "running");
+  }, [deployments]);
+
+  // Check if a deployment can be rolled back to
+  const canRollback = (deployment: Deployment): boolean => {
+    // Can rollback to any previous successful deployment that's not currently running
+    return deployment.status === "stopped" && deployment.container_id !== null;
+  };
+
   if (appLoading) {
     return (
       <div className="space-y-6">
@@ -144,6 +173,14 @@ export function AppDetailPage() {
           >
             {deployMutation.isPending ? "Deploying..." : "Deploy"}
           </Button>
+          {runningDeployment && (
+            <Button
+              variant="outline"
+              onClick={() => setShowRuntimeLogs(!showRuntimeLogs)}
+            >
+              {showRuntimeLogs ? "Hide Logs" : "View Logs"}
+            </Button>
+          )}
           <Button
             variant="destructive"
             onClick={() => setShowDeleteDialog(true)}
@@ -243,6 +280,7 @@ export function AppDetailPage() {
                   <TableHead>Started</TableHead>
                   <TableHead>Finished</TableHead>
                   <TableHead>Container ID</TableHead>
+                  <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -262,6 +300,20 @@ export function AppDetailPage() {
                     <TableCell className="font-mono text-xs">
                       {deploy.container_id?.slice(0, 12) || "-"}
                     </TableCell>
+                    <TableCell>
+                      {canRollback(deploy) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedDeploymentId(deploy.id);
+                            setShowRollbackDialog(true);
+                          }}
+                        >
+                          Rollback
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -277,6 +329,45 @@ export function AppDetailPage() {
           isActive={isActiveDeployment(activeDeployment.status)}
         />
       )}
+
+      {/* Runtime logs for running container */}
+      {showRuntimeLogs && runningDeployment && app && (
+        <RuntimeLogs appId={app.id} />
+      )}
+
+      {/* Rollback confirmation dialog */}
+      <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rollback Deployment</DialogTitle>
+            <DialogDescription>
+              This will start a new deployment using the image from the selected
+              previous deployment. The current running container will be replaced.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRollbackDialog(false);
+                setSelectedDeploymentId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedDeploymentId) {
+                  rollbackMutation.mutate(selectedDeploymentId);
+                }
+              }}
+              disabled={rollbackMutation.isPending}
+            >
+              {rollbackMutation.isPending ? "Rolling back..." : "Rollback"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>

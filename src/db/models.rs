@@ -13,6 +13,7 @@ pub struct App {
     pub healthcheck: Option<String>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
+    pub ssh_key_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -78,6 +79,7 @@ pub struct Deployment {
     pub commit_message: Option<String>,
     pub status: String,
     pub container_id: Option<String>,
+    pub image_tag: Option<String>,
     pub error_message: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
@@ -114,6 +116,7 @@ pub struct CreateAppRequest {
     pub healthcheck: Option<String>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
+    pub ssh_key_id: Option<String>,
 }
 
 fn default_branch() -> String {
@@ -139,6 +142,7 @@ pub struct UpdateAppRequest {
     pub healthcheck: Option<String>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
+    pub ssh_key_id: Option<String>,
 }
 
 // User models
@@ -192,4 +196,63 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub token: String,
     pub user: UserResponse,
+}
+
+// SSH Key models
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SshKey {
+    pub id: String,
+    pub name: String,
+    pub private_key: String,
+    pub public_key: Option<String>,
+    pub app_id: Option<String>,
+    pub is_global: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Response DTO that excludes the private key for security
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SshKeyResponse {
+    pub id: String,
+    pub name: String,
+    pub public_key: Option<String>,
+    pub app_id: Option<String>,
+    pub is_global: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<SshKey> for SshKeyResponse {
+    fn from(key: SshKey) -> Self {
+        Self {
+            id: key.id,
+            name: key.name,
+            public_key: key.public_key,
+            app_id: key.app_id,
+            is_global: key.is_global != 0,
+            created_at: key.created_at,
+            updated_at: key.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSshKeyRequest {
+    pub name: String,
+    pub private_key: String,
+    pub public_key: Option<String>,
+    pub app_id: Option<String>,
+    #[serde(default)]
+    pub is_global: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSshKeyRequest {
+    pub name: Option<String>,
+    pub private_key: Option<String>,
+    pub public_key: Option<String>,
+    pub app_id: Option<String>,
+    pub is_global: Option<bool>,
 }

@@ -1,6 +1,8 @@
 mod apps;
 pub mod auth;
 mod deployments;
+mod ssh_keys;
+mod validation;
 mod webhooks;
 mod ws;
 
@@ -35,8 +37,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/deployments", get(deployments::list_deployments))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
+        .route("/deployments/:id/rollback", post(deployments::rollback_deployment))
         // WebSocket for streaming logs (auth handled in handler via query param)
         .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
+        // WebSocket for streaming runtime container logs
+        .route("/apps/:id/logs/stream", get(ws::runtime_logs_ws))
+        // SSH Keys
+        .route("/ssh-keys", get(ssh_keys::list_ssh_keys))
+        .route("/ssh-keys", post(ssh_keys::create_ssh_key))
+        .route("/ssh-keys/:id", get(ssh_keys::get_ssh_key))
+        .route("/ssh-keys/:id", put(ssh_keys::update_ssh_key))
+        .route("/ssh-keys/:id", delete(ssh_keys::delete_ssh_key))
+        .route("/apps/:id/ssh-keys", get(ssh_keys::get_app_ssh_keys))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),
