@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus } from "@/types/api";
+import { DeploymentLogs } from "@/components/DeploymentLogs";
+
+// Active deployment statuses that require frequent polling
+const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
+
+function isActiveDeployment(status: DeploymentStatus): boolean {
+  return ACTIVE_STATUSES.includes(status);
+}
 
 const statusColors: Record<DeploymentStatus, string> = {
   pending: "bg-yellow-500",
@@ -61,8 +69,25 @@ export function AppDetailPage() {
     queryKey: ["deployments", id],
     queryFn: () => api.getDeployments(id!),
     enabled: !!id,
-    refetchInterval: 5000,
+    // Smart polling: poll every 2s when active, every 30s when idle
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.length === 0) return 5000;
+      const hasActive = data.some((d: Deployment) => isActiveDeployment(d.status));
+      return hasActive ? 2000 : 30000;
+    },
+    refetchIntervalInBackground: false,
   });
+
+  // Check if there are any active deployments (for UI indicators)
+  const hasActiveDeployment = useMemo(() => {
+    return deployments.some((d) => isActiveDeployment(d.status));
+  }, [deployments]);
+
+  // Get the most recent active deployment for log streaming
+  const activeDeployment = useMemo(() => {
+    return deployments.find((d) => isActiveDeployment(d.status));
+  }, [deployments]);
 
   const deployMutation = useMutation({
     mutationFn: () => api.triggerDeploy(id!),
@@ -186,7 +211,18 @@ export function AppDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Deployments</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            Deployments
+            {hasActiveDeployment && (
+              <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                </span>
+                In Progress
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {deploymentsLoading ? (
@@ -233,6 +269,14 @@ export function AppDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Show logs for active deployment */}
+      {activeDeployment && (
+        <DeploymentLogs
+          deploymentId={activeDeployment.id}
+          isActive={isActiveDeployment(activeDeployment.status)}
+        />
+      )}
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>

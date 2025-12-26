@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,13 @@ const statusColors: Record<DeploymentStatus, string> = {
   failed: "bg-red-500",
   stopped: "bg-gray-500",
 };
+
+// Active deployment statuses that require frequent polling
+const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
+
+function isActiveDeployment(status: DeploymentStatus): boolean {
+  return ACTIVE_STATUSES.includes(status);
+}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
@@ -54,13 +62,37 @@ export function DeploymentsPage() {
         );
     },
     enabled: apps.length > 0,
+    // Smart polling: poll every 2s when active, every 30s when idle
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.length === 0) return 10000;
+      const hasActive = data.some((d) => isActiveDeployment(d.status));
+      return hasActive ? 2000 : 30000;
+    },
+    refetchIntervalInBackground: false,
   });
+
+  // Check if there are any active deployments (for UI indicators)
+  const hasActiveDeployment = useMemo(() => {
+    return allDeployments.some((d) => isActiveDeployment(d.status));
+  }, [allDeployments]);
 
   const isLoading = appsLoading || deploymentsLoading;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Deployments</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-3xl font-bold">Deployments</h1>
+        {hasActiveDeployment && (
+          <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+            </span>
+            In Progress
+          </span>
+        )}
+      </div>
 
       <Card>
         <CardHeader>

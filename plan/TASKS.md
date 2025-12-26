@@ -178,8 +178,8 @@
 - [x] **T1.11.2** Add React Router for navigation
 - [x] **T1.11.3** Add protected routes
 - [x] **T1.11.4** Add delete confirmation dialogs
-- [ ] **T1.11.5** Add live deployment status polling
-- [ ] **T1.11.6** Add real-time log streaming (WebSocket)
+- [x] **T1.11.5** Add live deployment status polling
+- [x] **T1.11.6** Add real-time log streaming (WebSocket)
 
 ### 1.12 Health Checks
 

@@ -2,6 +2,7 @@ mod apps;
 pub mod auth;
 mod deployments;
 mod webhooks;
+mod ws;
 
 use axum::{
     middleware,
@@ -34,6 +35,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/deployments", get(deployments::list_deployments))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
+        // WebSocket for streaming logs (auth handled in handler via query param)
+        .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -8,6 +8,7 @@ export function DashboardPage() {
   const { data: apps = [], isLoading } = useQuery<App[]>({
     queryKey: ["apps"],
     queryFn: () => api.getApps(),
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const runningApps = apps.filter((app) => app.domain);
