@@ -21,6 +21,8 @@ pub struct Config {
     pub oauth: OAuthConfig,
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+    #[serde(default)]
+    pub cleanup: CleanupConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -306,6 +308,49 @@ impl Default for RateLimitConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CleanupConfig {
+    /// Enable automatic cleanup of old deployments (default: true)
+    #[serde(default = "default_cleanup_enabled")]
+    pub enabled: bool,
+    /// Maximum number of deployments to keep per app (default: 10)
+    #[serde(default = "default_max_deployments_per_app")]
+    pub max_deployments_per_app: u32,
+    /// Interval between cleanup runs in seconds (default: 3600 = 1 hour)
+    #[serde(default = "default_cleanup_interval_seconds")]
+    pub cleanup_interval_seconds: u64,
+    /// Prune unused Docker/Podman images after cleanup (default: true)
+    #[serde(default = "default_prune_images")]
+    pub prune_images: bool,
+}
+
+fn default_cleanup_enabled() -> bool {
+    true
+}
+
+fn default_max_deployments_per_app() -> u32 {
+    10
+}
+
+fn default_cleanup_interval_seconds() -> u64 {
+    3600
+}
+
+fn default_prune_images() -> bool {
+    true
+}
+
+impl Default for CleanupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_cleanup_enabled(),
+            max_deployments_per_app: default_max_deployments_per_app(),
+            cleanup_interval_seconds: default_cleanup_interval_seconds(),
+            prune_images: default_prune_images(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -331,6 +376,7 @@ impl Config {
             webhooks: WebhookConfig::default(),
             oauth: OAuthConfig::default(),
             rate_limit: RateLimitConfig::default(),
+            cleanup: CleanupConfig::default(),
         }
     }
 }

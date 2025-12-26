@@ -14,6 +14,7 @@ interface LogEntry {
 interface DeploymentLogsProps {
   deploymentId: string;
   isActive: boolean;
+  token: string;
 }
 
 const levelColors: Record<string, string> = {
@@ -23,7 +24,7 @@ const levelColors: Record<string, string> = {
   debug: "bg-gray-500",
 };
 
-export function DeploymentLogs({ deploymentId, isActive }: DeploymentLogsProps) {
+export function DeploymentLogs({ deploymentId, isActive, token }: DeploymentLogsProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -43,7 +44,7 @@ export function DeploymentLogs({ deploymentId, isActive }: DeploymentLogsProps) 
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/deployments/${deploymentId}/logs/stream`;
+    const wsUrl = `${protocol}//${window.location.host}/api/deployments/${deploymentId}/logs/stream?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -81,7 +82,7 @@ export function DeploymentLogs({ deploymentId, isActive }: DeploymentLogsProps) 
     ws.onclose = () => {
       setConnected(false);
     };
-  }, [deploymentId]);
+  }, [deploymentId, token]);
 
   // Auto-connect when component mounts if deployment is active
   useEffect(() => {

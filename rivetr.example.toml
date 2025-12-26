@@ -58,3 +58,15 @@ auth_requests_per_window = 20
 window_seconds = 60
 # Cleanup interval for expired rate limit entries in seconds (default: 300)
 cleanup_interval = 300
+
+[cleanup]
+# Enable automatic cleanup of old deployments (default: true)
+enabled = true
+# Maximum number of deployments to keep per app (default: 10)
+# Older deployments will be removed, along with their containers and images
+max_deployments_per_app = 10
+# Interval between cleanup runs in seconds (default: 3600 = 1 hour)
+cleanup_interval_seconds = 3600
+# Prune unused/dangling Docker/Podman images after cleanup (default: true)
+# This helps reclaim disk space from orphaned image layers
+prune_images = true

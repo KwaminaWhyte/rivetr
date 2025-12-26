@@ -6,9 +6,11 @@ pub use podman::PodmanRuntime;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::Stream;
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 use crate::config::RuntimeType;
 
@@ -66,6 +68,36 @@ pub struct ContainerStats {
     pub network_tx: u64,
 }
 
+/// Configuration for executing a command in a container
+#[derive(Debug, Clone)]
+pub struct ExecConfig {
+    /// Container ID or name
+    pub container_id: String,
+    /// Command to execute (e.g., ["/bin/sh"] for shell access)
+    pub cmd: Vec<String>,
+    /// Whether to allocate a pseudo-TTY
+    pub tty: bool,
+}
+
+/// TTY size for resize operations
+#[derive(Debug, Clone, Copy)]
+pub struct TtySize {
+    /// Number of columns
+    pub cols: u16,
+    /// Number of rows
+    pub rows: u16,
+}
+
+/// Handle for interacting with an exec session
+pub struct ExecHandle {
+    /// Send data to the container's stdin
+    pub stdin_tx: mpsc::Sender<Bytes>,
+    /// Receive data from the container's stdout/stderr
+    pub stdout_rx: mpsc::Receiver<Bytes>,
+    /// Send resize events to the exec session
+    pub resize_tx: mpsc::Sender<TtySize>,
+}
+
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
@@ -79,6 +111,12 @@ pub trait ContainerRuntime: Send + Sync {
     async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>>;
     /// Get container resource statistics (CPU, memory, network)
     async fn stats(&self, container_id: &str) -> Result<ContainerStats>;
+    /// Remove a container image by tag or ID
+    async fn remove_image(&self, image: &str) -> Result<()>;
+    /// Prune unused/dangling images, returns bytes reclaimed
+    async fn prune_images(&self) -> Result<u64>;
+    /// Execute a command in a running container with bidirectional I/O
+    async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle>;
 }
 
 /// A no-op runtime used when no container runtime is available
@@ -111,6 +149,15 @@ impl ContainerRuntime for NoopRuntime {
         Ok(vec![])
     }
     async fn stats(&self, _container_id: &str) -> Result<ContainerStats> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn remove_image(&self, _image: &str) -> Result<()> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn prune_images(&self) -> Result<u64> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn exec(&self, _config: &ExecConfig) -> Result<ExecHandle> {
         anyhow::bail!("No container runtime available")
     }
 }

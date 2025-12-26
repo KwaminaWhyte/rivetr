@@ -1,12 +1,14 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::Stream;
 use std::pin::Pin;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::mpsc;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, LogLine, LogStream, RunConfig};
+use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
 
 pub struct PodmanRuntime;
 
@@ -286,6 +288,144 @@ impl ContainerRuntime for PodmanRuntime {
             memory_limit,
             network_rx,
             network_tx,
+        })
+    }
+
+    async fn remove_image(&self, image: &str) -> Result<()> {
+        self.run_command(&["rmi".to_string(), "-f".to_string(), image.to_string()])
+            .await?;
+        Ok(())
+    }
+
+    async fn prune_images(&self) -> Result<u64> {
+        // Podman image prune returns the IDs of pruned images
+        // We can't easily get space reclaimed from CLI, so return 0
+        let output = Command::new("podman")
+            .args(["image", "prune", "-f", "--filter", "dangling=true"])
+            .output()
+            .await
+            .context("Failed to execute podman image prune")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Podman image prune failed: {}", stderr);
+        }
+
+        // Count lines in output to report number of images pruned
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let pruned_count = stdout.lines().filter(|l| !l.is_empty()).count();
+        tracing::debug!("Pruned {} images with podman", pruned_count);
+
+        // We can't easily get space reclaimed from podman CLI
+        Ok(0)
+    }
+
+    async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle> {
+        // Build podman exec command
+        let mut args = vec!["exec".to_string(), "-i".to_string()];
+
+        if config.tty {
+            args.push("-t".to_string());
+        }
+
+        args.push(config.container_id.clone());
+        args.extend(config.cmd.clone());
+
+        // Spawn podman exec process with stdin/stdout piped
+        let mut child = Command::new("podman")
+            .args(&args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn podman exec")?;
+
+        let mut stdin = child.stdin.take().context("Failed to get stdin")?;
+        let mut stdout = child.stdout.take().context("Failed to get stdout")?;
+        let stderr = child.stderr.take().context("Failed to get stderr")?;
+
+        // Create channels for bidirectional communication
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<Bytes>(32);
+        let (stdout_tx, stdout_rx) = mpsc::channel::<Bytes>(32);
+        let (resize_tx, mut resize_rx) = mpsc::channel::<TtySize>(8);
+
+        // Spawn stdin writer task
+        tokio::spawn(async move {
+            while let Some(data) = stdin_rx.recv().await {
+                if stdin.write_all(&data).await.is_err() {
+                    break;
+                }
+                if stdin.flush().await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Spawn stdout reader task
+        let stdout_tx_clone = stdout_tx.clone();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 4096];
+            loop {
+                match stdout.read(&mut buf).await {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        if stdout_tx_clone.send(Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Podman exec stdout error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Spawn stderr reader task (merge into stdout channel)
+        let mut stderr_reader = BufReader::new(stderr);
+        tokio::spawn(async move {
+            let mut buf = [0u8; 4096];
+            loop {
+                match stderr_reader.read(&mut buf).await {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        if stdout_tx.send(Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Podman exec stderr error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Spawn resize handler - Note: podman doesn't support resize via CLI easily
+        // For proper TTY resize with podman, we'd need podman-remote or API
+        let container_id = config.container_id.clone();
+        tokio::spawn(async move {
+            while let Some(size) = resize_rx.recv().await {
+                // Podman doesn't have a direct CLI command for resize
+                // This would require using the podman API
+                tracing::debug!(
+                    "Resize request for container {} to {}x{} (not supported in CLI mode)",
+                    container_id,
+                    size.cols,
+                    size.rows
+                );
+            }
+        });
+
+        // Spawn task to wait for child and clean up
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
+
+        Ok(ExecHandle {
+            stdin_tx,
+            stdout_rx,
+            resize_tx,
         })
     }
 }

@@ -42,12 +42,13 @@ function formatRelativeTime(timestamp: string): string {
 
 interface RecentEventsProps {
   initialEvents?: RecentEvent[];
+  token: string;
 }
 
-export function RecentEvents({ initialEvents }: RecentEventsProps) {
+export function RecentEvents({ initialEvents, token }: RecentEventsProps) {
   const { data: events = [], isLoading } = useQuery<RecentEvent[]>({
     queryKey: ["recent-events"],
-    queryFn: () => api.getRecentEvents(),
+    queryFn: () => api.getRecentEvents(token),
     initialData: initialEvents,
     refetchInterval: 15000, // Refresh every 15 seconds
   });

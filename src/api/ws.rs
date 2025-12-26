@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 use crate::db::{Deployment, DeploymentLog, Session};
-use crate::runtime::LogStream;
+use crate::runtime::{ExecConfig, LogStream, TtySize};
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -312,4 +313,171 @@ async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_
             }
         }
     }
+}
+
+/// Terminal message types for WebSocket protocol
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum TerminalMessage {
+    /// Input data from the client
+    Data { data: String },
+    /// Resize event from the client
+    Resize { cols: u16, rows: u16 },
+}
+
+/// WebSocket endpoint for interactive terminal access
+/// GET /api/apps/:id/terminal
+pub async fn terminal_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+    Query(query): Query<WsAuthQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Validate token from query params
+    if !validate_ws_token(&state, &query).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(ws.on_upgrade(move |socket| handle_terminal_session(socket, state, app_id)))
+}
+
+async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id: String) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // Find the latest running deployment for this app
+    let deployment = match sqlx::query_as::<_, Deployment>(
+        "SELECT * FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(&app_id)
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            let error_msg = serde_json::json!({
+                "type": "error",
+                "message": "No running container found for this app"
+            });
+            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            return;
+        }
+        Err(e) => {
+            let error_msg = serde_json::json!({
+                "type": "error",
+                "message": format!("Database error: {}", e)
+            });
+            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    // Check if we have a container ID
+    let container_id = match deployment.container_id {
+        Some(id) => id,
+        None => {
+            let error_msg = serde_json::json!({
+                "type": "error",
+                "message": "No container ID found for this deployment"
+            });
+            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    // Start exec session with shell
+    let exec_config = ExecConfig {
+        container_id: container_id.clone(),
+        cmd: vec!["/bin/sh".to_string()],
+        tty: true,
+    };
+
+    let mut exec_handle = match state.runtime.exec(&exec_config).await {
+        Ok(handle) => handle,
+        Err(e) => {
+            let error_msg = serde_json::json!({
+                "type": "error",
+                "message": format!("Failed to start terminal: {}", e)
+            });
+            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    // Send connection established message
+    let connected_msg = serde_json::json!({
+        "type": "connected",
+        "container_id": container_id,
+        "app_id": app_id,
+    });
+    if sender.send(Message::Text(connected_msg.to_string().into())).await.is_err() {
+        return;
+    }
+
+    // Bidirectional streaming loop
+    loop {
+        tokio::select! {
+            // Receive data from container and send to WebSocket
+            Some(data) = exec_handle.stdout_rx.recv() => {
+                let msg = serde_json::json!({
+                    "type": "data",
+                    "data": String::from_utf8_lossy(&data),
+                });
+                if sender.send(Message::Text(msg.to_string().into())).await.is_err() {
+                    break;
+                }
+            }
+
+            // Receive messages from WebSocket and send to container
+            msg = receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        // Parse the terminal message
+                        match serde_json::from_str::<TerminalMessage>(&text) {
+                            Ok(TerminalMessage::Data { data }) => {
+                                // Send input to container
+                                if exec_handle.stdin_tx.send(Bytes::from(data)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(TerminalMessage::Resize { cols, rows }) => {
+                                // Send resize event
+                                if exec_handle.resize_tx.send(TtySize { cols, rows }).await.is_err() {
+                                    tracing::warn!("Failed to send resize event");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to parse terminal message: {}", e);
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Binary(data))) => {
+                        // Handle raw binary data as input
+                        if exec_handle.stdin_tx.send(Bytes::from(data.to_vec())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Ping(data))) => {
+                        if sender.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => {
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            else => {
+                // Both channels closed
+                break;
+            }
+        }
+    }
+
+    // Send end message
+    let end_msg = serde_json::json!({
+        "type": "end",
+        "message": "Terminal session ended"
+    });
+    let _ = sender.send(Message::Text(end_msg.to_string().into())).await;
 }

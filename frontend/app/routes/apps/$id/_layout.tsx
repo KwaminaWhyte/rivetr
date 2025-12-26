@@ -24,7 +24,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     api.getApp(token, params.id!),
     api.getDeployments(token, params.id!).catch(() => []),
   ]);
-  return { app, deployments };
+  return { app, deployments, token };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -68,13 +68,13 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
   // Use React Query with SSR initial data
   const { data: app } = useQuery<App>({
     queryKey: ["app", loaderData.app.id],
-    queryFn: () => api.getApp(loaderData.app.id),
+    queryFn: () => api.getApp(loaderData.app.id, loaderData.token),
     initialData: loaderData.app,
   });
 
   const { data: deployments = [] } = useQuery<Deployment[]>({
     queryKey: ["deployments", loaderData.app.id],
-    queryFn: () => api.getDeployments(loaderData.app.id),
+    queryFn: () => api.getDeployments(loaderData.app.id, loaderData.token),
     initialData: loaderData.deployments,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -179,7 +179,7 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
       </Tabs>
 
       {/* Tab Content via Outlet */}
-      <Outlet context={{ app, deployments }} />
+      <Outlet context={{ app, deployments, token: loaderData.token }} />
     </div>
   );
 }

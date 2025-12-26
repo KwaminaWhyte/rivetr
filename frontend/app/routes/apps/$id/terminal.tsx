@@ -1,17 +1,18 @@
 import { useMemo } from "react";
 import { useOutletContext } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Terminal as TerminalIcon } from "lucide-react";
+import { ContainerTerminal } from "@/components/container-terminal";
 import type { App, Deployment } from "@/types/api";
 
 interface OutletContext {
   app: App;
   deployments: Deployment[];
+  token: string;
 }
 
 export default function AppTerminalTab() {
-  const { app, deployments } = useOutletContext<OutletContext>();
+  const { app, deployments, token } = useOutletContext<OutletContext>();
 
   const runningDeployment = useMemo(() => {
     return deployments.find((d) => d.status === "running");
@@ -31,28 +32,26 @@ export default function AppTerminalTab() {
                 Access a shell inside your running container.
               </CardDescription>
             </div>
-            <Badge variant="outline">Coming Soon</Badge>
+            {runningDeployment && (
+              <span className="text-xs text-muted-foreground">
+                Container: {runningDeployment.container_id?.slice(0, 12) || "N/A"}
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           {runningDeployment ? (
+            <ContainerTerminal appId={app.id} token={token} />
+          ) : (
             <div className="bg-gray-900 rounded-lg p-6 text-center">
               <div className="text-gray-400 mb-4">
                 <TerminalIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">Browser-based terminal access</p>
+                <p className="text-lg">No running container</p>
                 <p className="text-sm text-gray-500 mt-2">
-                  This feature is currently under development. Soon you'll be able to
-                  run commands directly inside your container from this interface.
+                  Deploy your application to access the terminal.
                 </p>
               </div>
-              <div className="mt-6 text-xs text-gray-600">
-                Container ID: {runningDeployment.container_id?.slice(0, 12) || "N/A"}
-              </div>
             </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-8">
-              No running container. Deploy your application to access the terminal.
-            </p>
           )}
         </CardContent>
       </Card>

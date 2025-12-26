@@ -19,14 +19,22 @@ import type {
 
 async function apiRequest<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  token?: string
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  // Add Authorization header if token is provided
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`/api${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
     credentials: "include", // Send cookies for session-based auth
   });
 
@@ -48,63 +56,87 @@ export const api = {
   getProject: (id: string) => apiRequest<ProjectWithApps>(`/projects/${id}`),
 
   // Apps
-  getApps: () => apiRequest<App[]>("/apps"),
-  getApp: (id: string) => apiRequest<App>(`/apps/${id}`),
-  updateApp: (id: string, data: UpdateAppRequest) =>
-    apiRequest<App>(`/apps/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+  getApps: (token?: string) => apiRequest<App[]>("/apps", {}, token),
+  getApp: (id: string, token?: string) => apiRequest<App>(`/apps/${id}`, {}, token),
+  updateApp: (id: string, data: UpdateAppRequest, token?: string) =>
+    apiRequest<App>(
+      `/apps/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
 
   // SSH Keys
   getSshKeys: () => apiRequest<SshKey[]>("/ssh-keys"),
 
   // Deployments
-  getDeployments: (appId: string) =>
-    apiRequest<Deployment[]>(`/apps/${appId}/deployments`),
-  getDeploymentLogs: (id: string) =>
-    apiRequest<DeploymentLog[]>(`/deployments/${id}/logs`),
-  triggerDeploy: (appId: string) =>
-    apiRequest<Deployment>(`/apps/${appId}/deploy`, { method: "POST" }),
-  rollbackDeployment: (id: string) =>
-    apiRequest<Deployment>(`/deployments/${id}/rollback`, { method: "POST" }),
+  getDeployments: (appId: string, token?: string) =>
+    apiRequest<Deployment[]>(`/apps/${appId}/deployments`, {}, token),
+  getDeploymentLogs: (id: string, token?: string) =>
+    apiRequest<DeploymentLog[]>(`/deployments/${id}/logs`, {}, token),
+  triggerDeploy: (appId: string, token?: string) =>
+    apiRequest<Deployment>(`/apps/${appId}/deploy`, { method: "POST" }, token),
+  rollbackDeployment: (id: string, token?: string) =>
+    apiRequest<Deployment>(`/deployments/${id}/rollback`, { method: "POST" }, token),
 
   // Container Stats
-  getAppStats: (appId: string) =>
-    apiRequest<ContainerStats>(`/apps/${appId}/stats`),
+  getAppStats: (appId: string, token?: string) =>
+    apiRequest<ContainerStats>(`/apps/${appId}/stats`, {}, token),
 
   // Environment Variables
-  getEnvVars: (appId: string, reveal = false) => {
+  getEnvVars: (appId: string, reveal = false, token?: string) => {
     const params = reveal ? "?reveal=true" : "";
-    return apiRequest<EnvVar[]>(`/apps/${appId}/env-vars${params}`);
+    return apiRequest<EnvVar[]>(`/apps/${appId}/env-vars${params}`, {}, token);
   },
-  getEnvVar: (appId: string, key: string, reveal = false) => {
+  getEnvVar: (appId: string, key: string, reveal = false, token?: string) => {
     const params = reveal ? "?reveal=true" : "";
-    return apiRequest<EnvVar>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}${params}`);
+    return apiRequest<EnvVar>(
+      `/apps/${appId}/env-vars/${encodeURIComponent(key)}${params}`,
+      {},
+      token
+    );
   },
-  createEnvVar: (appId: string, data: CreateEnvVarRequest) =>
-    apiRequest<EnvVar>(`/apps/${appId}/env-vars`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  updateEnvVar: (appId: string, key: string, data: UpdateEnvVarRequest) =>
-    apiRequest<EnvVar>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
-  deleteEnvVar: (appId: string, key: string) =>
-    apiRequest<void>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, {
-      method: "DELETE",
-    }),
+  createEnvVar: (appId: string, data: CreateEnvVarRequest, token?: string) =>
+    apiRequest<EnvVar>(
+      `/apps/${appId}/env-vars`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateEnvVar: (appId: string, key: string, data: UpdateEnvVarRequest, token?: string) =>
+    apiRequest<EnvVar>(
+      `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteEnvVar: (appId: string, key: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
 
   // System
-  getSystemStats: () => apiRequest<SystemStats>("/system/stats"),
-  getRecentEvents: () => apiRequest<RecentEvent[]>("/events/recent"),
+  getSystemStats: (token?: string) => apiRequest<SystemStats>("/system/stats", {}, token),
+  getRecentEvents: (token?: string) => apiRequest<RecentEvent[]>("/events/recent", {}, token),
 
   // WebSocket URLs
-  getRuntimeLogsWsUrl: (appId: string): string => {
+  getRuntimeLogsWsUrl: (appId: string, token: string): string => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}/api/apps/${appId}/logs/stream`;
+    return `${protocol}//${window.location.host}/api/apps/${appId}/logs/stream?token=${encodeURIComponent(token)}`;
+  },
+  getTerminalWsUrl: (appId: string, token: string): string => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/apps/${appId}/terminal?token=${encodeURIComponent(token)}`;
   },
 };
 

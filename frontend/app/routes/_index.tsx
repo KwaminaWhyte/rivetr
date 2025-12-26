@@ -19,7 +19,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     api.getSystemStats(token).catch(() => null),
     api.getRecentEvents(token).catch(() => []),
   ]);
-  return { stats, events };
+  return { stats, events, token };
 }
 
 function formatBytes(bytes: number): string {
@@ -103,7 +103,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
   // Use React Query with SSR initial data for real-time updates
   const { data: stats } = useQuery<SystemStats | null>({
     queryKey: ["system-stats"],
-    queryFn: () => api.getSystemStats(),
+    queryFn: () => api.getSystemStats(loaderData.token),
     initialData: loaderData.stats,
     refetchInterval: 10000, // Refresh every 10 seconds
   });
@@ -177,7 +177,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
           />
         </div>
         <div>
-          <RecentEvents initialEvents={loaderData.events} />
+          <RecentEvents initialEvents={loaderData.events} token={loaderData.token} />
         </div>
       </div>
     </div>

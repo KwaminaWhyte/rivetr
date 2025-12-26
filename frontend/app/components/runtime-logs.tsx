@@ -15,9 +15,10 @@ interface LogMessage {
 interface RuntimeLogsProps {
   appId: string;
   appName?: string;
+  token: string;
 }
 
-export function RuntimeLogs({ appId }: RuntimeLogsProps) {
+export function RuntimeLogs({ appId, token }: RuntimeLogsProps) {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,7 @@ export function RuntimeLogs({ appId }: RuntimeLogsProps) {
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const wsUrl = api.getRuntimeLogsWsUrl(appId);
+    const wsUrl = api.getRuntimeLogsWsUrl(appId, token);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -66,7 +67,7 @@ export function RuntimeLogs({ appId }: RuntimeLogsProps) {
     return () => {
       ws.close();
     };
-  }, [appId]);
+  }, [appId, token]);
 
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {

@@ -45,9 +45,10 @@ const MEMORY_OPTIONS = [
 
 interface ResourceLimitsCardProps {
   app: App;
+  token: string;
 }
 
-export function ResourceLimitsCard({ app }: ResourceLimitsCardProps) {
+export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
   const queryClient = useQueryClient();
   const [cpuLimit, setCpuLimit] = useState<string>(app.cpu_limit || "1");
   const [memoryLimit, setMemoryLimit] = useState<string>(app.memory_limit || "512m");
@@ -68,7 +69,7 @@ export function ResourceLimitsCard({ app }: ResourceLimitsCardProps) {
   }, [cpuLimit, memoryLimit, app.cpu_limit, app.memory_limit]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateAppRequest) => api.updateApp(app.id, data),
+    mutationFn: (data: UpdateAppRequest) => api.updateApp(app.id, data, token),
     onSuccess: () => {
       toast.success("Resource limits updated");
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });

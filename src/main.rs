@@ -5,12 +5,11 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use rivetr::api::rate_limit::spawn_cleanup_task;
+use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::config::Config;
-use rivetr::engine::DeploymentEngine;
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::AppState;
@@ -88,7 +87,7 @@ async fn main() -> Result<()> {
     );
 
     // Start rate limiter cleanup task
-    spawn_cleanup_task(
+    spawn_rate_limit_cleanup_task(
         state.rate_limiter.clone(),
         config.rate_limit.cleanup_interval,
     );
@@ -105,19 +104,17 @@ async fn main() -> Result<()> {
         engine.run().await;
     });
 
+    // Start deployment cleanup task
+    spawn_deployment_cleanup_task(
+        db.clone(),
+        runtime.clone(),
+        config.cleanup.clone(),
+    );
+
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
 
-    // Serve React static files with SPA fallback
-    let static_dir = PathBuf::from("static/dist");
-    let index_file = static_dir.join("index.html");
-    let serve_static = ServeDir::new(&static_dir)
-        .not_found_service(ServeFile::new(&index_file));
-
-    // Combine routers - API first, then static files as fallback
-    let app = axum::Router::new()
-        .merge(api_router)
-        .fallback_service(serve_static);
+    let app = api_router;
 
     tokio::spawn(async move {
         if let Err(e) = proxy_server.run().await {

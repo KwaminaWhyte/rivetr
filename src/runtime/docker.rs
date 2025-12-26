@@ -4,12 +4,17 @@ use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions, RemoveContainerOptions,
     StatsOptions, StopContainerOptions,
 };
+use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
+use bollard::image::{PruneImagesOptions, RemoveImageOptions};
 use bollard::Docker;
+use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use std::collections::HashMap;
 use std::pin::Pin;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, LogLine, LogStream, RunConfig};
+use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
 
 pub struct DockerRuntime {
     client: Docker,
@@ -318,6 +323,134 @@ impl ContainerRuntime for DockerRuntime {
             })
         } else {
             anyhow::bail!("No stats received for container")
+        }
+    }
+
+    async fn remove_image(&self, image: &str) -> Result<()> {
+        let options = RemoveImageOptions {
+            force: true,
+            noprune: false,
+        };
+
+        self.client
+            .remove_image(image, Some(options), None)
+            .await
+            .context("Failed to remove image")?;
+
+        Ok(())
+    }
+
+    async fn prune_images(&self) -> Result<u64> {
+        let options = PruneImagesOptions::<String> {
+            filters: HashMap::new(),
+        };
+
+        let result = self
+            .client
+            .prune_images(Some(options))
+            .await
+            .context("Failed to prune images")?;
+
+        let space_reclaimed = result.space_reclaimed.unwrap_or(0) as u64;
+
+        if let Some(images) = result.images_deleted {
+            tracing::debug!("Pruned {} images", images.len());
+        }
+
+        Ok(space_reclaimed)
+    }
+
+    async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle> {
+        // Create exec instance
+        let exec_options = CreateExecOptions {
+            attach_stdin: Some(true),
+            attach_stdout: Some(true),
+            attach_stderr: Some(true),
+            tty: Some(config.tty),
+            cmd: Some(config.cmd.clone()),
+            ..Default::default()
+        };
+
+        let exec_instance = self
+            .client
+            .create_exec(&config.container_id, exec_options)
+            .await
+            .context("Failed to create exec instance")?;
+
+        let exec_id = exec_instance.id.clone();
+
+        // Start exec and get streams
+        let start_result = self
+            .client
+            .start_exec(&exec_id, None)
+            .await
+            .context("Failed to start exec")?;
+
+        // Create channels for bidirectional communication
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<Bytes>(32);
+        let (stdout_tx, stdout_rx) = mpsc::channel::<Bytes>(32);
+        let (resize_tx, mut resize_rx) = mpsc::channel::<TtySize>(8);
+
+        // Clone client for resize task
+        let resize_client = self.client.clone();
+        let resize_exec_id = exec_id.clone();
+
+        // Spawn resize handler
+        tokio::spawn(async move {
+            while let Some(size) = resize_rx.recv().await {
+                let options = ResizeExecOptions {
+                    height: size.rows,
+                    width: size.cols,
+                };
+                if let Err(e) = resize_client.resize_exec(&resize_exec_id, options).await {
+                    tracing::warn!("Failed to resize exec: {}", e);
+                }
+            }
+        });
+
+        match start_result {
+            StartExecResults::Attached { mut output, mut input } => {
+                // Spawn stdin writer task
+                tokio::spawn(async move {
+                    while let Some(data) = stdin_rx.recv().await {
+                        if input.write_all(&data).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+
+                // Spawn stdout reader task
+                tokio::spawn(async move {
+                    while let Some(result) = output.next().await {
+                        match result {
+                            Ok(output) => {
+                                let data = match output {
+                                    LogOutput::StdOut { message } => message,
+                                    LogOutput::StdErr { message } => message,
+                                    LogOutput::StdIn { message } => message,
+                                    LogOutput::Console { message } => message,
+                                };
+                                if stdout_tx.send(Bytes::from(data.to_vec())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Exec output error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                });
+
+                Ok(ExecHandle {
+                    stdin_tx,
+                    stdout_rx,
+                    resize_tx,
+                })
+            }
+            StartExecResults::Detached => {
+                anyhow::bail!("Exec started in detached mode, but attached mode was expected")
+            }
         }
     }
 }

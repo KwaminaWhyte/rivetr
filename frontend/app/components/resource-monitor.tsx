@@ -6,6 +6,8 @@ import type { ContainerStats } from "@/types/api";
 
 interface ResourceMonitorProps {
   appId: string;
+  /** Auth token for API calls */
+  token: string;
   /** Polling interval in milliseconds (default: 5000) */
   pollInterval?: number;
 }
@@ -141,7 +143,7 @@ const NetworkIcon = () => (
   </svg>
 );
 
-export function ResourceMonitor({ appId, pollInterval = 5000 }: ResourceMonitorProps) {
+export function ResourceMonitor({ appId, token, pollInterval = 5000 }: ResourceMonitorProps) {
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [memoryHistory, setMemoryHistory] = useState<number[]>([]);
 
@@ -152,7 +154,7 @@ export function ResourceMonitor({ appId, pollInterval = 5000 }: ResourceMonitorP
     isError,
   } = useQuery<ContainerStats>({
     queryKey: ["app-stats", appId],
-    queryFn: () => api.getAppStats(appId),
+    queryFn: () => api.getAppStats(appId, token),
     refetchInterval: pollInterval,
     refetchIntervalInBackground: false,
     retry: 1,

@@ -12,10 +12,11 @@ function formatDate(dateStr: string): string {
 interface OutletContext {
   app: App;
   deployments: Deployment[];
+  token: string;
 }
 
 export default function AppGeneralTab() {
-  const { app, deployments } = useOutletContext<OutletContext>();
+  const { app, deployments, token } = useOutletContext<OutletContext>();
   const runningDeployment = deployments.find((d) => d.status === "running");
 
   return (
@@ -78,9 +79,9 @@ export default function AppGeneralTab() {
         </Card>
       </div>
 
-      <ResourceLimitsCard app={app} />
+      <ResourceLimitsCard app={app} token={token} />
 
-      {runningDeployment && <ResourceMonitor appId={app.id} />}
+      {runningDeployment && <ResourceMonitor appId={app.id} token={token} />}
     </div>
   );
 }

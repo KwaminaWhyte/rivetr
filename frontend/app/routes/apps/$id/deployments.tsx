@@ -57,6 +57,7 @@ function formatDate(dateStr: string): string {
 interface OutletContext {
   app: App;
   deployments: Deployment[];
+  token: string;
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -84,7 +85,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) {
-  const { app, deployments } = useOutletContext<OutletContext>();
+  const { app, deployments, token } = useOutletContext<OutletContext>();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
@@ -98,8 +99,8 @@ export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) 
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
     queryKey: ["deployment-logs", selectedDeploymentId],
     queryFn: async () => {
-      const response = await fetch(`/api/deployments/${selectedDeploymentId}/logs`);
-      return response.json();
+      const { api } = await import("@/lib/api");
+      return api.getDeploymentLogs(selectedDeploymentId!, token);
     },
     enabled: !!selectedDeploymentId && showBuildLogsDialog,
   });
@@ -312,6 +313,7 @@ export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) 
         <DeploymentLogs
           deploymentId={activeDeployment.id}
           isActive={isActiveDeployment(activeDeployment.status)}
+          token={token}
         />
       )}
 

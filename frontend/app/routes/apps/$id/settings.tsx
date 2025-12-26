@@ -34,6 +34,7 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
 
 interface OutletContext {
   app: App;
+  token: string;
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -80,7 +81,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
-  const { app } = useOutletContext<OutletContext>();
+  const { app, token } = useOutletContext<OutletContext>();
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -207,7 +208,7 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
       </Card>
 
       {/* Environment Variables */}
-      <EnvVarsTab appId={app.id} />
+      <EnvVarsTab appId={app.id} token={token} />
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

@@ -40,9 +40,10 @@ import type { EnvVar, CreateEnvVarRequest, UpdateEnvVarRequest } from "@/types/a
 
 interface EnvVarsTabProps {
   appId: string;
+  token: string;
 }
 
-export function EnvVarsTab({ appId }: EnvVarsTabProps) {
+export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
   const queryClient = useQueryClient();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -62,12 +63,12 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
     error,
   } = useQuery<EnvVar[]>({
     queryKey: ["env-vars", appId],
-    queryFn: () => api.getEnvVars(appId, false),
+    queryFn: () => api.getEnvVars(appId, false, token),
   });
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: (data: CreateEnvVarRequest) => api.createEnvVar(appId, data),
+    mutationFn: (data: CreateEnvVarRequest) => api.createEnvVar(appId, data, token),
     onSuccess: () => {
       toast.success("Environment variable created");
       queryClient.invalidateQueries({ queryKey: ["env-vars", appId] });
@@ -88,7 +89,7 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: ({ key, data }: { key: string; data: UpdateEnvVarRequest }) =>
-      api.updateEnvVar(appId, key, data),
+      api.updateEnvVar(appId, key, data, token),
     onSuccess: () => {
       toast.success("Environment variable updated");
       queryClient.invalidateQueries({ queryKey: ["env-vars", appId] });
@@ -110,7 +111,7 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: (key: string) => api.deleteEnvVar(appId, key),
+    mutationFn: (key: string) => api.deleteEnvVar(appId, key, token),
     onSuccess: () => {
       toast.success("Environment variable deleted");
       queryClient.invalidateQueries({ queryKey: ["env-vars", appId] });
@@ -124,7 +125,7 @@ export function EnvVarsTab({ appId }: EnvVarsTabProps) {
 
   // Reveal secret value
   const revealMutation = useMutation({
-    mutationFn: (key: string) => api.getEnvVar(appId, key, true),
+    mutationFn: (key: string) => api.getEnvVar(appId, key, true, token),
     onSuccess: (data) => {
       // Update the revealed state
       setRevealedKeys((prev) => new Set(prev).add(data.key));

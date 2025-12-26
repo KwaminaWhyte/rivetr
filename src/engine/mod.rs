@@ -1,5 +1,7 @@
+mod cleanup;
 mod pipeline;
 
+pub use cleanup::*;
 pub use pipeline::*;
 
 use arc_swap::ArcSwap;
