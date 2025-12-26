@@ -334,12 +334,12 @@
 - [ ] **T3.5.6** Trigger notifications on deployment events
 - [ ] **T3.5.7** Add notification preferences UI
 
-### 3.6 Container Shell Access
+### 3.6 Container Shell Access ✅ COMPLETE
 
-- [ ] **T3.6.1** Implement container exec in runtime trait
-- [ ] **T3.6.2** Add WebSocket terminal endpoint
-- [ ] **T3.6.3** Create terminal UI component (xterm.js)
-- [ ] **T3.6.4** Add shell access button to app detail
+- [x] **T3.6.1** Implement container exec in runtime trait
+- [x] **T3.6.2** Add WebSocket terminal endpoint
+- [x] **T3.6.3** Create terminal UI component (xterm.js)
+- [x] **T3.6.4** Add shell access button to app detail
 
 ### 3.7 Volumes Management
 
@@ -367,6 +367,61 @@
 
 **Phase 3 Checkpoint**: Full-featured PaaS with monitoring and team support
 
+### 3.10 Advanced Build Options (Coolify-inspired)
+
+- [ ] **T3.10.1** Add `dockerfile_path` field to apps (custom Dockerfile location)
+- [ ] **T3.10.2** Add `base_directory` field (build context path)
+- [ ] **T3.10.3** Add `build_target` field (Docker multi-stage build target)
+- [ ] **T3.10.4** Add `watch_paths` field (auto-deploy on specific paths changed)
+- [ ] **T3.10.5** Add `custom_docker_options` field (extra docker build/run args)
+- [ ] **T3.10.6** Create Build Options section in app settings UI
+
+### 3.11 Network Configuration (Coolify-inspired)
+
+- [ ] **T3.11.1** Add `port_mappings` field (host:container port pairs)
+- [ ] **T3.11.2** Add `network_aliases` field (container network aliases)
+- [ ] **T3.11.3** Support multiple exposed ports per app
+- [ ] **T3.11.4** Create Network Configuration section in app settings UI
+
+### 3.12 HTTP Basic Auth (Coolify-inspired)
+
+- [ ] **T3.12.1** Add `basic_auth_enabled` field to apps
+- [ ] **T3.12.2** Add `basic_auth_username` and `basic_auth_password` fields
+- [ ] **T3.12.3** Implement basic auth middleware in proxy
+- [ ] **T3.12.4** Create Basic Auth toggle in app settings UI
+
+### 3.13 Pre/Post Deployment Commands (Coolify-inspired)
+
+- [ ] **T3.13.1** Add `pre_deploy_commands` field (JSON array)
+- [ ] **T3.13.2** Add `post_deploy_commands` field (JSON array)
+- [ ] **T3.13.3** Execute pre-deploy commands before container start
+- [ ] **T3.13.4** Execute post-deploy commands after container healthy
+- [ ] **T3.13.5** Log command outputs to deployment logs
+- [ ] **T3.13.6** Create Deployment Commands section in app settings UI
+
+### 3.14 Domain Management (Coolify-inspired)
+
+- [ ] **T3.14.1** Add `domains` field (JSON array for multiple domains)
+- [ ] **T3.14.2** Implement auto-generate subdomain feature
+- [ ] **T3.14.3** Support www/non-www redirect options
+- [ ] **T3.14.4** Create Domain Management section in app settings UI
+- [ ] **T3.14.5** Auto-provision SSL for all domains
+
+### 3.15 Container Labels (Coolify-inspired)
+
+- [ ] **T3.15.1** Add `container_labels` field (JSON object)
+- [ ] **T3.15.2** Apply custom labels to containers at runtime
+- [ ] **T3.15.3** Create Container Labels editor in app settings UI
+- [ ] **T3.15.4** Add default label templates (Traefik, Caddy)
+
+### 3.16 Docker Registry Support (Coolify-inspired)
+
+- [ ] **T3.16.1** Add `docker_image` field (pull from registry instead of building)
+- [ ] **T3.16.2** Add `docker_image_tag` field
+- [ ] **T3.16.3** Add registry authentication (username/password)
+- [ ] **T3.16.4** Support for private registries (Docker Hub, GHCR, etc.)
+- [ ] **T3.16.5** Create Docker Registry section in app settings UI
+
 ---
 
 ## Competitive Research: Coolify & Dokploy
@@ -390,7 +445,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [ ] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml
 - [ ] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.)
 - [ ] **Pull request preview deployments** - Auto-deploy PRs with unique URLs
-- [ ] **Browser terminal** - In-browser shell access to containers (xterm.js)
+- [x] **Browser terminal** - In-browser shell access to containers (xterm.js) ✅ IMPLEMENTED
 - [ ] **Repository browser** - Select repos from connected Git providers in app creation
 
 **Medium Priority:**
@@ -423,8 +478,8 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 9 | 32% |
-| Phase 3 | 42 | 17 | 40% |
-| **Total** | **188** | **140** | **74%** |
+| Phase 3 | 83 | 21 | 25% |
+| **Total** | **229** | **144** | **63%** |
 
 ---
 
@@ -434,13 +489,13 @@ Research conducted to identify feature gaps and improvement opportunities.
 1. **T2.1.3** - Add CSRF tokens for UI forms
 2. **T2.2.2** - Add deployment failure recovery
 3. **T2.3.3** - Add build resource limits
-4. **T2.3.5** - Implement old deployment cleanup
 
-**Phase 3 - Enhanced Features:**
-5. **T3.1.4** - Add tags/labels to apps
-6. **T3.3.2** - Store metrics history in SQLite
-7. **T3.4.1** - Parse PR events for preview deployments
-8. **T3.6.1** - Implement container shell access (browser terminal)
+**Phase 3 - Enhanced Features (Coolify-inspired):**
+4. **T3.10.1-6** - Advanced Build Options (dockerfile_path, base_directory, build_target)
+5. **T3.13.1-6** - Pre/Post Deployment Commands
+6. **T3.14.1-5** - Domain Management (multiple domains, auto-generate subdomain)
+7. **T3.11.1-4** - Network Configuration (port mappings, aliases)
+8. **T3.4.1** - Parse PR events for preview deployments
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -471,3 +526,15 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Consistent Error Responses** - ApiError with ErrorCode enum
 - **Prometheus Metrics** - /metrics endpoint with request/deployment counters
 - **React Router Framework Mode** - Full SSR with server loaders, cookie-based sessions, dynamic imports
+- **Browser Terminal** - xterm.js-based shell access to running containers
+- **Deployment Cleanup** - Automatic cleanup of old deployments and images
+- **WebSocket Authentication** - Token-based auth for log streaming and terminal
+
+### Planned Features (Coolify-inspired)
+- **Advanced Build Options** - Custom Dockerfile path, base directory, build targets, watch paths
+- **Pre/Post Deployment Commands** - Execute commands before/after container starts
+- **Domain Management** - Multiple domains per app, auto-generate subdomains, www redirects
+- **Network Configuration** - Port mappings, network aliases, multiple exposed ports
+- **HTTP Basic Auth** - Protect apps with basic authentication
+- **Container Labels** - Custom labels for Traefik/Caddy integration
+- **Docker Registry** - Pull images from registries instead of building
