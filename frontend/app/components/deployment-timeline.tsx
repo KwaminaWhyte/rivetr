@@ -295,11 +295,16 @@ function TimelineItem({
                   </div>
                 )}
 
-                {/* Error message preview */}
+                {/* Error message - always show full error for failed deployments */}
                 {deployment.status === "failed" && deployment.error_message && (
-                  <div className="mt-2 flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
-                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <span className="line-clamp-2">{deployment.error_message}</span>
+                  <div className="mt-3 p-3 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                    <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <span className="font-medium">Error: </span>
+                        <span className="break-words">{deployment.error_message}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

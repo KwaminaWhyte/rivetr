@@ -52,7 +52,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { EnvironmentBadge } from "@/components/environment-badge";
+import { Badge } from "@/components/ui/badge";
 import type { App, ProjectWithApps, UpdateProjectRequest } from "@/types/api";
+
+// Status badge component
+function StatusBadge({ status }: { status: string }) {
+  const variants: Record<string, { className: string; label: string }> = {
+    running: { className: "bg-green-500 text-white", label: "Running" },
+    stopped: { className: "bg-gray-500 text-white", label: "Stopped" },
+    not_deployed: { className: "bg-gray-400 text-white", label: "Not Deployed" },
+    failed: { className: "bg-red-500 text-white", label: "Failed" },
+    building: { className: "bg-blue-500 text-white", label: "Building" },
+    pending: { className: "bg-yellow-500 text-white", label: "Pending" },
+  };
+  const variant = variants[status] || variants.stopped;
+  return <Badge className={variant.className}>{variant.label}</Badge>;
+}
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { requireAuth } = await import("@/lib/session.server");
@@ -63,7 +78,21 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     api.getProject(token, params.id!),
     api.getApps(token).catch(() => []),
   ]);
-  return { project, allApps };
+
+  // Get app statuses for apps in this project
+  const appStatuses: Record<string, string> = {};
+  await Promise.all(
+    project.apps.map(async (app) => {
+      try {
+        const status = await api.getAppStatus(token, app.id);
+        appStatuses[app.id] = status.status;
+      } catch {
+        appStatuses[app.id] = "stopped";
+      }
+    })
+  );
+
+  return { project, allApps, appStatuses };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -277,6 +306,7 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Environment</TableHead>
                   <TableHead>Repository</TableHead>
                   <TableHead>Domain</TableHead>
@@ -287,6 +317,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {project.apps.map((app) => (
                   <TableRow key={app.id}>
                     <TableCell className="font-medium">{app.name}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={loaderData.appStatuses?.[app.id] || "stopped"} />
+                    </TableCell>
                     <TableCell>
                       <EnvironmentBadge environment={app.environment} />
                     </TableCell>

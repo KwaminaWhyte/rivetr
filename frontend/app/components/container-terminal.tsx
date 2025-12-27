@@ -202,8 +202,8 @@ export function ContainerTerminal({ appId, token }: ContainerTerminalProps) {
   }, [appId, token]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg">
+    <div className="flex flex-col" style={{ height: "450px" }}>
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-red-500" />
@@ -233,8 +233,7 @@ export function ContainerTerminal({ appId, token }: ContainerTerminalProps) {
       </div>
       <div
         ref={terminalRef}
-        className="flex-1 bg-[#1a1a2e] rounded-b-lg p-2 min-h-[400px]"
-        style={{ minHeight: "400px" }}
+        className="flex-1 bg-[#1a1a2e] rounded-b-lg p-2 overflow-hidden"
       >
         {isLoading && (
           <div className="flex items-center justify-center h-full text-gray-400">

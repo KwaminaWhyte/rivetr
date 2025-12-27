@@ -66,26 +66,30 @@ export async function action({ request, params }: Route.ActionArgs) {
     const healthcheck = formData.get("healthcheck");
     const environment = formData.get("environment");
 
-    if (typeof name === "string") updates.name = name;
-    if (typeof git_url === "string") updates.git_url = git_url;
-    if (typeof branch === "string") updates.branch = branch;
-    if (typeof dockerfile === "string") updates.dockerfile = dockerfile;
-    if (typeof port === "string") updates.port = parseInt(port) || undefined;
-    if (typeof healthcheck === "string") updates.healthcheck = healthcheck || undefined;
-    if (typeof environment === "string") updates.environment = environment as AppEnvironment;
+    // For required fields, only set if present
+    if (typeof name === "string" && name) updates.name = name;
+    if (typeof git_url === "string" && git_url) updates.git_url = git_url;
+    if (typeof branch === "string" && branch) updates.branch = branch;
+    if (typeof dockerfile === "string" && dockerfile) updates.dockerfile = dockerfile;
+    if (typeof port === "string" && port) updates.port = parseInt(port);
+    if (typeof environment === "string" && environment) updates.environment = environment as AppEnvironment;
 
-    // Advanced build options
+    // For optional fields, send empty string to clear, or the value to set
+    // Don't include the field at all if not present in form
+    if (typeof healthcheck === "string") updates.healthcheck = healthcheck; // Empty string means clear
+
+    // Advanced build options - same pattern: empty string means clear
     const dockerfile_path = formData.get("dockerfile_path");
     const base_directory = formData.get("base_directory");
     const build_target = formData.get("build_target");
     const watch_paths = formData.get("watch_paths");
     const custom_docker_options = formData.get("custom_docker_options");
 
-    if (typeof dockerfile_path === "string") updates.dockerfile_path = dockerfile_path || undefined;
-    if (typeof base_directory === "string") updates.base_directory = base_directory || undefined;
-    if (typeof build_target === "string") updates.build_target = build_target || undefined;
-    if (typeof watch_paths === "string") updates.watch_paths = watch_paths || undefined;
-    if (typeof custom_docker_options === "string") updates.custom_docker_options = custom_docker_options || undefined;
+    if (typeof dockerfile_path === "string") updates.dockerfile_path = dockerfile_path;
+    if (typeof base_directory === "string") updates.base_directory = base_directory;
+    if (typeof build_target === "string") updates.build_target = build_target;
+    if (typeof watch_paths === "string") updates.watch_paths = watch_paths;
+    if (typeof custom_docker_options === "string") updates.custom_docker_options = custom_docker_options;
 
     try {
       await api.updateApp(token, params.id!, updates);

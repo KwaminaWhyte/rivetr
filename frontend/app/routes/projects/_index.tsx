@@ -39,7 +39,33 @@ export async function loader({ request }: Route.LoaderArgs) {
     projectList.map((p) => api.getProject(token, p.id).catch(() => ({ ...p, apps: [] })))
   );
 
-  return { projects: projectsWithApps, apps };
+  // Get app statuses (latest deployment status for each app)
+  const appStatuses: Record<string, DeploymentStatus> = {};
+  await Promise.all(
+    apps.map(async (app) => {
+      try {
+        const status = await api.getAppStatus(token, app.id);
+        // Map AppStatus.status to DeploymentStatus
+        if (status.status === "running") {
+          appStatuses[app.id] = "running";
+        } else if (status.status === "stopped") {
+          appStatuses[app.id] = "stopped";
+        } else {
+          // For not_deployed, no_container, not_found - check latest deployment
+          const deployments = await api.getDeployments(token, app.id).catch(() => []);
+          if (deployments.length > 0) {
+            appStatuses[app.id] = deployments[0].status as DeploymentStatus;
+          } else {
+            appStatuses[app.id] = "stopped";
+          }
+        }
+      } catch {
+        appStatuses[app.id] = "stopped";
+      }
+    })
+  );
+
+  return { projects: projectsWithApps, apps, appStatuses };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -107,14 +133,8 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
     initialData: loaderData.apps,
   });
 
-  // Build app status map
-  const appStatuses = useMemo(() => {
-    const statusMap: Record<string, DeploymentStatus> = {};
-    for (const app of apps) {
-      statusMap[app.id] = app.domain ? "running" : "stopped";
-    }
-    return statusMap;
-  }, [apps]);
+  // Use real app statuses from loader
+  const appStatuses = loaderData.appStatuses || {};
 
   // Filter projects by tab
   const filteredProjects = useMemo(() => {

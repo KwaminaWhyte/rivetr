@@ -341,6 +341,33 @@ pub async fn create_app(
     Ok((StatusCode::CREATED, Json(app)))
 }
 
+/// Helper to merge optional string values
+/// - None means "don't change" -> keep existing
+/// - Some("") means "clear" -> set to None
+/// - Some(value) means "set" -> use the value
+fn merge_optional_string(new_val: &Option<String>, existing: &Option<String>) -> Option<String> {
+    match new_val {
+        Some(s) if s.is_empty() => None, // Explicit clear
+        Some(s) => Some(s.clone()),      // New value
+        None => existing.clone(),        // Keep existing
+    }
+}
+
+/// Helper to merge optional vectors (serialized as JSON)
+/// - None means "don't change"
+/// - Some(empty vec) means "clear"
+/// - Some(vec) means "set"
+fn merge_optional_json<T: serde::Serialize>(
+    new_val: &Option<Vec<T>>,
+    existing: &Option<String>,
+) -> Option<String> {
+    match new_val {
+        Some(v) if v.is_empty() => None, // Explicit clear
+        Some(v) => serde_json::to_string(v).ok(), // New value
+        None => existing.clone(), // Keep existing
+    }
+}
+
 pub async fn update_app(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -354,8 +381,8 @@ pub async fn update_app(
     // Validate request
     validate_update_request(&req)?;
 
-    // Check if app exists
-    let _existing = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+    // Check if app exists and get current values for merging
+    let existing = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
         .await?
@@ -363,88 +390,95 @@ pub async fn update_app(
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Convert environment enum to string for binding
-    let environment_str = req.environment.as_ref().map(|e| e.to_string());
+    // Merge all values - for optional fields, empty string means "clear"
+    let name = req.name.clone().unwrap_or(existing.name.clone());
+    let git_url = req.git_url.clone().unwrap_or(existing.git_url.clone());
+    let branch = req.branch.clone().unwrap_or(existing.branch.clone());
+    let dockerfile = req.dockerfile.clone().unwrap_or(existing.dockerfile.clone());
+    let port = req.port.unwrap_or(existing.port);
+    let environment = req
+        .environment
+        .as_ref()
+        .map(|e| e.to_string())
+        .unwrap_or(existing.environment.clone());
 
-    // Serialize network configuration to JSON strings
-    let port_mappings_json = req
-        .port_mappings
-        .as_ref()
-        .map(|pm| serde_json::to_string(pm).unwrap_or_default());
-    let network_aliases_json = req
-        .network_aliases
-        .as_ref()
-        .map(|na| serde_json::to_string(na).unwrap_or_default());
-    let extra_hosts_json = req
-        .extra_hosts
-        .as_ref()
-        .map(|eh| serde_json::to_string(eh).unwrap_or_default());
-    let pre_deploy_commands_json = req
-        .pre_deploy_commands
-        .as_ref()
-        .map(|c| serde_json::to_string(c).unwrap_or_default());
-    let post_deploy_commands_json = req
-        .post_deploy_commands
-        .as_ref()
-        .map(|c| serde_json::to_string(c).unwrap_or_default());
-    let domains_json = req
-        .domains
-        .as_ref()
-        .map(|d| serde_json::to_string(d).unwrap_or_default());
+    // Optional fields - can be cleared with empty string
+    let domain = merge_optional_string(&req.domain, &existing.domain);
+    let healthcheck = merge_optional_string(&req.healthcheck, &existing.healthcheck);
+    let memory_limit = merge_optional_string(&req.memory_limit, &existing.memory_limit);
+    let cpu_limit = merge_optional_string(&req.cpu_limit, &existing.cpu_limit);
+    let ssh_key_id = merge_optional_string(&req.ssh_key_id, &existing.ssh_key_id);
+    let project_id = merge_optional_string(&req.project_id, &existing.project_id);
+    let dockerfile_path = merge_optional_string(&req.dockerfile_path, &existing.dockerfile_path);
+    let base_directory = merge_optional_string(&req.base_directory, &existing.base_directory);
+    let build_target = merge_optional_string(&req.build_target, &existing.build_target);
+    let watch_paths = merge_optional_string(&req.watch_paths, &existing.watch_paths);
+    let custom_docker_options =
+        merge_optional_string(&req.custom_docker_options, &existing.custom_docker_options);
+
+    // JSON array fields - can be cleared with empty array
+    let port_mappings = merge_optional_json(&req.port_mappings, &existing.port_mappings);
+    let network_aliases = merge_optional_json(&req.network_aliases, &existing.network_aliases);
+    let extra_hosts = merge_optional_json(&req.extra_hosts, &existing.extra_hosts);
+    let pre_deploy_commands =
+        merge_optional_json(&req.pre_deploy_commands, &existing.pre_deploy_commands);
+    let post_deploy_commands =
+        merge_optional_json(&req.post_deploy_commands, &existing.post_deploy_commands);
+    let domains = merge_optional_json(&req.domains, &existing.domains);
 
     sqlx::query(
         r#"
         UPDATE apps SET
-            name = COALESCE(?, name),
-            git_url = COALESCE(?, git_url),
-            branch = COALESCE(?, branch),
-            dockerfile = COALESCE(?, dockerfile),
-            domain = COALESCE(?, domain),
-            port = COALESCE(?, port),
-            healthcheck = COALESCE(?, healthcheck),
-            memory_limit = COALESCE(?, memory_limit),
-            cpu_limit = COALESCE(?, cpu_limit),
-            ssh_key_id = COALESCE(?, ssh_key_id),
-            environment = COALESCE(?, environment),
-            project_id = COALESCE(?, project_id),
-            dockerfile_path = COALESCE(?, dockerfile_path),
-            base_directory = COALESCE(?, base_directory),
-            build_target = COALESCE(?, build_target),
-            watch_paths = COALESCE(?, watch_paths),
-            custom_docker_options = COALESCE(?, custom_docker_options),
-            port_mappings = COALESCE(?, port_mappings),
-            network_aliases = COALESCE(?, network_aliases),
-            extra_hosts = COALESCE(?, extra_hosts),
-            pre_deploy_commands = COALESCE(?, pre_deploy_commands),
-            post_deploy_commands = COALESCE(?, post_deploy_commands),
-            domains = COALESCE(?, domains),
+            name = ?,
+            git_url = ?,
+            branch = ?,
+            dockerfile = ?,
+            domain = ?,
+            port = ?,
+            healthcheck = ?,
+            memory_limit = ?,
+            cpu_limit = ?,
+            ssh_key_id = ?,
+            environment = ?,
+            project_id = ?,
+            dockerfile_path = ?,
+            base_directory = ?,
+            build_target = ?,
+            watch_paths = ?,
+            custom_docker_options = ?,
+            port_mappings = ?,
+            network_aliases = ?,
+            extra_hosts = ?,
+            pre_deploy_commands = ?,
+            post_deploy_commands = ?,
+            domains = ?,
             updated_at = ?
         WHERE id = ?
         "#,
     )
-    .bind(&req.name)
-    .bind(&req.git_url)
-    .bind(&req.branch)
-    .bind(&req.dockerfile)
-    .bind(&req.domain)
-    .bind(req.port)
-    .bind(&req.healthcheck)
-    .bind(&req.memory_limit)
-    .bind(&req.cpu_limit)
-    .bind(&req.ssh_key_id)
-    .bind(&environment_str)
-    .bind(&req.project_id)
-    .bind(&req.dockerfile_path)
-    .bind(&req.base_directory)
-    .bind(&req.build_target)
-    .bind(&req.watch_paths)
-    .bind(&req.custom_docker_options)
-    .bind(&port_mappings_json)
-    .bind(&network_aliases_json)
-    .bind(&extra_hosts_json)
-    .bind(&pre_deploy_commands_json)
-    .bind(&post_deploy_commands_json)
-    .bind(&domains_json)
+    .bind(&name)
+    .bind(&git_url)
+    .bind(&branch)
+    .bind(&dockerfile)
+    .bind(&domain)
+    .bind(port)
+    .bind(&healthcheck)
+    .bind(&memory_limit)
+    .bind(&cpu_limit)
+    .bind(&ssh_key_id)
+    .bind(&environment)
+    .bind(&project_id)
+    .bind(&dockerfile_path)
+    .bind(&base_directory)
+    .bind(&build_target)
+    .bind(&watch_paths)
+    .bind(&custom_docker_options)
+    .bind(&port_mappings)
+    .bind(&network_aliases)
+    .bind(&extra_hosts)
+    .bind(&pre_deploy_commands)
+    .bind(&post_deploy_commands)
+    .bind(&domains)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
@@ -514,9 +548,9 @@ pub async fn get_app_status(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    // Get the latest successful deployment
+    // Get the latest running deployment
     let deployment: Option<(String,)> = sqlx::query_as(
-        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -561,9 +595,9 @@ pub async fn start_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    // Get the latest successful deployment
+    // Get the latest running or stopped deployment with a container
     let deployment: Option<(String,)> = sqlx::query_as(
-        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1"
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -571,7 +605,7 @@ pub async fn start_app(
 
     let container_id = deployment
         .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
-        .ok_or_else(|| ApiError::bad_request("No successful deployment found. Deploy the app first."))?;
+        .ok_or_else(|| ApiError::bad_request("No deployment with container found. Deploy the app first."))?;
 
     // Start the container
     state.runtime.start(&container_id).await.map_err(|e| {
@@ -626,9 +660,9 @@ pub async fn stop_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    // Get the latest successful deployment
+    // Get the latest running deployment with a container
     let deployment: Option<(String,)> = sqlx::query_as(
-        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'running' AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1"
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -636,7 +670,7 @@ pub async fn stop_app(
 
     let container_id = deployment
         .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
-        .ok_or_else(|| ApiError::bad_request("No successful deployment found"))?;
+        .ok_or_else(|| ApiError::bad_request("No running deployment found"))?;
 
     // Stop the container
     state.runtime.stop(&container_id).await.map_err(|e| {

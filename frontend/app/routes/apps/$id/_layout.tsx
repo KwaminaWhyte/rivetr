@@ -5,10 +5,44 @@ import type { Route } from "./+types/_layout";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
 import type { App, AppStatus, Deployment, DeploymentStatus } from "@/types/api";
-import { Play, Square } from "lucide-react";
+import { Play, Square, Circle } from "lucide-react";
+
+// Running status badge component
+function RunningStatusBadge({ status }: { status?: AppStatus }) {
+  if (!status) return null;
+
+  if (status.running) {
+    return (
+      <Badge className="bg-green-500 text-white gap-1">
+        <Circle className="h-2 w-2 fill-current" />
+        Running
+      </Badge>
+    );
+  }
+
+  if (status.status === "stopped") {
+    return (
+      <Badge variant="secondary" className="gap-1">
+        <Circle className="h-2 w-2" />
+        Stopped
+      </Badge>
+    );
+  }
+
+  if (status.status === "not_deployed") {
+    return (
+      <Badge variant="outline" className="gap-1 text-muted-foreground">
+        Not Deployed
+      </Badge>
+    );
+  }
+
+  return null;
+}
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -170,6 +204,7 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold">{app.name}</h1>
             <EnvironmentBadge environment={app.environment} />
+            <RunningStatusBadge status={appStatus} />
             {hasActiveDeployment && (
               <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
                 <span className="relative flex h-2 w-2">
