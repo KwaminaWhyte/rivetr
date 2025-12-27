@@ -3,6 +3,7 @@
 
 import type {
   App,
+  BasicAuthStatus,
   ContainerStats,
   CreateEnvVarRequest,
   Deployment,
@@ -14,6 +15,7 @@ import type {
   SshKey,
   SystemStats,
   UpdateAppRequest,
+  UpdateBasicAuthRequest,
   UpdateEnvVarRequest,
 } from "@/types/api";
 
@@ -119,6 +121,27 @@ export const api = {
   deleteEnvVar: (appId: string, key: string, token?: string) =>
     apiRequest<void>(
       `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  // HTTP Basic Auth
+  getBasicAuth: (appId: string, token?: string) =>
+    apiRequest<BasicAuthStatus>(`/apps/${appId}/basic-auth`, {}, token),
+  updateBasicAuth: (appId: string, data: UpdateBasicAuthRequest, token?: string) =>
+    apiRequest<BasicAuthStatus>(
+      `/apps/${appId}/basic-auth`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteBasicAuth: (appId: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/basic-auth`,
       {
         method: "DELETE",
       },

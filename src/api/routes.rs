@@ -24,6 +24,7 @@ pub struct RouteInfo {
     pub healthy: bool,
     pub healthcheck_path: Option<String>,
     pub failure_count: u32,
+    pub basic_auth_enabled: bool,
 }
 
 impl From<(String, Backend)> for RouteInfo {
@@ -36,6 +37,7 @@ impl From<(String, Backend)> for RouteInfo {
             healthy: backend.healthy,
             healthcheck_path: backend.healthcheck_path,
             failure_count: backend.failure_count,
+            basic_auth_enabled: backend.basic_auth.enabled,
         }
     }
 }

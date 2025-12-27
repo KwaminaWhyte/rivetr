@@ -1,5 +1,6 @@
 mod apps;
 pub mod auth;
+mod basic_auth;
 mod deployments;
 mod env_vars;
 pub mod error;
@@ -75,6 +76,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
         .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
         .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
+        // HTTP Basic Auth
+        .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
+        .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
+        .route("/apps/:id/basic-auth", delete(basic_auth::delete_basic_auth))
         // Routes (proxy management)
         .route("/routes", get(routes::list_routes))
         .route("/routes", post(routes::add_route))

@@ -1,5 +1,25 @@
 export type AppEnvironment = "development" | "staging" | "production";
 
+/** Port mapping configuration for containers */
+export interface PortMapping {
+  /** Host port to bind (0 for auto-assign) */
+  host_port: number;
+  /** Container port to expose */
+  container_port: number;
+  /** Protocol (tcp or udp) */
+  protocol: string;
+}
+
+/** Domain configuration for an application */
+export interface Domain {
+  /** The domain name (e.g., "example.com") */
+  domain: string;
+  /** Whether this is the primary domain for the app */
+  primary: boolean;
+  /** Whether to redirect www to non-www (or vice versa) */
+  redirect_www: boolean;
+}
+
 export interface App {
   id: string;
   name: string;
@@ -13,8 +33,39 @@ export interface App {
   cpu_limit: string | null;
   environment: AppEnvironment;
   project_id: string | null;
+  // Advanced build options
+  dockerfile_path: string | null;
+  base_directory: string | null;
+  build_target: string | null;
+  watch_paths: string | null;
+  custom_docker_options: string | null;
+  // Network configuration (stored as JSON strings)
+  port_mappings: string | null;
+  network_aliases: string | null;
+  extra_hosts: string | null;
+  // HTTP Basic Auth
+  basic_auth_enabled: boolean;
+  basic_auth_username: string | null;
+  // Deployment commands (stored as JSON strings)
+  pre_deploy_commands: string | null;
+  post_deploy_commands: string | null;
+  // Domain management (stored as JSON string)
+  domains: string | null;
+  auto_subdomain: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// HTTP Basic Auth
+export interface BasicAuthStatus {
+  enabled: boolean;
+  username: string | null;
+}
+
+export interface UpdateBasicAuthRequest {
+  enabled: boolean;
+  username?: string;
+  password?: string;
 }
 
 // Project types
@@ -82,6 +133,21 @@ export interface CreateAppRequest {
   memory_limit?: string;
   environment?: AppEnvironment;
   project_id?: string;
+  // Advanced build options
+  dockerfile_path?: string;
+  base_directory?: string;
+  build_target?: string;
+  watch_paths?: string;
+  custom_docker_options?: string;
+  // Network configuration
+  port_mappings?: PortMapping[];
+  network_aliases?: string[];
+  extra_hosts?: string[];
+  // Deployment commands
+  pre_deploy_commands?: string[];
+  post_deploy_commands?: string[];
+  // Domain management
+  domains?: Domain[];
 }
 
 export interface UpdateAppRequest {
@@ -97,6 +163,21 @@ export interface UpdateAppRequest {
   memory_limit?: string;
   environment?: AppEnvironment;
   project_id?: string | null;
+  // Advanced build options
+  dockerfile_path?: string;
+  base_directory?: string;
+  build_target?: string;
+  watch_paths?: string;
+  custom_docker_options?: string;
+  // Network configuration
+  port_mappings?: PortMapping[];
+  network_aliases?: string[];
+  extra_hosts?: string[];
+  // Deployment commands
+  pre_deploy_commands?: string[];
+  post_deploy_commands?: string[];
+  // Domain management
+  domains?: Domain[];
 }
 
 export interface SshKey {

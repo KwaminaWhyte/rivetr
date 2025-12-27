@@ -20,16 +20,48 @@ pub struct BuildContext {
     pub dockerfile: String,
     pub tag: String,
     pub build_args: Vec<(String, String)>,
+    /// Docker multi-stage build target (--target flag)
+    pub build_target: Option<String>,
+    /// Custom Docker build options (extra CLI args)
+    pub custom_options: Option<String>,
+}
+
+/// Port mapping for container networking
+#[derive(Debug, Clone)]
+pub struct PortMapping {
+    /// Host port to bind (0 for auto-assign)
+    pub host_port: u16,
+    /// Container port to expose
+    pub container_port: u16,
+    /// Protocol (tcp or udp)
+    pub protocol: String,
+}
+
+impl PortMapping {
+    pub fn new(host_port: u16, container_port: u16) -> Self {
+        Self {
+            host_port,
+            container_port,
+            protocol: "tcp".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
     pub image: String,
     pub name: String,
+    /// Primary port (legacy, used if port_mappings is empty)
     pub port: u16,
     pub env: Vec<(String, String)>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
+    /// Additional port mappings
+    pub port_mappings: Vec<PortMapping>,
+    /// Network aliases for the container
+    pub network_aliases: Vec<String>,
+    /// Extra hosts entries (hostname:ip format)
+    pub extra_hosts: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +130,17 @@ pub struct ExecHandle {
     pub resize_tx: mpsc::Sender<TtySize>,
 }
 
+/// Result of running a command in a container
+#[derive(Debug, Clone)]
+pub struct CommandResult {
+    /// Exit code of the command (0 = success)
+    pub exit_code: i32,
+    /// Combined stdout output
+    pub stdout: String,
+    /// Combined stderr output
+    pub stderr: String,
+}
+
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
@@ -117,6 +160,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn prune_images(&self) -> Result<u64>;
     /// Execute a command in a running container with bidirectional I/O
     async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle>;
+    /// Run a command in a container and wait for completion, returning the output
+    async fn run_command(&self, container_id: &str, cmd: Vec<String>) -> Result<CommandResult>;
 }
 
 /// A no-op runtime used when no container runtime is available
@@ -158,6 +203,9 @@ impl ContainerRuntime for NoopRuntime {
         anyhow::bail!("No container runtime available")
     }
     async fn exec(&self, _config: &ExecConfig) -> Result<ExecHandle> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn run_command(&self, _container_id: &str, _cmd: Vec<String>) -> Result<CommandResult> {
         anyhow::bail!("No container runtime available")
     }
 }

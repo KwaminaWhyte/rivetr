@@ -3,10 +3,108 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::{App, SshKey};
-use crate::runtime::{BuildContext, ContainerRuntime, RunConfig};
+use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RunConfig};
 use crate::DbPool;
 
 use super::{add_deployment_log, update_deployment_status};
+
+/// Execute deployment commands (pre or post) in a container
+/// For pre-deploy: runs in a temporary container using the built image
+/// For post-deploy: runs in the running container using docker exec
+async fn execute_deployment_commands(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    container_id: &str,
+    commands: &[String],
+    phase: &str,
+) -> Result<()> {
+    if commands.is_empty() {
+        return Ok(());
+    }
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("Executing {} deployment commands ({} total)", phase, commands.len()),
+    )
+    .await?;
+
+    for (i, command) in commands.iter().enumerate() {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("[{}/{}] Running: {}", i + 1, commands.len(), command),
+        )
+        .await?;
+
+        // Execute command in container using shell
+        let cmd = vec!["/bin/sh".to_string(), "-c".to_string(), command.clone()];
+        let result = runtime.run_command(container_id, cmd).await?;
+
+        // Log command output
+        if !result.stdout.is_empty() {
+            // Truncate very long output
+            let stdout = if result.stdout.len() > 4000 {
+                format!("{}... (truncated)", &result.stdout[..4000])
+            } else {
+                result.stdout.clone()
+            };
+            add_deployment_log(db, deployment_id, "info", &format!("Output: {}", stdout.trim()))
+                .await?;
+        }
+
+        if !result.stderr.is_empty() {
+            let stderr = if result.stderr.len() > 4000 {
+                format!("{}... (truncated)", &result.stderr[..4000])
+            } else {
+                result.stderr.clone()
+            };
+            add_deployment_log(db, deployment_id, "warn", &format!("Stderr: {}", stderr.trim()))
+                .await?;
+        }
+
+        // Check exit code
+        if result.exit_code != 0 {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "error",
+                &format!(
+                    "Command failed with exit code {}: {}",
+                    result.exit_code, command
+                ),
+            )
+            .await?;
+            anyhow::bail!(
+                "{} command failed with exit code {}: {}",
+                phase,
+                result.exit_code,
+                command
+            );
+        }
+
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("[{}/{}] Command completed successfully", i + 1, commands.len()),
+        )
+        .await?;
+    }
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("All {} deployment commands completed", phase),
+    )
+    .await?;
+
+    Ok(())
+}
 
 /// Information about a successfully deployed container
 pub struct DeploymentResult {
@@ -37,13 +135,63 @@ pub async fn run_deployment(
     add_deployment_log(db, deployment_id, "info", "Building Docker image...").await?;
     update_deployment_status(db, deployment_id, "building", None).await?;
 
+    // Determine the actual build path (consider base_directory)
+    let build_path = if let Some(ref base_dir) = app.base_directory {
+        if !base_dir.is_empty() {
+            work_dir.join(base_dir)
+        } else {
+            work_dir.clone()
+        }
+    } else {
+        work_dir.clone()
+    };
+
+    // Determine the dockerfile to use (dockerfile_path takes precedence over dockerfile)
+    let dockerfile = app
+        .dockerfile_path
+        .as_ref()
+        .filter(|p| !p.is_empty())
+        .cloned()
+        .unwrap_or_else(|| app.dockerfile.clone());
+
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
     let build_ctx = BuildContext {
-        path: work_dir.to_string_lossy().to_string(),
-        dockerfile: app.dockerfile.clone(),
+        path: build_path.to_string_lossy().to_string(),
+        dockerfile,
         tag: image_tag.clone(),
         build_args: vec![],
+        build_target: app.build_target.clone(),
+        custom_options: app.custom_docker_options.clone(),
     };
+
+    // Log build options if any are set
+    if app.base_directory.is_some() || app.dockerfile_path.is_some() || app.build_target.is_some() {
+        let mut opts = vec![];
+        if let Some(ref base_dir) = app.base_directory {
+            if !base_dir.is_empty() {
+                opts.push(format!("base_directory={}", base_dir));
+            }
+        }
+        if let Some(ref df_path) = app.dockerfile_path {
+            if !df_path.is_empty() {
+                opts.push(format!("dockerfile_path={}", df_path));
+            }
+        }
+        if let Some(ref target) = app.build_target {
+            if !target.is_empty() {
+                opts.push(format!("target={}", target));
+            }
+        }
+        if !opts.is_empty() {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                &format!("Build options: {}", opts.join(", ")),
+            )
+            .await?;
+        }
+    }
 
     runtime.build(&build_ctx).await.context("Build failed")?;
     add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
@@ -66,6 +214,17 @@ pub async fn run_deployment(
     .await
     .unwrap_or_default();
 
+    // Parse network configuration from app
+    let port_mappings: Vec<PortMapping> = app
+        .get_port_mappings()
+        .into_iter()
+        .map(|pm| PortMapping {
+            host_port: pm.host_port,
+            container_port: pm.container_port,
+            protocol: pm.protocol,
+        })
+        .collect();
+
     let run_config = RunConfig {
         image: image_tag,
         name: container_name.clone(),
@@ -73,6 +232,9 @@ pub async fn run_deployment(
         env: env_vars,
         memory_limit: app.memory_limit.clone(),
         cpu_limit: app.cpu_limit.clone(),
+        port_mappings,
+        network_aliases: app.get_network_aliases(),
+        extra_hosts: app.get_extra_hosts(),
     };
 
     let container_id = runtime.run(&run_config).await.context("Failed to start container")?;
@@ -85,7 +247,30 @@ pub async fn run_deployment(
         .execute(db)
         .await?;
 
-    // Step 5: Health check
+    // Step 5: Execute pre-deploy commands (before health check)
+    let pre_deploy_commands = app.get_pre_deploy_commands();
+    if !pre_deploy_commands.is_empty() {
+        // Wait a brief moment for container to be ready
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        if let Err(e) = execute_deployment_commands(
+            db,
+            runtime.clone(),
+            deployment_id,
+            &container_id,
+            &pre_deploy_commands,
+            "pre",
+        )
+        .await
+        {
+            // Rollback: stop the container if pre-deploy commands fail
+            let _ = runtime.stop(&container_id).await;
+            let _ = runtime.remove(&container_id).await;
+            return Err(e);
+        }
+    }
+
+    // Step 6: Health check
     if let Some(healthcheck) = &app.healthcheck {
         add_deployment_log(db, deployment_id, "info", "Running health check...").await?;
         update_deployment_status(db, deployment_id, "checking", None).await?;
@@ -137,10 +322,36 @@ pub async fn run_deployment(
         add_deployment_log(db, deployment_id, "info", "Health check passed").await?;
     }
 
-    // Step 6: Get final container info for route update
+    // Step 7: Execute post-deploy commands (after health check)
+    let post_deploy_commands = app.get_post_deploy_commands();
+    if !post_deploy_commands.is_empty() {
+        if let Err(e) = execute_deployment_commands(
+            db,
+            runtime.clone(),
+            deployment_id,
+            &container_id,
+            &post_deploy_commands,
+            "post",
+        )
+        .await
+        {
+            // Log the error but don't rollback - container is already healthy
+            add_deployment_log(
+                db,
+                deployment_id,
+                "error",
+                &format!("Post-deploy command failed: {}. Container is running but commands did not complete.", e),
+            )
+            .await?;
+            // We don't rollback here because the container is healthy and running
+            // The user can fix the commands and redeploy
+        }
+    }
+
+    // Step 8: Get final container info for route update
     let final_info = runtime.inspect(&container_id).await?;
 
-    // Step 7: Done
+    // Step 9: Done
     add_deployment_log(db, deployment_id, "info", "Deployment completed successfully").await?;
     update_deployment_status(db, deployment_id, "running", None).await?;
 
@@ -332,6 +543,17 @@ pub async fn run_rollback(
     .await
     .unwrap_or_default();
 
+    // Parse network configuration from app
+    let port_mappings: Vec<PortMapping> = app
+        .get_port_mappings()
+        .into_iter()
+        .map(|pm| PortMapping {
+            host_port: pm.host_port,
+            container_port: pm.container_port,
+            protocol: pm.protocol,
+        })
+        .collect();
+
     let run_config = RunConfig {
         image: image_tag.clone(),
         name: container_name.clone(),
@@ -339,6 +561,9 @@ pub async fn run_rollback(
         env: env_vars,
         memory_limit: app.memory_limit.clone(),
         cpu_limit: app.cpu_limit.clone(),
+        port_mappings,
+        network_aliases: app.get_network_aliases(),
+        extra_hosts: app.get_extra_hosts(),
     };
 
     add_deployment_log(db, rollback_deployment_id, "info", "Starting rollback container...").await?;

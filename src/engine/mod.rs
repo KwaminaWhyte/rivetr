@@ -7,7 +7,7 @@ pub use pipeline::*;
 use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};
 use crate::db::App;
-use crate::proxy::{Backend, RouteTable};
+use crate::proxy::{Backend, BasicAuthConfig, RouteTable};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 use std::sync::Arc;
@@ -52,20 +52,77 @@ impl DeploymentEngine {
                         // Record successful deployment metric
                         record_deployment_success();
 
-                        // Update proxy routes on successful deployment
-                        if let Some(domain) = &app.domain {
-                            if let Some(port) = container_info.port {
-                                let backend = Backend::new(
+                        // Update proxy routes on successful deployment for all domains
+                        if let Some(port) = container_info.port {
+                            let all_domains = app.get_all_domain_names();
+                            let route_table = routes.load();
+
+                            // Helper to create backend with basic auth if configured
+                            let create_backend = || {
+                                let mut backend = Backend::new(
                                     container_info.container_id.clone(),
                                     "127.0.0.1".to_string(),
                                     port,
                                 )
                                 .with_healthcheck(app.healthcheck.clone());
-                                routes.load().add_route(domain.clone(), backend);
+
+                                // Configure HTTP Basic Auth if enabled
+                                if app.basic_auth_enabled != 0 {
+                                    if let (Some(username), Some(password_hash)) =
+                                        (&app.basic_auth_username, &app.basic_auth_password_hash)
+                                    {
+                                        backend.set_basic_auth(BasicAuthConfig::new(
+                                            username.clone(),
+                                            password_hash.clone(),
+                                        ));
+                                    }
+                                }
+                                backend
+                            };
+
+                            if !all_domains.is_empty() {
+                                // Log basic auth status once
+                                if app.basic_auth_enabled != 0 {
+                                    if let Some(username) = &app.basic_auth_username {
+                                        tracing::info!(
+                                            username = %username,
+                                            "HTTP Basic Auth enabled for app {}",
+                                            app.name
+                                        );
+                                    }
+                                }
+
+                                for domain in &all_domains {
+                                    route_table.add_route(domain.clone(), create_backend());
+                                }
+
+                                tracing::info!(
+                                    domains = ?all_domains,
+                                    port = port,
+                                    healthcheck = ?app.healthcheck,
+                                    basic_auth = app.basic_auth_enabled != 0,
+                                    "Proxy routes updated for app {}",
+                                    app.name
+                                );
+                            } else if let Some(domain) = &app.domain {
+                                // Fallback for legacy domain field only
+                                if app.basic_auth_enabled != 0 {
+                                    if let Some(username) = &app.basic_auth_username {
+                                        tracing::info!(
+                                            domain = %domain,
+                                            username = %username,
+                                            "HTTP Basic Auth enabled for app {}",
+                                            app.name
+                                        );
+                                    }
+                                }
+
+                                route_table.add_route(domain.clone(), create_backend());
                                 tracing::info!(
                                     domain = %domain,
                                     port = port,
                                     healthcheck = ?app.healthcheck,
+                                    basic_auth = app.basic_auth_enabled != 0,
                                     "Proxy route updated for app {}",
                                     app.name
                                 );

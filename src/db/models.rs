@@ -1,6 +1,104 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+/// Domain configuration for an application
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Domain {
+    /// The domain name (e.g., "example.com")
+    pub domain: String,
+    /// Whether this is the primary domain for the app
+    #[serde(default)]
+    pub primary: bool,
+    /// Whether to redirect www to non-www (or vice versa)
+    #[serde(default)]
+    pub redirect_www: bool,
+}
+
+impl Domain {
+    pub fn new(domain: String) -> Self {
+        Self {
+            domain,
+            primary: false,
+            redirect_www: false,
+        }
+    }
+
+    pub fn primary(domain: String) -> Self {
+        Self {
+            domain,
+            primary: true,
+            redirect_www: false,
+        }
+    }
+
+    /// Get the www variant of this domain
+    pub fn www_domain(&self) -> String {
+        if self.domain.starts_with("www.") {
+            self.domain.clone()
+        } else {
+            format!("www.{}", self.domain)
+        }
+    }
+
+    /// Get the non-www variant of this domain
+    pub fn non_www_domain(&self) -> String {
+        if self.domain.starts_with("www.") {
+            self.domain
+                .strip_prefix("www.")
+                .unwrap_or(&self.domain)
+                .to_string()
+        } else {
+            self.domain.clone()
+        }
+    }
+}
+
+/// Helper to parse domains JSON from database
+pub fn parse_domains(json: Option<&str>) -> Vec<Domain> {
+    json.and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default()
+}
+
+/// Helper to serialize domains to JSON for database
+pub fn serialize_domains(domains: &[Domain]) -> Option<String> {
+    if domains.is_empty() {
+        None
+    } else {
+        serde_json::to_string(domains).ok()
+    }
+}
+
+/// Port mapping configuration for containers
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PortMapping {
+    /// Host port to bind (0 for auto-assign)
+    pub host_port: u16,
+    /// Container port to expose
+    pub container_port: u16,
+    /// Protocol (tcp or udp)
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+}
+
+fn default_protocol() -> String {
+    "tcp".to_string()
+}
+
+impl PortMapping {
+    pub fn new(host_port: u16, container_port: u16) -> Self {
+        Self {
+            host_port,
+            container_port,
+            protocol: default_protocol(),
+        }
+    }
+
+    pub fn with_protocol(mut self, protocol: &str) -> Self {
+        self.protocol = protocol.to_string();
+        self
+    }
+}
+
 /// Environment type for applications
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -60,8 +158,208 @@ pub struct App {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    // Advanced build options
+    pub dockerfile_path: Option<String>,
+    pub base_directory: Option<String>,
+    pub build_target: Option<String>,
+    pub watch_paths: Option<String>,
+    pub custom_docker_options: Option<String>,
+    // Network configuration (JSON stored as TEXT)
+    /// JSON array of PortMapping objects
+    pub port_mappings: Option<String>,
+    /// JSON array of network alias strings
+    pub network_aliases: Option<String>,
+    /// JSON array of "hostname:ip" entries for extra hosts
+    pub extra_hosts: Option<String>,
+    // HTTP Basic Auth
+    pub basic_auth_enabled: i32,
+    #[serde(skip_serializing)]
+    pub basic_auth_username: Option<String>,
+    #[serde(skip_serializing)]
+    pub basic_auth_password_hash: Option<String>,
+    // Deployment commands (JSON stored as TEXT)
+    /// JSON array of commands to run before container starts (after build)
+    pub pre_deploy_commands: Option<String>,
+    /// JSON array of commands to run after container is healthy
+    pub post_deploy_commands: Option<String>,
+    // Domain management (JSON stored as TEXT)
+    /// JSON array of Domain objects for multiple domain support
+    pub domains: Option<String>,
+    /// Auto-generated subdomain (e.g., app-name.rivetr.example.com)
+    pub auto_subdomain: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Response DTO for App that excludes sensitive fields (password hash)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppResponse {
+    pub id: String,
+    pub name: String,
+    pub git_url: String,
+    pub branch: String,
+    pub dockerfile: String,
+    pub domain: Option<String>,
+    pub port: i32,
+    pub healthcheck: Option<String>,
+    pub memory_limit: Option<String>,
+    pub cpu_limit: Option<String>,
+    pub ssh_key_id: Option<String>,
+    pub environment: String,
+    pub project_id: Option<String>,
+    // Advanced build options
+    pub dockerfile_path: Option<String>,
+    pub base_directory: Option<String>,
+    pub build_target: Option<String>,
+    pub watch_paths: Option<String>,
+    pub custom_docker_options: Option<String>,
+    // Network configuration
+    pub port_mappings: Option<String>,
+    pub network_aliases: Option<String>,
+    pub extra_hosts: Option<String>,
+    // HTTP Basic Auth (password hash excluded)
+    pub basic_auth_enabled: bool,
+    pub basic_auth_username: Option<String>,
+    // Deployment commands
+    pub pre_deploy_commands: Option<String>,
+    pub post_deploy_commands: Option<String>,
+    // Domain management
+    pub domains: Option<String>,
+    pub auto_subdomain: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<App> for AppResponse {
+    fn from(app: App) -> Self {
+        Self {
+            id: app.id,
+            name: app.name,
+            git_url: app.git_url,
+            branch: app.branch,
+            dockerfile: app.dockerfile,
+            domain: app.domain,
+            port: app.port,
+            healthcheck: app.healthcheck,
+            memory_limit: app.memory_limit,
+            cpu_limit: app.cpu_limit,
+            ssh_key_id: app.ssh_key_id,
+            environment: app.environment,
+            project_id: app.project_id,
+            dockerfile_path: app.dockerfile_path,
+            base_directory: app.base_directory,
+            build_target: app.build_target,
+            watch_paths: app.watch_paths,
+            custom_docker_options: app.custom_docker_options,
+            port_mappings: app.port_mappings,
+            network_aliases: app.network_aliases,
+            extra_hosts: app.extra_hosts,
+            basic_auth_enabled: app.basic_auth_enabled != 0,
+            basic_auth_username: app.basic_auth_username,
+            pre_deploy_commands: app.pre_deploy_commands,
+            post_deploy_commands: app.post_deploy_commands,
+            domains: app.domains,
+            auto_subdomain: app.auto_subdomain,
+            created_at: app.created_at,
+            updated_at: app.updated_at,
+        }
+    }
+}
+
+impl App {
+    /// Parse domains from JSON string
+    pub fn get_domains(&self) -> Vec<Domain> {
+        parse_domains(self.domains.as_deref())
+    }
+
+    /// Get the primary domain (from domains list or legacy domain field)
+    pub fn get_primary_domain(&self) -> Option<String> {
+        // First check the domains array for a primary domain
+        let domains = self.get_domains();
+        if let Some(primary) = domains.iter().find(|d| d.primary) {
+            return Some(primary.domain.clone());
+        }
+        // If no primary in domains array but there are domains, use the first one
+        if let Some(first) = domains.first() {
+            return Some(first.domain.clone());
+        }
+        // Fall back to legacy domain field
+        self.domain.clone()
+    }
+
+    /// Get all domain names (including legacy domain and auto_subdomain)
+    pub fn get_all_domain_names(&self) -> Vec<String> {
+        let mut result = Vec::new();
+
+        // Add domains from the domains array
+        for d in self.get_domains() {
+            result.push(d.domain.clone());
+            // If redirect_www is enabled, add the www variant too
+            if d.redirect_www {
+                if d.domain.starts_with("www.") {
+                    result.push(d.non_www_domain());
+                } else {
+                    result.push(d.www_domain());
+                }
+            }
+        }
+
+        // Add legacy domain if not already included
+        if let Some(ref domain) = self.domain {
+            if !result.contains(domain) {
+                result.push(domain.clone());
+            }
+        }
+
+        // Add auto_subdomain if present
+        if let Some(ref subdomain) = self.auto_subdomain {
+            if !result.contains(subdomain) {
+                result.push(subdomain.clone());
+            }
+        }
+
+        result
+    }
+
+    /// Parse port mappings from JSON string
+    pub fn get_port_mappings(&self) -> Vec<PortMapping> {
+        self.port_mappings
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Parse network aliases from JSON string
+    pub fn get_network_aliases(&self) -> Vec<String> {
+        self.network_aliases
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Parse extra hosts from JSON string
+    pub fn get_extra_hosts(&self) -> Vec<String> {
+        self.extra_hosts
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Parse pre_deploy_commands JSON into Vec<String>
+    pub fn get_pre_deploy_commands(&self) -> Vec<String> {
+        self.pre_deploy_commands
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Parse post_deploy_commands JSON into Vec<String>
+    pub fn get_post_deploy_commands(&self) -> Vec<String> {
+        self.post_deploy_commands
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -213,6 +511,21 @@ pub struct CreateAppRequest {
     #[serde(default)]
     pub environment: Environment,
     pub project_id: Option<String>,
+    // Advanced build options
+    pub dockerfile_path: Option<String>,
+    pub base_directory: Option<String>,
+    pub build_target: Option<String>,
+    pub watch_paths: Option<String>,
+    pub custom_docker_options: Option<String>,
+    // Network configuration
+    pub port_mappings: Option<Vec<PortMapping>>,
+    pub network_aliases: Option<Vec<String>>,
+    pub extra_hosts: Option<Vec<String>>,
+    // Deployment commands (JSON arrays)
+    pub pre_deploy_commands: Option<Vec<String>>,
+    pub post_deploy_commands: Option<Vec<String>>,
+    // Domain management
+    pub domains: Option<Vec<Domain>>,
 }
 
 fn default_branch() -> String {
@@ -241,6 +554,41 @@ pub struct UpdateAppRequest {
     pub ssh_key_id: Option<String>,
     pub environment: Option<Environment>,
     pub project_id: Option<String>,
+    // Advanced build options
+    pub dockerfile_path: Option<String>,
+    pub base_directory: Option<String>,
+    pub build_target: Option<String>,
+    pub watch_paths: Option<String>,
+    pub custom_docker_options: Option<String>,
+    // Network configuration
+    pub port_mappings: Option<Vec<PortMapping>>,
+    pub network_aliases: Option<Vec<String>>,
+    pub extra_hosts: Option<Vec<String>>,
+    // HTTP Basic Auth
+    pub basic_auth_enabled: Option<bool>,
+    pub basic_auth_username: Option<String>,
+    /// Password in plain text - will be hashed before storing
+    pub basic_auth_password: Option<String>,
+    // Deployment commands (JSON arrays)
+    pub pre_deploy_commands: Option<Vec<String>>,
+    pub post_deploy_commands: Option<Vec<String>>,
+    // Domain management
+    pub domains: Option<Vec<Domain>>,
+}
+
+/// Request specifically for updating domains
+#[derive(Debug, Deserialize)]
+pub struct UpdateDomainsRequest {
+    pub domains: Vec<Domain>,
+}
+
+/// Request specifically for updating basic auth settings
+#[derive(Debug, Deserialize)]
+pub struct UpdateBasicAuthRequest {
+    pub enabled: bool,
+    pub username: Option<String>,
+    /// Password in plain text - will be hashed before storing
+    pub password: Option<String>,
 }
 
 // User models

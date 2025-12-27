@@ -4,10 +4,12 @@
 // Supports WebSocket upgrade for real-time applications.
 
 use arc_swap::ArcSwap;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
-use hyper::header::{CONNECTION, UPGRADE};
+use hyper::header::{AUTHORIZATION, CONNECTION, UPGRADE, WWW_AUTHENTICATE};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
@@ -131,6 +133,26 @@ impl ProxyHandler {
 
         match backend {
             Some(backend) if backend.healthy => {
+                // Check HTTP Basic Auth if enabled (but bypass for health check path)
+                if backend.basic_auth.enabled {
+                    let is_healthcheck = backend
+                        .healthcheck_path
+                        .as_ref()
+                        .map(|p| path == p)
+                        .unwrap_or(false);
+
+                    if !is_healthcheck {
+                        if let Err(response) = self.check_basic_auth(&req, &backend) {
+                            debug!(
+                                host = ?host,
+                                path = %path,
+                                "Basic auth required but not provided or invalid"
+                            );
+                            return Ok(response);
+                        }
+                    }
+                }
+
                 info!(
                     method = %method,
                     uri = %uri,
@@ -274,6 +296,117 @@ impl ProxyHandler {
 
         // Fall back to URI authority
         req.uri().host().map(|h| h.to_string())
+    }
+
+    /// Check HTTP Basic Auth credentials
+    /// Returns Ok(()) if auth is valid, or Err(response) with 401 response
+    fn check_basic_auth<T>(
+        &self,
+        req: &Request<T>,
+        backend: &Backend,
+    ) -> Result<(), Response<BoxBody<Bytes, hyper::Error>>> {
+        // Get Authorization header
+        let auth_header = req.headers().get(AUTHORIZATION).and_then(|h| h.to_str().ok());
+
+        let credentials = match auth_header {
+            Some(header) if header.starts_with("Basic ") => {
+                // Decode base64 credentials
+                let encoded = &header[6..];
+                match BASE64.decode(encoded) {
+                    Ok(decoded) => String::from_utf8(decoded).ok(),
+                    Err(_) => None,
+                }
+            }
+            _ => None,
+        };
+
+        // Parse username:password
+        let (username, password) = match credentials {
+            Some(creds) => {
+                if let Some((user, pass)) = creds.split_once(':') {
+                    (user.to_string(), pass.to_string())
+                } else {
+                    return Err(self.unauthorized_response("Protected Application"));
+                }
+            }
+            None => {
+                return Err(self.unauthorized_response("Protected Application"));
+            }
+        };
+
+        // Verify credentials
+        let expected_username = backend.basic_auth.username.as_deref().unwrap_or("");
+        let password_hash = backend.basic_auth.password_hash.as_deref().unwrap_or("");
+
+        // Check username
+        if username != expected_username {
+            return Err(self.unauthorized_response("Protected Application"));
+        }
+
+        // Verify password against hash
+        let parsed_hash = match PasswordHash::new(password_hash) {
+            Ok(h) => h,
+            Err(_) => {
+                error!("Invalid password hash in backend config");
+                return Err(self.unauthorized_response("Protected Application"));
+            }
+        };
+
+        if Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_err()
+        {
+            return Err(self.unauthorized_response("Protected Application"));
+        }
+
+        Ok(())
+    }
+
+    /// Create a 401 Unauthorized response with WWW-Authenticate header
+    fn unauthorized_response(&self, realm: &str) -> Response<BoxBody<Bytes, hyper::Error>> {
+        let body = r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>401 Unauthorized - Rivetr</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+        }
+        .error {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #e74c3c; margin-bottom: 10px; }
+        p { color: #666; margin: 0; }
+        .code { font-size: 48px; color: #333; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="error">
+        <div class="code">401</div>
+        <h1>Unauthorized</h1>
+        <p>This application requires authentication.</p>
+        <p style="margin-top: 10px; font-size: 12px;">Powered by Rivetr</p>
+    </div>
+</body>
+</html>"#;
+
+        Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header(WWW_AUTHENTICATE, format!("Basic realm=\"{}\"", realm))
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("X-Powered-By", "Rivetr")
+            .body(Full::new(Bytes::from(body)).map_err(|e| match e {}).boxed())
+            .unwrap()
     }
 
     /// Create an error response

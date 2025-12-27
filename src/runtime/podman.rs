@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
+use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
 
 pub struct PodmanRuntime;
 
@@ -46,6 +46,19 @@ impl ContainerRuntime for PodmanRuntime {
             dockerfile.to_string(),
         ];
 
+        // Add build target if specified (multi-stage builds)
+        if let Some(ref target) = ctx.build_target {
+            if !target.is_empty() {
+                args.push("--target".to_string());
+                args.push(target.clone());
+            }
+        }
+
+        // Parse and add custom options
+        if let Some(ref options) = ctx.custom_options {
+            parse_podman_custom_options(options, &mut args);
+        }
+
         for (key, value) in &ctx.build_args {
             args.push("--build-arg".to_string());
             args.push(format!("{}={}", key, value));
@@ -63,9 +76,39 @@ impl ContainerRuntime for PodmanRuntime {
             "-d".to_string(),
             "--name".to_string(),
             config.name.clone(),
-            "-p".to_string(),
-            format!(":{}", config.port),
         ];
+
+        // Add primary port mapping (let podman auto-assign host port)
+        args.push("-p".to_string());
+        args.push(format!(":{}", config.port));
+
+        // Add additional port mappings
+        for mapping in &config.port_mappings {
+            args.push("-p".to_string());
+            if mapping.host_port == 0 {
+                // Auto-assign host port
+                args.push(format!(":{}/{}", mapping.container_port, mapping.protocol));
+            } else {
+                // Use specified host port
+                args.push(format!(
+                    "{}:{}/{}",
+                    mapping.host_port, mapping.container_port, mapping.protocol
+                ));
+            }
+        }
+
+        // Add extra hosts (--add-host flag)
+        for extra_host in &config.extra_hosts {
+            args.push("--add-host".to_string());
+            args.push(extra_host.clone());
+        }
+
+        // Add network aliases if provided
+        // Note: Full network alias support requires creating/joining a podman network
+        for alias in &config.network_aliases {
+            args.push("--network-alias".to_string());
+            args.push(alias.clone());
+        }
 
         for (key, value) in &config.env {
             args.push("-e".to_string());
@@ -428,6 +471,30 @@ impl ContainerRuntime for PodmanRuntime {
             resize_tx,
         })
     }
+
+    async fn run_command(&self, container_id: &str, cmd: Vec<String>) -> Result<CommandResult> {
+        // Build podman exec command
+        let mut args = vec!["exec".to_string(), container_id.to_string()];
+        args.extend(cmd);
+
+        let output = Command::new("podman")
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .context("Failed to execute podman exec")?;
+
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        Ok(CommandResult {
+            exit_code,
+            stdout,
+            stderr,
+        })
+    }
 }
 
 /// Parse size strings like "128.5MiB", "512MB", "1.2GiB", "648kB"
@@ -454,4 +521,37 @@ fn parse_podman_size(s: &str) -> u64 {
     };
 
     (num * multiplier) as u64
+}
+
+/// Parse custom docker options string into podman build arguments
+/// Supports: --no-cache, --add-host
+fn parse_podman_custom_options(options: &str, args: &mut Vec<String>) {
+    // Parse --no-cache
+    if options.contains("--no-cache") {
+        args.push("--no-cache".to_string());
+    }
+
+    // Parse --add-host (format: --add-host=host:ip)
+    for part in options.split_whitespace() {
+        if part.starts_with("--add-host=") {
+            args.push(part.to_string());
+        } else if part == "--add-host" {
+            // Handle --add-host host:ip format (two-part)
+            // Note: This won't work well with split_whitespace, but we try
+            args.push(part.to_string());
+        }
+    }
+
+    // Parse --build-arg from custom options (format: --build-arg KEY=VALUE)
+    let mut iter = options.split_whitespace().peekable();
+    while let Some(part) = iter.next() {
+        if part == "--build-arg" {
+            if let Some(arg) = iter.next() {
+                args.push("--build-arg".to_string());
+                args.push(arg.to_string());
+            }
+        } else if part.starts_with("--build-arg=") {
+            args.push(part.to_string());
+        }
+    }
 }

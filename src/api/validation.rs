@@ -262,6 +262,413 @@ pub fn validate_environment(environment: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate base_directory (build context subdirectory)
+pub fn validate_base_directory(base_dir: &Option<String>) -> Result<(), String> {
+    if let Some(dir) = base_dir {
+        if dir.is_empty() {
+            return Ok(()); // Empty string treated as no base directory
+        }
+
+        if dir.len() > 512 {
+            return Err("Base directory path is too long (max 512 characters)".to_string());
+        }
+
+        // Check for path traversal attempts
+        if dir.contains("..") {
+            return Err("Base directory path cannot contain '..'".to_string());
+        }
+
+        // Must be a relative path
+        if dir.starts_with('/') {
+            return Err("Base directory must be a relative path".to_string());
+        }
+
+        // Check for dangerous characters
+        if dir.contains('\0') || dir.contains('\\') {
+            return Err("Base directory contains invalid characters".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate build_target (Docker multi-stage build target name)
+pub fn validate_build_target(target: &Option<String>) -> Result<(), String> {
+    if let Some(t) = target {
+        if t.is_empty() {
+            return Ok(()); // Empty string treated as no target
+        }
+
+        if t.len() > 128 {
+            return Err("Build target name is too long (max 128 characters)".to_string());
+        }
+
+        // Build target should be alphanumeric with dashes and underscores
+        if !t.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err(
+                "Build target must contain only alphanumeric characters, dashes, and underscores"
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate watch_paths (JSON array of paths to trigger auto-deploy)
+pub fn validate_watch_paths(paths: &Option<String>) -> Result<(), String> {
+    if let Some(p) = paths {
+        if p.is_empty() {
+            return Ok(()); // Empty string treated as no watch paths
+        }
+
+        if p.len() > 4096 {
+            return Err("Watch paths JSON is too long (max 4096 characters)".to_string());
+        }
+
+        // Must be valid JSON array
+        match serde_json::from_str::<Vec<String>>(p) {
+            Ok(arr) => {
+                // Validate each path
+                for path in arr {
+                    if path.contains("..") {
+                        return Err(format!(
+                            "Watch path '{}' cannot contain '..'",
+                            path
+                        ));
+                    }
+                    if path.starts_with('/') {
+                        return Err(format!(
+                            "Watch path '{}' must be a relative path",
+                            path
+                        ));
+                    }
+                }
+            }
+            Err(_) => {
+                return Err(
+                    "Watch paths must be a valid JSON array of strings, e.g., [\"src/\", \"Dockerfile\"]"
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate custom_docker_options (extra docker build/run arguments)
+pub fn validate_custom_docker_options(options: &Option<String>) -> Result<(), String> {
+    if let Some(opts) = options {
+        if opts.is_empty() {
+            return Ok(()); // Empty string treated as no custom options
+        }
+
+        if opts.len() > 2048 {
+            return Err("Custom Docker options is too long (max 2048 characters)".to_string());
+        }
+
+        // Disallow dangerous options
+        let dangerous_patterns = [
+            "--privileged",
+            "--cap-add",
+            "--device",
+            "--pid=host",
+            "--network=host",
+            "--userns=host",
+            "--ipc=host",
+            "-v /:",        // Root mount
+            "--volume /:",  // Root mount alternative
+            "--mount type=bind,source=/", // Root bind mount
+        ];
+
+        let opts_lower = opts.to_lowercase();
+        for pattern in dangerous_patterns {
+            if opts_lower.contains(pattern) {
+                return Err(format!(
+                    "Custom Docker options cannot contain dangerous flag: {}",
+                    pattern
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate port mappings (JSON array of port mapping objects)
+pub fn validate_port_mappings(
+    port_mappings: &Option<Vec<crate::db::PortMapping>>,
+) -> Result<(), String> {
+    if let Some(mappings) = port_mappings {
+        if mappings.len() > 50 {
+            return Err("Too many port mappings (max 50)".to_string());
+        }
+
+        let mut seen_host_ports: std::collections::HashSet<u16> = std::collections::HashSet::new();
+
+        for (i, mapping) in mappings.iter().enumerate() {
+            // Validate container port
+            if mapping.container_port == 0 {
+                return Err(format!(
+                    "Port mapping {}: container port must be between 1 and 65535",
+                    i + 1
+                ));
+            }
+
+            // Validate host port if specified (0 means auto-assign)
+            if mapping.host_port > 0 && mapping.host_port < 1024 {
+                return Err(format!(
+                    "Port mapping {}: privileged host ports (1-1023) are not allowed",
+                    i + 1
+                ));
+            }
+
+            // Check for duplicate host ports (only if not auto-assigned)
+            if mapping.host_port > 0 {
+                if seen_host_ports.contains(&mapping.host_port) {
+                    return Err(format!(
+                        "Port mapping {}: host port {} is already in use",
+                        i + 1,
+                        mapping.host_port
+                    ));
+                }
+                seen_host_ports.insert(mapping.host_port);
+            }
+
+            // Validate protocol
+            let protocol = mapping.protocol.to_lowercase();
+            if protocol != "tcp" && protocol != "udp" {
+                return Err(format!(
+                    "Port mapping {}: protocol must be 'tcp' or 'udp'",
+                    i + 1
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate network aliases (JSON array of alias strings)
+pub fn validate_network_aliases(aliases: &Option<Vec<String>>) -> Result<(), String> {
+    if let Some(alias_list) = aliases {
+        if alias_list.len() > 20 {
+            return Err("Too many network aliases (max 20)".to_string());
+        }
+
+        for (i, alias) in alias_list.iter().enumerate() {
+            if alias.is_empty() {
+                return Err(format!("Network alias {} cannot be empty", i + 1));
+            }
+
+            if alias.len() > 63 {
+                return Err(format!(
+                    "Network alias '{}' is too long (max 63 characters)",
+                    alias
+                ));
+            }
+
+            // Alias should be a valid DNS hostname
+            if !alias
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(format!(
+                    "Network alias '{}' must contain only alphanumeric characters, dashes, and underscores",
+                    alias
+                ));
+            }
+
+            // Cannot start or end with dash
+            if alias.starts_with('-') || alias.ends_with('-') {
+                return Err(format!(
+                    "Network alias '{}' cannot start or end with a dash",
+                    alias
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate extra hosts (JSON array of "hostname:ip" entries)
+pub fn validate_extra_hosts(extra_hosts: &Option<Vec<String>>) -> Result<(), String> {
+    if let Some(hosts) = extra_hosts {
+        if hosts.len() > 50 {
+            return Err("Too many extra hosts (max 50)".to_string());
+        }
+
+        for (i, host) in hosts.iter().enumerate() {
+            if host.is_empty() {
+                return Err(format!("Extra host {} cannot be empty", i + 1));
+            }
+
+            // Must be in hostname:ip format
+            let parts: Vec<&str> = host.splitn(2, ':').collect();
+            if parts.len() != 2 {
+                return Err(format!(
+                    "Extra host '{}' must be in 'hostname:ip' format",
+                    host
+                ));
+            }
+
+            let hostname = parts[0];
+            let ip = parts[1];
+
+            // Validate hostname
+            if hostname.is_empty() {
+                return Err(format!(
+                    "Extra host {}: hostname cannot be empty",
+                    i + 1
+                ));
+            }
+
+            if hostname.len() > 253 {
+                return Err(format!(
+                    "Extra host {}: hostname is too long (max 253 characters)",
+                    i + 1
+                ));
+            }
+
+            // Validate IP address (basic validation, allow special values)
+            if ip.is_empty() {
+                return Err(format!("Extra host {}: IP address cannot be empty", i + 1));
+            }
+
+            // Allow special Docker values like "host-gateway"
+            if ip != "host-gateway" {
+                // Check if it looks like an IP address (basic validation)
+                let is_ipv4 = ip.split('.').count() == 4
+                    && ip.split('.').all(|part| part.parse::<u8>().is_ok());
+                let is_ipv6 = ip.contains(':');
+
+                if !is_ipv4 && !is_ipv6 {
+                    return Err(format!(
+                        "Extra host {}: '{}' is not a valid IP address or 'host-gateway'",
+                        i + 1,
+                        ip
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Maximum number of deployment commands allowed
+const MAX_DEPLOYMENT_COMMANDS: usize = 50;
+
+/// Maximum length of a single deployment command
+const MAX_COMMAND_LENGTH: usize = 4096;
+
+/// Maximum number of domains per app
+const MAX_DOMAINS_PER_APP: usize = 100;
+
+/// Validate deployment commands (pre or post deploy)
+pub fn validate_deployment_commands(
+    commands: &Option<Vec<String>>,
+    field_name: &str,
+) -> Result<(), String> {
+    if let Some(cmd_list) = commands {
+        if cmd_list.len() > MAX_DEPLOYMENT_COMMANDS {
+            return Err(format!(
+                "{}: too many commands (max {})",
+                field_name, MAX_DEPLOYMENT_COMMANDS
+            ));
+        }
+
+        for (i, cmd) in cmd_list.iter().enumerate() {
+            if cmd.is_empty() {
+                return Err(format!("{}: command {} cannot be empty", field_name, i + 1));
+            }
+
+            if cmd.len() > MAX_COMMAND_LENGTH {
+                return Err(format!(
+                    "{}: command {} is too long (max {} characters)",
+                    field_name,
+                    i + 1,
+                    MAX_COMMAND_LENGTH
+                ));
+            }
+
+            // Check for null bytes which could cause issues
+            if cmd.contains('\0') {
+                return Err(format!(
+                    "{}: command {} contains invalid null character",
+                    field_name,
+                    i + 1
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate a single domain name string (non-optional version)
+pub fn validate_domain_name(domain: &str) -> Result<(), String> {
+    if domain.is_empty() {
+        return Err("Domain name cannot be empty".to_string());
+    }
+
+    if domain.len() > 253 {
+        return Err("Domain name is too long (max 253 characters)".to_string());
+    }
+
+    if !DOMAIN_REGEX.is_match(domain) {
+        return Err(format!("Invalid domain name format: '{}'", domain));
+    }
+
+    Ok(())
+}
+
+/// Validate domains array (JSON array of Domain objects)
+pub fn validate_domains(domains: &Option<Vec<crate::db::Domain>>) -> Result<(), String> {
+    if let Some(domain_list) = domains {
+        if domain_list.len() > MAX_DOMAINS_PER_APP {
+            return Err(format!(
+                "Too many domains (max {})",
+                MAX_DOMAINS_PER_APP
+            ));
+        }
+
+        let mut primary_count = 0;
+        let mut seen_domains: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for (i, domain) in domain_list.iter().enumerate() {
+            // Validate domain name
+            validate_domain_name(&domain.domain).map_err(|e| {
+                format!("Domain {}: {}", i + 1, e)
+            })?;
+
+            // Check for duplicates
+            let normalized = domain.domain.to_lowercase();
+            if seen_domains.contains(&normalized) {
+                return Err(format!(
+                    "Duplicate domain: '{}'",
+                    domain.domain
+                ));
+            }
+            seen_domains.insert(normalized);
+
+            // Count primary domains
+            if domain.primary {
+                primary_count += 1;
+            }
+        }
+
+        // Only one primary domain allowed
+        if primary_count > 1 {
+            return Err("Only one domain can be marked as primary".to_string());
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,5 +799,127 @@ mod tests {
         assert!(validate_environment("").is_err());
         assert!(validate_environment("invalid").is_err());
         assert!(validate_environment("test").is_err());
+    }
+
+    #[test]
+    fn test_validate_base_directory() {
+        // Valid paths
+        assert!(validate_base_directory(&None).is_ok());
+        assert!(validate_base_directory(&Some("".to_string())).is_ok());
+        assert!(validate_base_directory(&Some("backend".to_string())).is_ok());
+        assert!(validate_base_directory(&Some("src/app".to_string())).is_ok());
+        assert!(validate_base_directory(&Some("packages/api".to_string())).is_ok());
+
+        // Invalid: path traversal
+        assert!(validate_base_directory(&Some("..".to_string())).is_err());
+        assert!(validate_base_directory(&Some("../etc".to_string())).is_err());
+        assert!(validate_base_directory(&Some("src/../hack".to_string())).is_err());
+
+        // Invalid: absolute path
+        assert!(validate_base_directory(&Some("/etc".to_string())).is_err());
+
+        // Invalid: backslash
+        assert!(validate_base_directory(&Some("path\\to".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_build_target() {
+        // Valid targets
+        assert!(validate_build_target(&None).is_ok());
+        assert!(validate_build_target(&Some("".to_string())).is_ok());
+        assert!(validate_build_target(&Some("production".to_string())).is_ok());
+        assert!(validate_build_target(&Some("build-stage".to_string())).is_ok());
+        assert!(validate_build_target(&Some("stage_2".to_string())).is_ok());
+
+        // Invalid: special characters
+        assert!(validate_build_target(&Some("stage/prod".to_string())).is_err());
+        assert!(validate_build_target(&Some("stage:latest".to_string())).is_err());
+        assert!(validate_build_target(&Some("stage@v1".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_watch_paths() {
+        // Valid paths
+        assert!(validate_watch_paths(&None).is_ok());
+        assert!(validate_watch_paths(&Some("".to_string())).is_ok());
+        assert!(validate_watch_paths(&Some(r#"["src/"]"#.to_string())).is_ok());
+        assert!(validate_watch_paths(&Some(r#"["src/", "package.json"]"#.to_string())).is_ok());
+        assert!(validate_watch_paths(&Some(r#"["Dockerfile", "docker-compose.yml"]"#.to_string())).is_ok());
+
+        // Invalid: not valid JSON
+        assert!(validate_watch_paths(&Some("src/".to_string())).is_err());
+        assert!(validate_watch_paths(&Some("[src/]".to_string())).is_err());
+
+        // Invalid: path traversal
+        assert!(validate_watch_paths(&Some(r#"["../etc/passwd"]"#.to_string())).is_err());
+
+        // Invalid: absolute path
+        assert!(validate_watch_paths(&Some(r#"["/etc/passwd"]"#.to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_custom_docker_options() {
+        // Valid options
+        assert!(validate_custom_docker_options(&None).is_ok());
+        assert!(validate_custom_docker_options(&Some("".to_string())).is_ok());
+        assert!(validate_custom_docker_options(&Some("--no-cache".to_string())).is_ok());
+        assert!(validate_custom_docker_options(&Some("--build-arg FOO=bar".to_string())).is_ok());
+        assert!(validate_custom_docker_options(&Some("--add-host=myhost:192.168.1.1".to_string())).is_ok());
+
+        // Dangerous options (security)
+        assert!(validate_custom_docker_options(&Some("--privileged".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("--cap-add SYS_ADMIN".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("--network=host".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("-v /:/mnt".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_name() {
+        // Valid domain names
+        assert!(validate_domain_name("example.com").is_ok());
+        assert!(validate_domain_name("sub.example.com").is_ok());
+        assert!(validate_domain_name("my-app.example.com").is_ok());
+        assert!(validate_domain_name("app123.example.co.uk").is_ok());
+        assert!(validate_domain_name("a.b").is_ok());
+
+        // Invalid domain names
+        assert!(validate_domain_name("").is_err());
+        assert!(validate_domain_name("-invalid.com").is_err());
+        assert!(validate_domain_name("invalid-.com").is_err());
+        assert!(validate_domain_name(".example.com").is_err());
+        assert!(validate_domain_name("example.com.").is_err());
+    }
+
+    #[test]
+    fn test_validate_domains() {
+        use crate::db::Domain;
+
+        // Valid domains
+        assert!(validate_domains(&None).is_ok());
+        assert!(validate_domains(&Some(vec![])).is_ok());
+        assert!(validate_domains(&Some(vec![
+            Domain::new("example.com".to_string()),
+        ])).is_ok());
+        assert!(validate_domains(&Some(vec![
+            Domain::primary("example.com".to_string()),
+            Domain::new("www.example.com".to_string()),
+        ])).is_ok());
+
+        // Invalid: duplicate domains
+        assert!(validate_domains(&Some(vec![
+            Domain::new("example.com".to_string()),
+            Domain::new("example.com".to_string()),
+        ])).is_err());
+
+        // Invalid: multiple primary domains
+        assert!(validate_domains(&Some(vec![
+            Domain::primary("example.com".to_string()),
+            Domain::primary("other.com".to_string()),
+        ])).is_err());
+
+        // Invalid: bad domain format
+        assert!(validate_domains(&Some(vec![
+            Domain::new("-invalid.com".to_string()),
+        ])).is_err());
     }
 }

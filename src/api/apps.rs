@@ -11,9 +11,12 @@ use crate::AppState;
 
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::{
-    validate_app_name, validate_branch, validate_cpu_limit, validate_dockerfile, validate_domain,
-    validate_environment, validate_git_url, validate_healthcheck, validate_memory_limit,
-    validate_port, validate_uuid,
+    validate_app_name, validate_base_directory, validate_branch, validate_build_target,
+    validate_cpu_limit, validate_custom_docker_options, validate_deployment_commands,
+    validate_dockerfile, validate_domain, validate_domains, validate_environment,
+    validate_extra_hosts, validate_git_url, validate_healthcheck, validate_memory_limit,
+    validate_network_aliases, validate_port, validate_port_mappings, validate_uuid,
+    validate_watch_paths,
 };
 
 /// Validate a CreateAppRequest
@@ -59,6 +62,51 @@ fn validate_create_request(req: &CreateAppRequest) -> Result<(), ApiError> {
     // Environment is validated through serde deserialization (enum), but we double-check here
     if let Err(e) = validate_environment(&req.environment.to_string()) {
         errors.add("environment", &e);
+    }
+
+    // Advanced build options
+    if let Err(e) = validate_base_directory(&req.base_directory) {
+        errors.add("base_directory", &e);
+    }
+
+    if let Err(e) = validate_build_target(&req.build_target) {
+        errors.add("build_target", &e);
+    }
+
+    if let Err(e) = validate_watch_paths(&req.watch_paths) {
+        errors.add("watch_paths", &e);
+    }
+
+    if let Err(e) = validate_custom_docker_options(&req.custom_docker_options) {
+        errors.add("custom_docker_options", &e);
+    }
+
+    // Network configuration
+    if let Err(e) = validate_port_mappings(&req.port_mappings) {
+        errors.add("port_mappings", &e);
+    }
+
+    if let Err(e) = validate_network_aliases(&req.network_aliases) {
+        errors.add("network_aliases", &e);
+    }
+
+    if let Err(e) = validate_extra_hosts(&req.extra_hosts) {
+        errors.add("extra_hosts", &e);
+    }
+
+    // Deployment commands
+    if let Err(e) = validate_deployment_commands(&req.pre_deploy_commands, "pre_deploy_commands") {
+        errors.add("pre_deploy_commands", &e);
+    }
+
+    if let Err(e) = validate_deployment_commands(&req.post_deploy_commands, "post_deploy_commands")
+    {
+        errors.add("post_deploy_commands", &e);
+    }
+
+    // Domain management
+    if let Err(e) = validate_domains(&req.domains) {
+        errors.add("domains", &e);
     }
 
     errors.finish()
@@ -120,6 +168,51 @@ fn validate_update_request(req: &UpdateAppRequest) -> Result<(), ApiError> {
         }
     }
 
+    // Advanced build options
+    if let Err(e) = validate_base_directory(&req.base_directory) {
+        errors.add("base_directory", &e);
+    }
+
+    if let Err(e) = validate_build_target(&req.build_target) {
+        errors.add("build_target", &e);
+    }
+
+    if let Err(e) = validate_watch_paths(&req.watch_paths) {
+        errors.add("watch_paths", &e);
+    }
+
+    if let Err(e) = validate_custom_docker_options(&req.custom_docker_options) {
+        errors.add("custom_docker_options", &e);
+    }
+
+    // Network configuration
+    if let Err(e) = validate_port_mappings(&req.port_mappings) {
+        errors.add("port_mappings", &e);
+    }
+
+    if let Err(e) = validate_network_aliases(&req.network_aliases) {
+        errors.add("network_aliases", &e);
+    }
+
+    if let Err(e) = validate_extra_hosts(&req.extra_hosts) {
+        errors.add("extra_hosts", &e);
+    }
+
+    // Deployment commands
+    if let Err(e) = validate_deployment_commands(&req.pre_deploy_commands, "pre_deploy_commands") {
+        errors.add("pre_deploy_commands", &e);
+    }
+
+    if let Err(e) = validate_deployment_commands(&req.post_deploy_commands, "post_deploy_commands")
+    {
+        errors.add("post_deploy_commands", &e);
+    }
+
+    // Domain management
+    if let Err(e) = validate_domains(&req.domains) {
+        errors.add("domains", &e);
+    }
+
     errors.finish()
 }
 
@@ -161,10 +254,42 @@ pub async fn create_app(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Serialize network configuration to JSON strings
+    let port_mappings_json = req
+        .port_mappings
+        .as_ref()
+        .map(|pm| serde_json::to_string(pm).unwrap_or_default());
+    let network_aliases_json = req
+        .network_aliases
+        .as_ref()
+        .map(|na| serde_json::to_string(na).unwrap_or_default());
+    let extra_hosts_json = req
+        .extra_hosts
+        .as_ref()
+        .map(|eh| serde_json::to_string(eh).unwrap_or_default());
+    let domains_json = req
+        .domains
+        .as_ref()
+        .map(|d| serde_json::to_string(d).unwrap_or_default());
+    let pre_deploy_commands_json = req
+        .pre_deploy_commands
+        .as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+    let post_deploy_commands_json = req
+        .post_deploy_commands
+        .as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+
+    // Generate auto_subdomain if configured
+    let auto_subdomain = state
+        .config
+        .proxy
+        .generate_subdomain(&req.name);
+
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -180,6 +305,18 @@ pub async fn create_app(
     .bind(&req.ssh_key_id)
     .bind(req.environment.to_string())
     .bind(&req.project_id)
+    .bind(&req.dockerfile_path)
+    .bind(&req.base_directory)
+    .bind(&req.build_target)
+    .bind(&req.watch_paths)
+    .bind(&req.custom_docker_options)
+    .bind(&port_mappings_json)
+    .bind(&network_aliases_json)
+    .bind(&extra_hosts_json)
+    .bind(&domains_json)
+    .bind(&auto_subdomain)
+    .bind(&pre_deploy_commands_json)
+    .bind(&post_deploy_commands_json)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -227,6 +364,32 @@ pub async fn update_app(
     // Convert environment enum to string for binding
     let environment_str = req.environment.as_ref().map(|e| e.to_string());
 
+    // Serialize network configuration to JSON strings
+    let port_mappings_json = req
+        .port_mappings
+        .as_ref()
+        .map(|pm| serde_json::to_string(pm).unwrap_or_default());
+    let network_aliases_json = req
+        .network_aliases
+        .as_ref()
+        .map(|na| serde_json::to_string(na).unwrap_or_default());
+    let extra_hosts_json = req
+        .extra_hosts
+        .as_ref()
+        .map(|eh| serde_json::to_string(eh).unwrap_or_default());
+    let pre_deploy_commands_json = req
+        .pre_deploy_commands
+        .as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+    let post_deploy_commands_json = req
+        .post_deploy_commands
+        .as_ref()
+        .map(|c| serde_json::to_string(c).unwrap_or_default());
+    let domains_json = req
+        .domains
+        .as_ref()
+        .map(|d| serde_json::to_string(d).unwrap_or_default());
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -242,6 +405,17 @@ pub async fn update_app(
             ssh_key_id = COALESCE(?, ssh_key_id),
             environment = COALESCE(?, environment),
             project_id = COALESCE(?, project_id),
+            dockerfile_path = COALESCE(?, dockerfile_path),
+            base_directory = COALESCE(?, base_directory),
+            build_target = COALESCE(?, build_target),
+            watch_paths = COALESCE(?, watch_paths),
+            custom_docker_options = COALESCE(?, custom_docker_options),
+            port_mappings = COALESCE(?, port_mappings),
+            network_aliases = COALESCE(?, network_aliases),
+            extra_hosts = COALESCE(?, extra_hosts),
+            pre_deploy_commands = COALESCE(?, pre_deploy_commands),
+            post_deploy_commands = COALESCE(?, post_deploy_commands),
+            domains = COALESCE(?, domains),
             updated_at = ?
         WHERE id = ?
         "#,
@@ -258,6 +432,17 @@ pub async fn update_app(
     .bind(&req.ssh_key_id)
     .bind(&environment_str)
     .bind(&req.project_id)
+    .bind(&req.dockerfile_path)
+    .bind(&req.base_directory)
+    .bind(&req.build_target)
+    .bind(&req.watch_paths)
+    .bind(&req.custom_docker_options)
+    .bind(&port_mappings_json)
+    .bind(&network_aliases_json)
+    .bind(&extra_hosts_json)
+    .bind(&pre_deploy_commands_json)
+    .bind(&post_deploy_commands_json)
+    .bind(&domains_json)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

@@ -22,6 +22,33 @@ pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
 pub use tls::{CertStore, TlsConfig};
 
+/// HTTP Basic Auth configuration for a backend
+#[derive(Debug, Clone, Default)]
+pub struct BasicAuthConfig {
+    /// Whether basic auth is enabled
+    pub enabled: bool,
+    /// Username for basic auth
+    pub username: Option<String>,
+    /// Password hash (Argon2) for basic auth
+    pub password_hash: Option<String>,
+}
+
+impl BasicAuthConfig {
+    /// Create a new enabled basic auth config
+    pub fn new(username: String, password_hash: String) -> Self {
+        Self {
+            enabled: true,
+            username: Some(username),
+            password_hash: Some(password_hash),
+        }
+    }
+
+    /// Create a disabled basic auth config
+    pub fn disabled() -> Self {
+        Self::default()
+    }
+}
+
 /// Backend target for proxied requests
 #[derive(Debug, Clone)]
 pub struct Backend {
@@ -37,6 +64,8 @@ pub struct Backend {
     pub healthcheck_path: Option<String>,
     /// Consecutive failure count for health checks
     pub failure_count: u32,
+    /// HTTP Basic Auth configuration
+    pub basic_auth: BasicAuthConfig,
 }
 
 impl Backend {
@@ -48,6 +77,7 @@ impl Backend {
             healthy: true,
             healthcheck_path: None,
             failure_count: 0,
+            basic_auth: BasicAuthConfig::disabled(),
         }
     }
 
@@ -55,6 +85,17 @@ impl Backend {
     pub fn with_healthcheck(mut self, path: Option<String>) -> Self {
         self.healthcheck_path = path;
         self
+    }
+
+    /// Create a new backend with basic auth enabled
+    pub fn with_basic_auth(mut self, username: String, password_hash: String) -> Self {
+        self.basic_auth = BasicAuthConfig::new(username, password_hash);
+        self
+    }
+
+    /// Set basic auth config
+    pub fn set_basic_auth(&mut self, config: BasicAuthConfig) {
+        self.basic_auth = config;
     }
 
     /// Get the backend address as a URI authority

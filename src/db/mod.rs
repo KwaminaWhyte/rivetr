@@ -154,6 +154,91 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         }
     }
 
+    // Migration 009: Add advanced build options to apps
+    let has_dockerfile_path: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'dockerfile_path'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_dockerfile_path.is_none() {
+        let migration_009 = include_str!("../../migrations/009_build_options.sql");
+        for statement in migration_009.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 010: Add domain management to apps
+    let has_domains: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'domains'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_domains.is_none() {
+        let migration_010 = include_str!("../../migrations/010_domains.sql");
+        for statement in migration_010.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 011: Add network configuration to apps
+    let has_port_mappings: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'port_mappings'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_port_mappings.is_none() {
+        let migration_011 = include_str!("../../migrations/011_network_config.sql");
+        for statement in migration_011.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 012: Add HTTP basic auth to apps
+    let has_basic_auth: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'basic_auth_enabled'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_basic_auth.is_none() {
+        let migration_012 = include_str!("../../migrations/012_basic_auth.sql");
+        for statement in migration_012.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 013: Add pre/post deployment commands to apps
+    let has_pre_deploy: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'pre_deploy_commands'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_pre_deploy.is_none() {
+        let migration_013 = include_str!("../../migrations/013_deployment_commands.sql");
+        for statement in migration_013.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
     info!("Migrations completed");
     Ok(())
 }

@@ -14,7 +14,7 @@ use std::pin::Pin;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
+use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
 
 pub struct DockerRuntime {
     client: Docker,
@@ -50,10 +50,17 @@ impl ContainerRuntime for DockerRuntime {
         let tar_data = std::fs::read(&tar_path)?;
         std::fs::remove_file(&tar_path)?;
 
+        // Parse custom options for build args
+        let extra_build_args = parse_custom_build_args(ctx.custom_options.as_deref());
+
+        let target = ctx.build_target.as_deref().unwrap_or("");
         let options = BuildImageOptions {
             dockerfile: ctx.dockerfile.trim_start_matches("./"),
             t: &ctx.tag,
             rm: true,
+            target,
+            extrahosts: extra_build_args.extra_hosts.as_deref(),
+            nocache: extra_build_args.no_cache,
             ..Default::default()
         };
 
@@ -83,29 +90,66 @@ impl ContainerRuntime for DockerRuntime {
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
 
-        let port_binding = format!("{}/tcp", config.port);
-        let mut port_bindings = HashMap::new();
+        let mut port_bindings: HashMap<String, Option<Vec<bollard::service::PortBinding>>> = HashMap::new();
+        let mut exposed_ports: HashMap<String, HashMap<(), ()>> = HashMap::new();
+
+        // Add primary port (legacy)
+        let primary_port_binding = format!("{}/tcp", config.port);
         port_bindings.insert(
-            port_binding.clone(),
+            primary_port_binding.clone(),
             Some(vec![bollard::service::PortBinding {
                 host_ip: Some("0.0.0.0".to_string()),
                 host_port: None, // Let Docker assign a random port
             }]),
         );
+        exposed_ports.insert(primary_port_binding, HashMap::new());
+
+        // Add additional port mappings
+        for mapping in &config.port_mappings {
+            let port_key = format!("{}/{}", mapping.container_port, mapping.protocol);
+            let host_port = if mapping.host_port == 0 {
+                None // Auto-assign
+            } else {
+                Some(mapping.host_port.to_string())
+            };
+
+            port_bindings.insert(
+                port_key.clone(),
+                Some(vec![bollard::service::PortBinding {
+                    host_ip: Some("0.0.0.0".to_string()),
+                    host_port,
+                }]),
+            );
+            exposed_ports.insert(port_key, HashMap::new());
+        }
+
+        // Convert extra_hosts to the format Docker expects
+        let extra_hosts: Option<Vec<String>> = if config.extra_hosts.is_empty() {
+            None
+        } else {
+            Some(config.extra_hosts.clone())
+        };
 
         let host_config = bollard::service::HostConfig {
             port_bindings: Some(port_bindings),
             memory: config.memory_limit.as_ref().and_then(|m| parse_memory(m)),
             nano_cpus: config.cpu_limit.as_ref().and_then(|c| parse_cpu(c)),
+            extra_hosts,
             ..Default::default()
         };
 
-        let mut exposed_ports = HashMap::new();
-        exposed_ports.insert(port_binding, HashMap::new());
+        // Set up network aliases if provided
+        // Note: Network aliases require connecting to a custom network
+        // For now, we'll add them as environment variables for container discovery
+        // Full network alias support requires creating/joining a Docker network
+        let mut final_env = env;
+        if !config.network_aliases.is_empty() {
+            final_env.push(format!("RIVETR_NETWORK_ALIASES={}", config.network_aliases.join(",")));
+        }
 
         let container_config = Config {
             image: Some(config.image.clone()),
-            env: Some(env),
+            env: Some(final_env),
             exposed_ports: Some(exposed_ports),
             host_config: Some(host_config),
             ..Default::default()
@@ -453,6 +497,69 @@ impl ContainerRuntime for DockerRuntime {
             }
         }
     }
+
+    async fn run_command(&self, container_id: &str, cmd: Vec<String>) -> Result<CommandResult> {
+        // Create exec instance
+        let exec_options = CreateExecOptions {
+            attach_stdin: Some(false),
+            attach_stdout: Some(true),
+            attach_stderr: Some(true),
+            tty: Some(false),
+            cmd: Some(cmd),
+            ..Default::default()
+        };
+
+        let exec_instance = self
+            .client
+            .create_exec(container_id, exec_options)
+            .await
+            .context("Failed to create exec instance")?;
+
+        let exec_id = exec_instance.id.clone();
+
+        // Start exec and collect output
+        let start_result = self
+            .client
+            .start_exec(&exec_id, None)
+            .await
+            .context("Failed to start exec")?;
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        match start_result {
+            StartExecResults::Attached { mut output, .. } => {
+                while let Some(result) = output.next().await {
+                    match result {
+                        Ok(LogOutput::StdOut { message }) => {
+                            stdout.push_str(&String::from_utf8_lossy(&message));
+                        }
+                        Ok(LogOutput::StdErr { message }) => {
+                            stderr.push_str(&String::from_utf8_lossy(&message));
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("Exec output error: {}", e);
+                            break;
+                        }
+                    }
+                }
+            }
+            StartExecResults::Detached => {
+                anyhow::bail!("Exec started in detached mode")
+            }
+        }
+
+        // Get exit code
+        let inspect = self.client.inspect_exec(&exec_id).await?;
+        let exit_code = inspect.exit_code.unwrap_or(-1) as i32;
+
+        Ok(CommandResult {
+            exit_code,
+            stdout,
+            stderr,
+        })
+    }
 }
 
 fn parse_memory(s: &str) -> Option<i64> {
@@ -497,4 +604,41 @@ fn parse_memory(s: &str) -> Option<i64> {
 
 fn parse_cpu(s: &str) -> Option<i64> {
     s.parse::<f64>().ok().map(|n| (n * 1_000_000_000.0) as i64)
+}
+
+/// Parsed custom build arguments from custom_docker_options string
+#[derive(Default)]
+struct CustomBuildArgs {
+    no_cache: bool,
+    extra_hosts: Option<String>,
+}
+
+/// Parse custom docker options string into build arguments
+/// Supports: --no-cache, --add-host
+fn parse_custom_build_args(options: Option<&str>) -> CustomBuildArgs {
+    let mut args = CustomBuildArgs::default();
+
+    let Some(opts) = options else {
+        return args;
+    };
+
+    // Parse --no-cache
+    if opts.contains("--no-cache") {
+        args.no_cache = true;
+    }
+
+    // Parse --add-host (format: --add-host=host:ip or --add-host host:ip)
+    let mut extra_hosts = Vec::new();
+    for part in opts.split_whitespace() {
+        if part.starts_with("--add-host=") {
+            if let Some(host) = part.strip_prefix("--add-host=") {
+                extra_hosts.push(host.to_string());
+            }
+        }
+    }
+    if !extra_hosts.is_empty() {
+        args.extra_hosts = Some(extra_hosts.join(","));
+    }
+
+    args
 }

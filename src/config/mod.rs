@@ -149,6 +149,12 @@ pub struct ProxyConfig {
     /// Number of consecutive failures before marking backend as unhealthy (default: 3)
     #[serde(default = "default_health_check_threshold")]
     pub health_check_threshold: u32,
+    /// Base domain for auto-generated subdomains (e.g., "rivetr.example.com")
+    /// Apps will get subdomains like "my-app.rivetr.example.com"
+    pub base_domain: Option<String>,
+    /// Enable automatic subdomain generation for new apps (default: true if base_domain is set)
+    #[serde(default)]
+    pub auto_subdomain_enabled: bool,
 }
 
 fn default_acme_cache_dir() -> PathBuf {
@@ -177,6 +183,21 @@ impl Default for ProxyConfig {
             health_check_interval: default_health_check_interval(),
             health_check_timeout: default_health_check_timeout(),
             health_check_threshold: default_health_check_threshold(),
+            base_domain: None,
+            auto_subdomain_enabled: false,
+        }
+    }
+}
+
+impl ProxyConfig {
+    /// Generate a subdomain for an app name
+    pub fn generate_subdomain(&self, app_name: &str) -> Option<String> {
+        if self.auto_subdomain_enabled {
+            self.base_domain
+                .as_ref()
+                .map(|base| format!("{}.{}", app_name, base))
+        } else {
+            None
         }
     }
 }

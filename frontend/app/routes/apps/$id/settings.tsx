@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -22,8 +29,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { BasicAuthCard } from "@/components/basic-auth-card";
+import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
+import { DomainManagementCard } from "@/components/domain-management-card";
 import { EnvVarsTab } from "@/components/env-vars-tab";
+import { NetworkConfigCard } from "@/components/network-config-card";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
+import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
@@ -69,6 +81,19 @@ export async function action({ request, params }: Route.ActionArgs) {
     if (typeof cpu_limit === "string") updates.cpu_limit = cpu_limit;
     if (typeof memory_limit === "string") updates.memory_limit = memory_limit;
 
+    // Advanced build options
+    const dockerfile_path = formData.get("dockerfile_path");
+    const base_directory = formData.get("base_directory");
+    const build_target = formData.get("build_target");
+    const watch_paths = formData.get("watch_paths");
+    const custom_docker_options = formData.get("custom_docker_options");
+
+    if (typeof dockerfile_path === "string") updates.dockerfile_path = dockerfile_path || undefined;
+    if (typeof base_directory === "string") updates.base_directory = base_directory || undefined;
+    if (typeof build_target === "string") updates.build_target = build_target || undefined;
+    if (typeof watch_paths === "string") updates.watch_paths = watch_paths || undefined;
+    if (typeof custom_docker_options === "string") updates.custom_docker_options = custom_docker_options || undefined;
+
     try {
       await api.updateApp(token, params.id!, updates);
       return { success: true };
@@ -85,8 +110,35 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [buildOptionsOpen, setBuildOptionsOpen] = useState(
+    Boolean(app.dockerfile_path || app.base_directory || app.build_target || app.watch_paths || app.custom_docker_options)
+  );
+  const [isSavingNetwork, setIsSavingNetwork] = useState(false);
+  const [isSavingDomains, setIsSavingDomains] = useState(false);
 
   const isSubmitting = navigation.state === "submitting";
+
+  // Handler for saving network configuration
+  const handleSaveNetworkConfig = async (updates: UpdateAppRequest) => {
+    setIsSavingNetwork(true);
+    try {
+      await api.updateApp(app.id, updates, token);
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } finally {
+      setIsSavingNetwork(false);
+    }
+  };
+
+  // Handler for saving domain configuration
+  const handleSaveDomainConfig = async (updates: UpdateAppRequest) => {
+    setIsSavingDomains(true);
+    try {
+      await api.updateApp(app.id, updates, token);
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } finally {
+      setIsSavingDomains(false);
+    }
+  };
 
   useEffect(() => {
     if (actionData?.success) {
@@ -200,6 +252,85 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
               </div>
             </div>
 
+            {/* Advanced Build Options */}
+            <Collapsible open={buildOptionsOpen} onOpenChange={setBuildOptionsOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-0 h-auto font-medium">
+                  Advanced Build Options
+                  <ChevronDown className={`h-4 w-4 transition-transform ${buildOptionsOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dockerfile_path">Dockerfile Path</Label>
+                    <Input
+                      id="dockerfile_path"
+                      name="dockerfile_path"
+                      placeholder="Dockerfile.prod"
+                      defaultValue={app.dockerfile_path || ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Custom Dockerfile location (relative to base directory)
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="base_directory">Base Directory</Label>
+                    <Input
+                      id="base_directory"
+                      name="base_directory"
+                      placeholder="backend/"
+                      defaultValue={app.base_directory || ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Subdirectory to use as build context
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="build_target">Build Target</Label>
+                    <Input
+                      id="build_target"
+                      name="build_target"
+                      placeholder="production"
+                      defaultValue={app.build_target || ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Multi-stage build target (--target flag)
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="watch_paths">Watch Paths</Label>
+                    <Input
+                      id="watch_paths"
+                      name="watch_paths"
+                      placeholder='["src/", "package.json"]'
+                      defaultValue={app.watch_paths || ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      JSON array of paths to trigger auto-deploy
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="custom_docker_options">Custom Docker Options</Label>
+                  <Textarea
+                    id="custom_docker_options"
+                    name="custom_docker_options"
+                    placeholder="--no-cache --build-arg FOO=bar"
+                    rows={2}
+                    defaultValue={app.custom_docker_options || ""}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Extra Docker build arguments (e.g., --no-cache, --add-host)
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Saving..." : "Save Changes"}
             </Button>
@@ -209,6 +340,30 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
 
       {/* Environment Variables */}
       <EnvVarsTab appId={app.id} token={token} />
+
+      {/* Domain Management */}
+      <DomainManagementCard
+        app={app}
+        onSave={handleSaveDomainConfig}
+        isSaving={isSavingDomains}
+      />
+
+      {/* Network Configuration */}
+      <NetworkConfigCard
+        app={app}
+        onSave={handleSaveNetworkConfig}
+        isSaving={isSavingNetwork}
+      />
+
+      {/* Deployment Commands */}
+      <DeploymentCommandsCard
+        app={app}
+        token={token}
+        onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
+      />
+
+      {/* HTTP Basic Auth */}
+      <BasicAuthCard appId={app.id} token={token} />
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">
