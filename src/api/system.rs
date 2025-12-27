@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::db::{App, Deployment};
 use crate::engine::get_current_disk_stats;
+use crate::startup::{get_system_health, SystemHealthStatus};
 use crate::AppState;
 
 use super::error::ApiError;
@@ -362,4 +363,20 @@ fn get_system_memory() -> u64 {
     {
         0
     }
+}
+
+/// Get detailed system health status
+/// GET /api/system/health
+///
+/// Returns comprehensive health information including:
+/// - Database connectivity status
+/// - Container runtime availability
+/// - Disk space status
+/// - Directory writability
+/// - Individual check results
+pub async fn get_detailed_health(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<SystemHealthStatus>, ApiError> {
+    let health = get_system_health(&state.config, &state.db).await;
+    Ok(Json(health))
 }

@@ -1,9 +1,11 @@
 mod cleanup;
+mod container_monitor;
 mod disk_monitor;
 mod pipeline;
 mod stats_collector;
 
 pub use cleanup::*;
+pub use container_monitor::*;
 pub use disk_monitor::*;
 pub use pipeline::*;
 pub use stats_collector::*;

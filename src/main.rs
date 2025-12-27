@@ -9,9 +9,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_disk_monitor_task, spawn_stats_collector_task, BuildLimits, DeploymentEngine};
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, BuildLimits, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
+use rivetr::startup::run_startup_checks;
 use rivetr::AppState;
 use rivetr::DbPool;
 
@@ -26,6 +27,10 @@ struct Cli {
     /// Override log level
     #[arg(short, long)]
     log_level: Option<String>,
+
+    /// Skip startup self-checks (for development only)
+    #[arg(long)]
+    skip_checks: bool,
 }
 
 #[tokio::main]
@@ -61,6 +66,36 @@ async fn main() -> Result<()> {
 
     // Initialize database
     let db = rivetr::db::init(&config.server.data_dir).await?;
+
+    // Run startup self-checks
+    if cli.skip_checks {
+        tracing::warn!("Startup self-checks skipped (--skip-checks flag)");
+    } else {
+        let check_report = run_startup_checks(&config, &db).await;
+
+        if !check_report.all_critical_passed {
+            tracing::error!(
+                "Critical startup checks failed. Server cannot start safely."
+            );
+            for check in &check_report.checks {
+                if check.critical && !check.passed {
+                    tracing::error!(
+                        check = %check.name,
+                        message = %check.message,
+                        details = ?check.details,
+                        "Critical check failure"
+                    );
+                }
+            }
+            std::process::exit(1);
+        }
+
+        if !check_report.all_passed {
+            tracing::warn!(
+                "Some non-critical startup checks failed. Server will start with limited functionality."
+            );
+        }
+    }
 
     // Detect container runtime
     let runtime = detect_runtime(&config.runtime).await?;
@@ -125,6 +160,13 @@ async fn main() -> Result<()> {
 
     // Start container stats collection task
     spawn_stats_collector_task(runtime.clone());
+
+    // Start container crash monitor task
+    spawn_container_monitor_task(
+        db.clone(),
+        runtime.clone(),
+        config.container_monitor.clone(),
+    );
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());

@@ -99,3 +99,21 @@ warning_threshold = 80
 # Disk usage percentage threshold for critical logs (default: 90)
 # A critical error will be logged when disk usage exceeds this percentage
 critical_threshold = 90
+
+[container_monitor]
+# Enable container crash monitoring and auto-restart (default: true)
+# When enabled, crashed containers will be automatically restarted with exponential backoff
+enabled = true
+# Interval between container health checks in seconds (default: 30)
+check_interval_secs = 30
+# Maximum number of restart attempts before giving up (default: 5)
+# After this many failed restarts, the deployment will be marked as failed
+max_restart_attempts = 5
+# Initial backoff delay in seconds after a crash (default: 5)
+# Each subsequent restart doubles this delay until max_backoff_secs is reached
+initial_backoff_secs = 5
+# Maximum backoff delay in seconds (default: 300 = 5 minutes)
+max_backoff_secs = 300
+# Duration in seconds a container must run before being considered stable (default: 120)
+# After this duration without crashing, the restart counter is reset
+stable_duration_secs = 120

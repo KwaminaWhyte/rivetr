@@ -45,6 +45,10 @@ pub const CONTAINER_MEMORY_LIMIT_BYTES: &str = "rivetr_container_memory_limit_by
 pub const CONTAINER_NETWORK_RX_BYTES: &str = "rivetr_container_network_rx_bytes";
 pub const CONTAINER_NETWORK_TX_BYTES: &str = "rivetr_container_network_tx_bytes";
 
+// Container restart metrics
+pub const CONTAINER_RESTARTS_TOTAL: &str = "rivetr_container_restarts_total";
+pub const CONTAINER_RESTART_BACKOFF_SECONDS: &str = "rivetr_container_restart_backoff_seconds";
+
 /// Initialize the Prometheus metrics recorder and return a handle for rendering metrics.
 ///
 /// This should be called once during application startup.
@@ -114,6 +118,16 @@ pub fn init_metrics() -> PrometheusHandle {
     describe_gauge!(
         CONTAINER_NETWORK_TX_BYTES,
         "Container network bytes transmitted (labeled by app_name)"
+    );
+
+    // Container restart metrics
+    describe_counter!(
+        CONTAINER_RESTARTS_TOTAL,
+        "Total number of container restarts (labeled by app_name)"
+    );
+    describe_gauge!(
+        CONTAINER_RESTART_BACKOFF_SECONDS,
+        "Current restart backoff delay in seconds (labeled by app_name)"
     );
 
     handle
@@ -242,6 +256,16 @@ pub fn set_container_network_rx_bytes(app_name: &str, rx_bytes: u64) {
 /// Update container network TX bytes metric.
 pub fn set_container_network_tx_bytes(app_name: &str, tx_bytes: u64) {
     gauge!(CONTAINER_NETWORK_TX_BYTES, "app_name" => app_name.to_string()).set(tx_bytes as f64);
+}
+
+/// Increment container restart counter.
+pub fn increment_container_restarts(app_name: &str) {
+    counter!(CONTAINER_RESTARTS_TOTAL, "app_name" => app_name.to_string()).increment(1);
+}
+
+/// Update container restart backoff delay metric.
+pub fn set_container_restart_backoff_seconds(app_name: &str, backoff_secs: f64) {
+    gauge!(CONTAINER_RESTART_BACKOFF_SECONDS, "app_name" => app_name.to_string()).set(backoff_secs);
 }
 
 #[cfg(test)]

@@ -25,6 +25,8 @@ pub struct Config {
     pub cleanup: CleanupConfig,
     #[serde(default)]
     pub disk_monitor: DiskMonitorConfig,
+    #[serde(default)]
+    pub container_monitor: ContainerMonitorConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -458,6 +460,66 @@ impl Default for DiskMonitorConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContainerMonitorConfig {
+    /// Enable container crash monitoring and auto-restart (default: true)
+    #[serde(default = "default_container_monitor_enabled")]
+    pub enabled: bool,
+    /// Interval between container health checks in seconds (default: 30)
+    #[serde(default = "default_container_check_interval")]
+    pub check_interval_secs: u64,
+    /// Maximum number of restart attempts before giving up (default: 5)
+    #[serde(default = "default_max_restart_attempts")]
+    pub max_restart_attempts: u32,
+    /// Initial backoff delay in seconds after a crash (default: 5)
+    #[serde(default = "default_initial_backoff")]
+    pub initial_backoff_secs: u64,
+    /// Maximum backoff delay in seconds (default: 300 = 5 minutes)
+    #[serde(default = "default_max_backoff")]
+    pub max_backoff_secs: u64,
+    /// Duration in seconds a container must run before being considered stable (default: 120)
+    /// After this duration, the restart counter is reset
+    #[serde(default = "default_stable_duration")]
+    pub stable_duration_secs: u64,
+}
+
+fn default_container_monitor_enabled() -> bool {
+    true
+}
+
+fn default_container_check_interval() -> u64 {
+    30
+}
+
+fn default_max_restart_attempts() -> u32 {
+    5
+}
+
+fn default_initial_backoff() -> u64 {
+    5
+}
+
+fn default_max_backoff() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_stable_duration() -> u64 {
+    120 // 2 minutes
+}
+
+impl Default for ContainerMonitorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_container_monitor_enabled(),
+            check_interval_secs: default_container_check_interval(),
+            max_restart_attempts: default_max_restart_attempts(),
+            initial_backoff_secs: default_initial_backoff(),
+            max_backoff_secs: default_max_backoff(),
+            stable_duration_secs: default_stable_duration(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -485,6 +547,7 @@ impl Config {
             rate_limit: RateLimitConfig::default(),
             cleanup: CleanupConfig::default(),
             disk_monitor: DiskMonitorConfig::default(),
+            container_monitor: ContainerMonitorConfig::default(),
         }
     }
 }

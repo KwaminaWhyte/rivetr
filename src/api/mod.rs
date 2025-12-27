@@ -106,6 +106,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/disk", get(system::get_disk_stats))
+        .route("/system/health", get(system::get_detailed_health))
         .route("/events/recent", get(system::get_recent_events))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
