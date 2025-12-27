@@ -5,7 +5,8 @@ use bollard::container::{
     StatsOptions, StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
-use bollard::image::{PruneImagesOptions, RemoveImageOptions};
+use bollard::auth::DockerCredentials;
+use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
 use bollard::Docker;
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -14,7 +15,7 @@ use std::pin::Pin;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
+use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize};
 
 pub struct DockerRuntime {
     client: Docker,
@@ -604,6 +605,71 @@ impl ContainerRuntime for DockerRuntime {
             stdout,
             stderr,
         })
+    }
+
+    async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()> {
+        tracing::info!(image = %image, "Pulling image from registry");
+
+        // Parse image reference to extract registry, name, and tag
+        // Format: [registry/]name[:tag]
+        let (from_image, tag) = if image.contains('@') {
+            // Digest format: image@sha256:...
+            (image.to_string(), None)
+        } else if let Some((name, tag)) = image.rsplit_once(':') {
+            // Check if the colon is for a port (registry:port/image) rather than a tag
+            // This is a heuristic - if there's a / after the :, it's likely a port
+            if name.contains('/') && !tag.contains('/') {
+                (name.to_string(), Some(tag.to_string()))
+            } else {
+                (image.to_string(), None)
+            }
+        } else {
+            (image.to_string(), None)
+        };
+
+        let options = CreateImageOptions {
+            from_image: from_image.clone(),
+            tag: tag.unwrap_or_else(|| "latest".to_string()),
+            ..Default::default()
+        };
+
+        // Set up authentication if provided
+        let credentials = auth.and_then(|a| {
+            if a.is_empty() {
+                None
+            } else {
+                Some(DockerCredentials {
+                    username: a.username.clone(),
+                    password: a.password.clone(),
+                    serveraddress: a.server.clone(),
+                    ..Default::default()
+                })
+            }
+        });
+
+        let mut stream = self.client.create_image(Some(options), None, credentials);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(info) => {
+                    // Log progress
+                    if let Some(status) = info.status {
+                        if let Some(progress) = info.progress {
+                            tracing::debug!("{}: {}", status, progress);
+                        } else {
+                            tracing::debug!("{}", status);
+                        }
+                    }
+                    if let Some(error) = info.error {
+                        anyhow::bail!("Failed to pull image: {}", error);
+                    }
+                }
+                Err(e) => anyhow::bail!("Failed to pull image: {}", e),
+            }
+        }
+
+        tracing::info!(image = %image, "Successfully pulled image");
+        Ok(())
     }
 }
 

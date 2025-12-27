@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { BasicAuthCard } from "@/components/basic-auth-card";
 import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
+import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { DomainManagementCard } from "@/components/domain-management-card";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { NetworkConfigCard } from "@/components/network-config-card";
@@ -295,6 +296,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
           </Form>
         </CardContent>
       </Card>
+
+      {/* Docker Registry / Deployment Source */}
+      <DockerRegistryCard app={app} token={token} />
 
       {/* Environment Variables */}
       <EnvVarsTab appId={app.id} token={token} />

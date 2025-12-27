@@ -13,10 +13,10 @@ use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::{
     validate_app_name, validate_base_directory, validate_branch, validate_build_target,
     validate_cpu_limit, validate_custom_docker_options, validate_deployment_commands,
-    validate_dockerfile, validate_domain, validate_domains, validate_environment,
-    validate_extra_hosts, validate_git_url, validate_healthcheck, validate_memory_limit,
-    validate_network_aliases, validate_port, validate_port_mappings, validate_uuid,
-    validate_watch_paths,
+    validate_docker_image, validate_dockerfile, validate_domain, validate_domains,
+    validate_environment, validate_extra_hosts, validate_git_url, validate_healthcheck,
+    validate_memory_limit, validate_network_aliases, validate_port, validate_port_mappings,
+    validate_uuid, validate_watch_paths,
 };
 
 /// Validate a CreateAppRequest
@@ -27,16 +27,46 @@ fn validate_create_request(req: &CreateAppRequest) -> Result<(), ApiError> {
         errors.add("name", &e);
     }
 
-    if let Err(e) = validate_git_url(&req.git_url) {
-        errors.add("git_url", &e);
+    // Check deployment source: either git_url OR docker_image must be provided, not both
+    let has_git_url = !req.git_url.is_empty();
+    let has_docker_image = req
+        .docker_image
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    if has_git_url && has_docker_image {
+        errors.add(
+            "docker_image",
+            "Cannot specify both git_url and docker_image. Choose one deployment source.",
+        );
+    } else if !has_git_url && !has_docker_image {
+        errors.add(
+            "git_url",
+            "Either git_url or docker_image must be provided",
+        );
     }
 
-    if let Err(e) = validate_branch(&req.branch) {
-        errors.add("branch", &e);
+    // Only validate git-related fields if using git source
+    if has_git_url {
+        if let Err(e) = validate_git_url(&req.git_url) {
+            errors.add("git_url", &e);
+        }
+
+        if let Err(e) = validate_branch(&req.branch) {
+            errors.add("branch", &e);
+        }
+
+        if let Err(e) = validate_dockerfile(&req.dockerfile) {
+            errors.add("dockerfile", &e);
+        }
     }
 
-    if let Err(e) = validate_dockerfile(&req.dockerfile) {
-        errors.add("dockerfile", &e);
+    // Validate docker_image if provided
+    if has_docker_image {
+        if let Err(e) = validate_docker_image(req.docker_image.as_deref()) {
+            errors.add("docker_image", &e);
+        }
     }
 
     if let Err(e) = validate_domain(&req.domain) {
@@ -290,8 +320,8 @@ pub async fn create_app(
 
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -319,6 +349,11 @@ pub async fn create_app(
     .bind(&auto_subdomain)
     .bind(&pre_deploy_commands_json)
     .bind(&post_deploy_commands_json)
+    .bind(&req.docker_image)
+    .bind(&req.docker_image_tag)
+    .bind(&req.registry_url)
+    .bind(&req.registry_username)
+    .bind(&req.registry_password)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -426,6 +461,15 @@ pub async fn update_app(
         merge_optional_json(&req.post_deploy_commands, &existing.post_deploy_commands);
     let domains = merge_optional_json(&req.domains, &existing.domains);
 
+    // Docker Registry fields
+    let docker_image = merge_optional_string(&req.docker_image, &existing.docker_image);
+    let docker_image_tag = merge_optional_string(&req.docker_image_tag, &existing.docker_image_tag);
+    let registry_url = merge_optional_string(&req.registry_url, &existing.registry_url);
+    let registry_username =
+        merge_optional_string(&req.registry_username, &existing.registry_username);
+    let registry_password =
+        merge_optional_string(&req.registry_password, &existing.registry_password);
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -452,6 +496,11 @@ pub async fn update_app(
             pre_deploy_commands = ?,
             post_deploy_commands = ?,
             domains = ?,
+            docker_image = ?,
+            docker_image_tag = ?,
+            registry_url = ?,
+            registry_username = ?,
+            registry_password = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -479,6 +528,11 @@ pub async fn update_app(
     .bind(&pre_deploy_commands)
     .bind(&post_deploy_commands)
     .bind(&domains)
+    .bind(&docker_image)
+    .bind(&docker_image_tag)
+    .bind(&registry_url)
+    .bind(&registry_username)
+    .bind(&registry_password)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

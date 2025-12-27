@@ -149,6 +149,29 @@ pub struct CommandResult {
     pub stderr: String,
 }
 
+/// Registry credentials for pulling images from private registries
+#[derive(Debug, Clone, Default)]
+pub struct RegistryAuth {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    /// Optional server address (e.g., "ghcr.io", "registry.example.com")
+    pub server: Option<String>,
+}
+
+impl RegistryAuth {
+    pub fn new(username: Option<String>, password: Option<String>, server: Option<String>) -> Self {
+        Self {
+            username,
+            password,
+            server,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.username.is_none() && self.password.is_none()
+    }
+}
+
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
@@ -172,6 +195,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle>;
     /// Run a command in a container and wait for completion, returning the output
     async fn run_command(&self, container_id: &str, cmd: Vec<String>) -> Result<CommandResult>;
+    /// Pull an image from a registry, optionally with authentication
+    async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()>;
 }
 
 /// A no-op runtime used when no container runtime is available
@@ -219,6 +244,9 @@ impl ContainerRuntime for NoopRuntime {
         anyhow::bail!("No container runtime available")
     }
     async fn run_command(&self, _container_id: &str, _cmd: Vec<String>) -> Result<CommandResult> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn pull_image(&self, _image: &str, _auth: Option<&RegistryAuth>) -> Result<()> {
         anyhow::bail!("No container runtime available")
     }
 }

@@ -52,6 +52,11 @@ const routeTitles: Record<
     parentUrl: "/settings",
     title: "API Tokens",
   },
+  "/settings/notifications": {
+    parent: "Settings",
+    parentUrl: "/settings",
+    title: "Notifications",
+  },
 };
 
 function getBreadcrumb(pathname: string) {

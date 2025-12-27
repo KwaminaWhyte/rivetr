@@ -41,11 +41,23 @@ pub async fn init(data_dir: &Path) -> Result<DbPool> {
 async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     info!("Running database migrations...");
 
+    // Migration 001: Initial schema
     let migration_001 = include_str!("../../migrations/001_initial.sql");
-    sqlx::query(migration_001).execute(pool).await?;
+    for statement in migration_001.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with("--") {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
 
+    // Migration 002: Users table
     let migration_002 = include_str!("../../migrations/002_users.sql");
-    sqlx::query(migration_002).execute(pool).await?;
+    for statement in migration_002.split(';') {
+        let trimmed = statement.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with("--") {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
 
     // Migration 003: Add image_tag column for rollback support
     // Using a check to avoid "duplicate column" error on existing databases
@@ -232,6 +244,57 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     if has_pre_deploy.is_none() {
         let migration_013 = include_str!("../../migrations/013_deployment_commands.sql");
         for statement in migration_013.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 014: Add docker registry support
+    let has_docker_image: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'docker_image'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_docker_image.is_none() {
+        let migration_014 = include_str!("../../migrations/014_docker_registry.sql");
+        for statement in migration_014.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 015: Add teams and team_members tables for multi-user support
+    let has_teams_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='teams'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_teams_table.is_none() {
+        let migration_015 = include_str!("../../migrations/015_teams.sql");
+        for statement in migration_015.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with("--") {
+                sqlx::query(trimmed).execute(pool).await?;
+            }
+        }
+    }
+
+    // Migration 016: Add notification channels and subscriptions
+    let has_notification_channels: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='notification_channels'"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if has_notification_channels.is_none() {
+        let migration_016 = include_str!("../../migrations/016_notifications.sql");
+        for statement in migration_016.split(';') {
             let trimmed = statement.trim();
             if !trimmed.is_empty() && !trimmed.starts_with("--") {
                 sqlx::query(trimmed).execute(pool).await?;

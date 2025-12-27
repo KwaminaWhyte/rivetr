@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RunConfig, TtySize};
+use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize};
 
 pub struct PodmanRuntime;
 
@@ -534,6 +534,38 @@ impl ContainerRuntime for PodmanRuntime {
             stdout,
             stderr,
         })
+    }
+
+    async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()> {
+        tracing::info!(image = %image, "Pulling image from registry using podman");
+
+        let mut args = vec!["pull".to_string()];
+
+        // Add authentication if provided
+        if let Some(auth) = auth {
+            if !auth.is_empty() {
+                if let (Some(username), Some(password)) = (&auth.username, &auth.password) {
+                    args.push("--creds".to_string());
+                    args.push(format!("{}:{}", username, password));
+                }
+            }
+        }
+
+        args.push(image.to_string());
+
+        let output = Command::new("podman")
+            .args(&args)
+            .output()
+            .await
+            .context("Failed to execute podman pull")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to pull image: {}", stderr);
+        }
+
+        tracing::info!(image = %image, "Successfully pulled image");
+        Ok(())
     }
 }
 

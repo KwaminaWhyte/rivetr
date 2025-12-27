@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::{App, SshKey};
-use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RunConfig};
+use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RegistryAuth, RunConfig};
 use crate::DbPool;
 
 use super::{add_deployment_log, update_deployment_status, BuildLimits};
@@ -113,17 +113,65 @@ pub struct DeploymentResult {
     pub port: Option<u16>,
 }
 
-pub async fn run_deployment(
+/// Handle registry-based deployment (pull pre-built image)
+async fn run_registry_deployment(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    app: &App,
+) -> Result<String> {
+    let image_ref = app
+        .get_full_image_reference()
+        .ok_or_else(|| anyhow::anyhow!("Docker image not configured"))?;
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("Pulling image from registry: {}", image_ref),
+    )
+    .await?;
+    update_deployment_status(db, deployment_id, "building", None).await?;
+
+    // Set up registry authentication if provided
+    let auth = if app.registry_username.is_some() || app.registry_password.is_some() {
+        Some(RegistryAuth::new(
+            app.registry_username.clone(),
+            app.registry_password.clone(),
+            app.registry_url.clone(),
+        ))
+    } else {
+        None
+    };
+
+    runtime
+        .pull_image(&image_ref, auth.as_ref())
+        .await
+        .context("Failed to pull image from registry")?;
+
+    add_deployment_log(db, deployment_id, "info", "Image pulled successfully").await?;
+
+    Ok(image_ref)
+}
+
+/// Handle git-based deployment (clone and build)
+async fn run_git_deployment(
     db: &DbPool,
     runtime: Arc<dyn ContainerRuntime>,
     deployment_id: &str,
     app: &App,
     build_limits: &BuildLimits,
-) -> Result<DeploymentResult> {
+) -> Result<String> {
     let work_dir = std::env::temp_dir().join(format!("rivetr-{}", deployment_id));
 
     // Step 1: Clone
-    add_deployment_log(db, deployment_id, "info", &format!("Cloning repository: {}", app.git_url)).await?;
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("Cloning repository: {}", app.git_url),
+    )
+    .await?;
     update_deployment_status(db, deployment_id, "cloning", None).await?;
 
     // Get SSH key if configured for this app
@@ -216,6 +264,28 @@ pub async fn run_deployment(
 
     runtime.build(&build_ctx).await.context("Build failed")?;
     add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
+
+    // Cleanup work directory
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    Ok(image_tag)
+}
+
+pub async fn run_deployment(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    app: &App,
+    build_limits: &BuildLimits,
+) -> Result<DeploymentResult> {
+    // Determine the image to use based on deployment source
+    let image_tag = if app.uses_registry_image() {
+        // Registry-based deployment: pull pre-built image
+        run_registry_deployment(db, runtime.clone(), deployment_id, app).await?
+    } else {
+        // Git-based deployment: clone and build
+        run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?
+    };
 
     // Step 3: Stop old container (if exists)
     let container_name = format!("rivetr-{}", app.name);
@@ -375,9 +445,6 @@ pub async fn run_deployment(
     // Step 9: Done
     add_deployment_log(db, deployment_id, "info", "Deployment completed successfully").await?;
     update_deployment_status(db, deployment_id, "running", None).await?;
-
-    // Cleanup work directory
-    let _ = tokio::fs::remove_dir_all(&work_dir).await;
 
     Ok(DeploymentResult {
         container_id,

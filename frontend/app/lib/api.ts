@@ -7,18 +7,33 @@ import type {
   BasicAuthStatus,
   ContainerStats,
   CreateEnvVarRequest,
+  CreateNotificationChannelRequest,
+  CreateNotificationSubscriptionRequest,
+  CreateTeamRequest,
   Deployment,
   DeploymentLog,
   DiskStats,
   EnvVar,
+  InviteMemberRequest,
+  NotificationChannel,
+  NotificationSubscription,
   Project,
   ProjectWithApps,
   RecentEvent,
   SshKey,
+  SystemHealthStatus,
   SystemStats,
+  Team,
+  TeamDetail,
+  TeamMemberWithUser,
+  TeamWithMemberCount,
+  TestNotificationRequest,
   UpdateAppRequest,
   UpdateBasicAuthRequest,
   UpdateEnvVarRequest,
+  UpdateMemberRoleRequest,
+  UpdateNotificationChannelRequest,
+  UpdateTeamRequest,
 } from "@/types/api";
 
 async function apiRequest<T>(
@@ -160,6 +175,7 @@ export const api = {
   getSystemStats: (token?: string) => apiRequest<SystemStats>("/system/stats", {}, token),
   getDiskStats: (token?: string) => apiRequest<DiskStats>("/system/disk", {}, token),
   getRecentEvents: (token?: string) => apiRequest<RecentEvent[]>("/events/recent", {}, token),
+  getSystemHealth: (token?: string) => apiRequest<SystemHealthStatus>("/system/health", {}, token),
 
   // WebSocket URLs
   getRuntimeLogsWsUrl: (appId: string, token: string): string => {
@@ -170,6 +186,136 @@ export const api = {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}/api/apps/${appId}/terminal?token=${encodeURIComponent(token)}`;
   },
+
+  // Notification Channels
+  getNotificationChannels: (token?: string) =>
+    apiRequest<NotificationChannel[]>("/notification-channels", {}, token),
+  getNotificationChannel: (id: string, token?: string) =>
+    apiRequest<NotificationChannel>(`/notification-channels/${id}`, {}, token),
+  createNotificationChannel: (data: CreateNotificationChannelRequest, token?: string) =>
+    apiRequest<NotificationChannel>(
+      "/notification-channels",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateNotificationChannel: (id: string, data: UpdateNotificationChannelRequest, token?: string) =>
+    apiRequest<NotificationChannel>(
+      `/notification-channels/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteNotificationChannel: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/notification-channels/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+  testNotificationChannel: (id: string, data?: TestNotificationRequest, token?: string) =>
+    apiRequest<void>(
+      `/notification-channels/${id}/test`,
+      {
+        method: "POST",
+        body: JSON.stringify(data || {}),
+      },
+      token
+    ),
+
+  // Notification Subscriptions
+  getNotificationSubscriptions: (channelId: string, token?: string) =>
+    apiRequest<NotificationSubscription[]>(
+      `/notification-channels/${channelId}/subscriptions`,
+      {},
+      token
+    ),
+  createNotificationSubscription: (
+    channelId: string,
+    data: CreateNotificationSubscriptionRequest,
+    token?: string
+  ) =>
+    apiRequest<NotificationSubscription>(
+      `/notification-channels/${channelId}/subscriptions`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteNotificationSubscription: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/notification-subscriptions/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  // Teams
+  getTeams: (token?: string) =>
+    apiRequest<TeamWithMemberCount[]>("/teams", {}, token),
+  getTeam: (id: string, token?: string) =>
+    apiRequest<TeamDetail>(`/teams/${id}`, {}, token),
+  createTeam: (data: CreateTeamRequest, token?: string) =>
+    apiRequest<Team>(
+      "/teams",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateTeam: (id: string, data: UpdateTeamRequest, token?: string) =>
+    apiRequest<Team>(
+      `/teams/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteTeam: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/teams/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+  getTeamMembers: (teamId: string, token?: string) =>
+    apiRequest<TeamMemberWithUser[]>(`/teams/${teamId}/members`, {}, token),
+  inviteTeamMember: (teamId: string, data: InviteMemberRequest, token?: string) =>
+    apiRequest<TeamMemberWithUser>(
+      `/teams/${teamId}/members`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateTeamMemberRole: (teamId: string, userId: string, data: UpdateMemberRoleRequest, token?: string) =>
+    apiRequest<TeamMemberWithUser>(
+      `/teams/${teamId}/members/${userId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  removeTeamMember: (teamId: string, userId: string, token?: string) =>
+    apiRequest<void>(
+      `/teams/${teamId}/members/${userId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
 };
 
 export default api;

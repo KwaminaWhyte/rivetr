@@ -6,11 +6,13 @@ mod env_vars;
 pub mod error;
 mod git_providers;
 pub mod metrics;
+mod notifications;
 mod projects;
 pub mod rate_limit;
 mod routes;
 mod ssh_keys;
 mod system;
+mod teams;
 mod validation;
 mod webhooks;
 mod ws;
@@ -103,6 +105,26 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id", put(projects::update_project))
         .route("/projects/:id", delete(projects::delete_project))
         .route("/apps/:id/project", put(projects::assign_app_project))
+        // Teams
+        .route("/teams", get(teams::list_teams))
+        .route("/teams", post(teams::create_team))
+        .route("/teams/:id", get(teams::get_team))
+        .route("/teams/:id", put(teams::update_team))
+        .route("/teams/:id", delete(teams::delete_team))
+        .route("/teams/:id/members", get(teams::list_members))
+        .route("/teams/:id/members", post(teams::invite_member))
+        .route("/teams/:id/members/:user_id", put(teams::update_member_role))
+        .route("/teams/:id/members/:user_id", delete(teams::remove_member))
+        // Notification Channels
+        .route("/notification-channels", get(notifications::list_channels))
+        .route("/notification-channels", post(notifications::create_channel))
+        .route("/notification-channels/:id", get(notifications::get_channel))
+        .route("/notification-channels/:id", put(notifications::update_channel))
+        .route("/notification-channels/:id", delete(notifications::delete_channel))
+        .route("/notification-channels/:id/test", post(notifications::test_channel))
+        .route("/notification-channels/:id/subscriptions", get(notifications::list_subscriptions))
+        .route("/notification-channels/:id/subscriptions", post(notifications::create_subscription))
+        .route("/notification-subscriptions/:id", delete(notifications::delete_subscription))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/disk", get(system::get_disk_stats))

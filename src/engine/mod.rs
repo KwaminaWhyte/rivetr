@@ -13,7 +13,8 @@ pub use stats_collector::*;
 use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};
 use crate::config::RuntimeConfig;
-use crate::db::App;
+use crate::db::{App, NotificationEventType};
+use crate::notifications::{NotificationPayload, NotificationService};
 use crate::proxy::{Backend, BasicAuthConfig, RouteTable};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
@@ -73,10 +74,40 @@ impl DeploymentEngine {
             let build_limits = self.build_limits.clone();
 
             tokio::spawn(async move {
+                let notification_service = NotificationService::new(db.clone());
+
+                // Send deployment_started notification
+                let started_payload = NotificationPayload::deployment_event(
+                    NotificationEventType::DeploymentStarted,
+                    app.id.clone(),
+                    app.name.clone(),
+                    deployment_id.clone(),
+                    "started".to_string(),
+                    format!("Deployment started for {}", app.name),
+                    None,
+                );
+                if let Err(e) = notification_service.send(&started_payload).await {
+                    tracing::warn!(error = %e, "Failed to send deployment_started notification");
+                }
+
                 match run_deployment(&db, runtime.clone(), &deployment_id, &app, &build_limits).await {
                     Ok(container_info) => {
                         // Record successful deployment metric
                         record_deployment_success();
+
+                        // Send deployment_success notification
+                        let success_payload = NotificationPayload::deployment_event(
+                            NotificationEventType::DeploymentSuccess,
+                            app.id.clone(),
+                            app.name.clone(),
+                            deployment_id.clone(),
+                            "success".to_string(),
+                            format!("Deployment successful for {}", app.name),
+                            None,
+                        );
+                        if let Err(e) = notification_service.send(&success_payload).await {
+                            tracing::warn!(error = %e, "Failed to send deployment_success notification");
+                        }
 
                         // Mark all previous "running" deployments for this app as "replaced"
                         let _ = sqlx::query(
@@ -172,6 +203,20 @@ impl DeploymentEngine {
 
                         tracing::error!("Deployment {} failed: {}", deployment_id, e);
                         let _ = update_deployment_status(&db, &deployment_id, "failed", Some(&e.to_string())).await;
+
+                        // Send deployment_failed notification
+                        let failed_payload = NotificationPayload::deployment_event(
+                            NotificationEventType::DeploymentFailed,
+                            app.id.clone(),
+                            app.name.clone(),
+                            deployment_id.clone(),
+                            "failed".to_string(),
+                            format!("Deployment failed for {}", app.name),
+                            Some(e.to_string()),
+                        );
+                        if let Err(notify_err) = notification_service.send(&failed_payload).await {
+                            tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
+                        }
                     }
                 }
             });

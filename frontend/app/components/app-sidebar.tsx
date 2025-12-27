@@ -56,6 +56,8 @@ const navMain: NavMainItem[] = [
     icon: Settings,
     items: [
       { title: "General", url: "/settings" },
+      { title: "Teams", url: "/settings/teams" },
+      { title: "Notifications", url: "/settings/notifications" },
       { title: "Git Providers", url: "/settings/git-providers" },
       { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Webhooks", url: "/settings/webhooks" },

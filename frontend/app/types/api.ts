@@ -52,6 +52,11 @@ export interface App {
   // Domain management (stored as JSON string)
   domains: string | null;
   auto_subdomain: string | null;
+  // Docker Registry support (alternative to git-based deployments)
+  docker_image: string | null;
+  docker_image_tag: string | null;
+  registry_url: string | null;
+  registry_username: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -124,7 +129,8 @@ export interface DeploymentLog {
 
 export interface CreateAppRequest {
   name: string;
-  git_url: string;
+  /** Git URL for source-based deployments (required if docker_image is not set) */
+  git_url?: string;
   branch?: string;
   dockerfile?: string;
   domain?: string;
@@ -149,6 +155,17 @@ export interface CreateAppRequest {
   post_deploy_commands?: string[];
   // Domain management
   domains?: Domain[];
+  // Docker Registry support (alternative to git-based deployments)
+  /** Docker image name (e.g., "nginx", "ghcr.io/user/app") */
+  docker_image?: string;
+  /** Docker image tag (default: "latest") */
+  docker_image_tag?: string;
+  /** Custom registry URL (null = Docker Hub) */
+  registry_url?: string;
+  /** Registry authentication username */
+  registry_username?: string;
+  /** Registry authentication password */
+  registry_password?: string;
 }
 
 export interface UpdateAppRequest {
@@ -179,6 +196,17 @@ export interface UpdateAppRequest {
   post_deploy_commands?: string[];
   // Domain management
   domains?: Domain[];
+  // Docker Registry support
+  /** Docker image name (e.g., "nginx", "ghcr.io/user/app") - set to empty string to clear */
+  docker_image?: string;
+  /** Docker image tag (default: "latest") */
+  docker_image_tag?: string;
+  /** Custom registry URL (null = Docker Hub) */
+  registry_url?: string;
+  /** Registry authentication username */
+  registry_username?: string;
+  /** Registry authentication password */
+  registry_password?: string;
 }
 
 export interface SshKey {
@@ -338,4 +366,233 @@ export interface DiskStats {
   used_human: string;
   /** Human-readable free (e.g., "20 GB") */
   free_human: string;
+}
+
+// System health check result
+export interface CheckResult {
+  /** Name of the check */
+  name: string;
+  /** Whether the check passed */
+  passed: boolean;
+  /** Whether this check is critical (failure should abort startup) */
+  critical: boolean;
+  /** Human-readable message describing the result */
+  message: string;
+  /** Additional details (optional) */
+  details?: string;
+}
+
+// System health status from /api/system/health
+export interface SystemHealthStatus {
+  /** Overall system health */
+  healthy: boolean;
+  /** Database connectivity */
+  database_healthy: boolean;
+  /** Container runtime availability */
+  runtime_healthy: boolean;
+  /** Disk space status */
+  disk_healthy: boolean;
+  /** Individual check results */
+  checks: CheckResult[];
+  /** Rivetr version */
+  version: string;
+}
+
+// -------------------------------------------------------------------------
+// Notification types
+// -------------------------------------------------------------------------
+
+/** Notification channel types */
+export type NotificationChannelType = "slack" | "discord" | "email";
+
+/** Notification event types */
+export type NotificationEventType =
+  | "deployment_started"
+  | "deployment_success"
+  | "deployment_failed"
+  | "app_stopped"
+  | "app_started";
+
+/** Slack webhook configuration */
+export interface SlackConfig {
+  webhook_url: string;
+}
+
+/** Discord webhook configuration */
+export interface DiscordConfig {
+  webhook_url: string;
+}
+
+/** Email (SMTP) configuration */
+export interface EmailConfig {
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  smtp_tls: boolean;
+  from_address: string;
+  to_addresses: string[];
+}
+
+/** Notification channel */
+export interface NotificationChannel {
+  id: string;
+  name: string;
+  channel_type: NotificationChannelType;
+  config: SlackConfig | DiscordConfig | EmailConfig | Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Notification subscription */
+export interface NotificationSubscription {
+  id: string;
+  channel_id: string;
+  event_type: NotificationEventType;
+  app_id: string | null;
+  app_name: string | null;
+  created_at: string;
+}
+
+/** Request to create a notification channel */
+export interface CreateNotificationChannelRequest {
+  name: string;
+  channel_type: NotificationChannelType;
+  config: SlackConfig | DiscordConfig | EmailConfig;
+  enabled?: boolean;
+}
+
+/** Request to update a notification channel */
+export interface UpdateNotificationChannelRequest {
+  name?: string;
+  config?: SlackConfig | DiscordConfig | EmailConfig;
+  enabled?: boolean;
+}
+
+/** Request to create a notification subscription */
+export interface CreateNotificationSubscriptionRequest {
+  event_type: NotificationEventType;
+  app_id?: string;
+}
+
+/** Request to test a notification channel */
+export interface TestNotificationRequest {
+  message?: string;
+}
+
+// -------------------------------------------------------------------------
+// Team types
+// -------------------------------------------------------------------------
+
+/** Team roles with hierarchical permissions */
+export type TeamRole = "owner" | "admin" | "developer" | "viewer";
+
+/** Team entity */
+export interface Team {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Team with member count for list views */
+export interface TeamWithMemberCount {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  /** Current user's role in this team (if applicable) */
+  user_role: TeamRole | null;
+}
+
+/** Team member entity */
+export interface TeamMember {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: TeamRole;
+  created_at: string;
+}
+
+/** Team member with user details */
+export interface TeamMemberWithUser {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: TeamRole;
+  created_at: string;
+  user_name: string;
+  user_email: string;
+}
+
+/** Team detail response with members */
+export interface TeamDetail {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+  members: TeamMemberWithUser[];
+}
+
+/** Request to create a new team */
+export interface CreateTeamRequest {
+  name: string;
+  /** Optional slug (auto-generated from name if not provided) */
+  slug?: string;
+}
+
+/** Request to update a team */
+export interface UpdateTeamRequest {
+  name?: string;
+  slug?: string;
+}
+
+/** Request to invite/add a member to a team */
+export interface InviteMemberRequest {
+  /** User ID or email to invite */
+  user_identifier: string;
+  /** Role to assign */
+  role: TeamRole;
+}
+
+/** Request to update a member's role */
+export interface UpdateMemberRoleRequest {
+  role: TeamRole;
+}
+
+/** Helper: Check if user has at least the required role */
+export function hasRoleAtLeast(userRole: TeamRole | null, requiredRole: TeamRole): boolean {
+  if (!userRole) return false;
+  const roleOrder: TeamRole[] = ["viewer", "developer", "admin", "owner"];
+  return roleOrder.indexOf(userRole) >= roleOrder.indexOf(requiredRole);
+}
+
+/** Helper: Check if user can manage team members */
+export function canManageMembers(role: TeamRole | null): boolean {
+  return hasRoleAtLeast(role, "admin");
+}
+
+/** Helper: Check if user can deploy apps */
+export function canDeploy(role: TeamRole | null): boolean {
+  return hasRoleAtLeast(role, "developer");
+}
+
+/** Helper: Check if user can manage apps (create/edit) */
+export function canManageApps(role: TeamRole | null): boolean {
+  return hasRoleAtLeast(role, "developer");
+}
+
+/** Helper: Check if user can delete apps */
+export function canDeleteApps(role: TeamRole | null): boolean {
+  return hasRoleAtLeast(role, "admin");
+}
+
+/** Helper: Check if user can delete the team */
+export function canDeleteTeam(role: TeamRole | null): boolean {
+  return role === "owner";
 }

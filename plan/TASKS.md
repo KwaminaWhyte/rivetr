@@ -238,8 +238,8 @@
 
 - [x] **T2.2.1** Create consistent error responses (src/api/error.rs - ApiError with ErrorCode enum, ValidationErrorBuilder)
 - [ ] **T2.2.2** Add deployment failure recovery
-- [ ] **T2.2.3** Implement container restart on crash
-- [ ] **T2.2.4** Add startup self-checks
+- [x] **T2.2.3** Implement container restart on crash (engine/container_monitor.rs - background task with exponential backoff, Prometheus metrics)
+- [x] **T2.2.4** Add startup self-checks (startup/mod.rs - database, runtime, directory, disk checks; --skip-checks flag; /api/system/health endpoint)
 - [ ] **T2.2.5** Database integrity checks
 
 ### 2.3 Resource Management
@@ -324,15 +324,15 @@
 - [ ] **T3.4.4** Auto-cleanup on PR close/merge
 - [ ] **T3.4.5** Comment preview URL on PR (GitHub API)
 
-### 3.5 Notifications
+### 3.5 Notifications ✅ COMPLETE
 
-- [ ] **T3.5.1** Create notification channels table
-- [ ] **T3.5.2** Add notification settings API
-- [ ] **T3.5.3** Implement Slack webhook notifications
-- [ ] **T3.5.4** Implement Discord webhook notifications
-- [ ] **T3.5.5** Implement email notifications (SMTP)
-- [ ] **T3.5.6** Trigger notifications on deployment events
-- [ ] **T3.5.7** Add notification preferences UI
+- [x] **T3.5.1** Create notification channels table (016_notifications.sql)
+- [x] **T3.5.2** Add notification settings API (src/api/notifications.rs)
+- [x] **T3.5.3** Implement Slack webhook notifications
+- [x] **T3.5.4** Implement Discord webhook notifications
+- [x] **T3.5.5** Implement email notifications (SMTP)
+- [x] **T3.5.6** Trigger notifications on deployment events
+- [x] **T3.5.7** Add notification preferences UI (routes/settings/notifications.tsx)
 
 ### 3.6 Container Shell Access ✅ COMPLETE
 
@@ -356,14 +356,14 @@
 - [ ] **T3.8.3** Auto-detect build type from repo
 - [ ] **T3.8.4** Build type selector in UI
 
-### 3.9 Multi-User & Teams
+### 3.9 Multi-User & Teams ✅ COMPLETE
 
-- [ ] **T3.9.1** Add user roles (admin, developer, viewer)
-- [ ] **T3.9.2** Create teams/organizations table
-- [ ] **T3.9.3** Add team membership API
-- [ ] **T3.9.4** Implement permission checks on API
-- [ ] **T3.9.5** Add user management UI
-- [ ] **T3.9.6** Add team settings UI
+- [x] **T3.9.1** Add user roles (admin, developer, viewer) - TeamRole enum with owner/admin/developer/viewer
+- [x] **T3.9.2** Create teams/organizations table (015_teams.sql)
+- [x] **T3.9.3** Add team membership API (src/api/teams.rs)
+- [x] **T3.9.4** Implement permission checks on API (role-based permissions)
+- [x] **T3.9.5** Add user management UI (routes/settings/teams.tsx)
+- [x] **T3.9.6** Add team settings UI (routes/settings/teams/$id.tsx)
 
 **Phase 3 Checkpoint**: Full-featured PaaS with monitoring and team support
 
@@ -425,13 +425,13 @@
 - [ ] **T3.15.3** Create Container Labels editor in app settings UI
 - [ ] **T3.15.4** Add default label templates (Traefik, Caddy)
 
-### 3.16 Docker Registry Support (Coolify-inspired)
+### 3.16 Docker Registry Support (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.16.1** Add `docker_image` field (pull from registry instead of building)
-- [ ] **T3.16.2** Add `docker_image_tag` field
-- [ ] **T3.16.3** Add registry authentication (username/password)
-- [ ] **T3.16.4** Support for private registries (Docker Hub, GHCR, etc.)
-- [ ] **T3.16.5** Create Docker Registry section in app settings UI
+- [x] **T3.16.1** Add `docker_image` field (pull from registry instead of building) - migration 014
+- [x] **T3.16.2** Add `docker_image_tag` field
+- [x] **T3.16.3** Add registry authentication (username/password) - encrypted storage
+- [x] **T3.16.4** Support for private registries (Docker Hub, GHCR, etc.)
+- [x] **T3.16.5** Create Docker Registry section in app settings UI (tabs in new app form)
 
 ---
 
@@ -488,9 +488,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 28 | 15 | 54% |
-| Phase 3 | 90 | 51 | 57% |
-| **Total** | **236** | **180** | **76%** |
+| Phase 2 | 28 | 17 | 61% |
+| Phase 3 | 90 | 69 | 77% |
+| **Total** | **236** | **200** | **85%** |
 
 ---
 
@@ -499,15 +499,13 @@ Research conducted to identify feature gaps and improvement opportunities.
 **Phase 2 - Production Ready:**
 1. **T2.1.3** - Add CSRF tokens for UI forms
 2. **T2.2.2** - Add deployment failure recovery
-3. **T2.2.3** - Implement container restart on crash
-4. **T2.2.4** - Add startup self-checks
+3. **T2.2.5** - Database integrity checks
 
 **Phase 3 - Enhanced Features:**
-5. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
-6. **T3.16.1-5** - Docker Registry Support (pull from registry)
-7. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-8. **T3.5.1-7** - Notifications (Slack, Discord, Email)
-9. **T3.7.1-5** - Volumes Management
+4. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
+5. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+6. **T3.7.1-5** - Volumes Management
+7. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks)
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -553,10 +551,15 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Container Resource Prometheus Metrics** - CPU, memory, network gauges with app_name labels, background stats collector
 - **Health Check Prometheus Metrics** - Success/failure counters, duration histogram, consecutive failures gauge
 - **Dashboard Disk Usage Card** - Real-time disk usage display with percentage indicator
+- **Container Crash Recovery** - Background monitor auto-restarts crashed containers with exponential backoff
+- **Startup Self-Checks** - Database, runtime, directory, and disk checks before accepting requests; --skip-checks flag
+- **Docker Registry Support** - Deploy apps from Docker Hub, GHCR, or private registries instead of building
+- **Notifications System** - Slack, Discord, and Email notifications for deployment events with subscription management
+- **Teams & RBAC** - Team management with owner/admin/developer/viewer roles and permission-based access control
 
 ### Planned Features
 - **Container Labels** - Custom labels for Traefik/Caddy integration
-- **Docker Registry** - Pull images from registries instead of building
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
-- **Notifications** - Slack, Discord, Email notifications on deployment events
 - **Volumes Management** - Persistent data volumes with backup support
+- **Docker Compose support** - Deploy multi-container apps
+- **One-click templates** - Pre-configured apps (PostgreSQL, Redis, etc.)

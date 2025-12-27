@@ -669,6 +669,84 @@ pub fn validate_domains(domains: &Option<Vec<crate::db::Domain>>) -> Result<(), 
     Ok(())
 }
 
+/// Validate a Docker image reference
+/// Accepts formats like:
+/// - "nginx" (official image)
+/// - "nginx:1.19" (with tag)
+/// - "user/image" (Docker Hub user image)
+/// - "ghcr.io/user/image" (GitHub Container Registry)
+/// - "registry.example.com/path/image:tag" (custom registry)
+pub fn validate_docker_image(image: Option<&str>) -> Result<(), String> {
+    let Some(image) = image else {
+        return Ok(());
+    };
+
+    if image.is_empty() {
+        return Ok(()); // Empty string is treated as "clear"
+    }
+
+    if image.len() > 1024 {
+        return Err("Docker image reference is too long (max 1024 characters)".to_string());
+    }
+
+    // Check for forbidden characters
+    if image.contains(char::is_whitespace) {
+        return Err("Docker image reference cannot contain whitespace".to_string());
+    }
+
+    // Split by @ to handle digest format (image@sha256:...)
+    let image_part = image.split('@').next().unwrap_or(image);
+
+    // Split by : to separate image from tag
+    let parts: Vec<&str> = image_part.splitn(2, ':').collect();
+    let image_name = parts[0];
+
+    if image_name.is_empty() {
+        return Err("Docker image name cannot be empty".to_string());
+    }
+
+    // Validate the image name (registry/path/name format)
+    // Each component should be valid DNS-like or path component
+    for component in image_name.split('/') {
+        if component.is_empty() {
+            return Err("Docker image reference contains empty path component".to_string());
+        }
+
+        // Allow alphanumeric, dashes, underscores, and dots
+        if !component
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            return Err(format!(
+                "Invalid character in docker image component: '{}'",
+                component
+            ));
+        }
+    }
+
+    // If there's a tag, validate it
+    if parts.len() > 1 {
+        let tag = parts[1];
+        if tag.is_empty() {
+            return Err("Docker image tag cannot be empty if specified".to_string());
+        }
+
+        if tag.len() > 128 {
+            return Err("Docker image tag is too long (max 128 characters)".to_string());
+        }
+
+        // Tags allow alphanumeric, dashes, underscores, and dots
+        if !tag
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            return Err(format!("Invalid character in docker image tag: '{}'", tag));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,9 +3,10 @@ use argon2::{
     Argon2,
 };
 use axum::{
+    async_trait,
     body::Body,
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{FromRequestParts, State},
+    http::{request::Parts, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -284,4 +285,75 @@ pub async fn setup(
             role: "admin".to_string(),
         },
     }))
+}
+
+/// Extract the token from request headers
+fn extract_token(headers: &axum::http::HeaderMap) -> Option<String> {
+    // Try Authorization header first
+    if let Some(auth_header) = headers.get("Authorization").and_then(|h| h.to_str().ok()) {
+        if auth_header.starts_with("Bearer ") {
+            return Some(auth_header[7..].to_string());
+        }
+    }
+
+    // Fall back to X-API-Key header
+    headers
+        .get("X-API-Key")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+/// Get the current user from a token
+pub async fn get_current_user(
+    pool: &sqlx::SqlitePool,
+    config: &crate::config::Config,
+    token: &str,
+) -> Result<User, StatusCode> {
+    // For admin token, return a system user
+    if token == config.auth.admin_token {
+        // Return a synthetic admin user for API token auth
+        return Ok(User {
+            id: "system".to_string(),
+            email: "system@rivetr.local".to_string(),
+            password_hash: String::new(),
+            name: "System Admin".to_string(),
+            role: "admin".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        });
+    }
+
+    // Look up session and user
+    let token_hash = hash_token(token);
+    let session: Option<Session> = sqlx::query_as(
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let session = session.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&session.user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    user.ok_or(StatusCode::UNAUTHORIZED)
+}
+
+/// Extractor for getting the current authenticated user from a request
+#[async_trait]
+impl FromRequestParts<Arc<AppState>> for User {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let token = extract_token(&parts.headers).ok_or(StatusCode::UNAUTHORIZED)?;
+        get_current_user(&state.db, &state.config, &token).await
+    }
 }

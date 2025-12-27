@@ -72,7 +72,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     })
   );
 
-  return { projects: projectsWithApps, apps, appStatuses };
+  return { projects: projectsWithApps, apps, appStatuses, token };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -125,9 +125,9 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
   const { data: projects = [] } = useQuery<ProjectWithApps[]>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const projectList = await api.getProjects();
+      const projectList = await api.getProjects(loaderData.token);
       const projectsWithApps = await Promise.all(
-        projectList.map((p) => api.getProject(p.id).catch(() => ({ ...p, apps: [] })))
+        projectList.map((p) => api.getProject(p.id, loaderData.token).catch(() => ({ ...p, apps: [] })))
       );
       return projectsWithApps;
     },
@@ -136,7 +136,7 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
 
   const { data: apps = [] } = useQuery<App[]>({
     queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryFn: () => api.getApps(loaderData.token),
     initialData: loaderData.apps,
   });
 
