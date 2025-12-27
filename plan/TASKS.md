@@ -367,45 +367,56 @@
 
 **Phase 3 Checkpoint**: Full-featured PaaS with monitoring and team support
 
-### 3.10 Advanced Build Options (Coolify-inspired)
+### 3.10 Advanced Build Options (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.10.1** Add `dockerfile_path` field to apps (custom Dockerfile location)
-- [ ] **T3.10.2** Add `base_directory` field (build context path)
-- [ ] **T3.10.3** Add `build_target` field (Docker multi-stage build target)
-- [ ] **T3.10.4** Add `watch_paths` field (auto-deploy on specific paths changed)
-- [ ] **T3.10.5** Add `custom_docker_options` field (extra docker build/run args)
-- [ ] **T3.10.6** Create Build Options section in app settings UI
+- [x] **T3.10.1** Add `dockerfile_path` field to apps (custom Dockerfile location)
+- [x] **T3.10.2** Add `base_directory` field (build context path)
+- [x] **T3.10.3** Add `build_target` field (Docker multi-stage build target)
+- [x] **T3.10.4** Add `watch_paths` field (auto-deploy on specific paths changed)
+- [x] **T3.10.5** Add `custom_docker_options` field (extra docker build/run args)
+- [x] **T3.10.6** Create Build Options section in app settings UI
 
-### 3.11 Network Configuration (Coolify-inspired)
+### 3.11 Network Configuration (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.11.1** Add `port_mappings` field (host:container port pairs)
-- [ ] **T3.11.2** Add `network_aliases` field (container network aliases)
-- [ ] **T3.11.3** Support multiple exposed ports per app
-- [ ] **T3.11.4** Create Network Configuration section in app settings UI
+- [x] **T3.11.1** Add `port_mappings` field (host:container port pairs)
+- [x] **T3.11.2** Add `network_aliases` field (container network aliases)
+- [x] **T3.11.3** Support multiple exposed ports per app
+- [x] **T3.11.4** Add `extra_hosts` field for custom /etc/hosts entries
+- [x] **T3.11.5** Create Network Configuration section in app settings UI
 
-### 3.12 HTTP Basic Auth (Coolify-inspired)
+### 3.12 HTTP Basic Auth (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.12.1** Add `basic_auth_enabled` field to apps
-- [ ] **T3.12.2** Add `basic_auth_username` and `basic_auth_password` fields
-- [ ] **T3.12.3** Implement basic auth middleware in proxy
-- [ ] **T3.12.4** Create Basic Auth toggle in app settings UI
+- [x] **T3.12.1** Add `basic_auth_enabled` field to apps
+- [x] **T3.12.2** Add `basic_auth_username` and `basic_auth_password` fields
+- [x] **T3.12.3** Implement basic auth middleware in proxy
+- [x] **T3.12.4** Create Basic Auth toggle in app settings UI
 
-### 3.13 Pre/Post Deployment Commands (Coolify-inspired)
+### 3.13 Pre/Post Deployment Commands (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.13.1** Add `pre_deploy_commands` field (JSON array)
-- [ ] **T3.13.2** Add `post_deploy_commands` field (JSON array)
-- [ ] **T3.13.3** Execute pre-deploy commands before container start
-- [ ] **T3.13.4** Execute post-deploy commands after container healthy
-- [ ] **T3.13.5** Log command outputs to deployment logs
-- [ ] **T3.13.6** Create Deployment Commands section in app settings UI
+- [x] **T3.13.1** Add `pre_deploy_commands` field (JSON array)
+- [x] **T3.13.2** Add `post_deploy_commands` field (JSON array)
+- [x] **T3.13.3** Execute pre-deploy commands after container starts
+- [x] **T3.13.4** Execute post-deploy commands after container healthy
+- [x] **T3.13.5** Log command outputs to deployment logs
+- [x] **T3.13.6** Create Deployment Commands section in app settings UI
 
-### 3.14 Domain Management (Coolify-inspired)
+### 3.14 Domain Management (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.14.1** Add `domains` field (JSON array for multiple domains)
-- [ ] **T3.14.2** Implement auto-generate subdomain feature
-- [ ] **T3.14.3** Support www/non-www redirect options
-- [ ] **T3.14.4** Create Domain Management section in app settings UI
-- [ ] **T3.14.5** Auto-provision SSL for all domains
+- [x] **T3.14.1** Add `domains` field (JSON array for multiple domains)
+- [x] **T3.14.2** Implement auto-generate subdomain feature (sslip.io)
+- [x] **T3.14.3** Support www/non-www redirect options
+- [x] **T3.14.4** Create Domain Management section in app settings UI
+- [x] **T3.14.5** Auto-provision SSL for all domains
+
+### 3.17 Container Lifecycle Controls ✅ COMPLETE
+
+- [x] **T3.17.1** Add `start` method to ContainerRuntime trait
+- [x] **T3.17.2** Implement Docker container start
+- [x] **T3.17.3** Implement Podman container start
+- [x] **T3.17.4** Add `GET /api/apps/:id/status` endpoint
+- [x] **T3.17.5** Add `POST /api/apps/:id/start` endpoint
+- [x] **T3.17.6** Add `POST /api/apps/:id/stop` endpoint
+- [x] **T3.17.7** Create Start/Stop UI buttons in app layout
 
 ### 3.15 Container Labels (Coolify-inspired)
 
@@ -478,8 +489,8 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 9 | 32% |
-| Phase 3 | 83 | 21 | 25% |
-| **Total** | **229** | **144** | **63%** |
+| Phase 3 | 90 | 51 | 57% |
+| **Total** | **236** | **174** | **74%** |
 
 ---
 
@@ -490,12 +501,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 2. **T2.2.2** - Add deployment failure recovery
 3. **T2.3.3** - Add build resource limits
 
-**Phase 3 - Enhanced Features (Coolify-inspired):**
-4. **T3.10.1-6** - Advanced Build Options (dockerfile_path, base_directory, build_target)
-5. **T3.13.1-6** - Pre/Post Deployment Commands
-6. **T3.14.1-5** - Domain Management (multiple domains, auto-generate subdomain)
-7. **T3.11.1-4** - Network Configuration (port mappings, aliases)
-8. **T3.4.1** - Parse PR events for preview deployments
+**Phase 3 - Enhanced Features:**
+4. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
+5. **T3.16.1-5** - Docker Registry Support (pull from registry)
+6. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+7. **T3.5.1-7** - Notifications (Slack, Discord, Email)
+8. **T3.7.1-5** - Volumes Management
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -529,12 +540,17 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Browser Terminal** - xterm.js-based shell access to running containers
 - **Deployment Cleanup** - Automatic cleanup of old deployments and images
 - **WebSocket Authentication** - Token-based auth for log streaming and terminal
-
-### Planned Features (Coolify-inspired)
 - **Advanced Build Options** - Custom Dockerfile path, base directory, build targets, watch paths
 - **Pre/Post Deployment Commands** - Execute commands before/after container starts
-- **Domain Management** - Multiple domains per app, auto-generate subdomains, www redirects
-- **Network Configuration** - Port mappings, network aliases, multiple exposed ports
-- **HTTP Basic Auth** - Protect apps with basic authentication
+- **Domain Management** - Multiple domains per app, auto-generate subdomains (sslip.io), www redirects
+- **Network Configuration** - Port mappings, network aliases, extra hosts (/etc/hosts)
+- **HTTP Basic Auth** - Protect apps with username/password authentication
+- **Container Lifecycle Controls** - Start/stop containers from UI with status indicators
+- **Theme Flicker Fix** - Blocking script to prevent flash of wrong theme on page load
+
+### Planned Features
 - **Container Labels** - Custom labels for Traefik/Caddy integration
 - **Docker Registry** - Pull images from registries instead of building
+- **Preview Deployments** - Auto-deploy PRs with unique URLs
+- **Notifications** - Slack, Discord, Email notifications on deployment events
+- **Volumes Management** - Persistent data volumes with backup support

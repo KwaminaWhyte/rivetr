@@ -70,6 +70,10 @@ pub struct ContainerInfo {
     pub name: String,
     pub status: String,
     pub port: Option<u16>,
+    /// Whether the container is currently running
+    pub running: bool,
+    /// Host port the container is listening on
+    pub host_port: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +149,8 @@ pub struct CommandResult {
 pub trait ContainerRuntime: Send + Sync {
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
     async fn run(&self, config: &RunConfig) -> Result<String>;
+    /// Start a stopped container
+    async fn start(&self, container_id: &str) -> Result<()>;
     async fn stop(&self, container_id: &str) -> Result<()>;
     async fn remove(&self, container_id: &str) -> Result<()>;
     async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
@@ -173,6 +179,9 @@ impl ContainerRuntime for NoopRuntime {
         anyhow::bail!("No container runtime available")
     }
     async fn run(&self, _config: &RunConfig) -> Result<String> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn start(&self, _container_id: &str) -> Result<()> {
         anyhow::bail!("No container runtime available")
     }
     async fn stop(&self, _container_id: &str) -> Result<()> {

@@ -56,6 +56,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id", get(apps::get_app))
         .route("/apps/:id", put(apps::update_app))
         .route("/apps/:id", delete(apps::delete_app))
+        .route("/apps/:id/status", get(apps::get_app_status))
+        .route("/apps/:id/start", post(apps::start_app))
+        .route("/apps/:id/stop", post(apps::stop_app))
         // Deployments
         .route("/apps/:id/deploy", post(deployments::trigger_deploy))
         .route("/apps/:id/deployments", get(deployments::list_deployments))

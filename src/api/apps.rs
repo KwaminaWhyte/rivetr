@@ -281,10 +281,12 @@ pub async fn create_app(
         .map(|c| serde_json::to_string(c).unwrap_or_default());
 
     // Generate auto_subdomain if configured
-    let auto_subdomain = state
-        .config
-        .proxy
-        .generate_subdomain(&req.name);
+    let auto_subdomain = if state.config.proxy.sslip_enabled {
+        // Generate sslip.io domain
+        state.config.proxy.generate_sslip_domain(None)
+    } else {
+        state.config.proxy.generate_subdomain(&req.name)
+    };
 
     sqlx::query(
         r#"
@@ -484,4 +486,178 @@ pub async fn delete_app(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Response for app status
+#[derive(serde::Serialize)]
+pub struct AppStatusResponse {
+    pub app_id: String,
+    pub container_id: Option<String>,
+    pub running: bool,
+    pub status: String,
+}
+
+/// Get current running status of an app
+pub async fn get_app_status(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<AppStatusResponse>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Get the latest successful deployment
+    let deployment: Option<(String,)> = sqlx::query_as(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let (container_id, running, status) = if let Some((cid,)) = deployment {
+        if cid.is_empty() {
+            (None, false, "no_container".to_string())
+        } else {
+            // Check if container is running
+            match state.runtime.inspect(&cid).await {
+                Ok(info) => (Some(cid), info.running, if info.running { "running" } else { "stopped" }.to_string()),
+                Err(_) => (Some(cid), false, "not_found".to_string()),
+            }
+        }
+    } else {
+        (None, false, "not_deployed".to_string())
+    };
+
+    Ok(Json(AppStatusResponse {
+        app_id: id,
+        container_id,
+        running,
+        status,
+    }))
+}
+
+/// Start an app's container
+pub async fn start_app(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<AppStatusResponse>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Get the latest successful deployment
+    let deployment: Option<(String,)> = sqlx::query_as(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let container_id = deployment
+        .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
+        .ok_or_else(|| ApiError::bad_request("No successful deployment found. Deploy the app first."))?;
+
+    // Start the container
+    state.runtime.start(&container_id).await.map_err(|e| {
+        tracing::error!(container = %container_id, error = %e, "Failed to start container");
+        ApiError::internal(&format!("Failed to start container: {}", e))
+    })?;
+
+    tracing::info!(app = %app.name, container = %container_id, "App container started");
+
+    // Re-register the route if app has a domain
+    if let Some(domain) = &app.domain {
+        if !domain.is_empty() {
+            // Get container info for the port
+            if let Ok(info) = state.runtime.inspect(&container_id).await {
+                if let Some(host_port) = info.host_port {
+                    let backend = crate::proxy::Backend::new(
+                        container_id.clone(),
+                        "127.0.0.1".to_string(),
+                        host_port,
+                    )
+                    .with_healthcheck(app.healthcheck.clone());
+
+                    state.routes.load().add_route(domain.clone(), backend);
+                    tracing::info!(domain = %domain, "Route re-registered after start");
+                }
+            }
+        }
+    }
+
+    Ok(Json(AppStatusResponse {
+        app_id: id,
+        container_id: Some(container_id),
+        running: true,
+        status: "running".to_string(),
+    }))
+}
+
+/// Stop an app's container
+pub async fn stop_app(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<AppStatusResponse>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Get the latest successful deployment
+    let deployment: Option<(String,)> = sqlx::query_as(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'success' ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let container_id = deployment
+        .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
+        .ok_or_else(|| ApiError::bad_request("No successful deployment found"))?;
+
+    // Stop the container
+    state.runtime.stop(&container_id).await.map_err(|e| {
+        tracing::error!(container = %container_id, error = %e, "Failed to stop container");
+        ApiError::internal(&format!("Failed to stop container: {}", e))
+    })?;
+
+    tracing::info!(app = %app.name, container = %container_id, "App container stopped");
+
+    // Remove the route if app has a domain
+    if let Some(domain) = &app.domain {
+        if !domain.is_empty() {
+            state.routes.load().remove_route(domain);
+            tracing::info!(domain = %domain, "Route removed after stop");
+        }
+    }
+
+    Ok(Json(AppStatusResponse {
+        app_id: id,
+        container_id: Some(container_id),
+        running: false,
+        status: "stopped".to_string(),
+    }))
 }

@@ -174,6 +174,14 @@ impl ContainerRuntime for DockerRuntime {
         Ok(response.id)
     }
 
+    async fn start(&self, container_id: &str) -> Result<()> {
+        self.client
+            .start_container::<String>(container_id, None)
+            .await
+            .context("Failed to start container")?;
+        Ok(())
+    }
+
     async fn stop(&self, container_id: &str) -> Result<()> {
         let options = StopContainerOptions { t: 10 };
         self.client
@@ -233,9 +241,10 @@ impl ContainerRuntime for DockerRuntime {
             .await
             .context("Failed to inspect container")?;
 
-        let port = info
+        let host_port = info
             .network_settings
-            .and_then(|ns| ns.ports)
+            .as_ref()
+            .and_then(|ns| ns.ports.as_ref())
             .and_then(|ports| {
                 ports.values().next().and_then(|bindings| {
                     bindings.as_ref().and_then(|b| {
@@ -246,15 +255,26 @@ impl ContainerRuntime for DockerRuntime {
                 })
             });
 
+        let (running, status) = info
+            .state
+            .as_ref()
+            .map(|s| {
+                let is_running = s.running.unwrap_or(false);
+                let status_str = s.status
+                    .as_ref()
+                    .map(|st| format!("{:?}", st))
+                    .unwrap_or_default();
+                (is_running, status_str)
+            })
+            .unwrap_or((false, String::new()));
+
         Ok(ContainerInfo {
             id: info.id.unwrap_or_default(),
             name: info.name.unwrap_or_default(),
-            status: info
-                .state
-                .and_then(|s| s.status)
-                .map(|s| format!("{:?}", s))
-                .unwrap_or_default(),
-            port,
+            status,
+            port: host_port,
+            running,
+            host_port,
         })
     }
 
@@ -296,11 +316,17 @@ impl ContainerRuntime for DockerRuntime {
                     .and_then(|p| p.public_port.map(|port| port as u16))
             });
 
+            // Check if running based on status
+            let status = container.state.clone().unwrap_or_default();
+            let is_running = status.to_lowercase() == "running";
+
             result.push(ContainerInfo {
                 id: container.id.unwrap_or_default(),
                 name,
-                status: container.state.unwrap_or_default(),
+                status,
                 port,
+                running: is_running,
+                host_port: port,
             });
         }
 

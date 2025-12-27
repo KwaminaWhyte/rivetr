@@ -3,6 +3,7 @@
 
 import type {
   App,
+  AppStatus,
   BasicAuthStatus,
   ContainerStats,
   CreateEnvVarRequest,
@@ -69,6 +70,12 @@ export const api = {
       },
       token
     ),
+  getAppStatus: (id: string, token?: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/status`, {}, token),
+  startApp: (id: string, token?: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/start`, { method: "POST" }, token),
+  stopApp: (id: string, token?: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/stop`, { method: "POST" }, token),
 
   // SSH Keys
   getSshKeys: () => apiRequest<SshKey[]>("/ssh-keys"),

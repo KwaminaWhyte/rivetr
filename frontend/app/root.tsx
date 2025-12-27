@@ -22,12 +22,23 @@ const queryClient = new QueryClient({
   },
 });
 
+// Blocking script to set theme before React hydrates to prevent flicker
+const themeScript = `
+(function() {
+  const stored = localStorage.getItem('rivetr_theme');
+  const theme = stored === 'light' || stored === 'dark' ? stored :
+    (stored === 'system' || !stored) && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (theme === 'dark') document.documentElement.classList.add('dark');
+})();
+`;
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <Meta />
         <Links />
       </head>

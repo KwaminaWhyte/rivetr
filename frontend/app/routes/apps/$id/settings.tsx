@@ -34,7 +34,6 @@ import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
 import { DomainManagementCard } from "@/components/domain-management-card";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { NetworkConfigCard } from "@/components/network-config-card";
-import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
 
@@ -63,23 +62,17 @@ export async function action({ request, params }: Route.ActionArgs) {
     const git_url = formData.get("git_url");
     const branch = formData.get("branch");
     const dockerfile = formData.get("dockerfile");
-    const domain = formData.get("domain");
     const port = formData.get("port");
     const healthcheck = formData.get("healthcheck");
     const environment = formData.get("environment");
-    const cpu_limit = formData.get("cpu_limit");
-    const memory_limit = formData.get("memory_limit");
 
     if (typeof name === "string") updates.name = name;
     if (typeof git_url === "string") updates.git_url = git_url;
     if (typeof branch === "string") updates.branch = branch;
     if (typeof dockerfile === "string") updates.dockerfile = dockerfile;
-    if (typeof domain === "string") updates.domain = domain || undefined;
     if (typeof port === "string") updates.port = parseInt(port) || undefined;
     if (typeof healthcheck === "string") updates.healthcheck = healthcheck || undefined;
     if (typeof environment === "string") updates.environment = environment as AppEnvironment;
-    if (typeof cpu_limit === "string") updates.cpu_limit = cpu_limit;
-    if (typeof memory_limit === "string") updates.memory_limit = memory_limit;
 
     // Advanced build options
     const dockerfile_path = formData.get("dockerfile_path");
@@ -192,64 +185,25 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                 <Input id="dockerfile" name="dockerfile" defaultValue={app.dockerfile} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="domain">Domain</Label>
-                <Input id="domain" name="domain" placeholder="app.example.com" defaultValue={app.domain || ""} />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
                 <Label htmlFor="healthcheck">Healthcheck Path</Label>
                 <Input id="healthcheck" name="healthcheck" placeholder="/health" defaultValue={app.healthcheck || ""} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="environment">Environment</Label>
-                <Select name="environment" defaultValue={app.environment || "development"}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select environment" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ENVIRONMENT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cpu_limit">CPU Limit</Label>
-                <Select name="cpu_limit" defaultValue={app.cpu_limit || "1"}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select CPU limit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CPU_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="memory_limit">Memory Limit</Label>
-                <Select name="memory_limit" defaultValue={app.memory_limit || "512m"}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select memory limit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MEMORY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="environment">Environment</Label>
+              <Select name="environment" defaultValue={app.environment || "development"}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Select environment" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENVIRONMENT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Advanced Build Options */}

@@ -155,6 +155,12 @@ pub struct ProxyConfig {
     /// Enable automatic subdomain generation for new apps (default: true if base_domain is set)
     #[serde(default)]
     pub auto_subdomain_enabled: bool,
+    /// Server's public IP address for sslip.io domain generation
+    /// If not set, will try to auto-detect
+    pub server_ip: Option<String>,
+    /// Enable sslip.io automatic domains (generates domains like abc123.192.168.1.1.sslip.io)
+    #[serde(default)]
+    pub sslip_enabled: bool,
 }
 
 fn default_acme_cache_dir() -> PathBuf {
@@ -185,6 +191,8 @@ impl Default for ProxyConfig {
             health_check_threshold: default_health_check_threshold(),
             base_domain: None,
             auto_subdomain_enabled: false,
+            server_ip: None,
+            sslip_enabled: false,
         }
     }
 }
@@ -199,6 +207,23 @@ impl ProxyConfig {
         } else {
             None
         }
+    }
+
+    /// Generate a sslip.io domain for an app
+    /// Format: <random-id>.<ip>.sslip.io
+    /// Example: abc123def.192.168.1.1.sslip.io
+    pub fn generate_sslip_domain(&self, server_ip: Option<&str>) -> Option<String> {
+        use rand::Rng;
+        let ip = server_ip.or(self.server_ip.as_deref())?;
+        // Generate a random 12-character ID
+        let mut rng = rand::rng();
+        let id: String = (0..12)
+            .map(|_| {
+                let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
+                chars[rng.random_range(0..chars.len())] as char
+            })
+            .collect();
+        Some(format!("{}.{}.sslip.io", id, ip))
     }
 }
 

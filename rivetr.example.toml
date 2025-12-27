@@ -36,6 +36,12 @@ health_check_threshold = 3
 # base_domain = "rivetr.example.com"
 # Enable automatic subdomain generation for new apps (requires base_domain)
 auto_subdomain_enabled = false
+# Enable sslip.io automatic domains (generates domains like abc123.192.168.1.1.sslip.io)
+# This provides free wildcard DNS for any IP address without custom DNS setup
+sslip_enabled = true
+# Server's public IP address for sslip.io domain generation
+# If not set, you'll need to configure it for sslip.io to work
+# server_ip = "192.168.1.100"
 
 [logging]
 # Options: "trace", "debug", "info", "warn", "error"

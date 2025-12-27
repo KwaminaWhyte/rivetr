@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus } from "@/types/api";
+import type { App, AppStatus, Deployment, DeploymentStatus } from "@/types/api";
+import { Play, Square } from "lucide-react";
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -49,6 +50,24 @@ export async function action({ request, params }: Route.ActionArgs) {
     }
   }
 
+  if (intent === "start") {
+    try {
+      await api.startApp(token, params.id!);
+      return { success: true, action: "start" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to start app" };
+    }
+  }
+
+  if (intent === "stop") {
+    try {
+      await api.stopApp(token, params.id!);
+      return { success: true, action: "stop" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to stop app" };
+    }
+  }
+
   return { error: "Unknown action" };
 }
 
@@ -85,6 +104,13 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
     refetchIntervalInBackground: false,
   });
 
+  // Query for app status (running/stopped)
+  const { data: appStatus, refetch: refetchStatus } = useQuery<AppStatus>({
+    queryKey: ["appStatus", loaderData.app.id],
+    queryFn: () => api.getAppStatus(loaderData.app.id, loaderData.token),
+    refetchInterval: 10000, // Poll every 10 seconds
+  });
+
   const hasActiveDeployment = useMemo(() => {
     return deployments.some((d) => isActiveDeployment(d.status));
   }, [deployments]);
@@ -100,6 +126,12 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
     if (actionData?.success) {
       if (actionData.action === "deploy") {
         toast.success("Deployment started");
+      } else if (actionData.action === "start") {
+        toast.success("Application started");
+        refetchStatus();
+      } else if (actionData.action === "stop") {
+        toast.success("Application stopped");
+        refetchStatus();
       }
       queryClient.invalidateQueries({ queryKey: ["app", app?.id] });
       queryClient.invalidateQueries({ queryKey: ["deployments", app?.id] });
@@ -107,7 +139,7 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
     if (actionData?.error) {
       toast.error(actionData.error);
     }
-  }, [actionData, app?.id, queryClient]);
+  }, [actionData, app?.id, queryClient, refetchStatus]);
 
   // Determine active tab from path
   const basePath = `/apps/${params.id}`;
@@ -151,13 +183,41 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
           <p className="text-muted-foreground">{app.git_url}</p>
         </div>
         <div className="flex gap-2">
+          {/* Start/Stop buttons */}
+          {appStatus?.status === "running" ? (
+            <Form method="post">
+              <input type="hidden" name="intent" value="stop" />
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={isSubmitting || hasActiveDeployment}
+                className="gap-2"
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            </Form>
+          ) : appStatus?.status === "stopped" ? (
+            <Form method="post">
+              <input type="hidden" name="intent" value="start" />
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={isSubmitting || hasActiveDeployment}
+                className="gap-2"
+              >
+                <Play className="h-4 w-4" />
+                Start
+              </Button>
+            </Form>
+          ) : null}
           <Form method="post">
             <input type="hidden" name="intent" value="deploy" />
             <Button type="submit" disabled={isSubmitting || hasActiveDeployment}>
               {isSubmitting ? "Deploying..." : "Deploy"}
             </Button>
           </Form>
-          {runningDeployment && app.domain && (
+          {appStatus?.running && app.domain && (
             <Button variant="outline" asChild>
               <a href={`https://${app.domain}`} target="_blank" rel="noopener noreferrer">
                 Open Site

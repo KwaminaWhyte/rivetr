@@ -130,6 +130,12 @@ impl ContainerRuntime for PodmanRuntime {
         self.run_command(&args).await
     }
 
+    async fn start(&self, container_id: &str) -> Result<()> {
+        self.run_command(&["start".to_string(), container_id.to_string()])
+            .await?;
+        Ok(())
+    }
+
     async fn stop(&self, container_id: &str) -> Result<()> {
         self.run_command(&["stop".to_string(), container_id.to_string()])
             .await?;
@@ -176,18 +182,24 @@ impl ContainerRuntime for PodmanRuntime {
             .run_command(&[
                 "inspect".to_string(),
                 "--format".to_string(),
-                "{{.Id}}|{{.Name}}|{{.State.Status}}".to_string(),
+                "{{.Id}}|{{.Name}}|{{.State.Status}}|{{.State.Running}}|{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}}{{end}}{{end}}".to_string(),
                 container_id.to_string(),
             ])
             .await?;
 
         let parts: Vec<&str> = output.split('|').collect();
-        if parts.len() >= 3 {
+        if parts.len() >= 4 {
+            let is_running = parts.get(3).map(|s| *s == "true").unwrap_or(false);
+            let host_port = parts.get(4)
+                .and_then(|s| s.parse::<u16>().ok());
+
             Ok(ContainerInfo {
                 id: parts[0].to_string(),
                 name: parts[1].to_string(),
                 status: parts[2].to_string(),
-                port: None, // Would need additional parsing
+                port: host_port,
+                running: is_running,
+                host_port,
             })
         } else {
             anyhow::bail!("Invalid inspect output")
@@ -227,11 +239,16 @@ impl ContainerRuntime for PodmanRuntime {
                         .and_then(|p| p.parse().ok())
                 });
 
+                // In ps output, running containers have "running" state
+                let is_running = parts[2].to_lowercase() == "running";
+
                 result.push(ContainerInfo {
                     id: parts[0].to_string(),
                     name: parts[1].to_string(),
                     status: parts[2].to_string(),
                     port,
+                    running: is_running,
+                    host_port: port,
                 });
             }
         }

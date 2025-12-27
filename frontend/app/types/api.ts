@@ -293,6 +293,14 @@ export interface SystemStats {
   uptime_percent: number;
 }
 
+// App status for start/stop functionality
+export interface AppStatus {
+  app_id: string;
+  container_id: string | null;
+  running: boolean;
+  status: "running" | "stopped" | "not_deployed" | "no_container" | "not_found";
+}
+
 // Recent event for dashboard feed
 export interface RecentEvent {
   /** Unique event ID */

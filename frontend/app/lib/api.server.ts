@@ -1,5 +1,6 @@
 import type {
   App,
+  AppStatus,
   ContainerStats,
   CreateAppRequest,
   CreateEnvVarRequest,
@@ -70,6 +71,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ project_id: projectId }),
     }),
+  getAppStatus: (token: string, id: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/status`, token),
+  startApp: (token: string, id: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/start`, token, { method: "POST" }),
+  stopApp: (token: string, id: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/stop`, token, { method: "POST" }),
 
   // Projects
   getProjects: (token: string) => apiRequest<Project[]>("/projects", token),
