@@ -6,9 +6,14 @@
 
 use arc_swap::ArcSwap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time::interval;
 use tracing::{debug, info, warn};
+
+use crate::api::metrics::{
+    record_health_check_failure, record_health_check_success, set_backend_healthy,
+    set_health_check_consecutive_failures,
+};
 
 use super::RouteTable;
 use crate::config::ProxyConfig;
@@ -106,6 +111,8 @@ impl HealthChecker {
                     let health_url = backend.health_url();
                     let was_healthy = backend.healthy;
 
+                    // Time the health check
+                    let start = Instant::now();
                     let check_passed = match client.get(&health_url).send().await {
                         Ok(response) => {
                             let status = response.status();
@@ -137,11 +144,33 @@ impl HealthChecker {
                             false
                         }
                     };
+                    let duration_secs = start.elapsed().as_secs_f64();
+
+                    // Record health check metrics
+                    if check_passed {
+                        record_health_check_success(&domain, duration_secs);
+                    } else {
+                        record_health_check_failure(&domain, duration_secs);
+                    }
 
                     // Update health status in route table
                     let routes_ref = routes.load();
                     let status_changed =
                         routes_ref.update_health(&domain, check_passed, failure_threshold);
+
+                    // Get current failure count and update metrics
+                    let current_failures = routes_ref
+                        .get_backend(&domain)
+                        .map(|b| b.failure_count)
+                        .unwrap_or(0);
+                    let is_healthy = routes_ref
+                        .get_backend(&domain)
+                        .map(|b| b.healthy)
+                        .unwrap_or(false);
+
+                    // Update gauge metrics
+                    set_backend_healthy(&domain, is_healthy);
+                    set_health_check_consecutive_failures(&domain, current_failures);
 
                     if status_changed {
                         if check_passed {
@@ -158,10 +187,6 @@ impl HealthChecker {
                         }
                     } else if !check_passed && was_healthy {
                         // Backend is failing but not yet unhealthy
-                        let current_failures = routes_ref
-                            .get_backend(&domain)
-                            .map(|b| b.failure_count)
-                            .unwrap_or(0);
                         debug!(
                             domain = %domain,
                             failures = current_failures,

@@ -22,6 +22,13 @@ import { AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "Deployments - Rivetr" },
+    { name: "description", content: "View and manage all deployments across your applications" },
+  ];
+}
+
 const statusColors: Record<DeploymentStatus, string> = {
   pending: "bg-yellow-500",
   cloning: "bg-blue-500",

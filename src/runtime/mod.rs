@@ -24,6 +24,10 @@ pub struct BuildContext {
     pub build_target: Option<String>,
     /// Custom Docker build options (extra CLI args)
     pub custom_options: Option<String>,
+    /// CPU limit for build (e.g., "2" for 2 CPUs)
+    pub cpu_limit: Option<String>,
+    /// Memory limit for build (e.g., "2g" for 2GB)
+    pub memory_limit: Option<String>,
 }
 
 /// Port mapping for container networking

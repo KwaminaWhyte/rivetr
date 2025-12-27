@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, DeploymentEngine};
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_disk_monitor_task, spawn_stats_collector_task, BuildLimits, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::AppState;
@@ -98,8 +98,14 @@ async fn main() -> Result<()> {
         config.rate_limit.auth_requests_per_window
     );
 
-    // Start deployment engine with route table
-    let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx);
+    // Start deployment engine with route table and build limits
+    let build_limits = BuildLimits::from_runtime_config(&config.runtime);
+    tracing::info!(
+        "Build resource limits: cpu={}, memory={}",
+        config.runtime.build_cpu_limit,
+        config.runtime.build_memory_limit
+    );
+    let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx, build_limits);
     tokio::spawn(async move {
         engine.run().await;
     });
@@ -110,6 +116,15 @@ async fn main() -> Result<()> {
         runtime.clone(),
         config.cleanup.clone(),
     );
+
+    // Start disk space monitoring task
+    spawn_disk_monitor_task(
+        config.server.data_dir.clone(),
+        config.disk_monitor.clone(),
+    );
+
+    // Start container stats collection task
+    spawn_stats_collector_task(runtime.clone());
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());

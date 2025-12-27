@@ -6,7 +6,7 @@ use crate::db::{App, SshKey};
 use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RunConfig};
 use crate::DbPool;
 
-use super::{add_deployment_log, update_deployment_status};
+use super::{add_deployment_log, update_deployment_status, BuildLimits};
 
 /// Execute deployment commands (pre or post) in a container
 /// For pre-deploy: runs in a temporary container using the built image
@@ -118,6 +118,7 @@ pub async fn run_deployment(
     runtime: Arc<dyn ContainerRuntime>,
     deployment_id: &str,
     app: &App,
+    build_limits: &BuildLimits,
 ) -> Result<DeploymentResult> {
     let work_dir = std::env::temp_dir().join(format!("rivetr-{}", deployment_id));
 
@@ -162,7 +163,27 @@ pub async fn run_deployment(
         build_args: vec![],
         build_target: app.build_target.clone(),
         custom_options: app.custom_docker_options.clone(),
+        cpu_limit: build_limits.cpu_limit.clone(),
+        memory_limit: build_limits.memory_limit.clone(),
     };
+
+    // Log build resource limits if configured
+    if build_limits.cpu_limit.is_some() || build_limits.memory_limit.is_some() {
+        let mut limits = vec![];
+        if let Some(ref cpu) = build_limits.cpu_limit {
+            limits.push(format!("cpu={}", cpu));
+        }
+        if let Some(ref mem) = build_limits.memory_limit {
+            limits.push(format!("memory={}", mem));
+        }
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("Build resource limits: {}", limits.join(", ")),
+        )
+        .await?;
+    }
 
     // Log build options if any are set
     if app.base_directory.is_some() || app.dockerfile_path.is_some() || app.build_target.is_some() {

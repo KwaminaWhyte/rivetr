@@ -17,6 +17,11 @@ admin_token = "change-me-in-production"
 runtime_type = "auto"
 # Docker socket path (Linux default shown)
 docker_socket = "/var/run/docker.sock"
+# Build resource limits - prevent builds from consuming all system resources
+# CPU limit for builds (e.g., "2" for 2 CPUs, "0.5" for half a CPU). Default: "2"
+build_cpu_limit = "2"
+# Memory limit for builds (e.g., "2g" for 2GB, "512m" for 512MB). Default: "2g"
+build_memory_limit = "2g"
 
 [proxy]
 # Enable automatic HTTPS with Let's Encrypt
@@ -81,3 +86,16 @@ cleanup_interval_seconds = 3600
 # Prune unused/dangling Docker/Podman images after cleanup (default: true)
 # This helps reclaim disk space from orphaned image layers
 prune_images = true
+
+[disk_monitor]
+# Enable disk space monitoring (default: true)
+# Monitors the data directory's filesystem and exposes metrics via Prometheus
+enabled = true
+# Interval between disk space checks in seconds (default: 300 = 5 minutes)
+check_interval_seconds = 300
+# Disk usage percentage threshold for warning logs (default: 80)
+# A warning will be logged when disk usage exceeds this percentage
+warning_threshold = 80
+# Disk usage percentage threshold for critical logs (default: 90)
+# A critical error will be logged when disk usage exceeds this percentage
+critical_threshold = 90

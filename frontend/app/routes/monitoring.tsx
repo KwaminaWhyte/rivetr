@@ -2,6 +2,13 @@ import type { Route } from "./+types/monitoring";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, Activity, Server, Database } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Monitoring - Rivetr" },
+    { name: "description", content: "System metrics and resource monitoring" },
+  ];
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const { requireAuth } = await import("@/lib/session.server");
   await requireAuth(request);

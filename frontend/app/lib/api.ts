@@ -9,6 +9,7 @@ import type {
   CreateEnvVarRequest,
   Deployment,
   DeploymentLog,
+  DiskStats,
   EnvVar,
   Project,
   ProjectWithApps,
@@ -157,6 +158,7 @@ export const api = {
 
   // System
   getSystemStats: (token?: string) => apiRequest<SystemStats>("/system/stats", {}, token),
+  getDiskStats: (token?: string) => apiRequest<DiskStats>("/system/disk", {}, token),
   getRecentEvents: (token?: string) => apiRequest<RecentEvent[]>("/events/recent", {}, token),
 
   // WebSocket URLs

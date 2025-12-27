@@ -8,6 +8,7 @@ import type {
   CreateSshKeyRequest,
   Deployment,
   DeploymentLog,
+  DiskStats,
   EnvVar,
   GitProvider,
   GitRepository,
@@ -161,6 +162,8 @@ export const api = {
   // System
   getSystemStats: (token: string) =>
     apiRequest<SystemStats>("/system/stats", token),
+  getDiskStats: (token: string) =>
+    apiRequest<DiskStats>("/system/disk", token),
   getRecentEvents: (token: string) =>
     apiRequest<RecentEvent[]>("/events/recent", token),
 };

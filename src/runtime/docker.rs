@@ -53,7 +53,13 @@ impl ContainerRuntime for DockerRuntime {
         // Parse custom options for build args
         let extra_build_args = parse_custom_build_args(ctx.custom_options.as_deref());
 
+        // Parse build resource limits
+        let memory = ctx.memory_limit.as_ref().and_then(|m| parse_build_memory(m));
+        let (cpuperiod, cpuquota) = parse_cpu_limits(ctx.cpu_limit.as_deref());
+
         let target = ctx.build_target.as_deref().unwrap_or("");
+        // Bollard's BuildImageOptions expects u64 for memory, cpuperiod, cpuquota
+        // but i64 for memswap. We use i64 internally and cast as needed.
         let options = BuildImageOptions {
             dockerfile: ctx.dockerfile.trim_start_matches("./"),
             t: &ctx.tag,
@@ -61,8 +67,21 @@ impl ContainerRuntime for DockerRuntime {
             target,
             extrahosts: extra_build_args.extra_hosts.as_deref(),
             nocache: extra_build_args.no_cache,
+            memory: memory.map(|m| m as u64),
+            memswap: memory, // Set memswap equal to memory to disable swap
+            cpuperiod: cpuperiod.map(|p| p as u64),
+            cpuquota: cpuquota.map(|q| q as u64),
             ..Default::default()
         };
+
+        if memory.is_some() || cpuquota.is_some() {
+            tracing::info!(
+                memory = ?memory,
+                cpuperiod = ?cpuperiod,
+                cpuquota = ?cpuquota,
+                "Building image with resource limits"
+            );
+        }
 
         let mut stream = self.client.build_image(options, None, Some(Bytes::from(tar_data)));
 
@@ -630,6 +649,69 @@ fn parse_memory(s: &str) -> Option<i64> {
 
 fn parse_cpu(s: &str) -> Option<i64> {
     s.parse::<f64>().ok().map(|n| (n * 1_000_000_000.0) as i64)
+}
+
+/// Parse memory limit for Docker build, returns i64 as required by Bollard BuildImageOptions.
+fn parse_build_memory(s: &str) -> Option<i64> {
+    let s = s.to_lowercase();
+    if s.ends_with("gb") {
+        s.trim_end_matches("gb")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024 * 1024)
+    } else if s.ends_with("g") {
+        s.trim_end_matches("g")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024 * 1024)
+    } else if s.ends_with("mb") {
+        s.trim_end_matches("mb")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024)
+    } else if s.ends_with("m") {
+        s.trim_end_matches("m")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024 * 1024)
+    } else if s.ends_with("kb") {
+        s.trim_end_matches("kb")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024)
+    } else if s.ends_with("k") {
+        s.trim_end_matches("k")
+            .parse::<i64>()
+            .ok()
+            .map(|n| n * 1024)
+    } else if s.ends_with("b") {
+        s.trim_end_matches("b").parse().ok()
+    } else {
+        // Assume raw bytes if no suffix
+        s.parse().ok()
+    }
+}
+
+/// Parse CPU limits for Docker build.
+/// Docker build uses cpu-period (default 100000) and cpu-quota to limit CPU.
+/// If cpu-quota = cpu-period * num_cpus, then the container can use num_cpus worth of CPU.
+/// For example, with cpu-period=100000 and cpu-quota=200000, the build can use 2 CPUs.
+fn parse_cpu_limits(cpu_limit: Option<&str>) -> (Option<i64>, Option<i64>) {
+    let Some(cpu_str) = cpu_limit else {
+        return (None, None);
+    };
+
+    // Parse the CPU value (e.g., "2" for 2 CPUs, "0.5" for half a CPU)
+    let cpu_count = cpu_str.parse::<f64>().ok();
+
+    match cpu_count {
+        Some(cpus) if cpus > 0.0 => {
+            let period: i64 = 100_000; // Default Docker CPU period (100ms)
+            let quota = (cpus * period as f64) as i64;
+            (Some(period), Some(quota))
+        }
+        _ => (None, None),
+    }
 }
 
 /// Parsed custom build arguments from custom_docker_options string

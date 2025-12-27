@@ -1,11 +1,16 @@
 mod cleanup;
+mod disk_monitor;
 mod pipeline;
+mod stats_collector;
 
 pub use cleanup::*;
+pub use disk_monitor::*;
 pub use pipeline::*;
+pub use stats_collector::*;
 
 use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};
+use crate::config::RuntimeConfig;
 use crate::db::App;
 use crate::proxy::{Backend, BasicAuthConfig, RouteTable};
 use crate::runtime::ContainerRuntime;
@@ -15,11 +20,28 @@ use tokio::sync::mpsc;
 
 pub type DeploymentJob = (String, App); // (deployment_id, app)
 
+/// Build resource limits configuration
+#[derive(Debug, Clone)]
+pub struct BuildLimits {
+    pub cpu_limit: Option<String>,
+    pub memory_limit: Option<String>,
+}
+
+impl BuildLimits {
+    pub fn from_runtime_config(config: &RuntimeConfig) -> Self {
+        Self {
+            cpu_limit: Some(config.build_cpu_limit.clone()),
+            memory_limit: Some(config.build_memory_limit.clone()),
+        }
+    }
+}
+
 pub struct DeploymentEngine {
     db: DbPool,
     runtime: Arc<dyn ContainerRuntime>,
     routes: Arc<ArcSwap<RouteTable>>,
     rx: mpsc::Receiver<DeploymentJob>,
+    build_limits: BuildLimits,
 }
 
 impl DeploymentEngine {
@@ -28,8 +50,9 @@ impl DeploymentEngine {
         runtime: Arc<dyn ContainerRuntime>,
         routes: Arc<ArcSwap<RouteTable>>,
         rx: mpsc::Receiver<DeploymentJob>,
+        build_limits: BuildLimits,
     ) -> Self {
-        Self { db, runtime, routes, rx }
+        Self { db, runtime, routes, rx, build_limits }
     }
 
     pub async fn run(mut self) {
@@ -45,12 +68,24 @@ impl DeploymentEngine {
             let db = self.db.clone();
             let runtime = self.runtime.clone();
             let routes = self.routes.clone();
+            let build_limits = self.build_limits.clone();
 
             tokio::spawn(async move {
-                match run_deployment(&db, runtime.clone(), &deployment_id, &app).await {
+                match run_deployment(&db, runtime.clone(), &deployment_id, &app, &build_limits).await {
                     Ok(container_info) => {
                         // Record successful deployment metric
                         record_deployment_success();
+
+                        // Mark all previous "running" deployments for this app as "replaced"
+                        let _ = sqlx::query(
+                            "UPDATE deployments SET status = 'replaced', finished_at = ?
+                             WHERE app_id = ? AND status = 'running' AND id != ?"
+                        )
+                        .bind(chrono::Utc::now().to_rfc3339())
+                        .bind(&app.id)
+                        .bind(&deployment_id)
+                        .execute(&db)
+                        .await;
 
                         // Update proxy routes on successful deployment for all domains
                         if let Some(port) = container_info.port {

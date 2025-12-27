@@ -11,6 +11,14 @@ import { api } from "@/lib/api";
 import type { App, AppStatus, Deployment, DeploymentStatus } from "@/types/api";
 import { Play, Square, Circle } from "lucide-react";
 
+export function meta({ data }: Route.MetaArgs) {
+  const appName = data?.app?.name || "App";
+  return [
+    { title: `${appName} - Rivetr` },
+    { name: "description", content: `Manage and monitor ${appName}` },
+  ];
+}
+
 // Running status badge component
 function RunningStatusBadge({ status }: { status?: AppStatus }) {
   if (!status) return null;

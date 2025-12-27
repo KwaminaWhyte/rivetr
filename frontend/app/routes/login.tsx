@@ -11,6 +11,13 @@ import {
 } from "@/components/ui/field";
 import { Rocket } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Login - Rivetr" },
+    { name: "description", content: "Sign in to your Rivetr deployment platform" },
+  ];
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const { getToken, checkSetupStatus } = await import("@/lib/session.server");
 

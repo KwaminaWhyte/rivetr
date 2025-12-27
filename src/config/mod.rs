@@ -23,6 +23,8 @@ pub struct Config {
     pub rate_limit: RateLimitConfig,
     #[serde(default)]
     pub cleanup: CleanupConfig,
+    #[serde(default)]
+    pub disk_monitor: DiskMonitorConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,6 +98,12 @@ pub struct RuntimeConfig {
     pub runtime_type: RuntimeType,
     #[serde(default = "default_docker_socket")]
     pub docker_socket: String,
+    /// CPU limit for builds (e.g., "2" for 2 CPUs). Default: 2
+    #[serde(default = "default_build_cpu_limit")]
+    pub build_cpu_limit: String,
+    /// Memory limit for builds (e.g., "2g" for 2GB). Default: 2g
+    #[serde(default = "default_build_memory_limit")]
+    pub build_memory_limit: String,
 }
 
 impl Default for RuntimeConfig {
@@ -103,8 +111,18 @@ impl Default for RuntimeConfig {
         Self {
             runtime_type: default_runtime_type(),
             docker_socket: default_docker_socket(),
+            build_cpu_limit: default_build_cpu_limit(),
+            build_memory_limit: default_build_memory_limit(),
         }
     }
+}
+
+fn default_build_cpu_limit() -> String {
+    "2".to_string()
+}
+
+fn default_build_memory_limit() -> String {
+    "2g".to_string()
 }
 
 fn default_runtime_type() -> RuntimeType {
@@ -397,6 +415,49 @@ impl Default for CleanupConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiskMonitorConfig {
+    /// Enable disk space monitoring (default: true)
+    #[serde(default = "default_disk_monitor_enabled")]
+    pub enabled: bool,
+    /// Interval between disk space checks in seconds (default: 300 = 5 minutes)
+    #[serde(default = "default_disk_check_interval")]
+    pub check_interval_seconds: u64,
+    /// Disk usage percentage threshold for warning logs (default: 80)
+    #[serde(default = "default_disk_warning_threshold")]
+    pub warning_threshold: u8,
+    /// Disk usage percentage threshold for critical logs (default: 90)
+    #[serde(default = "default_disk_critical_threshold")]
+    pub critical_threshold: u8,
+}
+
+fn default_disk_monitor_enabled() -> bool {
+    true
+}
+
+fn default_disk_check_interval() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_disk_warning_threshold() -> u8 {
+    80
+}
+
+fn default_disk_critical_threshold() -> u8 {
+    90
+}
+
+impl Default for DiskMonitorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_disk_monitor_enabled(),
+            check_interval_seconds: default_disk_check_interval(),
+            warning_threshold: default_disk_warning_threshold(),
+            critical_threshold: default_disk_critical_threshold(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -423,6 +484,7 @@ impl Config {
             oauth: OAuthConfig::default(),
             rate_limit: RateLimitConfig::default(),
             cleanup: CleanupConfig::default(),
+            disk_monitor: DiskMonitorConfig::default(),
         }
     }
 }

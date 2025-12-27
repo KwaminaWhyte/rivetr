@@ -55,6 +55,14 @@ import { EnvironmentBadge } from "@/components/environment-badge";
 import { Badge } from "@/components/ui/badge";
 import type { App, ProjectWithApps, UpdateProjectRequest } from "@/types/api";
 
+export function meta({ data }: Route.MetaArgs) {
+  const projectName = data?.project?.name || "Project";
+  return [
+    { title: `${projectName} - Rivetr` },
+    { name: "description", content: `Manage ${projectName} and its applications` },
+  ];
+}
+
 // Status badge component
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, { className: string; label: string }> = {

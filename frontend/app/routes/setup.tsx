@@ -10,6 +10,13 @@ import {
 } from "@/components/ui/field";
 import { Rocket, CheckCircle } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Setup - Rivetr" },
+    { name: "description", content: "Set up your Rivetr deployment platform" },
+  ];
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const { getToken, checkSetupStatus } = await import("@/lib/session.server");
 

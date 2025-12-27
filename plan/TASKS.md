@@ -246,18 +246,18 @@
 
 - [x] **T2.3.1** Add container CPU limits (cpu_limit field in App model, Docker NanoCPUs, Podman --cpus)
 - [x] **T2.3.2** Add container memory limits (memory_limit field in App model, supports m/mb/g/gb/b suffixes)
-- [ ] **T2.3.3** Add build resource limits
-- [ ] **T2.3.4** Add disk space monitoring
-- [ ] **T2.3.5** Implement old deployment cleanup
-- [ ] **T2.3.6** Add image cleanup
+- [x] **T2.3.3** Add build resource limits (cpu/memory limits in RuntimeConfig, applied to Docker/Podman builds)
+- [x] **T2.3.4** Add disk space monitoring (engine/disk_monitor.rs, Prometheus metrics, API endpoint GET /api/system/disk)
+- [x] **T2.3.5** Implement old deployment cleanup (engine/cleanup.rs - automatic cleanup with configurable retention)
+- [x] **T2.3.6** Add image cleanup (engine/cleanup.rs - prune unused images with metrics logging)
 
 ### 2.4 Observability
 
 - [x] **T2.4.1** Add Prometheus metrics endpoint (GET /metrics)
 - [x] **T2.4.2** Add request duration metrics (http_request_duration_seconds histogram)
 - [x] **T2.4.3** Add deployment counter metrics (deployments_total with status label)
-- [ ] **T2.4.4** Add container resource metrics
-- [ ] **T2.4.5** Add health check metrics
+- [x] **T2.4.4** Add container resource metrics (CPU, memory, network gauges with app_name labels, background stats collector)
+- [x] **T2.4.5** Add health check metrics (success/failure counters, duration histogram, consecutive failures gauge)
 
 ### 2.5 CLI
 
@@ -488,9 +488,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 28 | 9 | 32% |
+| Phase 2 | 28 | 15 | 54% |
 | Phase 3 | 90 | 51 | 57% |
-| **Total** | **236** | **174** | **74%** |
+| **Total** | **236** | **180** | **76%** |
 
 ---
 
@@ -499,14 +499,15 @@ Research conducted to identify feature gaps and improvement opportunities.
 **Phase 2 - Production Ready:**
 1. **T2.1.3** - Add CSRF tokens for UI forms
 2. **T2.2.2** - Add deployment failure recovery
-3. **T2.3.3** - Add build resource limits
+3. **T2.2.3** - Implement container restart on crash
+4. **T2.2.4** - Add startup self-checks
 
 **Phase 3 - Enhanced Features:**
-4. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
-5. **T3.16.1-5** - Docker Registry Support (pull from registry)
-6. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-7. **T3.5.1-7** - Notifications (Slack, Discord, Email)
-8. **T3.7.1-5** - Volumes Management
+5. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
+6. **T3.16.1-5** - Docker Registry Support (pull from registry)
+7. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+8. **T3.5.1-7** - Notifications (Slack, Discord, Email)
+9. **T3.7.1-5** - Volumes Management
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -547,6 +548,11 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **HTTP Basic Auth** - Protect apps with username/password authentication
 - **Container Lifecycle Controls** - Start/stop containers from UI with status indicators
 - **Theme Flicker Fix** - Blocking script to prevent flash of wrong theme on page load
+- **Build Resource Limits** - CPU/memory limits for Docker/Podman builds (configurable in runtime config)
+- **Disk Space Monitoring** - Background task with Prometheus metrics and API endpoint
+- **Container Resource Prometheus Metrics** - CPU, memory, network gauges with app_name labels, background stats collector
+- **Health Check Prometheus Metrics** - Success/failure counters, duration histogram, consecutive failures gauge
+- **Dashboard Disk Usage Card** - Real-time disk usage display with percentage indicator
 
 ### Planned Features
 - **Container Labels** - Custom labels for Traefik/Caddy integration

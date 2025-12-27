@@ -84,6 +84,13 @@ base64 = "0.22"
 ring = "0.17"
 pem = "3"
 
+# Platform-specific dependencies
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 

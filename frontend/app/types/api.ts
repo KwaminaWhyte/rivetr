@@ -111,7 +111,8 @@ export type DeploymentStatus =
   | "checking"
   | "running"
   | "failed"
-  | "stopped";
+  | "stopped"
+  | "replaced";
 
 export interface DeploymentLog {
   id: string;
@@ -317,4 +318,24 @@ export interface RecentEvent {
   message: string;
   /** When the event occurred (ISO 8601 timestamp) */
   timestamp: string;
+}
+
+// Disk space statistics for system monitoring
+export interface DiskStats {
+  /** Total disk space in bytes */
+  total_bytes: number;
+  /** Used disk space in bytes */
+  used_bytes: number;
+  /** Free disk space in bytes */
+  free_bytes: number;
+  /** Percentage of disk space used (0-100) */
+  usage_percent: number;
+  /** Path being monitored */
+  path: string;
+  /** Human-readable total (e.g., "100 GB") */
+  total_human: string;
+  /** Human-readable used (e.g., "80 GB") */
+  used_human: string;
+  /** Human-readable free (e.g., "20 GB") */
+  free_human: string;
 }

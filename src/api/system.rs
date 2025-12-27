@@ -1,12 +1,13 @@
 //! System-level API endpoints for dashboard statistics.
 //!
-//! Provides aggregate system stats and recent events for the dashboard.
+//! Provides aggregate system stats, disk stats, and recent events for the dashboard.
 
 use axum::{extract::State, Json};
 use serde::Serialize;
 use std::sync::Arc;
 
 use crate::db::{App, Deployment};
+use crate::engine::get_current_disk_stats;
 use crate::AppState;
 
 use super::error::ApiError;
@@ -83,6 +84,7 @@ pub async fn get_system_stats(
     let mut total_cpu_percent = 0.0;
     let mut memory_used_bytes: u64 = 0;
     let mut memory_total_bytes: u64 = 0;
+    let mut has_unlimited_container = false;
 
     for deployment in &running_deployments {
         if let Some(container_id) = &deployment.container_id {
@@ -90,7 +92,12 @@ pub async fn get_system_stats(
                 Ok(stats) => {
                     total_cpu_percent += stats.cpu_percent;
                     memory_used_bytes += stats.memory_usage;
-                    memory_total_bytes += stats.memory_limit;
+                    // memory_limit of 0 means unlimited (use system memory)
+                    if stats.memory_limit == 0 {
+                        has_unlimited_container = true;
+                    } else {
+                        memory_total_bytes += stats.memory_limit;
+                    }
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -101,6 +108,11 @@ pub async fn get_system_stats(
                 }
             }
         }
+    }
+
+    // If any container has no memory limit, use system memory as total
+    if has_unlimited_container || memory_total_bytes == 0 {
+        memory_total_bytes = get_system_memory();
     }
 
     // Calculate server uptime using std::time
@@ -227,4 +239,127 @@ pub async fn get_recent_events(
         .collect();
 
     Ok(Json(events))
+}
+
+/// Disk space statistics
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskStatsResponse {
+    /// Total disk space in bytes
+    pub total_bytes: u64,
+    /// Used disk space in bytes
+    pub used_bytes: u64,
+    /// Free disk space in bytes
+    pub free_bytes: u64,
+    /// Percentage of disk space used (0-100)
+    pub usage_percent: f64,
+    /// Path being monitored
+    pub path: String,
+    /// Human-readable total (e.g., "100 GB")
+    pub total_human: String,
+    /// Human-readable used (e.g., "80 GB")
+    pub used_human: String,
+    /// Human-readable free (e.g., "20 GB")
+    pub free_human: String,
+}
+
+/// Get current disk space statistics
+/// GET /api/system/disk
+pub async fn get_disk_stats(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<DiskStatsResponse>, ApiError> {
+    let data_dir = &state.config.server.data_dir;
+
+    let stats = get_current_disk_stats(data_dir).map_err(|e| {
+        tracing::error!(error = %e, "Failed to get disk stats");
+        ApiError::internal(format!("Failed to get disk stats: {}", e))
+    })?;
+
+    Ok(Json(DiskStatsResponse {
+        total_bytes: stats.total_bytes,
+        used_bytes: stats.used_bytes,
+        free_bytes: stats.free_bytes,
+        usage_percent: stats.usage_percent,
+        path: data_dir.display().to_string(),
+        total_human: format_bytes(stats.total_bytes),
+        used_human: format_bytes(stats.used_bytes),
+        free_human: format_bytes(stats.free_bytes),
+    }))
+}
+
+/// Format bytes to human-readable string
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    const TB: u64 = GB * 1024;
+
+    if bytes >= TB {
+        format!("{:.2} TB", bytes as f64 / TB as f64)
+    } else if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// Get total system memory in bytes
+fn get_system_memory() -> u64 {
+    #[cfg(windows)]
+    {
+        use std::mem::MaybeUninit;
+
+        #[repr(C)]
+        struct MemoryStatusEx {
+            dw_length: u32,
+            dw_memory_load: u32,
+            ull_total_phys: u64,
+            ull_avail_phys: u64,
+            ull_total_page_file: u64,
+            ull_avail_page_file: u64,
+            ull_total_virtual: u64,
+            ull_avail_virtual: u64,
+            ull_avail_extended_virtual: u64,
+        }
+
+        extern "system" {
+            fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
+        }
+
+        let mut status: MaybeUninit<MemoryStatusEx> = MaybeUninit::uninit();
+        unsafe {
+            let ptr = status.as_mut_ptr();
+            (*ptr).dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
+            if GlobalMemoryStatusEx(ptr) != 0 {
+                return (*ptr).ull_total_phys;
+            }
+        }
+        0
+    }
+
+    #[cfg(unix)]
+    {
+        use std::fs;
+        // Read from /proc/meminfo on Linux
+        if let Ok(content) = fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(kb_str) = line.split_whitespace().nth(1) {
+                        if let Ok(kb) = kb_str.parse::<u64>() {
+                            return kb * 1024; // Convert KB to bytes
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    #[cfg(not(any(windows, unix)))]
+    {
+        0
+    }
 }

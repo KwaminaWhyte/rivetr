@@ -102,6 +102,13 @@ const statusConfig: Record<
     icon: CheckCircle2,
     label: "Stopped",
   },
+  replaced: {
+    color: "text-slate-500",
+    bgColor: "bg-slate-100 dark:bg-slate-800/50",
+    borderColor: "border-slate-400",
+    icon: CheckCircle2,
+    label: "Replaced",
+  },
 };
 
 // Active statuses that show animation
@@ -255,7 +262,8 @@ function TimelineItem({
                       deployment.status === "failed" && "bg-red-500 text-white",
                       isActive && "bg-blue-500 text-white",
                       deployment.status === "stopped" && "bg-gray-500 text-white",
-                      deployment.status === "pending" && "bg-yellow-500 text-white"
+                      deployment.status === "pending" && "bg-yellow-500 text-white",
+                      deployment.status === "replaced" && "bg-slate-400 text-white"
                     )}
                   >
                     {config.label}

@@ -26,6 +26,25 @@ pub const DEPLOYMENTS_TOTAL: &str = "deployments_total";
 pub const APPS_TOTAL: &str = "apps_total";
 pub const CONTAINERS_RUNNING: &str = "containers_running";
 
+// Disk space metrics
+pub const DISK_TOTAL_BYTES: &str = "rivetr_disk_total_bytes";
+pub const DISK_USED_BYTES: &str = "rivetr_disk_used_bytes";
+pub const DISK_FREE_BYTES: &str = "rivetr_disk_free_bytes";
+pub const DISK_USAGE_PERCENT: &str = "rivetr_disk_usage_percent";
+
+// Health check metrics
+pub const HEALTH_CHECK_TOTAL: &str = "rivetr_health_check_total";
+pub const HEALTH_CHECK_DURATION_SECONDS: &str = "rivetr_health_check_duration_seconds";
+pub const BACKEND_HEALTHY: &str = "rivetr_backend_healthy";
+pub const HEALTH_CHECK_CONSECUTIVE_FAILURES: &str = "rivetr_health_check_consecutive_failures";
+
+// Container resource metrics
+pub const CONTAINER_CPU_PERCENT: &str = "rivetr_container_cpu_percent";
+pub const CONTAINER_MEMORY_BYTES: &str = "rivetr_container_memory_bytes";
+pub const CONTAINER_MEMORY_LIMIT_BYTES: &str = "rivetr_container_memory_limit_bytes";
+pub const CONTAINER_NETWORK_RX_BYTES: &str = "rivetr_container_network_rx_bytes";
+pub const CONTAINER_NETWORK_TX_BYTES: &str = "rivetr_container_network_tx_bytes";
+
 /// Initialize the Prometheus metrics recorder and return a handle for rendering metrics.
 ///
 /// This should be called once during application startup.
@@ -50,6 +69,52 @@ pub fn init_metrics() -> PrometheusHandle {
     );
     describe_gauge!(APPS_TOTAL, "Total number of registered applications");
     describe_gauge!(CONTAINERS_RUNNING, "Number of currently running containers");
+
+    // Disk space metrics
+    describe_gauge!(DISK_TOTAL_BYTES, "Total disk space in bytes");
+    describe_gauge!(DISK_USED_BYTES, "Used disk space in bytes");
+    describe_gauge!(DISK_FREE_BYTES, "Free disk space in bytes");
+    describe_gauge!(DISK_USAGE_PERCENT, "Disk usage percentage (0-100)");
+
+    // Health check metrics
+    describe_counter!(
+        HEALTH_CHECK_TOTAL,
+        "Total number of health checks by domain and result"
+    );
+    describe_histogram!(
+        HEALTH_CHECK_DURATION_SECONDS,
+        "Health check duration in seconds"
+    );
+    describe_gauge!(
+        BACKEND_HEALTHY,
+        "Backend health status (1 for healthy, 0 for unhealthy)"
+    );
+    describe_gauge!(
+        HEALTH_CHECK_CONSECUTIVE_FAILURES,
+        "Number of consecutive health check failures"
+    );
+
+    // Container resource metrics
+    describe_gauge!(
+        CONTAINER_CPU_PERCENT,
+        "Container CPU usage percentage (labeled by app_name)"
+    );
+    describe_gauge!(
+        CONTAINER_MEMORY_BYTES,
+        "Container memory usage in bytes (labeled by app_name)"
+    );
+    describe_gauge!(
+        CONTAINER_MEMORY_LIMIT_BYTES,
+        "Container memory limit in bytes (labeled by app_name)"
+    );
+    describe_gauge!(
+        CONTAINER_NETWORK_RX_BYTES,
+        "Container network bytes received (labeled by app_name)"
+    );
+    describe_gauge!(
+        CONTAINER_NETWORK_TX_BYTES,
+        "Container network bytes transmitted (labeled by app_name)"
+    );
 
     handle
 }
@@ -130,6 +195,53 @@ pub fn record_deployment_success() {
 /// Record a failed deployment.
 pub fn record_deployment_failed() {
     counter!(DEPLOYMENTS_TOTAL, "status" => "failed").increment(1);
+}
+
+/// Record a successful health check.
+pub fn record_health_check_success(domain: &str, duration_secs: f64) {
+    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "success").increment(1);
+    histogram!(HEALTH_CHECK_DURATION_SECONDS, "domain" => domain.to_string()).record(duration_secs);
+}
+
+/// Record a failed health check.
+pub fn record_health_check_failure(domain: &str, duration_secs: f64) {
+    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "failure").increment(1);
+    histogram!(HEALTH_CHECK_DURATION_SECONDS, "domain" => domain.to_string()).record(duration_secs);
+}
+
+/// Update the backend healthy gauge.
+pub fn set_backend_healthy(domain: &str, healthy: bool) {
+    gauge!(BACKEND_HEALTHY, "domain" => domain.to_string()).set(if healthy { 1.0 } else { 0.0 });
+}
+
+/// Update the consecutive failures gauge.
+pub fn set_health_check_consecutive_failures(domain: &str, failures: u32) {
+    gauge!(HEALTH_CHECK_CONSECUTIVE_FAILURES, "domain" => domain.to_string()).set(failures as f64);
+}
+
+/// Update container CPU usage metric.
+pub fn set_container_cpu_percent(app_name: &str, cpu_percent: f64) {
+    gauge!(CONTAINER_CPU_PERCENT, "app_name" => app_name.to_string()).set(cpu_percent);
+}
+
+/// Update container memory usage metric.
+pub fn set_container_memory_bytes(app_name: &str, memory_bytes: u64) {
+    gauge!(CONTAINER_MEMORY_BYTES, "app_name" => app_name.to_string()).set(memory_bytes as f64);
+}
+
+/// Update container memory limit metric.
+pub fn set_container_memory_limit_bytes(app_name: &str, memory_limit_bytes: u64) {
+    gauge!(CONTAINER_MEMORY_LIMIT_BYTES, "app_name" => app_name.to_string()).set(memory_limit_bytes as f64);
+}
+
+/// Update container network RX bytes metric.
+pub fn set_container_network_rx_bytes(app_name: &str, rx_bytes: u64) {
+    gauge!(CONTAINER_NETWORK_RX_BYTES, "app_name" => app_name.to_string()).set(rx_bytes as f64);
+}
+
+/// Update container network TX bytes metric.
+pub fn set_container_network_tx_bytes(app_name: &str, tx_bytes: u64) {
+    gauge!(CONTAINER_NETWORK_TX_BYTES, "app_name" => app_name.to_string()).set(tx_bytes as f64);
 }
 
 #[cfg(test)]

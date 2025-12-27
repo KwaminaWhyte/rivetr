@@ -48,6 +48,7 @@ const statusColors: Record<DeploymentStatus, string> = {
   running: "bg-green-500",
   failed: "bg-red-500",
   stopped: "bg-gray-500",
+  replaced: "bg-slate-400",
 };
 
 function formatDate(dateStr: string): string {

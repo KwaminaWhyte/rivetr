@@ -54,6 +54,21 @@ impl ContainerRuntime for PodmanRuntime {
             }
         }
 
+        // Add build resource limits
+        if let Some(ref memory) = ctx.memory_limit {
+            args.push("--memory".to_string());
+            args.push(memory.clone());
+            // Disable swap by setting memory-swap equal to memory
+            args.push("--memory-swap".to_string());
+            args.push(memory.clone());
+        }
+
+        if let Some(ref cpu) = ctx.cpu_limit {
+            // Podman supports --cpus flag for easier CPU limiting
+            args.push("--cpus".to_string());
+            args.push(cpu.clone());
+        }
+
         // Parse and add custom options
         if let Some(ref options) = ctx.custom_options {
             parse_podman_custom_options(options, &mut args);
@@ -62,6 +77,14 @@ impl ContainerRuntime for PodmanRuntime {
         for (key, value) in &ctx.build_args {
             args.push("--build-arg".to_string());
             args.push(format!("{}={}", key, value));
+        }
+
+        if ctx.memory_limit.is_some() || ctx.cpu_limit.is_some() {
+            tracing::info!(
+                memory = ?ctx.memory_limit,
+                cpu = ?ctx.cpu_limit,
+                "Building image with resource limits"
+            );
         }
 
         args.push(ctx.path.clone());

@@ -7,19 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResourceChart } from "@/components/resource-chart";
 import { RecentEvents } from "@/components/recent-events";
-import type { SystemStats } from "@/types/api";
-import { Activity, Cpu, HardDrive, Clock, Plus } from "lucide-react";
+import type { SystemStats, DiskStats } from "@/types/api";
+import { Activity, Cpu, HardDrive, Database, Clock, Plus } from "lucide-react";
+
+export function meta() {
+  return [
+    { title: "Dashboard - Rivetr" },
+    { name: "description", content: "System overview and real-time health monitoring for your services" },
+  ];
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { requireAuth } = await import("@/lib/session.server");
   const { api } = await import("@/lib/api.server");
 
   const token = await requireAuth(request);
-  const [stats, events] = await Promise.all([
+  const [stats, diskStats, events] = await Promise.all([
     api.getSystemStats(token).catch(() => null),
+    api.getDiskStats(token).catch(() => null),
     api.getRecentEvents(token).catch(() => []),
   ]);
-  return { stats, events, token };
+  return { stats, diskStats, events, token };
 }
 
 function formatBytes(bytes: number): string {
@@ -108,16 +116,26 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  // Calculate memory display values
-  const memoryUsedGB = stats ? (stats.memory_used_bytes / (1024 * 1024 * 1024)).toFixed(1) : "0";
-  const memoryTotalGB = stats ? (stats.memory_total_bytes / (1024 * 1024 * 1024)).toFixed(0) : "0";
+  const { data: diskStats } = useQuery<DiskStats | null>({
+    queryKey: ["disk-stats"],
+    queryFn: () => api.getDiskStats(loaderData.token),
+    initialData: loaderData.diskStats,
+    refetchInterval: 30000, // Refresh every 30 seconds (disk stats change less frequently)
+  });
+
+  // Calculate memory display values - use formatBytes for accurate display
   const memoryDisplay = stats && stats.memory_total_bytes > 0
-    ? `${memoryUsedGB} / ${memoryTotalGB} GB`
+    ? `${formatBytes(stats.memory_used_bytes)} / ${formatBytes(stats.memory_total_bytes)}`
     : formatBytes(stats?.memory_used_bytes || 0);
 
   const memoryPercent = stats && stats.memory_total_bytes > 0
     ? (stats.memory_used_bytes / stats.memory_total_bytes) * 100
     : 0;
+
+  // Calculate disk display values
+  const diskDisplay = diskStats
+    ? `${diskStats.used_human} / ${diskStats.total_human}`
+    : "N/A";
 
   return (
     <div className="space-y-6">
@@ -138,7 +156,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Running Services"
           value={stats?.running_apps_count ?? 0}
@@ -158,6 +176,14 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
           value={memoryDisplay}
           icon={<HardDrive className="h-5 w-5 text-purple-600" />}
           iconBgColor="bg-purple-100 dark:bg-purple-900/30"
+        />
+        <StatCard
+          title="Disk Usage"
+          value={diskDisplay}
+          icon={<Database className="h-5 w-5 text-orange-600" />}
+          iconBgColor="bg-orange-100 dark:bg-orange-900/30"
+          trend={diskStats ? `${diskStats.usage_percent.toFixed(1)}% used` : undefined}
+          trendPositive={diskStats ? diskStats.usage_percent < 80 : true}
         />
         <StatCard
           title="Uptime"

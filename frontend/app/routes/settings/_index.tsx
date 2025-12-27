@@ -4,6 +4,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+export function meta() {
+  return [
+    { title: "Settings - Rivetr" },
+    { name: "description", content: "Configure your Rivetr instance settings" },
+  ];
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const { requireAuth } = await import("@/lib/session.server");
   await requireAuth(request);

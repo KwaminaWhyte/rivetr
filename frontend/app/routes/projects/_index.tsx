@@ -24,6 +24,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ProjectCard } from "@/components/project-card";
 import type { App, CreateProjectRequest, DeploymentStatus, ProjectWithApps } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "Projects - Rivetr" },
+    { name: "description", content: "Manage your projects and applications" },
+  ];
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
   const { requireAuth } = await import("@/lib/session.server");
   const { api } = await import("@/lib/api.server");
