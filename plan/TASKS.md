@@ -435,6 +435,67 @@
 
 ---
 
+## Phase 4: Platform Services (Coolify-inspired) - NOT STARTED
+
+### 4.1 Managed Databases
+
+One-click database deployments with automatic configuration.
+
+- [ ] **T4.1.1** Create `databases` table (id, name, type, version, port, credentials)
+- [ ] **T4.1.2** Add `GET /api/databases` endpoint (list databases)
+- [ ] **T4.1.3** Add `POST /api/databases` endpoint (create database)
+- [ ] **T4.1.4** Add `DELETE /api/databases/:id` endpoint
+- [ ] **T4.1.5** Implement PostgreSQL one-click deployment
+- [ ] **T4.1.6** Implement MySQL/MariaDB one-click deployment
+- [ ] **T4.1.7** Implement MongoDB one-click deployment
+- [ ] **T4.1.8** Implement Redis one-click deployment
+- [ ] **T4.1.9** Add connection string generation (internal URL)
+- [ ] **T4.1.10** Add public port exposure option (via Nginx TCP proxy)
+- [ ] **T4.1.11** Add database backup scheduling
+- [ ] **T4.1.12** Create Databases management page in frontend
+- [ ] **T4.1.13** Add database credentials reveal/copy UI
+
+### 4.2 Services (Docker Compose Support)
+
+Deploy multi-container applications from docker-compose.yml files.
+
+- [ ] **T4.2.1** Create `services` table (id, name, compose_content, status)
+- [ ] **T4.2.2** Add `GET /api/services` endpoint (list services)
+- [ ] **T4.2.3** Add `POST /api/services` endpoint (create from compose YAML)
+- [ ] **T4.2.4** Add `DELETE /api/services/:id` endpoint
+- [ ] **T4.2.5** Add `POST /api/services/:id/start` endpoint
+- [ ] **T4.2.6** Add `POST /api/services/:id/stop` endpoint
+- [ ] **T4.2.7** Implement docker-compose.yml parsing and validation
+- [ ] **T4.2.8** Implement docker compose up/down execution
+- [ ] **T4.2.9** Add service logs streaming (aggregate from all containers)
+- [ ] **T4.2.10** Create Services management page in frontend
+- [ ] **T4.2.11** Add Compose editor with YAML syntax highlighting
+- [ ] **T4.2.12** Add service container status display
+
+### 4.3 One-Click Service Templates
+
+Pre-configured templates for popular applications (200+ like Coolify).
+
+- [ ] **T4.3.1** Create `service_templates` table (id, name, category, compose_template)
+- [ ] **T4.3.2** Add `GET /api/templates` endpoint (list available templates)
+- [ ] **T4.3.3** Add `GET /api/templates/:id` endpoint (get template details)
+- [ ] **T4.3.4** Add `POST /api/templates/:id/deploy` endpoint
+- [ ] **T4.3.5** Create template: Portainer (container management)
+- [ ] **T4.3.6** Create template: Grafana + Prometheus (monitoring stack)
+- [ ] **T4.3.7** Create template: Uptime Kuma (status monitoring)
+- [ ] **T4.3.8** Create template: Gitea (self-hosted Git)
+- [ ] **T4.3.9** Create template: Nextcloud (file storage)
+- [ ] **T4.3.10** Create template: Vaultwarden (password manager)
+- [ ] **T4.3.11** Create template: n8n (workflow automation)
+- [ ] **T4.3.12** Create template: Minio (S3-compatible storage)
+- [ ] **T4.3.13** Create Template Gallery page in frontend
+- [ ] **T4.3.14** Add template search and category filtering
+- [ ] **T4.3.15** Add template customization before deploy (env vars, volumes)
+
+**Phase 4 Checkpoint**: Full platform with databases, services, and one-click templates
+
+---
+
 ## Competitive Research: Coolify & Dokploy
 
 Research conducted to identify feature gaps and improvement opportunities.
@@ -490,22 +551,27 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 17 | 61% |
 | Phase 3 | 90 | 69 | 77% |
-| **Total** | **236** | **200** | **85%** |
+| Phase 4 | 40 | 0 | 0% |
+| **Total** | **276** | **200** | **72%** |
 
 ---
 
 ## Next Priority Tasks
 
-**Phase 2 - Production Ready:**
-1. **T2.1.3** - Add CSRF tokens for UI forms
-2. **T2.2.2** - Add deployment failure recovery
-3. **T2.2.5** - Database integrity checks
-
 **Phase 3 - Enhanced Features:**
-4. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
-5. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-6. **T3.7.1-5** - Volumes Management
-7. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks)
+1. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
+2. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+3. **T3.7.1-5** - Volumes Management
+
+**Phase 4 - Platform Services (Coolify-inspired):**
+4. **T4.1.1-13** - Managed Databases (PostgreSQL, MySQL, MongoDB, Redis one-click)
+5. **T4.2.1-12** - Services (Docker Compose support)
+6. **T4.3.1-15** - One-Click Service Templates (Portainer, Grafana, Gitea, etc.)
+
+**Phase 2 - Production Ready:**
+7. **T2.1.3** - Add CSRF tokens for UI forms
+8. **T2.2.2** - Add deployment failure recovery
+9. **T2.2.5** - Database integrity checks
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -563,3 +629,5 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Volumes Management** - Persistent data volumes with backup support
 - **Docker Compose support** - Deploy multi-container apps
 - **One-click templates** - Pre-configured apps (PostgreSQL, Redis, etc.)
+- **Managed Databases** - One-click database deployments (PostgreSQL, MySQL, MongoDB, Redis)
+- **Services (Docker Compose)** - Deploy services from docker-compose.yml files
