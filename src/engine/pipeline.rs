@@ -305,6 +305,18 @@ pub async fn run_deployment(
     .await
     .unwrap_or_default();
 
+    // Get volumes from database
+    let volumes = sqlx::query_as::<_, crate::db::Volume>(
+        "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
+    )
+    .bind(&app.id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    // Convert volumes to bind mount strings
+    let binds: Vec<String> = volumes.iter().map(|v| v.to_bind_mount()).collect();
+
     // Parse network configuration from app
     let port_mappings: Vec<PortMapping> = app
         .get_port_mappings()
@@ -326,6 +338,8 @@ pub async fn run_deployment(
         port_mappings,
         network_aliases: app.get_network_aliases(),
         extra_hosts: app.get_extra_hosts(),
+        labels: app.get_container_labels(),
+        binds,
     };
 
     let container_id = runtime.run(&run_config).await.context("Failed to start container")?;
@@ -631,6 +645,18 @@ pub async fn run_rollback(
     .await
     .unwrap_or_default();
 
+    // Get volumes from database
+    let volumes = sqlx::query_as::<_, crate::db::Volume>(
+        "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
+    )
+    .bind(&app.id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    // Convert volumes to bind mount strings
+    let binds: Vec<String> = volumes.iter().map(|v| v.to_bind_mount()).collect();
+
     // Parse network configuration from app
     let port_mappings: Vec<PortMapping> = app
         .get_port_mappings()
@@ -652,6 +678,8 @@ pub async fn run_rollback(
         port_mappings,
         network_aliases: app.get_network_aliases(),
         extra_hosts: app.get_extra_hosts(),
+        labels: app.get_container_labels(),
+        binds,
     };
 
     add_deployment_log(db, rollback_deployment_id, "info", "Starting rollback container...").await?;

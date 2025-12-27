@@ -66,6 +66,10 @@ pub struct RunConfig {
     pub network_aliases: Vec<String>,
     /// Extra hosts entries (hostname:ip format)
     pub extra_hosts: Vec<String>,
+    /// Container labels (key-value pairs)
+    pub labels: std::collections::HashMap<String, String>,
+    /// Volume bind mounts (format: host_path:container_path[:ro])
+    pub binds: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

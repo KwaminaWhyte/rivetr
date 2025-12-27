@@ -14,6 +14,7 @@ mod ssh_keys;
 mod system;
 mod teams;
 mod validation;
+mod volumes;
 mod webhooks;
 mod ws;
 
@@ -85,6 +86,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
         .route("/apps/:id/basic-auth", delete(basic_auth::delete_basic_auth))
+        // Volumes
+        .route("/apps/:id/volumes", get(volumes::list_volumes))
+        .route("/apps/:id/volumes", post(volumes::create_volume))
+        .route("/volumes/:id", get(volumes::get_volume))
+        .route("/volumes/:id", put(volumes::update_volume))
+        .route("/volumes/:id", delete(volumes::delete_volume))
+        .route("/volumes/:id/backup", post(volumes::backup_volume))
         // Routes (proxy management)
         .route("/routes", get(routes::list_routes))
         .route("/routes", post(routes::add_route))

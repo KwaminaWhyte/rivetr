@@ -341,13 +341,13 @@
 - [x] **T3.6.3** Create terminal UI component (xterm.js)
 - [x] **T3.6.4** Add shell access button to app detail
 
-### 3.7 Volumes Management
+### 3.7 Volumes Management ✅ COMPLETE
 
-- [ ] **T3.7.1** Create volumes table
-- [ ] **T3.7.2** Add volumes CRUD API
-- [ ] **T3.7.3** Create volumes UI in app settings
-- [ ] **T3.7.4** Mount volumes at container start
-- [ ] **T3.7.5** Add volume backup/export
+- [x] **T3.7.1** Create volumes table (018_volumes.sql)
+- [x] **T3.7.2** Add volumes CRUD API (src/api/volumes.rs)
+- [x] **T3.7.3** Create volumes UI in app settings (VolumesCard.tsx)
+- [x] **T3.7.4** Mount volumes at container start (binds in RunConfig, Docker/Podman support)
+- [x] **T3.7.5** Add volume backup/export (tar.gz backup endpoint)
 
 ### 3.8 Build Improvements
 
@@ -418,12 +418,12 @@
 - [x] **T3.17.6** Add `POST /api/apps/:id/stop` endpoint
 - [x] **T3.17.7** Create Start/Stop UI buttons in app layout
 
-### 3.15 Container Labels (Coolify-inspired)
+### 3.15 Container Labels (Coolify-inspired) ✅ COMPLETE
 
-- [ ] **T3.15.1** Add `container_labels` field (JSON object)
-- [ ] **T3.15.2** Apply custom labels to containers at runtime
-- [ ] **T3.15.3** Create Container Labels editor in app settings UI
-- [ ] **T3.15.4** Add default label templates (Traefik, Caddy)
+- [x] **T3.15.1** Add `container_labels` field (JSON object) - migration 017
+- [x] **T3.15.2** Apply custom labels to containers at runtime (labels in RunConfig, Docker/Podman support)
+- [x] **T3.15.3** Create Container Labels editor in app settings UI (ContainerLabelsCard.tsx)
+- [x] **T3.15.4** Add default label templates (Traefik, Caddy)
 
 ### 3.16 Docker Registry Support (Coolify-inspired) ✅ COMPLETE
 
@@ -550,28 +550,27 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 17 | 61% |
-| Phase 3 | 90 | 69 | 77% |
+| Phase 3 | 90 | 78 | 87% |
 | Phase 4 | 40 | 0 | 0% |
-| **Total** | **276** | **200** | **72%** |
+| **Total** | **276** | **209** | **76%** |
 
 ---
 
 ## Next Priority Tasks
 
 **Phase 3 - Enhanced Features:**
-1. **T3.15.1-4** - Container Labels (custom labels for Traefik/Caddy)
-2. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-3. **T3.7.1-5** - Volumes Management
+1. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+2. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
 
 **Phase 4 - Platform Services (Coolify-inspired):**
-4. **T4.1.1-13** - Managed Databases (PostgreSQL, MySQL, MongoDB, Redis one-click)
-5. **T4.2.1-12** - Services (Docker Compose support)
-6. **T4.3.1-15** - One-Click Service Templates (Portainer, Grafana, Gitea, etc.)
+3. **T4.1.1-13** - Managed Databases (PostgreSQL, MySQL, MongoDB, Redis one-click)
+4. **T4.2.1-12** - Services (Docker Compose support)
+5. **T4.3.1-15** - One-Click Service Templates (Portainer, Grafana, Gitea, etc.)
 
 **Phase 2 - Production Ready:**
-7. **T2.1.3** - Add CSRF tokens for UI forms
-8. **T2.2.2** - Add deployment failure recovery
-9. **T2.2.5** - Database integrity checks
+6. **T2.1.3** - Add CSRF tokens for UI forms
+7. **T2.2.2** - Add deployment failure recovery
+8. **T2.2.5** - Database integrity checks
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -622,11 +621,11 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Docker Registry Support** - Deploy apps from Docker Hub, GHCR, or private registries instead of building
 - **Notifications System** - Slack, Discord, and Email notifications for deployment events with subscription management
 - **Teams & RBAC** - Team management with owner/admin/developer/viewer roles and permission-based access control
+- **Container Labels** - Custom Docker/Podman labels for Traefik/Caddy integration with preset templates
+- **Volumes Management** - Persistent data volumes with full CRUD, bind mounts, and tar.gz backup/export
 
 ### Planned Features
-- **Container Labels** - Custom labels for Traefik/Caddy integration
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
-- **Volumes Management** - Persistent data volumes with backup support
 - **Docker Compose support** - Deploy multi-container apps
 - **One-click templates** - Pre-configured apps (PostgreSQL, Redis, etc.)
 - **Managed Databases** - One-click database deployments (PostgreSQL, MySQL, MongoDB, Redis)

@@ -30,11 +30,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { BasicAuthCard } from "@/components/basic-auth-card";
+import { ContainerLabelsCard } from "@/components/container-labels-card";
 import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { DomainManagementCard } from "@/components/domain-management-card";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { NetworkConfigCard } from "@/components/network-config-card";
+import { VolumesCard } from "@/components/volumes-card";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
 
@@ -113,6 +115,7 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
   );
   const [isSavingNetwork, setIsSavingNetwork] = useState(false);
   const [isSavingDomains, setIsSavingDomains] = useState(false);
+  const [isSavingLabels, setIsSavingLabels] = useState(false);
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -135,6 +138,17 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } finally {
       setIsSavingDomains(false);
+    }
+  };
+
+  // Handler for saving container labels
+  const handleSaveContainerLabels = async (updates: UpdateAppRequest) => {
+    setIsSavingLabels(true);
+    try {
+      await api.updateApp(app.id, updates, token);
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } finally {
+      setIsSavingLabels(false);
     }
   };
 
@@ -316,6 +330,16 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
         onSave={handleSaveNetworkConfig}
         isSaving={isSavingNetwork}
       />
+
+      {/* Container Labels */}
+      <ContainerLabelsCard
+        app={app}
+        onSave={handleSaveContainerLabels}
+        isSaving={isSavingLabels}
+      />
+
+      {/* Volumes */}
+      <VolumesCard appId={app.id} token={token} />
 
       {/* Deployment Commands */}
       <DeploymentCommandsCard

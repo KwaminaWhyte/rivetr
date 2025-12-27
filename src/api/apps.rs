@@ -152,21 +152,33 @@ fn validate_update_request(req: &UpdateAppRequest) -> Result<(), ApiError> {
         }
     }
 
+    // Only validate git_url if it's provided and non-empty
+    // Empty string means "clear" which is valid when using docker_image
     if let Some(ref git_url) = req.git_url {
-        if let Err(e) = validate_git_url(git_url) {
-            errors.add("git_url", &e);
+        if !git_url.is_empty() {
+            if let Err(e) = validate_git_url(git_url) {
+                errors.add("git_url", &e);
+            }
         }
     }
 
+    // Only validate branch if it's provided and non-empty
+    // Empty string means "clear" which is valid when using docker_image
     if let Some(ref branch) = req.branch {
-        if let Err(e) = validate_branch(branch) {
-            errors.add("branch", &e);
+        if !branch.is_empty() {
+            if let Err(e) = validate_branch(branch) {
+                errors.add("branch", &e);
+            }
         }
     }
 
+    // Only validate dockerfile if it's provided and non-empty
+    // Empty string means "clear" which is valid when using docker_image
     if let Some(ref dockerfile) = req.dockerfile {
-        if let Err(e) = validate_dockerfile(dockerfile) {
-            errors.add("dockerfile", &e);
+        if !dockerfile.is_empty() {
+            if let Err(e) = validate_dockerfile(dockerfile) {
+                errors.add("dockerfile", &e);
+            }
         }
     }
 
@@ -309,6 +321,10 @@ pub async fn create_app(
         .post_deploy_commands
         .as_ref()
         .map(|c| serde_json::to_string(c).unwrap_or_default());
+    let container_labels_json = req
+        .container_labels
+        .as_ref()
+        .map(|l| serde_json::to_string(l).unwrap_or_default());
 
     // Generate auto_subdomain if configured
     let auto_subdomain = if state.config.proxy.sslip_enabled {
@@ -320,8 +336,8 @@ pub async fn create_app(
 
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -354,6 +370,7 @@ pub async fn create_app(
     .bind(&req.registry_url)
     .bind(&req.registry_username)
     .bind(&req.registry_password)
+    .bind(&container_labels_json)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -470,6 +487,13 @@ pub async fn update_app(
     let registry_password =
         merge_optional_string(&req.registry_password, &existing.registry_password);
 
+    // Container labels - HashMap serialized as JSON
+    let container_labels = match &req.container_labels {
+        Some(labels) if labels.is_empty() => None, // Explicit clear
+        Some(labels) => serde_json::to_string(labels).ok(), // New value
+        None => existing.container_labels.clone(), // Keep existing
+    };
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -501,6 +525,7 @@ pub async fn update_app(
             registry_url = ?,
             registry_username = ?,
             registry_password = ?,
+            container_labels = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -533,6 +558,7 @@ pub async fn update_app(
     .bind(&registry_url)
     .bind(&registry_username)
     .bind(&registry_password)
+    .bind(&container_labels)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

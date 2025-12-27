@@ -150,11 +150,19 @@ impl ContainerRuntime for DockerRuntime {
             Some(config.extra_hosts.clone())
         };
 
+        // Convert binds (volume mounts) to the format Docker expects
+        let binds: Option<Vec<String>> = if config.binds.is_empty() {
+            None
+        } else {
+            Some(config.binds.clone())
+        };
+
         let host_config = bollard::service::HostConfig {
             port_bindings: Some(port_bindings),
             memory: config.memory_limit.as_ref().and_then(|m| parse_memory(m)),
             nano_cpus: config.cpu_limit.as_ref().and_then(|c| parse_cpu(c)),
             extra_hosts,
+            binds,
             ..Default::default()
         };
 
@@ -167,11 +175,19 @@ impl ContainerRuntime for DockerRuntime {
             final_env.push(format!("RIVETR_NETWORK_ALIASES={}", config.network_aliases.join(",")));
         }
 
+        // Set up container labels
+        let labels: Option<HashMap<String, String>> = if config.labels.is_empty() {
+            None
+        } else {
+            Some(config.labels.clone())
+        };
+
         let container_config = Config {
             image: Some(config.image.clone()),
             env: Some(final_env),
             exposed_ports: Some(exposed_ports),
             host_config: Some(host_config),
+            labels,
             ..Default::default()
         };
 

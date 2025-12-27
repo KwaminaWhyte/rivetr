@@ -9,6 +9,23 @@ use tracing::info;
 
 pub type DbPool = SqlitePool;
 
+/// Execute a SQL migration file, properly handling comments
+async fn execute_sql(pool: &SqlitePool, sql: &str) -> Result<()> {
+    for statement in sql.split(';') {
+        // Strip SQL comment lines (lines starting with --)
+        let cleaned: String = statement
+            .lines()
+            .filter(|line| !line.trim().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let trimmed = cleaned.trim();
+        if !trimmed.is_empty() {
+            sqlx::query(trimmed).execute(pool).await?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn init(data_dir: &Path) -> Result<DbPool> {
     let db_path = data_dir.join("rivetr.db");
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -42,40 +59,19 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     info!("Running database migrations...");
 
     // Migration 001: Initial schema
-    let migration_001 = include_str!("../../migrations/001_initial.sql");
-    for statement in migration_001.split(';') {
-        let trimmed = statement.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with("--") {
-            sqlx::query(trimmed).execute(pool).await?;
-        }
-    }
+    execute_sql(pool, include_str!("../../migrations/001_initial.sql")).await?;
 
     // Migration 002: Users table
-    let migration_002 = include_str!("../../migrations/002_users.sql");
-    for statement in migration_002.split(';') {
-        let trimmed = statement.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with("--") {
-            sqlx::query(trimmed).execute(pool).await?;
-        }
-    }
+    execute_sql(pool, include_str!("../../migrations/002_users.sql")).await?;
 
     // Migration 003: Add image_tag column for rollback support
-    // Using a check to avoid "duplicate column" error on existing databases
     let has_image_tag: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM pragma_table_info('deployments') WHERE name = 'image_tag'"
     )
     .fetch_optional(pool)
     .await?;
-
     if has_image_tag.is_none() {
-        let migration_003 = include_str!("../../migrations/003_rollback.sql");
-        // Execute each statement separately since SQLite doesn't support multiple statements
-        for statement in migration_003.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/003_rollback.sql")).await?;
     }
 
     // Migration 004: Add SSH keys table for private repository authentication
@@ -84,16 +80,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_ssh_keys_table.is_none() {
-        let migration_004 = include_str!("../../migrations/004_ssh_keys.sql");
-        // Execute each statement separately since SQLite doesn't support multiple statements
-        for statement in migration_004.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/004_ssh_keys.sql")).await?;
     }
 
     // Migration 005: Add git_providers table for OAuth connections
@@ -102,16 +90,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_git_providers_table.is_none() {
-        let migration_005 = include_str!("../../migrations/005_git_providers.sql");
-        // Execute each statement separately since SQLite doesn't support multiple statements
-        for statement in migration_005.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/005_git_providers.sql")).await?;
     }
 
     // Migration 006: Add environment field to apps
@@ -120,15 +100,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_environment.is_none() {
-        let migration_006 = include_str!("../../migrations/006_environment.sql");
-        for statement in migration_006.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/006_environment.sql")).await?;
     }
 
     // Migration 007: Add projects table and project_id to apps
@@ -137,16 +110,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_projects_table.is_none() {
-        let migration_007 = include_str!("../../migrations/007_projects.sql");
-        // Execute each statement separately since SQLite doesn't support multiple statements
-        for statement in migration_007.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/007_projects.sql")).await?;
     }
 
     // Migration 008: Add is_secret and updated_at columns to env_vars
@@ -155,15 +120,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_is_secret.is_none() {
-        let migration_008 = include_str!("../../migrations/008_env_vars_update.sql");
-        for statement in migration_008.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/008_env_vars_update.sql")).await?;
     }
 
     // Migration 009: Add advanced build options to apps
@@ -172,15 +130,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_dockerfile_path.is_none() {
-        let migration_009 = include_str!("../../migrations/009_build_options.sql");
-        for statement in migration_009.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/009_build_options.sql")).await?;
     }
 
     // Migration 010: Add domain management to apps
@@ -189,15 +140,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_domains.is_none() {
-        let migration_010 = include_str!("../../migrations/010_domains.sql");
-        for statement in migration_010.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/010_domains.sql")).await?;
     }
 
     // Migration 011: Add network configuration to apps
@@ -206,15 +150,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_port_mappings.is_none() {
-        let migration_011 = include_str!("../../migrations/011_network_config.sql");
-        for statement in migration_011.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/011_network_config.sql")).await?;
     }
 
     // Migration 012: Add HTTP basic auth to apps
@@ -223,15 +160,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_basic_auth.is_none() {
-        let migration_012 = include_str!("../../migrations/012_basic_auth.sql");
-        for statement in migration_012.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/012_basic_auth.sql")).await?;
     }
 
     // Migration 013: Add pre/post deployment commands to apps
@@ -240,15 +170,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_pre_deploy.is_none() {
-        let migration_013 = include_str!("../../migrations/013_deployment_commands.sql");
-        for statement in migration_013.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/013_deployment_commands.sql")).await?;
     }
 
     // Migration 014: Add docker registry support
@@ -257,15 +180,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_docker_image.is_none() {
-        let migration_014 = include_str!("../../migrations/014_docker_registry.sql");
-        for statement in migration_014.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/014_docker_registry.sql")).await?;
     }
 
     // Migration 015: Add teams and team_members tables for multi-user support
@@ -274,15 +190,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_teams_table.is_none() {
-        let migration_015 = include_str!("../../migrations/015_teams.sql");
-        for statement in migration_015.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/015_teams.sql")).await?;
     }
 
     // Migration 016: Add notification channels and subscriptions
@@ -291,15 +200,28 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .fetch_optional(pool)
     .await?;
-
     if has_notification_channels.is_none() {
-        let migration_016 = include_str!("../../migrations/016_notifications.sql");
-        for statement in migration_016.split(';') {
-            let trimmed = statement.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                sqlx::query(trimmed).execute(pool).await?;
-            }
-        }
+        execute_sql(pool, include_str!("../../migrations/016_notifications.sql")).await?;
+    }
+
+    // Migration 017: Add container_labels to apps
+    let has_container_labels: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'container_labels'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_container_labels.is_none() {
+        execute_sql(pool, include_str!("../../migrations/017_container_labels.sql")).await?;
+    }
+
+    // Migration 018: Add volumes table for persistent storage
+    let has_volumes_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='volumes'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_volumes_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/018_volumes.sql")).await?;
     }
 
     info!("Migrations completed");

@@ -133,6 +133,18 @@ impl ContainerRuntime for PodmanRuntime {
             args.push(alias.clone());
         }
 
+        // Add container labels
+        for (key, value) in &config.labels {
+            args.push("--label".to_string());
+            args.push(format!("{}={}", key, value));
+        }
+
+        // Add volume bind mounts
+        for bind in &config.binds {
+            args.push("-v".to_string());
+            args.push(bind.clone());
+        }
+
         for (key, value) in &config.env {
             args.push("-e".to_string());
             args.push(format!("{}={}", key, value));

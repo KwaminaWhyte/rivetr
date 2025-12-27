@@ -2254,6 +2254,7 @@ dependencies = [
  "chrono",
  "clap",
  "dashmap",
+ "flate2",
  "futures",
  "git2",
  "hex",

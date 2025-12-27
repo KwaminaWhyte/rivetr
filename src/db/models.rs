@@ -199,6 +199,8 @@ pub struct App {
     /// Registry authentication password (encrypted)
     #[serde(skip_serializing)]
     pub registry_password: Option<String>,
+    /// Container labels (JSON object stored as TEXT)
+    pub container_labels: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -243,6 +245,8 @@ pub struct AppResponse {
     pub docker_image_tag: Option<String>,
     pub registry_url: Option<String>,
     pub registry_username: Option<String>,
+    // Container labels
+    pub container_labels: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -281,6 +285,7 @@ impl From<App> for AppResponse {
             docker_image_tag: app.docker_image_tag,
             registry_url: app.registry_url,
             registry_username: app.registry_username,
+            container_labels: app.container_labels,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -420,6 +425,14 @@ impl App {
         };
 
         Some(format!("{}:{}", full_image, tag))
+    }
+
+    /// Parse container_labels JSON into HashMap<String, String>
+    pub fn get_container_labels(&self) -> std::collections::HashMap<String, String> {
+        self.container_labels
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
     }
 }
 
@@ -601,6 +614,8 @@ pub struct CreateAppRequest {
     pub registry_username: Option<String>,
     /// Registry authentication password
     pub registry_password: Option<String>,
+    /// Container labels (key-value pairs)
+    pub container_labels: Option<std::collections::HashMap<String, String>>,
 }
 
 fn default_image_tag() -> Option<String> {
@@ -664,6 +679,8 @@ pub struct UpdateAppRequest {
     pub registry_username: Option<String>,
     /// Registry authentication password
     pub registry_password: Option<String>,
+    /// Container labels (key-value pairs)
+    pub container_labels: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Request specifically for updating domains
@@ -1416,4 +1433,84 @@ pub struct CreateNotificationSubscriptionRequest {
 #[derive(Debug, Deserialize)]
 pub struct TestNotificationRequest {
     pub message: Option<String>,
+}
+
+// -------------------------------------------------------------------------
+// Volume models
+// -------------------------------------------------------------------------
+
+/// Volume mount for persistent storage
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Volume {
+    pub id: String,
+    pub app_id: String,
+    pub name: String,
+    pub host_path: String,
+    pub container_path: String,
+    pub read_only: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl Volume {
+    /// Check if this volume is read-only
+    pub fn is_read_only(&self) -> bool {
+        self.read_only != 0
+    }
+
+    /// Get the Docker bind mount string (host_path:container_path[:ro])
+    pub fn to_bind_mount(&self) -> String {
+        if self.is_read_only() {
+            format!("{}:{}:ro", self.host_path, self.container_path)
+        } else {
+            format!("{}:{}", self.host_path, self.container_path)
+        }
+    }
+}
+
+/// Response DTO for Volume
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeResponse {
+    pub id: String,
+    pub app_id: String,
+    pub name: String,
+    pub host_path: String,
+    pub container_path: String,
+    pub read_only: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<Volume> for VolumeResponse {
+    fn from(v: Volume) -> Self {
+        Self {
+            id: v.id,
+            app_id: v.app_id,
+            name: v.name,
+            host_path: v.host_path,
+            container_path: v.container_path,
+            read_only: v.read_only != 0,
+            created_at: v.created_at,
+            updated_at: v.updated_at,
+        }
+    }
+}
+
+/// Request to create a volume
+#[derive(Debug, Deserialize)]
+pub struct CreateVolumeRequest {
+    pub name: String,
+    pub host_path: String,
+    pub container_path: String,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// Request to update a volume
+#[derive(Debug, Deserialize)]
+pub struct UpdateVolumeRequest {
+    pub name: Option<String>,
+    pub host_path: Option<String>,
+    pub container_path: Option<String>,
+    pub read_only: Option<bool>,
 }

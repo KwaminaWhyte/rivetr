@@ -57,6 +57,8 @@ export interface App {
   docker_image_tag: string | null;
   registry_url: string | null;
   registry_username: string | null;
+  // Container labels (JSON object stored as string)
+  container_labels: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -166,6 +168,8 @@ export interface CreateAppRequest {
   registry_username?: string;
   /** Registry authentication password */
   registry_password?: string;
+  // Container labels
+  container_labels?: Record<string, string>;
 }
 
 export interface UpdateAppRequest {
@@ -207,6 +211,8 @@ export interface UpdateAppRequest {
   registry_username?: string;
   /** Registry authentication password */
   registry_password?: string;
+  // Container labels
+  container_labels?: Record<string, string>;
 }
 
 export interface SshKey {
@@ -595,4 +601,36 @@ export function canDeleteApps(role: TeamRole | null): boolean {
 /** Helper: Check if user can delete the team */
 export function canDeleteTeam(role: TeamRole | null): boolean {
   return role === "owner";
+}
+
+// -------------------------------------------------------------------------
+// Volume types
+// -------------------------------------------------------------------------
+
+/** Volume mount for persistent storage */
+export interface Volume {
+  id: string;
+  app_id: string;
+  name: string;
+  host_path: string;
+  container_path: string;
+  read_only: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create a volume */
+export interface CreateVolumeRequest {
+  name: string;
+  host_path: string;
+  container_path: string;
+  read_only?: boolean;
+}
+
+/** Request to update a volume */
+export interface UpdateVolumeRequest {
+  name?: string;
+  host_path?: string;
+  container_path?: string;
+  read_only?: boolean;
 }

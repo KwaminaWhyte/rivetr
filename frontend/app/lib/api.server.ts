@@ -9,6 +9,7 @@ import type {
   CreateProjectRequest,
   CreateSshKeyRequest,
   CreateTeamRequest,
+  CreateVolumeRequest,
   Deployment,
   DeploymentLog,
   DiskStats,
@@ -36,6 +37,8 @@ import type {
   UpdateProjectRequest,
   UpdateSshKeyRequest,
   UpdateTeamRequest,
+  UpdateVolumeRequest,
+  Volume,
 } from "@/types/api";
 
 const API_BASE = process.env.API_BASE || "http://localhost:8080";
@@ -266,6 +269,24 @@ export const api = {
     apiRequest<void>(`/teams/${teamId}/members/${userId}`, token, {
       method: "DELETE",
     }),
+
+  // Volumes
+  getVolumes: (token: string, appId: string) =>
+    apiRequest<Volume[]>(`/apps/${appId}/volumes`, token),
+  getVolume: (token: string, volumeId: string) =>
+    apiRequest<Volume>(`/volumes/${volumeId}`, token),
+  createVolume: (token: string, appId: string, data: CreateVolumeRequest) =>
+    apiRequest<Volume>(`/apps/${appId}/volumes`, token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateVolume: (token: string, volumeId: string, data: UpdateVolumeRequest) =>
+    apiRequest<Volume>(`/volumes/${volumeId}`, token, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteVolume: (token: string, volumeId: string) =>
+    apiRequest<void>(`/volumes/${volumeId}`, token, { method: "DELETE" }),
 };
 
 // Public API methods (no auth required)

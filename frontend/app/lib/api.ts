@@ -10,6 +10,7 @@ import type {
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   CreateTeamRequest,
+  CreateVolumeRequest,
   Deployment,
   DeploymentLog,
   DiskStats,
@@ -34,6 +35,8 @@ import type {
   UpdateMemberRoleRequest,
   UpdateNotificationChannelRequest,
   UpdateTeamRequest,
+  UpdateVolumeRequest,
+  Volume,
 } from "@/types/api";
 
 async function apiRequest<T>(
@@ -316,6 +319,52 @@ export const api = {
       },
       token
     ),
+
+  // Volumes
+  getVolumes: (appId: string, token?: string) =>
+    apiRequest<Volume[]>(`/apps/${appId}/volumes`, {}, token),
+  getVolume: (volumeId: string, token?: string) =>
+    apiRequest<Volume>(`/volumes/${volumeId}`, {}, token),
+  createVolume: (appId: string, data: CreateVolumeRequest, token?: string) =>
+    apiRequest<Volume>(
+      `/apps/${appId}/volumes`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateVolume: (volumeId: string, data: UpdateVolumeRequest, token?: string) =>
+    apiRequest<Volume>(
+      `/volumes/${volumeId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteVolume: (volumeId: string, token?: string) =>
+    apiRequest<void>(
+      `/volumes/${volumeId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+  backupVolume: (volumeId: string, token?: string) => {
+    // For backup, we need to handle the file download differently
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return fetch(`/api/volumes/${volumeId}/backup`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+    });
+  },
 };
 
 export default api;
