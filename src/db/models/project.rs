@@ -5,6 +5,7 @@ use sqlx::FromRow;
 
 use super::app::App;
 use super::database::ManagedDatabaseResponse;
+use super::service::ServiceResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Project {
@@ -26,7 +27,7 @@ pub struct ProjectWithAppCount {
     pub app_count: i64,
 }
 
-/// Project with its apps for detail view
+/// Project with its apps, databases, and services for detail view
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectWithApps {
     pub id: String,
@@ -37,6 +38,8 @@ pub struct ProjectWithApps {
     pub apps: Vec<App>,
     #[serde(default)]
     pub databases: Vec<ManagedDatabaseResponse>,
+    #[serde(default)]
+    pub services: Vec<ServiceResponse>,
 }
 
 #[derive(Debug, Deserialize)]

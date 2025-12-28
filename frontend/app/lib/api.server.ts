@@ -8,11 +8,14 @@ import type {
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   CreateProjectRequest,
+  CreateServiceRequest,
   CreateSshKeyRequest,
   CreateTeamRequest,
   CreateVolumeRequest,
   Deployment,
   DeploymentLog,
+  DeployTemplateRequest,
+  DeployTemplateResponse,
   DiskStats,
   EnvVar,
   GitProvider,
@@ -24,6 +27,8 @@ import type {
   Project,
   ProjectWithApps,
   RecentEvent,
+  Service,
+  ServiceTemplate,
   SshKey,
   SystemHealthStatus,
   SystemStats,
@@ -31,12 +36,14 @@ import type {
   TeamDetail,
   TeamMemberWithUser,
   TeamWithMemberCount,
+  TemplateCategory,
   TestNotificationRequest,
   UpdateAppRequest,
   UpdateEnvVarRequest,
   UpdateMemberRoleRequest,
   UpdateNotificationChannelRequest,
   UpdateProjectRequest,
+  UpdateServiceRequest,
   UpdateSshKeyRequest,
   UpdateTeamRequest,
   UpdateVolumeRequest,
@@ -313,6 +320,42 @@ export const api = {
     apiRequest<ManagedDatabase>(`/databases/${id}/start`, token, { method: "POST" }),
   stopDatabase: (token: string, id: string) =>
     apiRequest<ManagedDatabase>(`/databases/${id}/stop`, token, { method: "POST" }),
+
+  // Docker Compose Services
+  getServices: (token: string) => apiRequest<Service[]>("/services", token),
+  getService: (token: string, id: string) =>
+    apiRequest<Service>(`/services/${id}`, token),
+  createService: (token: string, data: CreateServiceRequest) =>
+    apiRequest<Service>("/services", token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateService: (token: string, id: string, data: UpdateServiceRequest) =>
+    apiRequest<Service>(`/services/${id}`, token, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteService: (token: string, id: string) =>
+    apiRequest<void>(`/services/${id}`, token, { method: "DELETE" }),
+  startService: (token: string, id: string) =>
+    apiRequest<Service>(`/services/${id}/start`, token, { method: "POST" }),
+  stopService: (token: string, id: string) =>
+    apiRequest<Service>(`/services/${id}/stop`, token, { method: "POST" }),
+
+  // Service Templates
+  getTemplates: (token: string, category?: TemplateCategory) => {
+    const params = category ? `?category=${category}` : "";
+    return apiRequest<ServiceTemplate[]>(`/templates${params}`, token);
+  },
+  getTemplate: (token: string, id: string) =>
+    apiRequest<ServiceTemplate>(`/templates/${id}`, token),
+  getTemplateCategories: (token: string) =>
+    apiRequest<string[]>("/templates/categories", token),
+  deployTemplate: (token: string, id: string, data: DeployTemplateRequest) =>
+    apiRequest<DeployTemplateResponse>(`/templates/${id}/deploy`, token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
 
 // Public API methods (no auth required)

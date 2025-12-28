@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Layers,
   MoreVertical,
   Play,
   Plus,
@@ -19,6 +20,8 @@ import {
   Trash2,
   X,
   AlertCircle,
+  Search,
+  Rocket,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -72,14 +75,28 @@ import {
 } from "@/components/ui/collapsible";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { Badge } from "@/components/ui/badge";
-import type { App, ProjectWithApps, UpdateProjectRequest, ManagedDatabase, DatabaseType } from "@/types/api";
+import type {
+  App,
+  ProjectWithApps,
+  UpdateProjectRequest,
+  ManagedDatabase,
+  DatabaseType,
+  Service,
+  ServiceStatus,
+  ServiceTemplate,
+} from "@/types/api";
 import { DATABASE_TYPES } from "@/types/api";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export function meta({ data }: Route.MetaArgs) {
   const projectName = data?.project?.name || "Project";
   return [
     { title: `${projectName} - Rivetr` },
-    { name: "description", content: `Manage ${projectName} and its applications` },
+    {
+      name: "description",
+      content: `Manage ${projectName} and its applications`,
+    },
   ];
 }
 
@@ -88,7 +105,10 @@ function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, { className: string; label: string }> = {
     running: { className: "bg-green-500 text-white", label: "Running" },
     stopped: { className: "bg-gray-500 text-white", label: "Stopped" },
-    not_deployed: { className: "bg-gray-400 text-white", label: "Not Deployed" },
+    not_deployed: {
+      className: "bg-gray-400 text-white",
+      label: "Not Deployed",
+    },
     failed: { className: "bg-red-500 text-white", label: "Failed" },
     building: { className: "bg-blue-500 text-white", label: "Building" },
     pending: { className: "bg-yellow-500 text-white", label: "Pending" },
@@ -109,7 +129,25 @@ function DatabaseStatusBadge({ status }: { status: string }) {
     case "pulling":
       return <Badge className="bg-blue-500 hover:bg-blue-600">Pulling</Badge>;
     case "starting":
-      return <Badge className="bg-yellow-500 hover:bg-yellow-600">Starting</Badge>;
+      return (
+        <Badge className="bg-yellow-500 hover:bg-yellow-600">Starting</Badge>
+      );
+    case "failed":
+      return <Badge variant="destructive">Failed</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+}
+
+// Service status badge
+function ServiceStatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case "running":
+      return <Badge className="bg-green-500 hover:bg-green-600">Running</Badge>;
+    case "stopped":
+      return <Badge variant="secondary">Stopped</Badge>;
+    case "pending":
+      return <Badge variant="outline">Pending</Badge>;
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
     default:
@@ -122,9 +160,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { api } = await import("@/lib/api.server");
 
   const token = await requireAuth(request);
-  const [project, allApps] = await Promise.all([
+  const [project, allApps, templates] = await Promise.all([
     api.getProject(token, params.id!),
     api.getApps(token).catch(() => []),
+    api.getTemplates(token).catch(() => []),
   ]);
 
   // Get app statuses for apps in this project
@@ -140,7 +179,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     })
   );
 
-  return { project, allApps, appStatuses };
+  return { project, allApps, appStatuses, templates };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -171,7 +210,10 @@ export async function action({ request, params }: Route.ActionArgs) {
       });
       return { success: true, action: "update" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to update project" };
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to update project",
+      };
     }
   }
 
@@ -184,7 +226,9 @@ export async function action({ request, params }: Route.ActionArgs) {
       await api.assignAppToProject(token, appId, params.id!);
       return { success: true, action: "assign-app" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to add app" };
+      return {
+        error: error instanceof Error ? error.message : "Failed to add app",
+      };
     }
   }
 
@@ -197,7 +241,9 @@ export async function action({ request, params }: Route.ActionArgs) {
       await api.assignAppToProject(token, appId, null);
       return { success: true, action: "remove-app" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to remove app" };
+      return {
+        error: error instanceof Error ? error.message : "Failed to remove app",
+      };
     }
   }
 
@@ -229,14 +275,27 @@ export async function action({ request, params }: Route.ActionArgs) {
         public_access,
         project_id: params.id!,
         // Only include credentials if provided
-        ...(username && typeof username === "string" && username.trim() ? { username: username.trim() } : {}),
-        ...(password && typeof password === "string" && password.trim() ? { password: password.trim() } : {}),
-        ...(database && typeof database === "string" && database.trim() ? { database: database.trim() } : {}),
-        ...(root_password && typeof root_password === "string" && root_password.trim() ? { root_password: root_password.trim() } : {}),
+        ...(username && typeof username === "string" && username.trim()
+          ? { username: username.trim() }
+          : {}),
+        ...(password && typeof password === "string" && password.trim()
+          ? { password: password.trim() }
+          : {}),
+        ...(database && typeof database === "string" && database.trim()
+          ? { database: database.trim() }
+          : {}),
+        ...(root_password &&
+        typeof root_password === "string" &&
+        root_password.trim()
+          ? { root_password: root_password.trim() }
+          : {}),
       });
       return { success: true, action: "create-database" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to create database" };
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to create database",
+      };
     }
   }
 
@@ -249,7 +308,10 @@ export async function action({ request, params }: Route.ActionArgs) {
       await api.deleteDatabase(token, databaseId);
       return { success: true, action: "delete-database" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete database" };
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to delete database",
+      };
     }
   }
 
@@ -262,7 +324,10 @@ export async function action({ request, params }: Route.ActionArgs) {
       await api.startDatabase(token, databaseId);
       return { success: true, action: "start-database" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to start database" };
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to start database",
+      };
     }
   }
 
@@ -275,14 +340,120 @@ export async function action({ request, params }: Route.ActionArgs) {
       await api.stopDatabase(token, databaseId);
       return { success: true, action: "stop-database" };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to stop database" };
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to stop database",
+      };
+    }
+  }
+
+  // Service operations
+  if (intent === "create-service") {
+    const name = formData.get("name");
+    const compose_content = formData.get("compose_content");
+
+    if (typeof name !== "string" || !name.trim()) {
+      return { error: "Service name is required" };
+    }
+    if (typeof compose_content !== "string" || !compose_content.trim()) {
+      return { error: "Docker Compose content is required" };
+    }
+
+    try {
+      await api.createService(token, {
+        name: name.trim(),
+        compose_content: compose_content.trim(),
+        project_id: params.id!,
+      });
+      return { success: true, action: "create-service" };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to create service",
+      };
+    }
+  }
+
+  if (intent === "delete-service") {
+    const serviceId = formData.get("serviceId");
+    if (typeof serviceId !== "string") {
+      return { error: "Service ID is required" };
+    }
+    try {
+      await api.deleteService(token, serviceId);
+      return { success: true, action: "delete-service" };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to delete service",
+      };
+    }
+  }
+
+  if (intent === "start-service") {
+    const serviceId = formData.get("serviceId");
+    if (typeof serviceId !== "string") {
+      return { error: "Service ID is required" };
+    }
+    try {
+      await api.startService(token, serviceId);
+      return { success: true, action: "start-service" };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to start service",
+      };
+    }
+  }
+
+  if (intent === "stop-service") {
+    const serviceId = formData.get("serviceId");
+    if (typeof serviceId !== "string") {
+      return { error: "Service ID is required" };
+    }
+    try {
+      await api.stopService(token, serviceId);
+      return { success: true, action: "stop-service" };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to stop service",
+      };
+    }
+  }
+
+  if (intent === "deploy-from-template") {
+    const templateId = formData.get("templateId");
+    const serviceName = formData.get("serviceName");
+
+    if (typeof templateId !== "string") {
+      return { error: "Template ID is required" };
+    }
+    if (typeof serviceName !== "string" || !serviceName.trim()) {
+      return { error: "Service name is required" };
+    }
+
+    try {
+      await api.deployTemplate(token, templateId, {
+        name: serviceName.trim(),
+        project_id: params.id!,
+      });
+      return { success: true, action: "deploy-from-template" };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Failed to deploy template",
+      };
     }
   }
 
   return { error: "Unknown action" };
 }
 
-export default function ProjectDetailPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function ProjectDetailPage({
+  loaderData,
+  actionData,
+}: Route.ComponentProps) {
   const queryClient = useQueryClient();
   const navigation = useNavigation();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -294,11 +465,29 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
   const [isCreateDbDialogOpen, setIsCreateDbDialogOpen] = useState(false);
   const [isDeleteDbDialogOpen, setIsDeleteDbDialogOpen] = useState(false);
   const [isCredentialsDialogOpen, setIsCredentialsDialogOpen] = useState(false);
-  const [selectedDatabase, setSelectedDatabase] = useState<ManagedDatabase | null>(null);
-  const [selectedDbType, setSelectedDbType] = useState<DatabaseType>("postgres");
+  const [selectedDatabase, setSelectedDatabase] =
+    useState<ManagedDatabase | null>(null);
+  const [selectedDbType, setSelectedDbType] =
+    useState<DatabaseType>("postgres");
   const [showCustomCredentials, setShowCustomCredentials] = useState(false);
+
+  // Service state
+  const [isCreateServiceDialogOpen, setIsCreateServiceDialogOpen] =
+    useState(false);
+  const [isDeleteServiceDialogOpen, setIsDeleteServiceDialogOpen] =
+    useState(false);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [showPasswords, setShowPasswords] = useState(false);
-  const [revealedDatabase, setRevealedDatabase] = useState<ManagedDatabase | null>(null);
+  const [revealedDatabase, setRevealedDatabase] =
+    useState<ManagedDatabase | null>(null);
+
+  // Templates state
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<ServiceTemplate | null>(null);
+  const [templateServiceName, setTemplateServiceName] = useState("");
 
   // Use React Query with SSR initial data
   const { data: project, refetch } = useQuery<ProjectWithApps>({
@@ -314,11 +503,38 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
     initialData: loaderData.allApps,
   });
 
+  const { data: templates = [] } = useQuery<ServiceTemplate[]>({
+    queryKey: ["service-templates"],
+    queryFn: () => api.getTemplates(),
+    initialData: loaderData.templates,
+  });
+
+  // Get unique categories from templates
+  const categories = useMemo(() => {
+    const cats = new Set(templates.map((t) => t.category));
+    return ["all", ...Array.from(cats).sort()];
+  }, [templates]);
+
+  // Filter templates by search and category
+  const filteredTemplates = useMemo(() => {
+    return templates.filter((t) => {
+      const matchesSearch =
+        !templateSearch ||
+        t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+        t.description.toLowerCase().includes(templateSearch.toLowerCase());
+      const matchesCategory =
+        selectedCategory === "all" || t.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [templates, templateSearch, selectedCategory]);
+
   // Apps available to add (not in this project)
   const availableApps = useMemo(() => {
     if (!project) return [];
     const projectAppIds = new Set(project.apps.map((a) => a.id));
-    return allApps.filter((app) => !app.project_id && !projectAppIds.has(app.id));
+    return allApps.filter(
+      (app) => !app.project_id && !projectAppIds.has(app.id)
+    );
   }, [allApps, project]);
 
   const isSubmitting = navigation.state === "submitting";
@@ -355,10 +571,27 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
         toast.success("Database starting");
       } else if (actionData.action === "stop-database") {
         toast.success("Database stopped");
+      } else if (actionData.action === "create-service") {
+        toast.success("Service created");
+        setIsCreateServiceDialogOpen(false);
+      } else if (actionData.action === "delete-service") {
+        toast.success("Service deleted");
+        setIsDeleteServiceDialogOpen(false);
+        setSelectedService(null);
+      } else if (actionData.action === "start-service") {
+        toast.success("Service starting");
+      } else if (actionData.action === "stop-service") {
+        toast.success("Service stopped");
+      } else if (actionData.action === "deploy-from-template") {
+        toast.success("Service deployed from template");
+        setIsTemplatesModalOpen(false);
+        setSelectedTemplate(null);
+        setTemplateServiceName("");
       }
       queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       queryClient.invalidateQueries({ queryKey: ["apps"] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
     }
 
     if (actionData?.error) {
@@ -381,7 +614,7 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
     toast.success(`${label} copied to clipboard`);
   };
 
-  const dbTypeConfig = DATABASE_TYPES.find(t => t.type === selectedDbType);
+  const dbTypeConfig = DATABASE_TYPES.find((t) => t.type === selectedDbType);
 
   if (!project) {
     return (
@@ -448,7 +681,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Applications</CardTitle>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsAddAppDialogOpen(true)}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Add Existing App
             </Button>
@@ -467,7 +703,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 No applications in this project yet.
               </p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAddAppDialogOpen(true)}
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Add Existing
                 </Button>
@@ -484,19 +723,31 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               {project.apps.map((app) => {
                 const status = loaderData.appStatuses?.[app.id] || "stopped";
                 return (
-                  <Card key={app.id} className="group relative hover:shadow-md transition-shadow">
-                    <Link to={`/apps/${app.id}`} className="absolute inset-0 z-0" />
+                  <Card
+                    key={app.id}
+                    className="group relative hover:shadow-md transition-shadow"
+                  >
+                    <Link
+                      to={`/apps/${app.id}`}
+                      className="absolute inset-0 z-0"
+                    />
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <CardTitle className="text-base font-semibold">{app.name}</CardTitle>
+                          <CardTitle className="text-base font-semibold">
+                            {app.name}
+                          </CardTitle>
                           <div className="flex items-center gap-2">
                             <StatusBadge status={status} />
                             <EnvironmentBadge environment={app.environment} />
                           </div>
                         </div>
                         <Form method="post" className="relative z-10">
-                          <input type="hidden" name="intent" value="remove-app" />
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="remove-app"
+                          />
                           <input type="hidden" name="appId" value={app.id} />
                           <Button
                             type="submit"
@@ -521,7 +772,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                         )}
                         {app.git_url && (
                           <div className="truncate text-xs opacity-75">
-                            {app.git_url.replace(/^https?:\/\//, '').replace(/\.git$/, '')}
+                            {app.git_url
+                              .replace(/^https?:\/\//, "")
+                              .replace(/\.git$/, "")}
                           </div>
                         )}
                       </div>
@@ -544,7 +797,7 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
           </Button>
         </CardHeader>
         <CardContent>
-          {(!project.databases || project.databases.length === 0) ? (
+          {!project.databases || project.databases.length === 0 ? (
             <div className="py-8 text-center">
               <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground mb-4">
@@ -560,13 +813,21 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               {project.databases.map((db) => {
                 const dbTypeInfo = DATABASE_TYPES[db.db_type as DatabaseType];
                 return (
-                  <Card key={db.id} className="group relative hover:shadow-md transition-shadow">
-                    <Link to={`/databases/${db.id}`} className="absolute inset-0 z-0" />
+                  <Card
+                    key={db.id}
+                    className="group relative hover:shadow-md transition-shadow"
+                  >
+                    <Link
+                      to={`/databases/${db.id}`}
+                      className="absolute inset-0 z-0"
+                    />
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <CardTitle className="text-base font-semibold">{db.name}</CardTitle>
+                            <CardTitle className="text-base font-semibold">
+                              {db.name}
+                            </CardTitle>
                             {db.status === "failed" && db.error_message && (
                               <TooltipProvider>
                                 <Tooltip>
@@ -574,7 +835,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                                     <AlertCircle className="h-4 w-4 text-destructive" />
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
-                                    <p className="text-sm">{db.error_message}</p>
+                                    <p className="text-sm">
+                                      {db.error_message}
+                                    </p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -582,7 +845,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                           </div>
                           <div className="flex items-center gap-2">
                             <DatabaseStatusBadge status={db.status} />
-                            <Badge variant="outline" className="capitalize text-xs">
+                            <Badge
+                              variant="outline"
+                              className="capitalize text-xs"
+                            >
                               {dbTypeInfo?.label || db.db_type} {db.version}
                             </Badge>
                           </div>
@@ -620,7 +886,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">
                           {db.public_access && db.external_port > 0 ? (
-                            <span className="font-mono">Port {db.external_port}</span>
+                            <span className="font-mono">
+                              Port {db.external_port}
+                            </span>
                           ) : (
                             "Internal only"
                           )}
@@ -628,8 +896,16 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                         <div className="relative z-10 flex items-center gap-1">
                           {db.status === "stopped" && (
                             <Form method="post">
-                              <input type="hidden" name="intent" value="start-database" />
-                              <input type="hidden" name="databaseId" value={db.id} />
+                              <input
+                                type="hidden"
+                                name="intent"
+                                value="start-database"
+                              />
+                              <input
+                                type="hidden"
+                                name="databaseId"
+                                value={db.id}
+                              />
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -644,8 +920,16 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                           )}
                           {db.status === "running" && (
                             <Form method="post">
-                              <input type="hidden" name="intent" value="stop-database" />
-                              <input type="hidden" name="databaseId" value={db.id} />
+                              <input
+                                type="hidden"
+                                name="intent"
+                                value="stop-database"
+                              />
+                              <input
+                                type="hidden"
+                                name="databaseId"
+                                value={db.id}
+                              />
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -664,6 +948,159 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Services Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Services</CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsTemplatesModalOpen(true)}
+            >
+              <Rocket className="mr-2 h-4 w-4" />
+              Deploy Template
+            </Button>
+            <Button onClick={() => setIsCreateServiceDialogOpen(true)}>
+              <Layers className="mr-2 h-4 w-4" />
+              Custom Service
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!project.services || project.services.length === 0 ? (
+            <div className="py-8 text-center">
+              <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">
+                No services in this project yet.
+              </p>
+              <div className="flex justify-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsTemplatesModalOpen(true)}
+                >
+                  <Rocket className="mr-2 h-4 w-4" />
+                  Deploy Template
+                </Button>
+                <Button onClick={() => setIsCreateServiceDialogOpen(true)}>
+                  <Layers className="mr-2 h-4 w-4" />
+                  Custom Service
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {project.services.map((service) => (
+                <Card
+                  key={service.id}
+                  className="group relative hover:shadow-md transition-shadow"
+                >
+                  <Link
+                    to={`/services/${service.id}`}
+                    className="absolute inset-0 z-0"
+                  />
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base font-semibold">
+                            {service.name}
+                          </CardTitle>
+                          {service.status === "failed" &&
+                            service.error_message && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <AlertCircle className="h-4 w-4 text-destructive" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    <p className="text-sm">
+                                      {service.error_message}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                        </div>
+                        <ServiceStatusBadge status={service.status} />
+                      </div>
+                      <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          title="Delete Service"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedService(service);
+                            setIsDeleteServiceDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-4">
+                    <div className="flex items-center justify-end text-sm">
+                      <div className="relative z-10 flex items-center gap-1">
+                        {service.status === "stopped" && (
+                          <Form method="post">
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="start-service"
+                            />
+                            <input
+                              type="hidden"
+                              name="serviceId"
+                              value={service.id}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="submit"
+                              className="h-7 px-2"
+                              disabled={isSubmitting}
+                            >
+                              <Play className="h-3 w-3 mr-1" />
+                              Start
+                            </Button>
+                          </Form>
+                        )}
+                        {service.status === "running" && (
+                          <Form method="post">
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="stop-service"
+                            />
+                            <input
+                              type="hidden"
+                              name="serviceId"
+                              value={service.id}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="submit"
+                              className="h-7 px-2"
+                              disabled={isSubmitting}
+                            >
+                              <Square className="h-3 w-3 mr-1" />
+                              Stop
+                            </Button>
+                          </Form>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </CardContent>
@@ -722,7 +1159,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Project</AlertDialogTitle>
@@ -762,7 +1202,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                   No unassigned apps available.
                 </p>
                 <Button asChild>
-                  <Link to={`/projects/${project.id}/apps/new`}>Create New App</Link>
+                  <Link to={`/projects/${project.id}/apps/new`}>
+                    Create New App
+                  </Link>
                 </Button>
               </div>
             ) : (
@@ -806,7 +1248,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
       </Dialog>
 
       {/* Create Database Dialog */}
-      <Dialog open={isCreateDbDialogOpen} onOpenChange={setIsCreateDbDialogOpen}>
+      <Dialog
+        open={isCreateDbDialogOpen}
+        onOpenChange={setIsCreateDbDialogOpen}
+      >
         <DialogContent className="max-w-lg">
           <Form method="post">
             <input type="hidden" name="intent" value="create-database" />
@@ -847,7 +1292,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                       onClick={() => setSelectedDbType(config.type)}
                     >
                       <div className="font-medium">{config.name}</div>
-                      <div className="text-xs text-muted-foreground">Port {config.defaultPort}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Port {config.defaultPort}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -861,7 +1308,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                     <SelectValue placeholder="Select version" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="latest">Latest ({dbTypeConfig?.defaultVersion})</SelectItem>
+                    <SelectItem value="latest">
+                      Latest ({dbTypeConfig?.defaultVersion})
+                    </SelectItem>
                     {dbTypeConfig?.versions.map((v) => (
                       <SelectItem key={v} value={v}>
                         {v}
@@ -872,7 +1321,11 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               </div>
 
               <div className="flex items-center space-x-2">
-                <Checkbox id="public_access" name="public_access" value="true" />
+                <Checkbox
+                  id="public_access"
+                  name="public_access"
+                  value="true"
+                />
                 <Label htmlFor="public_access" className="text-sm font-normal">
                   Enable public access (expose port to host)
                 </Label>
@@ -963,7 +1416,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
       </Dialog>
 
       {/* Database Credentials Dialog */}
-      <Dialog open={isCredentialsDialogOpen} onOpenChange={setIsCredentialsDialogOpen}>
+      <Dialog
+        open={isCredentialsDialogOpen}
+        onOpenChange={setIsCredentialsDialogOpen}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Database Credentials</DialogTitle>
@@ -995,14 +1451,21 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {revealedDatabase.credentials?.username && (
                   <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <div>
-                      <div className="text-xs text-muted-foreground">Username</div>
-                      <code className="text-sm">{revealedDatabase.credentials.username}</code>
+                      <div className="text-xs text-muted-foreground">
+                        Username
+                      </div>
+                      <code className="text-sm">
+                        {revealedDatabase.credentials.username}
+                      </code>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() =>
-                        copyToClipboard(revealedDatabase.credentials!.username, "Username")
+                        copyToClipboard(
+                          revealedDatabase.credentials!.username,
+                          "Username"
+                        )
                       }
                     >
                       <Copy className="h-4 w-4" />
@@ -1013,7 +1476,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {revealedDatabase.credentials?.password && (
                   <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <div>
-                      <div className="text-xs text-muted-foreground">Password</div>
+                      <div className="text-xs text-muted-foreground">
+                        Password
+                      </div>
                       <code className="text-sm">
                         {showPasswords
                           ? revealedDatabase.credentials.password
@@ -1024,7 +1489,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                       variant="ghost"
                       size="icon"
                       onClick={() =>
-                        copyToClipboard(revealedDatabase.credentials!.password, "Password")
+                        copyToClipboard(
+                          revealedDatabase.credentials!.password,
+                          "Password"
+                        )
                       }
                     >
                       <Copy className="h-4 w-4" />
@@ -1035,14 +1503,21 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {revealedDatabase.credentials?.database && (
                   <div className="flex items-center justify-between p-2 bg-muted rounded">
                     <div>
-                      <div className="text-xs text-muted-foreground">Database</div>
-                      <code className="text-sm">{revealedDatabase.credentials.database}</code>
+                      <div className="text-xs text-muted-foreground">
+                        Database
+                      </div>
+                      <code className="text-sm">
+                        {revealedDatabase.credentials.database}
+                      </code>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() =>
-                        copyToClipboard(revealedDatabase.credentials!.database!, "Database")
+                        copyToClipboard(
+                          revealedDatabase.credentials!.database!,
+                          "Database"
+                        )
                       }
                     >
                       <Copy className="h-4 w-4" />
@@ -1053,7 +1528,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {revealedDatabase.internal_connection_string && (
                   <div className="p-2 bg-muted rounded">
                     <div className="flex items-center justify-between mb-1">
-                      <div className="text-xs text-muted-foreground">Internal Connection String</div>
+                      <div className="text-xs text-muted-foreground">
+                        Internal Connection String
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1081,7 +1558,9 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                 {revealedDatabase.external_connection_string && (
                   <div className="p-2 bg-muted rounded">
                     <div className="flex items-center justify-between mb-1">
-                      <div className="text-xs text-muted-foreground">External Connection String</div>
+                      <div className="text-xs text-muted-foreground">
+                        External Connection String
+                      </div>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -1109,7 +1588,10 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCredentialsDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsCredentialsDialogOpen(false)}
+            >
               Close
             </Button>
           </DialogFooter>
@@ -1117,13 +1599,17 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
       </Dialog>
 
       {/* Delete Database Dialog */}
-      <Dialog open={isDeleteDbDialogOpen} onOpenChange={setIsDeleteDbDialogOpen}>
+      <Dialog
+        open={isDeleteDbDialogOpen}
+        onOpenChange={setIsDeleteDbDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Database</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{selectedDatabase?.name}"? This will stop
-              the container and delete all data. This action cannot be undone.
+              Are you sure you want to delete "{selectedDatabase?.name}"? This
+              will stop the container and delete all data. This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1138,12 +1624,294 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
             </Button>
             <Form method="post">
               <input type="hidden" name="intent" value="delete-database" />
-              <input type="hidden" name="databaseId" value={selectedDatabase?.id || ""} />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
+              <input
+                type="hidden"
+                name="databaseId"
+                value={selectedDatabase?.id || ""}
+              />
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Deleting..." : "Delete Database"}
               </Button>
             </Form>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Service Dialog */}
+      <Dialog
+        open={isCreateServiceDialogOpen}
+        onOpenChange={setIsCreateServiceDialogOpen}
+      >
+        <DialogContent className="max-w-2xl">
+          <Form method="post">
+            <input type="hidden" name="intent" value="create-service" />
+            <DialogHeader>
+              <DialogTitle>Create Docker Compose Service</DialogTitle>
+              <DialogDescription>
+                Deploy a multi-container application using Docker Compose.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="service-name">Service Name</Label>
+                <Input
+                  id="service-name"
+                  name="name"
+                  placeholder="my-service"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="compose-content">Docker Compose Content</Label>
+                <Textarea
+                  id="compose-content"
+                  name="compose_content"
+                  placeholder="Paste your docker-compose.yml content..."
+                  className="font-mono text-sm"
+                  rows={12}
+                  defaultValue={`version: "3.8"
+services:
+  app:
+    image: nginx:alpine
+    ports:
+      - "80"
+`}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateServiceDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Creating..." : "Create Service"}
+              </Button>
+            </DialogFooter>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Service Dialog */}
+      <Dialog
+        open={isDeleteServiceDialogOpen}
+        onOpenChange={setIsDeleteServiceDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Service</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{selectedService?.name}"? This
+              will stop all containers and remove all data. This action cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteServiceDialogOpen(false);
+                setSelectedService(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Form method="post">
+              <input type="hidden" name="intent" value="delete-service" />
+              <input
+                type="hidden"
+                name="serviceId"
+                value={selectedService?.id || ""}
+              />
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Deleting..." : "Delete Service"}
+              </Button>
+            </Form>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Templates Modal */}
+      <Dialog
+        open={isTemplatesModalOpen}
+        onOpenChange={(open) => {
+          setIsTemplatesModalOpen(open);
+          if (!open) {
+            setSelectedTemplate(null);
+            setTemplateServiceName("");
+            setTemplateSearch("");
+            setSelectedCategory("all");
+          }
+        }}
+      >
+        <DialogContent className="min-w-4xl max-h-[85vh]">
+          {!selectedTemplate ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Deploy Service from Template</DialogTitle>
+                <DialogDescription>
+                  Choose a pre-configured service template to deploy to this
+                  project.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                {/* Search and Filter */}
+                <div className="flex items-center gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search templates..."
+                      value={templateSearch}
+                      onChange={(e) => setTemplateSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Tabs
+                    value={selectedCategory}
+                    onValueChange={setSelectedCategory}
+                  >
+                    <TabsList>
+                      {categories.slice(0, 5).map((cat) => (
+                        <TabsTrigger
+                          key={cat}
+                          value={cat}
+                          className="capitalize"
+                        >
+                          {cat}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                {/* Templates Grid */}
+                <ScrollArea className="h-[400px] pr-4">
+                  {filteredTemplates.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">
+                      No templates found matching your search.
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {filteredTemplates.map((template) => (
+                        <button
+                          key={template.id}
+                          type="button"
+                          className="p-4 border rounded-lg text-left hover:border-primary hover:bg-muted/50 transition-colors"
+                          onClick={() => {
+                            setSelectedTemplate(template);
+                            setTemplateServiceName(
+                              template.name
+                                .toLowerCase()
+                                .replace(/[^a-z0-9]/g, "-")
+                            );
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold truncate">
+                                  {template.name}
+                                </span>
+                                {template.is_builtin && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    Built-in
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                                {template.description}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-3">
+                            <Badge
+                              variant="outline"
+                              className="text-xs capitalize"
+                            >
+                              {template.category}
+                            </Badge>
+                            <Rocket className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsTemplatesModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            /* Template Configuration */
+            <Form method="post">
+              <input type="hidden" name="intent" value="deploy-from-template" />
+              <input
+                type="hidden"
+                name="templateId"
+                value={selectedTemplate.id}
+              />
+              <DialogHeader>
+                <DialogTitle>Deploy {selectedTemplate.name}</DialogTitle>
+                <DialogDescription>
+                  {selectedTemplate.description}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="template-service-name">Service Name</Label>
+                  <Input
+                    id="template-service-name"
+                    name="serviceName"
+                    value={templateServiceName}
+                    onChange={(e) => setTemplateServiceName(e.target.value)}
+                    placeholder="my-service"
+                    pattern="[a-z0-9-]+"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Lowercase letters, numbers, and hyphens only
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedTemplate(null);
+                    setTemplateServiceName("");
+                  }}
+                >
+                  Back
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  <Rocket className="mr-2 h-4 w-4" />
+                  {isSubmitting ? "Deploying..." : "Deploy Service"}
+                </Button>
+              </DialogFooter>
+            </Form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

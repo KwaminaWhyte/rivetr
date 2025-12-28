@@ -67,6 +67,11 @@ impl Service {
     pub fn compose_project_name(&self) -> String {
         format!("rivetr-svc-{}", self.name)
     }
+
+    /// Convert to response DTO
+    pub fn to_response(self) -> ServiceResponse {
+        ServiceResponse::from(self)
+    }
 }
 
 /// Response DTO for Service

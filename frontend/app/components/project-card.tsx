@@ -1,9 +1,9 @@
 import { Link } from "react-router";
-import { Settings, ExternalLink, ArrowRight, Database } from "lucide-react";
+import { Settings, ExternalLink, ArrowRight, Database, Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { App, ManagedDatabase, ProjectWithApps, DeploymentStatus } from "@/types/api";
+import type { App, ManagedDatabase, ProjectWithApps, DeploymentStatus, Service } from "@/types/api";
 
 interface ProjectCardProps {
   project: ProjectWithApps;
@@ -60,9 +60,11 @@ function getDbStatusColor(status?: string): string {
 
 export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }: ProjectCardProps) {
   const databases = project.databases || [];
+  const services = project.services || [];
   const appCount = project.apps.length;
   const dbCount = databases.length;
-  const serviceCount = appCount + dbCount;
+  const svcCount = services.length;
+  const totalCount = appCount + dbCount + svcCount;
 
   return (
     <Card className="group hover:shadow-md transition-shadow">
@@ -87,9 +89,9 @@ export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Services list (apps + databases) */}
+        {/* Services list (apps + databases + compose services) */}
         <div className="space-y-2">
-          {serviceCount === 0 ? (
+          {totalCount === 0 ? (
             <p className="text-sm text-muted-foreground italic">
               No services in this project
             </p>
@@ -111,11 +113,18 @@ export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }
                   status={databaseStatuses[db.id] || db.status}
                 />
               ))}
+              {/* Compose Services */}
+              {services.slice(0, Math.max(0, 3 - project.apps.length - databases.length)).map((svc) => (
+                <ServiceListItem
+                  key={svc.id}
+                  service={svc}
+                />
+              ))}
             </>
           )}
-          {serviceCount > 3 && (
+          {totalCount > 3 && (
             <p className="text-xs text-muted-foreground">
-              +{serviceCount - 3} more {serviceCount - 3 === 1 ? "service" : "services"}
+              +{totalCount - 3} more {totalCount - 3 === 1 ? "service" : "services"}
             </p>
           )}
         </div>
@@ -124,9 +133,11 @@ export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }
         <div className="flex items-center justify-between pt-2 border-t">
           <span className="text-sm text-muted-foreground">
             {appCount > 0 && `${appCount} app${appCount !== 1 ? "s" : ""}`}
-            {appCount > 0 && dbCount > 0 && ", "}
+            {appCount > 0 && (dbCount > 0 || svcCount > 0) && ", "}
             {dbCount > 0 && `${dbCount} db${dbCount !== 1 ? "s" : ""}`}
-            {serviceCount === 0 && "No services"}
+            {dbCount > 0 && svcCount > 0 && ", "}
+            {svcCount > 0 && `${svcCount} svc${svcCount !== 1 ? "s" : ""}`}
+            {totalCount === 0 && "No services"}
           </span>
           <Link
             to={`/projects/${project.id}`}
@@ -193,6 +204,34 @@ function DatabaseListItem({ database, status }: DatabaseListItemProps) {
       >
         <Link to={`/databases/${database.id}`} title="View Database">
           <Database className="h-3 w-3" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+interface ServiceListItemProps {
+  service: Service;
+}
+
+function ServiceListItem({ service }: ServiceListItemProps) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div className="flex items-center gap-2 min-w-0">
+        <StatusDot status={service.status} />
+        <span className="text-sm font-medium truncate">{service.name}</span>
+        <Badge variant="outline" className="text-xs shrink-0 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+          SVC
+        </Badge>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 shrink-0"
+        asChild
+      >
+        <Link to={`/projects/${service.project_id}`} title="View Service">
+          <Layers className="h-3 w-3" />
         </Link>
       </Button>
     </div>

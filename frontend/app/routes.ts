@@ -26,6 +26,7 @@ export default [
     // Apps (nested layout with tabs)
     route("apps/:id", "routes/apps/$id/_layout.tsx", [
       index("routes/apps/$id/_index.tsx"),
+      route("network", "routes/apps/$id/network.tsx"),
       route("settings", "routes/apps/$id/settings.tsx"),
       route("deployments", "routes/apps/$id/deployments.tsx"),
       route("logs", "routes/apps/$id/logs.tsx"),
@@ -41,6 +42,17 @@ export default [
       route("logs", "routes/databases/$id/logs.tsx"),
       route("settings", "routes/databases/$id/settings.tsx"),
     ]),
+
+    // Services (nested layout with tabs)
+    route("services/:id", "routes/services/$id/_layout.tsx", [
+      index("routes/services/$id/_index.tsx"),
+      route("network", "routes/services/$id/network.tsx"),
+      route("logs", "routes/services/$id/logs.tsx"),
+      route("settings", "routes/services/$id/settings.tsx"),
+    ]),
+
+    // Service Templates (browse templates for reference)
+    route("templates", "routes/templates.tsx"),
 
     // Deployments
     route("deployments", "routes/deployments.tsx"),

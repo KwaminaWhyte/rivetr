@@ -119,6 +119,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 const tabs = [
   { id: "general", label: "General", path: "" },
+  { id: "network", label: "Network", path: "/network" },
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "deployments", label: "Deployments", path: "/deployments" },
   { id: "logs", label: "Logs", path: "/logs" },

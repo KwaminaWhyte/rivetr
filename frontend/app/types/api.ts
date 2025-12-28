@@ -87,6 +87,7 @@ export interface Project {
 export interface ProjectWithApps extends Project {
   apps: App[];
   databases: ManagedDatabase[];
+  services: Service[];
 }
 
 export interface CreateProjectRequest {
@@ -779,6 +780,109 @@ export interface CreateBackupScheduleRequest {
   schedule_day?: number;
   retention_count?: number;
 }
+
+// -------------------------------------------------------------------------
+// Docker Compose Service types
+// -------------------------------------------------------------------------
+
+/** Service status */
+export type ServiceStatus = "pending" | "running" | "stopped" | "failed";
+
+/** Docker Compose service */
+export interface Service {
+  id: string;
+  name: string;
+  project_id: string | null;
+  compose_content: string;
+  status: ServiceStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create a service */
+export interface CreateServiceRequest {
+  name: string;
+  compose_content: string;
+  project_id?: string;
+}
+
+/** Request to update a service */
+export interface UpdateServiceRequest {
+  compose_content?: string;
+  project_id?: string;
+}
+
+// -------------------------------------------------------------------------
+// Service Template types
+// -------------------------------------------------------------------------
+
+/** Template categories */
+export type TemplateCategory =
+  | "monitoring"
+  | "database"
+  | "storage"
+  | "development"
+  | "analytics"
+  | "networking"
+  | "security";
+
+/** Environment variable schema entry */
+export interface EnvSchemaEntry {
+  name: string;
+  label: string;
+  required: boolean;
+  default: string;
+  secret: boolean;
+}
+
+/** Service template */
+export interface ServiceTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  category: TemplateCategory;
+  icon: string | null;
+  compose_template: string;
+  env_schema: EnvSchemaEntry[];
+  is_builtin: boolean;
+  created_at: string;
+}
+
+/** Request to deploy a template */
+export interface DeployTemplateRequest {
+  name: string;
+  env_vars?: Record<string, string>;
+  project_id?: string;
+}
+
+/** Response after deploying a template */
+export interface DeployTemplateResponse {
+  service_id: string;
+  name: string;
+  template_id: string;
+  status: string;
+  message: string;
+}
+
+/** Template category info for UI */
+export interface TemplateCategoryInfo {
+  id: TemplateCategory;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+/** Available template categories */
+export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
+  { id: "monitoring", name: "Monitoring", description: "Observability and alerting tools", icon: "activity" },
+  { id: "database", name: "Databases", description: "Database management systems", icon: "database" },
+  { id: "storage", name: "Storage", description: "File storage and object stores", icon: "hard-drive" },
+  { id: "development", name: "Development", description: "Developer tools and utilities", icon: "code" },
+  { id: "analytics", name: "Analytics", description: "Data analytics and visualization", icon: "bar-chart" },
+  { id: "networking", name: "Networking", description: "Network tools and proxies", icon: "network" },
+  { id: "security", name: "Security", description: "Security and authentication", icon: "shield" },
+];
 
 /** Available database configurations */
 export const DATABASE_TYPES: DatabaseTypeInfo[] = [

@@ -11,6 +11,7 @@ import type {
   CreateManagedDatabaseRequest,
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
+  CreateServiceRequest,
   CreateTeamRequest,
   CreateVolumeRequest,
   DatabaseBackup,
@@ -18,6 +19,8 @@ import type {
   DatabaseLogEntry,
   Deployment,
   DeploymentLog,
+  DeployTemplateRequest,
+  DeployTemplateResponse,
   DiskStats,
   EnvVar,
   InviteMemberRequest,
@@ -27,6 +30,8 @@ import type {
   Project,
   ProjectWithApps,
   RecentEvent,
+  Service,
+  ServiceTemplate,
   SshKey,
   SystemHealthStatus,
   SystemStats,
@@ -34,12 +39,14 @@ import type {
   TeamDetail,
   TeamMemberWithUser,
   TeamWithMemberCount,
+  TemplateCategory,
   TestNotificationRequest,
   UpdateAppRequest,
   UpdateBasicAuthRequest,
   UpdateEnvVarRequest,
   UpdateMemberRoleRequest,
   UpdateNotificationChannelRequest,
+  UpdateServiceRequest,
   UpdateTeamRequest,
   UpdateVolumeRequest,
   Volume,
@@ -508,6 +515,73 @@ export const api = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
+
+  // Docker Compose Services
+  getServices: (token?: string) =>
+    apiRequest<Service[]>("/services", {}, token),
+  getService: (id: string, token?: string) =>
+    apiRequest<Service>(`/services/${id}`, {}, token),
+  createService: (data: CreateServiceRequest, token?: string) =>
+    apiRequest<Service>(
+      "/services",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateService: (id: string, data: UpdateServiceRequest, token?: string) =>
+    apiRequest<Service>(
+      `/services/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteService: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/services/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+  startService: (id: string, token?: string) =>
+    apiRequest<Service>(
+      `/services/${id}/start`,
+      {
+        method: "POST",
+      },
+      token
+    ),
+  stopService: (id: string, token?: string) =>
+    apiRequest<Service>(
+      `/services/${id}/stop`,
+      {
+        method: "POST",
+      },
+      token
+    ),
+
+  // Service Templates
+  getTemplates: (category?: TemplateCategory, token?: string) => {
+    const params = category ? `?category=${category}` : "";
+    return apiRequest<ServiceTemplate[]>(`/templates${params}`, {}, token);
+  },
+  getTemplate: (id: string, token?: string) =>
+    apiRequest<ServiceTemplate>(`/templates/${id}`, {}, token),
+  getTemplateCategories: (token?: string) =>
+    apiRequest<string[]>("/templates/categories", {}, token),
+  deployTemplate: (id: string, data: DeployTemplateRequest, token?: string) =>
+    apiRequest<DeployTemplateResponse>(
+      `/templates/${id}/deploy`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
 };
 
 export default api;

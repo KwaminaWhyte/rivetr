@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::db::{
     App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase, Project, ProjectWithAppCount,
-    ProjectWithApps, UpdateProjectRequest,
+    ProjectWithApps, Service, UpdateProjectRequest,
 };
 use crate::AppState;
 
@@ -140,10 +140,22 @@ pub async fn get_project(
     .fetch_all(&state.db)
     .await?;
 
+    let services = sqlx::query_as::<_, Service>(
+        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
     let host = Some(state.config.server.host.as_str());
     let database_responses = databases
         .into_iter()
         .map(|db| db.to_response(false, host))
+        .collect();
+
+    let service_responses = services
+        .into_iter()
+        .map(|s| s.to_response())
         .collect();
 
     Ok(Json(ProjectWithApps {
@@ -154,6 +166,7 @@ pub async fn get_project(
         updated_at: project.updated_at,
         apps,
         databases: database_responses,
+        services: service_responses,
     }))
 }
 
