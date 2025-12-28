@@ -178,6 +178,8 @@ impl RegistryAuth {
 
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
+    /// Return the name of the runtime ("Docker" or "Podman")
+    fn name(&self) -> &'static str;
     async fn build(&self, ctx: &BuildContext) -> Result<String>;
     async fn run(&self, config: &RunConfig) -> Result<String>;
     /// Start a stopped container
@@ -208,6 +210,9 @@ pub struct NoopRuntime;
 
 #[async_trait]
 impl ContainerRuntime for NoopRuntime {
+    fn name(&self) -> &'static str {
+        "None"
+    }
     async fn build(&self, _ctx: &BuildContext) -> Result<String> {
         anyhow::bail!("No container runtime available")
     }

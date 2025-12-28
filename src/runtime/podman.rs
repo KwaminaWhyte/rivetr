@@ -35,6 +35,10 @@ impl PodmanRuntime {
 
 #[async_trait]
 impl ContainerRuntime for PodmanRuntime {
+    fn name(&self) -> &'static str {
+        "Podman"
+    }
+
     async fn build(&self, ctx: &BuildContext) -> Result<String> {
         let dockerfile = ctx.dockerfile.trim_start_matches("./");
 
@@ -187,8 +191,9 @@ impl ContainerRuntime for PodmanRuntime {
         &self,
         container_id: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+        // Fetch last 1000 lines without following, with timestamps
         let mut child = Command::new("podman")
-            .args(["logs", "-f", container_id])
+            .args(["logs", "--timestamps", "--tail", "1000", container_id])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -201,9 +206,21 @@ impl ContainerRuntime for PodmanRuntime {
         let stream = async_stream::stream! {
             let mut lines = lines;
             while let Ok(Some(line)) = lines.next_line().await {
+                // Parse timestamp from the beginning of the line
+                // Format: "2024-01-01T00:00:00.000000000Z message"
+                let (timestamp, message) = if line.len() > 30 && line.chars().nth(4) == Some('-') {
+                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        (parts[0].to_string(), parts[1].to_string())
+                    } else {
+                        (chrono::Utc::now().to_rfc3339(), line)
+                    }
+                } else {
+                    (chrono::Utc::now().to_rfc3339(), line)
+                };
                 yield LogLine {
-                    timestamp: chrono::Utc::now().to_rfc3339(),
-                    message: line,
+                    timestamp,
+                    message,
                     stream: LogStream::Stdout,
                 };
             }

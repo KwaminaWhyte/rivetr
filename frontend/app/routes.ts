@@ -32,6 +32,15 @@ export default [
       route("terminal", "routes/apps/$id/terminal.tsx"),
     ]),
 
+    // Databases (nested layout with tabs)
+    route("databases/:id", "routes/databases/$id/_layout.tsx", [
+      index("routes/databases/$id/_index.tsx"),
+      route("network", "routes/databases/$id/network.tsx"),
+      route("storage", "routes/databases/$id/storage.tsx"),
+      route("logs", "routes/databases/$id/logs.tsx"),
+      route("settings", "routes/databases/$id/settings.tsx"),
+    ]),
+
     // Deployments
     route("deployments", "routes/deployments.tsx"),
 

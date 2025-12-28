@@ -244,6 +244,8 @@ pub async fn backup_volume(
     State(state): State<Arc<AppState>>,
     Path(volume_id): Path<String>,
 ) -> Result<(StatusCode, [(axum::http::header::HeaderName, String); 2], Vec<u8>), StatusCode> {
+    use crate::db::App;
+
     // Get the volume
     let volume = sqlx::query_as::<_, Volume>(
         "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE id = ?"
@@ -257,18 +259,56 @@ pub async fn backup_volume(
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Check if the host_path exists
+    // Check if the host_path is a filesystem path or a Docker volume name
     let path = std::path::Path::new(&volume.host_path);
-    if !path.exists() {
+    let backup_data = if path.exists() {
+        // Local filesystem path - backup directly
+        create_tar_gz_backup(path).await.map_err(|e| {
+            tracing::error!("Failed to create backup: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    } else if !volume.host_path.starts_with('/') && !volume.host_path.starts_with('.') {
+        // Likely a Docker volume name - try to backup using docker cp
+        // Get the app's info
+        let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+            .bind(&volume.app_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get app: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or_else(|| {
+                tracing::warn!("App not found for volume: {}", volume.app_id);
+                StatusCode::NOT_FOUND
+            })?;
+
+        // Find running container by app name prefix
+        let container_prefix = format!("rivetr-{}", app.name);
+        let containers = state.runtime.list_containers(&container_prefix)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list containers: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        let container = containers.into_iter().find(|c| c.running).ok_or_else(|| {
+            tracing::warn!("No running container for app {}", app.name);
+            StatusCode::PRECONDITION_FAILED // 412 - container not running
+        })?;
+
+        // Use docker cp to extract the volume contents
+        backup_from_container(&state.runtime, &container.id, &volume.container_path)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to backup from container: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    } else {
+        // Path looks like a filesystem path but doesn't exist
         tracing::warn!("Volume host path does not exist: {}", volume.host_path);
         return Err(StatusCode::NOT_FOUND);
-    }
-
-    // Create a tar.gz archive in memory
-    let backup_data = create_tar_gz_backup(path).await.map_err(|e| {
-        tracing::error!("Failed to create backup: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    };
 
     // Generate filename with timestamp
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
@@ -288,6 +328,64 @@ pub async fn backup_volume(
         ],
         backup_data,
     ))
+}
+
+/// Backup volume contents from a running container using docker cp
+async fn backup_from_container(
+    runtime: &std::sync::Arc<dyn crate::runtime::ContainerRuntime>,
+    container_id: &str,
+    container_path: &str,
+) -> anyhow::Result<Vec<u8>> {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+    use std::process::Command;
+
+    // Create a temp directory for the backup
+    let temp_dir = tempfile::tempdir()?;
+    let temp_path = temp_dir.path().join("backup");
+
+    // Determine the docker/podman command
+    let cmd = if runtime.name() == "Docker" {
+        "docker"
+    } else {
+        "podman"
+    };
+
+    // Run docker cp to extract the contents
+    let output = Command::new(cmd)
+        .args([
+            "cp",
+            &format!("{}:{}", container_id, container_path),
+            temp_path.to_str().unwrap(),
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to copy from container: {}", stderr);
+    }
+
+    // Create tar.gz from the extracted contents
+    let mut tar_data = Vec::new();
+    {
+        let mut tar_builder = tar::Builder::new(&mut tar_data);
+        if temp_path.is_dir() {
+            tar_builder.append_dir_all(".", &temp_path)?;
+        } else {
+            let mut file = std::fs::File::open(&temp_path)?;
+            let file_name = temp_path.file_name().unwrap_or_default().to_string_lossy();
+            tar_builder.append_file(&*file_name, &mut file)?;
+        }
+        tar_builder.finish()?;
+    }
+
+    // Compress
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&tar_data)?;
+    let compressed = encoder.finish()?;
+
+    Ok(compressed)
 }
 
 /// Create a tar.gz backup of a directory

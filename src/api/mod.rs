@@ -1,6 +1,7 @@
 mod apps;
 pub mod auth;
 mod basic_auth;
+mod databases;
 mod deployments;
 mod env_vars;
 pub mod error;
@@ -133,6 +134,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/notification-channels/:id/subscriptions", get(notifications::list_subscriptions))
         .route("/notification-channels/:id/subscriptions", post(notifications::create_subscription))
         .route("/notification-subscriptions/:id", delete(notifications::delete_subscription))
+        // Managed Databases
+        .route("/databases", get(databases::list_databases))
+        .route("/databases", post(databases::create_database))
+        .route("/databases/:id", get(databases::get_database))
+        .route("/databases/:id", delete(databases::delete_database))
+        .route("/databases/:id/start", post(databases::start_database))
+        .route("/databases/:id/stop", post(databases::stop_database))
+        .route("/databases/:id/logs", get(databases::get_database_logs))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/disk", get(system::get_disk_stats))

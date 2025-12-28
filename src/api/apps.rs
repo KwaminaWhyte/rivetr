@@ -6,8 +6,10 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{App, CreateAppRequest, UpdateAppRequest};
+use crate::db::{App, CreateAppRequest, UpdateAppRequest, User};
 use crate::AppState;
+
+use super::auth::verify_password;
 
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::{
@@ -581,14 +583,41 @@ pub async fn update_app(
     Ok(Json(app))
 }
 
+/// Request to delete an app (requires password confirmation)
+#[derive(serde::Deserialize)]
+pub struct DeleteAppRequest {
+    pub password: String,
+}
+
 pub async fn delete_app(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    user: User,
+    Json(req): Json<DeleteAppRequest>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID format
     if let Err(e) = validate_uuid(&id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
     }
+
+    // Verify password
+    if req.password.is_empty() {
+        return Err(ApiError::validation_field("password", "Password is required".to_string()));
+    }
+
+    // For system user (API token auth), skip password verification
+    if user.id != "system" {
+        if !verify_password(&req.password, &user.password_hash) {
+            return Err(ApiError::forbidden("Invalid password"));
+        }
+    }
+
+    // Check if app exists before deleting
+    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
 
     let result = sqlx::query("DELETE FROM apps WHERE id = ?")
         .bind(&id)

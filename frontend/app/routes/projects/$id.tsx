@@ -1,16 +1,24 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "./+types/$id";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  ChevronDown,
+  Copy,
+  Database,
   Edit2,
   ExternalLink,
+  Eye,
+  EyeOff,
   MoreVertical,
+  Play,
   Plus,
+  Square,
   Trash2,
   X,
+  AlertCircle,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -48,12 +56,32 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { Badge } from "@/components/ui/badge";
-import type { App, ProjectWithApps, UpdateProjectRequest } from "@/types/api";
+import type { App, ProjectWithApps, UpdateProjectRequest, ManagedDatabase, DatabaseType } from "@/types/api";
+import { DATABASE_TYPES } from "@/types/api";
 
 export function meta({ data }: Route.MetaArgs) {
   const projectName = data?.project?.name || "Project";
@@ -75,6 +103,26 @@ function StatusBadge({ status }: { status: string }) {
   };
   const variant = variants[status] || variants.stopped;
   return <Badge className={variant.className}>{variant.label}</Badge>;
+}
+
+// Database status badge
+function DatabaseStatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case "running":
+      return <Badge className="bg-green-500 hover:bg-green-600">Running</Badge>;
+    case "stopped":
+      return <Badge variant="secondary">Stopped</Badge>;
+    case "pending":
+      return <Badge variant="outline">Pending</Badge>;
+    case "pulling":
+      return <Badge className="bg-blue-500 hover:bg-blue-600">Pulling</Badge>;
+    case "starting":
+      return <Badge className="bg-yellow-500 hover:bg-yellow-600">Starting</Badge>;
+    case "failed":
+      return <Badge variant="destructive">Failed</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
@@ -129,7 +177,7 @@ export async function action({ request, params }: Route.ActionArgs) {
         name: name.trim(),
         description: typeof description === "string" ? description : undefined,
       });
-      return { success: true };
+      return { success: true, action: "update" };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Failed to update project" };
     }
@@ -142,7 +190,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     }
     try {
       await api.assignAppToProject(token, appId, params.id!);
-      return { success: true };
+      return { success: true, action: "assign-app" };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Failed to add app" };
     }
@@ -155,9 +203,87 @@ export async function action({ request, params }: Route.ActionArgs) {
     }
     try {
       await api.assignAppToProject(token, appId, null);
-      return { success: true };
+      return { success: true, action: "remove-app" };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Failed to remove app" };
+    }
+  }
+
+  // Database operations
+  if (intent === "create-database") {
+    const name = formData.get("name");
+    const db_type = formData.get("db_type") as DatabaseType;
+    const version = formData.get("version") || "latest";
+    const public_access = formData.get("public_access") === "true";
+
+    // Optional credentials
+    const username = formData.get("username");
+    const password = formData.get("password");
+    const database = formData.get("database");
+    const root_password = formData.get("root_password");
+
+    if (typeof name !== "string" || !name.trim()) {
+      return { error: "Database name is required" };
+    }
+    if (!db_type) {
+      return { error: "Database type is required" };
+    }
+
+    try {
+      await api.createDatabase(token, {
+        name: name.trim(),
+        db_type,
+        version: version as string,
+        public_access,
+        project_id: params.id!,
+        // Only include credentials if provided
+        ...(username && typeof username === "string" && username.trim() ? { username: username.trim() } : {}),
+        ...(password && typeof password === "string" && password.trim() ? { password: password.trim() } : {}),
+        ...(database && typeof database === "string" && database.trim() ? { database: database.trim() } : {}),
+        ...(root_password && typeof root_password === "string" && root_password.trim() ? { root_password: root_password.trim() } : {}),
+      });
+      return { success: true, action: "create-database" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to create database" };
+    }
+  }
+
+  if (intent === "delete-database") {
+    const databaseId = formData.get("databaseId");
+    if (typeof databaseId !== "string") {
+      return { error: "Database ID is required" };
+    }
+    try {
+      await api.deleteDatabase(token, databaseId);
+      return { success: true, action: "delete-database" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to delete database" };
+    }
+  }
+
+  if (intent === "start-database") {
+    const databaseId = formData.get("databaseId");
+    if (typeof databaseId !== "string") {
+      return { error: "Database ID is required" };
+    }
+    try {
+      await api.startDatabase(token, databaseId);
+      return { success: true, action: "start-database" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to start database" };
+    }
+  }
+
+  if (intent === "stop-database") {
+    const databaseId = formData.get("databaseId");
+    if (typeof databaseId !== "string") {
+      return { error: "Database ID is required" };
+    }
+    try {
+      await api.stopDatabase(token, databaseId);
+      return { success: true, action: "stop-database" };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to stop database" };
     }
   }
 
@@ -172,11 +298,22 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
   const [isAddAppDialogOpen, setIsAddAppDialogOpen] = useState(false);
   const [editData, setEditData] = useState<UpdateProjectRequest>({});
 
+  // Database state
+  const [isCreateDbDialogOpen, setIsCreateDbDialogOpen] = useState(false);
+  const [isDeleteDbDialogOpen, setIsDeleteDbDialogOpen] = useState(false);
+  const [isCredentialsDialogOpen, setIsCredentialsDialogOpen] = useState(false);
+  const [selectedDatabase, setSelectedDatabase] = useState<ManagedDatabase | null>(null);
+  const [selectedDbType, setSelectedDbType] = useState<DatabaseType>("postgres");
+  const [showCustomCredentials, setShowCustomCredentials] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [revealedDatabase, setRevealedDatabase] = useState<ManagedDatabase | null>(null);
+
   // Use React Query with SSR initial data
-  const { data: project } = useQuery<ProjectWithApps>({
+  const { data: project, refetch } = useQuery<ProjectWithApps>({
     queryKey: ["project", loaderData.project.id],
     queryFn: () => api.getProject(loaderData.project.id),
     initialData: loaderData.project,
+    refetchInterval: 5000, // Poll for database status updates
   });
 
   const { data: allApps = [] } = useQuery<App[]>({
@@ -204,14 +341,55 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
     }
   };
 
-  // Close dialogs on success
-  if (actionData?.success) {
-    if (isEditDialogOpen) setIsEditDialogOpen(false);
-    if (isAddAppDialogOpen) setIsAddAppDialogOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
-    queryClient.invalidateQueries({ queryKey: ["projects"] });
-    queryClient.invalidateQueries({ queryKey: ["apps"] });
-  }
+  // Handle success actions
+  useEffect(() => {
+    if (actionData?.success) {
+      if (actionData.action === "update") {
+        toast.success("Project updated");
+        setIsEditDialogOpen(false);
+      } else if (actionData.action === "assign-app") {
+        toast.success("App added to project");
+        setIsAddAppDialogOpen(false);
+      } else if (actionData.action === "remove-app") {
+        toast.success("App removed from project");
+      } else if (actionData.action === "create-database") {
+        toast.success("Database created");
+        setIsCreateDbDialogOpen(false);
+      } else if (actionData.action === "delete-database") {
+        toast.success("Database deleted");
+        setIsDeleteDbDialogOpen(false);
+        setSelectedDatabase(null);
+      } else if (actionData.action === "start-database") {
+        toast.success("Database starting");
+      } else if (actionData.action === "stop-database") {
+        toast.success("Database stopped");
+      }
+      queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
+    }
+
+    if (actionData?.error) {
+      toast.error(actionData.error);
+    }
+  }, [actionData, queryClient, project?.id]);
+
+  const handleViewCredentials = async (database: ManagedDatabase) => {
+    try {
+      const revealed = await api.getDatabase(database.id, true);
+      setRevealedDatabase(revealed);
+      setIsCredentialsDialogOpen(true);
+    } catch {
+      toast.error("Failed to fetch credentials");
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard`);
+  };
+
+  const dbTypeConfig = DATABASE_TYPES.find(t => t.type === selectedDbType);
 
   if (!project) {
     return (
@@ -367,6 +545,141 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
         </CardContent>
       </Card>
 
+      {/* Databases Table */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Databases</CardTitle>
+          <Button onClick={() => setIsCreateDbDialogOpen(true)}>
+            <Database className="mr-2 h-4 w-4" />
+            Create Database
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {(!project.databases || project.databases.length === 0) ? (
+            <div className="py-8 text-center">
+              <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">
+                No databases in this project yet.
+              </p>
+              <Button onClick={() => setIsCreateDbDialogOpen(true)}>
+                <Database className="mr-2 h-4 w-4" />
+                Create Database
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Port</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {project.databases.map((db) => (
+                  <TableRow key={db.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to={`/databases/${db.id}`}
+                          className="hover:underline text-primary"
+                        >
+                          {db.name}
+                        </Link>
+                        {db.status === "failed" && db.error_message && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <AlertCircle className="h-4 w-4 text-destructive" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="text-sm">{db.error_message}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {db.db_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{db.version}</TableCell>
+                    <TableCell>
+                      <DatabaseStatusBadge status={db.status} />
+                    </TableCell>
+                    <TableCell>
+                      {db.public_access && db.external_port > 0 ? (
+                        <span className="font-mono text-sm">{db.external_port}</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">Internal</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View Credentials"
+                          onClick={() => handleViewCredentials(db)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {db.status === "stopped" && (
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="start-database" />
+                            <input type="hidden" name="databaseId" value={db.id} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              type="submit"
+                              title="Start Database"
+                              disabled={isSubmitting}
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          </Form>
+                        )}
+                        {db.status === "running" && (
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="stop-database" />
+                            <input type="hidden" name="databaseId" value={db.id} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              type="submit"
+                              title="Stop Database"
+                              disabled={isSubmitting}
+                            >
+                              <Square className="h-4 w-4" />
+                            </Button>
+                          </Form>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete Database"
+                          onClick={() => {
+                            setSelectedDatabase(db);
+                            setIsDeleteDbDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
@@ -499,6 +812,348 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
             >
               Close
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Database Dialog */}
+      <Dialog open={isCreateDbDialogOpen} onOpenChange={setIsCreateDbDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <Form method="post">
+            <input type="hidden" name="intent" value="create-database" />
+            <DialogHeader>
+              <DialogTitle>Create Database</DialogTitle>
+              <DialogDescription>
+                Deploy a new managed database with auto-generated credentials.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="db-name">Name</Label>
+                <Input
+                  id="db-name"
+                  name="name"
+                  placeholder="e.g., my-postgres-db"
+                  pattern="[a-zA-Z0-9-]+"
+                  title="Only alphanumeric characters and hyphens are allowed"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only letters, numbers, and hyphens allowed
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Database Type</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {DATABASE_TYPES.map((config) => (
+                    <button
+                      key={config.type}
+                      type="button"
+                      className={`p-3 border rounded-lg text-left transition-colors ${
+                        selectedDbType === config.type
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                      onClick={() => setSelectedDbType(config.type)}
+                    >
+                      <div className="font-medium">{config.name}</div>
+                      <div className="text-xs text-muted-foreground">Port {config.defaultPort}</div>
+                    </button>
+                  ))}
+                </div>
+                <input type="hidden" name="db_type" value={selectedDbType} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="db-version">Version</Label>
+                <Select name="version" defaultValue="latest">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="latest">Latest ({dbTypeConfig?.defaultVersion})</SelectItem>
+                    {dbTypeConfig?.versions.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox id="public_access" name="public_access" value="true" />
+                <Label htmlFor="public_access" className="text-sm font-normal">
+                  Enable public access (expose port to host)
+                </Label>
+              </div>
+
+              {/* Optional Credentials */}
+              <Collapsible
+                open={showCustomCredentials}
+                onOpenChange={setShowCustomCredentials}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-1 p-0 h-auto hover:bg-transparent"
+                  >
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        showCustomCredentials ? "rotate-180" : ""
+                      }`}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Custom credentials (optional)
+                    </span>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 pt-3">
+                  <p className="text-xs text-muted-foreground">
+                    Leave fields empty to auto-generate secure credentials.
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-username">Username</Label>
+                    <Input
+                      id="db-username"
+                      name="username"
+                      placeholder="Auto-generated if empty"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-password">Password</Label>
+                    <Input
+                      id="db-password"
+                      name="password"
+                      type="password"
+                      placeholder="Auto-generated if empty"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-database">Database Name</Label>
+                    <Input
+                      id="db-database"
+                      name="database"
+                      placeholder="Defaults to username"
+                    />
+                  </div>
+                  {selectedDbType === "mysql" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="db-root-password">Root Password</Label>
+                      <Input
+                        id="db-root-password"
+                        name="root_password"
+                        type="password"
+                        placeholder="Auto-generated if empty"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        MySQL root password for administrative access
+                      </p>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsCreateDbDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Creating..." : "Create Database"}
+              </Button>
+            </DialogFooter>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Database Credentials Dialog */}
+      <Dialog open={isCredentialsDialogOpen} onOpenChange={setIsCredentialsDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Database Credentials</DialogTitle>
+            <DialogDescription>
+              Connection details for {revealedDatabase?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {revealedDatabase && (
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPasswords(!showPasswords)}
+                >
+                  {showPasswords ? (
+                    <>
+                      <EyeOff className="h-4 w-4 mr-2" /> Hide Passwords
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-4 w-4 mr-2" /> Show Passwords
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {revealedDatabase.credentials?.username && (
+                  <div className="flex items-center justify-between p-2 bg-muted rounded">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Username</div>
+                      <code className="text-sm">{revealedDatabase.credentials.username}</code>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        copyToClipboard(revealedDatabase.credentials!.username, "Username")
+                      }
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                {revealedDatabase.credentials?.password && (
+                  <div className="flex items-center justify-between p-2 bg-muted rounded">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Password</div>
+                      <code className="text-sm">
+                        {showPasswords
+                          ? revealedDatabase.credentials.password
+                          : "••••••••••••••••"}
+                      </code>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        copyToClipboard(revealedDatabase.credentials!.password, "Password")
+                      }
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                {revealedDatabase.credentials?.database && (
+                  <div className="flex items-center justify-between p-2 bg-muted rounded">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Database</div>
+                      <code className="text-sm">{revealedDatabase.credentials.database}</code>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        copyToClipboard(revealedDatabase.credentials!.database!, "Database")
+                      }
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
+                {revealedDatabase.internal_connection_string && (
+                  <div className="p-2 bg-muted rounded">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs text-muted-foreground">Internal Connection String</div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          copyToClipboard(
+                            revealedDatabase.internal_connection_string!,
+                            "Internal connection string"
+                          )
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <code className="text-xs break-all">
+                      {showPasswords
+                        ? revealedDatabase.internal_connection_string
+                        : revealedDatabase.internal_connection_string.replace(
+                            /:[^:@]+@/,
+                            ":••••••••@"
+                          )}
+                    </code>
+                  </div>
+                )}
+
+                {revealedDatabase.external_connection_string && (
+                  <div className="p-2 bg-muted rounded">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs text-muted-foreground">External Connection String</div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          copyToClipboard(
+                            revealedDatabase.external_connection_string!,
+                            "External connection string"
+                          )
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <code className="text-xs break-all">
+                      {showPasswords
+                        ? revealedDatabase.external_connection_string
+                        : revealedDatabase.external_connection_string.replace(
+                            /:[^:@]+@/,
+                            ":••••••••@"
+                          )}
+                    </code>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCredentialsDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Database Dialog */}
+      <Dialog open={isDeleteDbDialogOpen} onOpenChange={setIsDeleteDbDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Database</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{selectedDatabase?.name}"? This will stop
+              the container and delete all data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDbDialogOpen(false);
+                setSelectedDatabase(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Form method="post">
+              <input type="hidden" name="intent" value="delete-database" />
+              <input type="hidden" name="databaseId" value={selectedDatabase?.id || ""} />
+              <Button type="submit" variant="destructive" disabled={isSubmitting}>
+                {isSubmitting ? "Deleting..." : "Delete Database"}
+              </Button>
+            </Form>
           </DialogFooter>
         </DialogContent>
       </Dialog>

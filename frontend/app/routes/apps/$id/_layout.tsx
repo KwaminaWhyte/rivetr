@@ -79,7 +79,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "delete") {
-    await api.deleteApp(token, params.id!);
+    const password = formData.get("password");
+    if (typeof password !== "string" || !password.trim()) {
+      return { error: "Password is required" };
+    }
+    await api.deleteApp(token, params.id!, password);
     return redirect("/projects");
   }
 

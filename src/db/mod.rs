@@ -224,6 +224,26 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/018_volumes.sql")).await?;
     }
 
+    // Migration 019: Add databases table for managed database deployments
+    let has_databases_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='databases'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_databases_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/019_databases.sql")).await?;
+    }
+
+    // Migration 020: Add project_id to databases table
+    let has_db_project_id: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('databases') WHERE name = 'project_id'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_db_project_id.is_none() {
+        execute_sql(pool, include_str!("../../migrations/020_databases_project.sql")).await?;
+    }
+
     info!("Migrations completed");
     Ok(())
 }

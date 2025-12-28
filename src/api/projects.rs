@@ -9,7 +9,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    App, AssignAppProjectRequest, CreateProjectRequest, Project, ProjectWithAppCount,
+    App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase, Project, ProjectWithAppCount,
     ProjectWithApps, UpdateProjectRequest,
 };
 use crate::AppState;
@@ -110,7 +110,7 @@ pub async fn list_projects(
     Ok(Json(results))
 }
 
-/// Get a project with its apps
+/// Get a project with its apps and databases
 pub async fn get_project(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -133,6 +133,19 @@ pub async fn get_project(
     .fetch_all(&state.db)
     .await?;
 
+    let databases = sqlx::query_as::<_, ManagedDatabase>(
+        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let host = Some(state.config.server.host.as_str());
+    let database_responses = databases
+        .into_iter()
+        .map(|db| db.to_response(false, host))
+        .collect();
+
     Ok(Json(ProjectWithApps {
         id: project.id,
         name: project.name,
@@ -140,6 +153,7 @@ pub async fn get_project(
         created_at: project.created_at,
         updated_at: project.updated_at,
         apps,
+        databases: database_responses,
     }))
 }
 

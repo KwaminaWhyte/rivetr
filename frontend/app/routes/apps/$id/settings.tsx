@@ -8,12 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -110,9 +105,7 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [buildOptionsOpen, setBuildOptionsOpen] = useState(
-    Boolean(app.dockerfile_path || app.base_directory || app.build_target || app.watch_paths || app.custom_docker_options)
-  );
+  const [deletePassword, setDeletePassword] = useState("");
   const [isSavingNetwork, setIsSavingNetwork] = useState(false);
   const [isSavingDomains, setIsSavingDomains] = useState(false);
   const [isSavingLabels, setIsSavingLabels] = useState(false);
@@ -164,77 +157,104 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
 
   return (
     <div className="space-y-6">
-      {/* General Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Application Settings</CardTitle>
-          <CardDescription>
-            Update your application configuration. Changes will take effect on the next deployment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form method="post" className="space-y-6">
-            <input type="hidden" name="intent" value="update" />
+      <Tabs defaultValue="general" className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="build">Build</TabsTrigger>
+          <TabsTrigger value="network">Network</TabsTrigger>
+          <TabsTrigger value="storage">Storage</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+        </TabsList>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" defaultValue={app.name} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="git_url">Git URL</Label>
-                <Input id="git_url" name="git_url" defaultValue={app.git_url} />
-              </div>
-            </div>
+        {/* General Tab */}
+        <TabsContent value="general" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>General Settings</CardTitle>
+              <CardDescription>
+                Basic application configuration. Changes will take effect on the next deployment.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form method="post" className="space-y-6">
+                <input type="hidden" name="intent" value="update" />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="branch">Branch</Label>
-                <Input id="branch" name="branch" defaultValue={app.branch} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="port">Port</Label>
-                <Input id="port" name="port" type="number" defaultValue={app.port} />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="dockerfile">Dockerfile</Label>
-                <Input id="dockerfile" name="dockerfile" defaultValue={app.dockerfile} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="healthcheck">Healthcheck Path</Label>
-                <Input id="healthcheck" name="healthcheck" placeholder="/health" defaultValue={app.healthcheck || ""} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="environment">Environment</Label>
-              <Select name="environment" defaultValue={app.environment || "development"}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Select environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENVIRONMENT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Advanced Build Options */}
-            <Collapsible open={buildOptionsOpen} onOpenChange={setBuildOptionsOpen}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between p-0 h-auto font-medium">
-                  Advanced Build Options
-                  <ChevronDown className={`h-4 w-4 transition-transform ${buildOptionsOpen ? "rotate-180" : ""}`} />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 pt-4">
                 <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input id="name" name="name" defaultValue={app.name} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="git_url">Git URL</Label>
+                    <Input id="git_url" name="git_url" defaultValue={app.git_url} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="branch">Branch</Label>
+                    <Input id="branch" name="branch" defaultValue={app.branch} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="port">Port</Label>
+                    <Input id="port" name="port" type="number" defaultValue={app.port} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="environment">Environment</Label>
+                    <Select name="environment" defaultValue={app.environment || "development"}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select environment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ENVIRONMENT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="healthcheck">Healthcheck Path</Label>
+                    <Input id="healthcheck" name="healthcheck" placeholder="/health" defaultValue={app.healthcheck || ""} />
+                    <p className="text-xs text-muted-foreground">
+                      Endpoint to check if the app is running
+                    </p>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Changes"}
+                </Button>
+              </Form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Build Tab */}
+        <TabsContent value="build" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Build Configuration</CardTitle>
+              <CardDescription>
+                Configure how your application is built with Docker.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form method="post" className="space-y-6">
+                <input type="hidden" name="intent" value="update" />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="dockerfile">Dockerfile</Label>
+                    <Input id="dockerfile" name="dockerfile" defaultValue={app.dockerfile} />
+                    <p className="text-xs text-muted-foreground">
+                      Dockerfile name (e.g., Dockerfile)
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="dockerfile_path">Dockerfile Path</Label>
                     <Input
@@ -247,6 +267,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                       Custom Dockerfile location (relative to base directory)
                     </p>
                   </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="base_directory">Base Directory</Label>
                     <Input
@@ -259,9 +282,6 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                       Subdirectory to use as build context
                     </p>
                   </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="build_target">Build Target</Label>
                     <Input
@@ -274,6 +294,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                       Multi-stage build target (--target flag)
                     </p>
                   </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="watch_paths">Watch Paths</Label>
                     <Input
@@ -286,85 +309,93 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                       JSON array of paths to trigger auto-deploy
                     </p>
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="custom_docker_options">Custom Docker Options</Label>
+                    <Textarea
+                      id="custom_docker_options"
+                      name="custom_docker_options"
+                      placeholder="--no-cache --build-arg FOO=bar"
+                      rows={2}
+                      defaultValue={app.custom_docker_options || ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Extra Docker build arguments
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="custom_docker_options">Custom Docker Options</Label>
-                  <Textarea
-                    id="custom_docker_options"
-                    name="custom_docker_options"
-                    placeholder="--no-cache --build-arg FOO=bar"
-                    rows={2}
-                    defaultValue={app.custom_docker_options || ""}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Extra Docker build arguments (e.g., --no-cache, --add-host)
-                  </p>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Changes"}
+                </Button>
+              </Form>
+            </CardContent>
+          </Card>
 
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Changes"}
-            </Button>
-          </Form>
-        </CardContent>
-      </Card>
+          {/* Docker Registry / Deployment Source */}
+          <DockerRegistryCard app={app} token={token} />
+        </TabsContent>
 
-      {/* Docker Registry / Deployment Source */}
-      <DockerRegistryCard app={app} token={token} />
+        {/* Network Tab */}
+        <TabsContent value="network" className="space-y-6">
+          {/* Domain Management */}
+          <DomainManagementCard
+            app={app}
+            onSave={handleSaveDomainConfig}
+            isSaving={isSavingDomains}
+          />
 
-      {/* Environment Variables */}
-      <EnvVarsTab appId={app.id} token={token} />
+          {/* Network Configuration */}
+          <NetworkConfigCard
+            app={app}
+            onSave={handleSaveNetworkConfig}
+            isSaving={isSavingNetwork}
+          />
 
-      {/* Domain Management */}
-      <DomainManagementCard
-        app={app}
-        onSave={handleSaveDomainConfig}
-        isSaving={isSavingDomains}
-      />
+          {/* Container Labels */}
+          <ContainerLabelsCard
+            app={app}
+            onSave={handleSaveContainerLabels}
+            isSaving={isSavingLabels}
+          />
+        </TabsContent>
 
-      {/* Network Configuration */}
-      <NetworkConfigCard
-        app={app}
-        onSave={handleSaveNetworkConfig}
-        isSaving={isSavingNetwork}
-      />
+        {/* Storage Tab */}
+        <TabsContent value="storage" className="space-y-6">
+          {/* Volumes */}
+          <VolumesCard appId={app.id} token={token} />
 
-      {/* Container Labels */}
-      <ContainerLabelsCard
-        app={app}
-        onSave={handleSaveContainerLabels}
-        isSaving={isSavingLabels}
-      />
+          {/* Environment Variables */}
+          <EnvVarsTab appId={app.id} token={token} />
+        </TabsContent>
 
-      {/* Volumes */}
-      <VolumesCard appId={app.id} token={token} />
+        {/* Security Tab */}
+        <TabsContent value="security" className="space-y-6">
+          {/* HTTP Basic Auth */}
+          <BasicAuthCard appId={app.id} token={token} />
 
-      {/* Deployment Commands */}
-      <DeploymentCommandsCard
-        app={app}
-        token={token}
-        onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
-      />
+          {/* Deployment Commands */}
+          <DeploymentCommandsCard
+            app={app}
+            token={token}
+            onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
+          />
 
-      {/* HTTP Basic Auth */}
-      <BasicAuthCard appId={app.id} token={token} />
-
-      {/* Danger Zone */}
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="text-destructive">Danger Zone</CardTitle>
-          <CardDescription>
-            Irreversible actions that will affect your application.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-            Delete Application
-          </Button>
-        </CardContent>
-      </Card>
+          {/* Danger Zone */}
+          <Card className="border-destructive/50">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardDescription>
+                Irreversible actions that will affect your application.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
+                Delete Application
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -376,13 +407,33 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
               be undone. All deployments and logs will be permanently deleted.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="delete-password">Enter your password to confirm</Label>
+              <Input
+                id="delete-password"
+                type="password"
+                placeholder="Password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowDeleteDialog(false);
+              setDeletePassword("");
+            }}>
               Cancel
             </Button>
             <Form method="post" action={`/apps/${app.id}`}>
               <input type="hidden" name="intent" value="delete" />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
+              <input type="hidden" name="password" value={deletePassword} />
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={isSubmitting || !deletePassword.trim()}
+              >
                 {isSubmitting ? "Deleting..." : "Delete"}
               </Button>
             </Form>

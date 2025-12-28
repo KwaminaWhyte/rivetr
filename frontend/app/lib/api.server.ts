@@ -4,6 +4,7 @@ import type {
   ContainerStats,
   CreateAppRequest,
   CreateEnvVarRequest,
+  CreateManagedDatabaseRequest,
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   CreateProjectRequest,
@@ -17,6 +18,7 @@ import type {
   GitProvider,
   GitRepository,
   InviteMemberRequest,
+  ManagedDatabase,
   NotificationChannel,
   NotificationSubscription,
   Project,
@@ -83,8 +85,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
-  deleteApp: (token: string, id: string) =>
-    apiRequest<void>(`/apps/${id}`, token, { method: "DELETE" }),
+  deleteApp: (token: string, id: string, password: string) =>
+    apiRequest<void>(`/apps/${id}`, token, {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    }),
   assignAppToProject: (token: string, appId: string, projectId: string | null) =>
     apiRequest<App>(`/apps/${appId}`, token, {
       method: "PUT",
@@ -287,6 +292,27 @@ export const api = {
     }),
   deleteVolume: (token: string, volumeId: string) =>
     apiRequest<void>(`/volumes/${volumeId}`, token, { method: "DELETE" }),
+
+  // Managed Databases
+  getDatabases: (token: string, reveal = false) => {
+    const params = reveal ? "?reveal=true" : "";
+    return apiRequest<ManagedDatabase[]>(`/databases${params}`, token);
+  },
+  getDatabase: (token: string, id: string, reveal = false) => {
+    const params = reveal ? "?reveal=true" : "";
+    return apiRequest<ManagedDatabase>(`/databases/${id}${params}`, token);
+  },
+  createDatabase: (token: string, data: CreateManagedDatabaseRequest) =>
+    apiRequest<ManagedDatabase>("/databases", token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deleteDatabase: (token: string, id: string) =>
+    apiRequest<void>(`/databases/${id}`, token, { method: "DELETE" }),
+  startDatabase: (token: string, id: string) =>
+    apiRequest<ManagedDatabase>(`/databases/${id}/start`, token, { method: "POST" }),
+  stopDatabase: (token: string, id: string) =>
+    apiRequest<ManagedDatabase>(`/databases/${id}/stop`, token, { method: "POST" }),
 };
 
 // Public API methods (no auth required)

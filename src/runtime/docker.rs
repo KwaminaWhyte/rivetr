@@ -37,6 +37,10 @@ impl DockerRuntime {
 
 #[async_trait]
 impl ContainerRuntime for DockerRuntime {
+    fn name(&self) -> &'static str {
+        "Docker"
+    }
+
     async fn build(&self, ctx: &BuildContext) -> Result<String> {
         use bollard::image::BuildImageOptions;
         use bytes::Bytes;
@@ -200,12 +204,12 @@ impl ContainerRuntime for DockerRuntime {
             .client
             .create_container(Some(options), container_config)
             .await
-            .context("Failed to create container")?;
+            .map_err(|e| anyhow::anyhow!("Failed to create container: {}", e))?;
 
         self.client
             .start_container::<String>(&response.id, None)
             .await
-            .context("Failed to start container")?;
+            .map_err(|e| anyhow::anyhow!("Failed to start container: {}", e))?;
 
         Ok(response.id)
     }
@@ -243,7 +247,9 @@ impl ContainerRuntime for DockerRuntime {
         let options = LogsOptions::<String> {
             stdout: true,
             stderr: true,
-            follow: true,
+            follow: false, // Don't follow - just fetch existing logs
+            timestamps: true, // Include Docker timestamps
+            tail: "1000".to_string(), // Get last 1000 lines
             ..Default::default()
         };
 
@@ -252,18 +258,35 @@ impl ContainerRuntime for DockerRuntime {
         let mapped = stream.filter_map(|result| async move {
             match result {
                 Ok(output) => {
-                    let (stream, message) = match output {
+                    let (stream_type, message) = match output {
                         LogOutput::StdOut { message } => (LogStream::Stdout, message),
                         LogOutput::StdErr { message } => (LogStream::Stderr, message),
                         _ => return None,
                     };
+                    let message_str = String::from_utf8_lossy(&message).to_string();
+                    // Parse Docker timestamp from the beginning of the message
+                    // Format: "2024-01-01T00:00:00.000000000Z message"
+                    let (timestamp, msg) = if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
+                        // Has timestamp prefix
+                        let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            (parts[0].to_string(), parts[1].to_string())
+                        } else {
+                            (chrono::Utc::now().to_rfc3339(), message_str)
+                        }
+                    } else {
+                        (chrono::Utc::now().to_rfc3339(), message_str)
+                    };
                     Some(LogLine {
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                        message: String::from_utf8_lossy(&message).to_string(),
-                        stream,
+                        timestamp,
+                        message: msg.trim_end().to_string(),
+                        stream: stream_type,
                     })
                 }
-                Err(_) => None,
+                Err(e) => {
+                    tracing::warn!("Error reading container log: {}", e);
+                    None
+                }
             }
         });
 
@@ -626,28 +649,38 @@ impl ContainerRuntime for DockerRuntime {
     async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()> {
         tracing::info!(image = %image, "Pulling image from registry");
 
-        // Parse image reference to extract registry, name, and tag
+        // Parse image reference to extract image name and tag
         // Format: [registry/]name[:tag]
+        // Examples:
+        //   postgres:16 -> name=postgres, tag=16
+        //   nginx -> name=nginx, tag=latest
+        //   ghcr.io/user/image:v1 -> name=ghcr.io/user/image, tag=v1
+        //   registry:5000/image:tag -> name=registry:5000/image, tag=tag
         let (from_image, tag) = if image.contains('@') {
-            // Digest format: image@sha256:...
+            // Digest format: image@sha256:... - use as-is
             (image.to_string(), None)
-        } else if let Some((name, tag)) = image.rsplit_once(':') {
-            // Check if the colon is for a port (registry:port/image) rather than a tag
-            // This is a heuristic - if there's a / after the :, it's likely a port
-            if name.contains('/') && !tag.contains('/') {
-                (name.to_string(), Some(tag.to_string()))
+        } else if let Some((name, tag_part)) = image.rsplit_once(':') {
+            // Check if the colon is for a registry port (registry:5000/image) rather than a tag
+            // If there's a / after the colon, it's a port number, not a tag
+            if tag_part.contains('/') {
+                // This is registry:port/image format, no tag specified
+                (image.to_string(), Some("latest".to_string()))
             } else {
-                (image.to_string(), None)
+                // Normal image:tag format
+                (name.to_string(), Some(tag_part.to_string()))
             }
         } else {
-            (image.to_string(), None)
+            // No tag specified, use latest
+            (image.to_string(), Some("latest".to_string()))
         };
 
         let options = CreateImageOptions {
             from_image: from_image.clone(),
-            tag: tag.unwrap_or_else(|| "latest".to_string()),
+            tag: tag.clone().unwrap_or_else(|| "latest".to_string()),
             ..Default::default()
         };
+
+        tracing::debug!(from_image = %from_image, tag = ?tag, "Parsed image reference");
 
         // Set up authentication if provided
         let credentials = auth.and_then(|a| {

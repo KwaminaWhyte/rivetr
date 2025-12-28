@@ -7,15 +7,18 @@ import type {
   BasicAuthStatus,
   ContainerStats,
   CreateEnvVarRequest,
+  CreateManagedDatabaseRequest,
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   CreateTeamRequest,
   CreateVolumeRequest,
+  DatabaseLogEntry,
   Deployment,
   DeploymentLog,
   DiskStats,
   EnvVar,
   InviteMemberRequest,
+  ManagedDatabase,
   NotificationChannel,
   NotificationSubscription,
   Project,
@@ -365,6 +368,55 @@ export const api = {
       credentials: "include",
     });
   },
+
+  // Managed Databases
+  getDatabases: (reveal = false, token?: string) => {
+    const params = reveal ? "?reveal=true" : "";
+    return apiRequest<ManagedDatabase[]>(`/databases${params}`, {}, token);
+  },
+  getDatabase: (id: string, reveal = false, token?: string) => {
+    const params = reveal ? "?reveal=true" : "";
+    return apiRequest<ManagedDatabase>(`/databases/${id}${params}`, {}, token);
+  },
+  createDatabase: (data: CreateManagedDatabaseRequest, token?: string) =>
+    apiRequest<ManagedDatabase>(
+      "/databases",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteDatabase: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/databases/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+  startDatabase: (id: string, token?: string) =>
+    apiRequest<ManagedDatabase>(
+      `/databases/${id}/start`,
+      {
+        method: "POST",
+      },
+      token
+    ),
+  stopDatabase: (id: string, token?: string) =>
+    apiRequest<ManagedDatabase>(
+      `/databases/${id}/stop`,
+      {
+        method: "POST",
+      },
+      token
+    ),
+  getDatabaseLogs: (id: string, lines = 100, token?: string) =>
+    apiRequest<DatabaseLogEntry[]>(
+      `/databases/${id}/logs?lines=${lines}`,
+      {},
+      token
+    ),
 };
 
 export default api;

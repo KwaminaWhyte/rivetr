@@ -1,5 +1,6 @@
 mod cleanup;
 mod container_monitor;
+pub mod database_config;
 mod disk_monitor;
 mod pipeline;
 mod stats_collector;
