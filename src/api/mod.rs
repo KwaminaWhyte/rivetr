@@ -12,6 +12,8 @@ mod notifications;
 mod projects;
 pub mod rate_limit;
 mod routes;
+mod service_templates;
+mod services;
 mod ssh_keys;
 mod system;
 mod teams;
@@ -153,6 +155,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/backups/schedule", get(database_backups::get_schedule))
         .route("/databases/:id/backups/schedule", post(database_backups::upsert_schedule))
         .route("/databases/:id/backups/schedule", delete(database_backups::delete_schedule))
+        // Docker Compose Services
+        .route("/services", get(services::list_services))
+        .route("/services", post(services::create_service))
+        .route("/services/:id", get(services::get_service))
+        .route("/services/:id", put(services::update_service))
+        .route("/services/:id", delete(services::delete_service))
+        .route("/services/:id/start", post(services::start_service))
+        .route("/services/:id/stop", post(services::stop_service))
+        // Service Templates
+        .route("/templates", get(service_templates::list_templates))
+        .route("/templates/categories", get(service_templates::list_categories))
+        .route("/templates/:id", get(service_templates::get_template))
+        .route("/templates/:id/deploy", post(service_templates::deploy_template))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/disk", get(system::get_disk_stats))
