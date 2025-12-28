@@ -7,14 +7,28 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::crypto;
 use crate::db::{CreateEnvVarRequest, EnvVar, EnvVarResponse, UpdateEnvVarRequest};
 use crate::AppState;
+
+/// Key length for AES-256 encryption
+const KEY_LENGTH: usize = 32;
 
 #[derive(Debug, Deserialize)]
 pub struct ListEnvVarsQuery {
     /// If true, reveal secret values (default: false)
     #[serde(default)]
     pub reveal: bool,
+}
+
+/// Get the derived encryption key from the config if configured
+fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
+    state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|secret| crypto::derive_key(secret))
 }
 
 /// List all environment variables for an app
@@ -48,9 +62,26 @@ pub async fn list_env_vars(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
+    // Get encryption key for decryption
+    let encryption_key = get_encryption_key(&state);
+
     let responses: Vec<EnvVarResponse> = env_vars
         .into_iter()
-        .map(|v| v.to_response(query.reveal))
+        .map(|v| {
+            // Decrypt the value if it's encrypted
+            let decrypted_value = crypto::decrypt_if_encrypted(&v.value, encryption_key.as_ref())
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to decrypt env var {}: {}", v.key, e);
+                    v.value.clone()
+                });
+
+            // Create a modified EnvVar with decrypted value for response
+            let decrypted_var = EnvVar {
+                value: decrypted_value,
+                ..v
+            };
+            decrypted_var.to_response(query.reveal)
+        })
         .collect();
 
     Ok(Json(responses))
@@ -85,6 +116,14 @@ pub async fn create_env_var(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Encrypt the value if encryption key is configured
+    let encryption_key = get_encryption_key(&state);
+    let stored_value = crypto::encrypt_if_key_available(&req.value, encryption_key.as_ref())
+        .map_err(|e| {
+            tracing::error!("Failed to encrypt env var value: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     sqlx::query(
         r#"
         INSERT INTO env_vars (id, app_id, key, value, is_secret, created_at, updated_at)
@@ -94,7 +133,7 @@ pub async fn create_env_var(
     .bind(&id)
     .bind(&app_id)
     .bind(&req.key)
-    .bind(&req.value)
+    .bind(&stored_value)
     .bind(if req.is_secret { 1 } else { 0 })
     .bind(&now)
     .bind(&now)
@@ -115,8 +154,14 @@ pub async fn create_env_var(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Decrypt for response (return the original value, not encrypted)
+    let response_var = EnvVar {
+        value: req.value.clone(),
+        ..env_var
+    };
+
     // Return with value visible since user just created it
-    Ok((StatusCode::CREATED, Json(env_var.to_response(true))))
+    Ok((StatusCode::CREATED, Json(response_var.to_response(true))))
 }
 
 /// Update an existing environment variable
@@ -137,10 +182,22 @@ pub async fn update_env_var(
     .ok_or(StatusCode::NOT_FOUND)?;
 
     let now = chrono::Utc::now().to_rfc3339();
+    let encryption_key = get_encryption_key(&state);
 
-    // Build update query dynamically
-    let new_value = req.value.unwrap_or(existing.value);
+    // Decrypt existing value if needed (for when value is not being updated)
+    let existing_decrypted = crypto::decrypt_if_encrypted(&existing.value, encryption_key.as_ref())
+        .unwrap_or_else(|_| existing.value.clone());
+
+    // Get the new plaintext value (either from request or existing)
+    let new_plaintext_value = req.value.unwrap_or(existing_decrypted.clone());
     let new_is_secret = req.is_secret.map(|b| if b { 1 } else { 0 }).unwrap_or(existing.is_secret);
+
+    // Encrypt the new value for storage
+    let stored_value = crypto::encrypt_if_key_available(&new_plaintext_value, encryption_key.as_ref())
+        .map_err(|e| {
+            tracing::error!("Failed to encrypt env var value: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     sqlx::query(
         r#"
@@ -151,7 +208,7 @@ pub async fn update_env_var(
         WHERE app_id = ? AND key = ?
         "#,
     )
-    .bind(&new_value)
+    .bind(&stored_value)
     .bind(new_is_secret)
     .bind(&now)
     .bind(&app_id)
@@ -172,8 +229,14 @@ pub async fn update_env_var(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Return the plaintext value in response (not encrypted)
+    let response_var = EnvVar {
+        value: new_plaintext_value,
+        ..env_var
+    };
+
     // Return with value visible since user just updated it
-    Ok(Json(env_var.to_response(true)))
+    Ok(Json(response_var.to_response(true)))
 }
 
 /// Delete an environment variable
@@ -217,7 +280,20 @@ pub async fn get_env_var(
     })?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    Ok(Json(env_var.to_response(query.reveal)))
+    // Decrypt the value if encrypted
+    let encryption_key = get_encryption_key(&state);
+    let decrypted_value = crypto::decrypt_if_encrypted(&env_var.value, encryption_key.as_ref())
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to decrypt env var {}: {}", env_var.key, e);
+            env_var.value.clone()
+        });
+
+    let decrypted_var = EnvVar {
+        value: decrypted_value,
+        ..env_var
+    };
+
+    Ok(Json(decrypted_var.to_response(query.reveal)))
 }
 
 /// Validate environment variable key format

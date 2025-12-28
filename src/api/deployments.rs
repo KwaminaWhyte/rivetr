@@ -7,6 +7,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::crypto;
 use crate::db::{App, Deployment, DeploymentLog};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
@@ -15,6 +16,19 @@ use crate::AppState;
 
 use super::error::ApiError;
 use super::validation::validate_uuid;
+
+/// Key length for AES-256 encryption
+const KEY_LENGTH: usize = 32;
+
+/// Get the derived encryption key from the config if configured
+fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
+    state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|secret| crypto::derive_key(secret))
+}
 
 /// Request body for rollback endpoint
 #[derive(Debug, Deserialize)]
@@ -267,9 +281,10 @@ pub async fn rollback_deployment(
     let rollback_id_clone = rollback_id.clone();
     let target_deployment_clone = target_deployment.clone();
     let app_clone = app.clone();
+    let encryption_key = get_encryption_key(&state);
 
     tokio::spawn(async move {
-        match run_rollback(&db, runtime, &rollback_id_clone, &target_deployment_clone, &app_clone).await {
+        match run_rollback(&db, runtime, &rollback_id_clone, &target_deployment_clone, &app_clone, encryption_key.as_ref()).await {
             Ok(result) => {
                 // Update proxy routes on successful rollback
                 if let Some(domain) = &app_clone.domain {

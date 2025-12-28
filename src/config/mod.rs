@@ -81,12 +81,17 @@ fn default_data_dir() -> PathBuf {
 pub struct AuthConfig {
     #[serde(default = "default_admin_token")]
     pub admin_token: String,
+    /// Secret key for encrypting environment variables in the database.
+    /// If not set, environment variables are stored in plaintext (backwards compatible).
+    /// Recommended: Use a strong, random 32+ character string.
+    pub encryption_key: Option<String>,
 }
 
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             admin_token: default_admin_token(),
+            encryption_key: None,
         }
     }
 }

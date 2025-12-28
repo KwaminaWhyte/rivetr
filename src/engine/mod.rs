@@ -15,7 +15,8 @@ pub use stats_collector::*;
 
 use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};
-use crate::config::RuntimeConfig;
+use crate::config::{AuthConfig, RuntimeConfig};
+use crate::crypto;
 use crate::db::{App, NotificationEventType};
 use crate::notifications::{NotificationPayload, NotificationService};
 use crate::proxy::{Backend, BasicAuthConfig, RouteTable};
@@ -23,6 +24,9 @@ use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+
+/// Key length for AES-256 encryption
+const KEY_LENGTH: usize = 32;
 
 pub type DeploymentJob = (String, App); // (deployment_id, app)
 
@@ -48,6 +52,7 @@ pub struct DeploymentEngine {
     routes: Arc<ArcSwap<RouteTable>>,
     rx: mpsc::Receiver<DeploymentJob>,
     build_limits: BuildLimits,
+    encryption_key: Option<[u8; KEY_LENGTH]>,
 }
 
 impl DeploymentEngine {
@@ -57,8 +62,15 @@ impl DeploymentEngine {
         routes: Arc<ArcSwap<RouteTable>>,
         rx: mpsc::Receiver<DeploymentJob>,
         build_limits: BuildLimits,
+        auth_config: &AuthConfig,
     ) -> Self {
-        Self { db, runtime, routes, rx, build_limits }
+        // Derive encryption key from config if available
+        let encryption_key = auth_config
+            .encryption_key
+            .as_ref()
+            .map(|secret| crypto::derive_key(secret));
+
+        Self { db, runtime, routes, rx, build_limits, encryption_key }
     }
 
     pub async fn run(mut self) {
@@ -75,6 +87,7 @@ impl DeploymentEngine {
             let runtime = self.runtime.clone();
             let routes = self.routes.clone();
             let build_limits = self.build_limits.clone();
+            let encryption_key = self.encryption_key;
 
             tokio::spawn(async move {
                 let notification_service = NotificationService::new(db.clone());
@@ -93,7 +106,7 @@ impl DeploymentEngine {
                     tracing::warn!(error = %e, "Failed to send deployment_started notification");
                 }
 
-                match run_deployment(&db, runtime.clone(), &deployment_id, &app, &build_limits).await {
+                match run_deployment(&db, runtime.clone(), &deployment_id, &app, &build_limits, encryption_key.as_ref()).await {
                     Ok(container_info) => {
                         // Record successful deployment metric
                         record_deployment_success();

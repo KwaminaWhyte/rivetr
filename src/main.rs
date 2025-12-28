@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
         config.runtime.build_cpu_limit,
         config.runtime.build_memory_limit
     );
-    let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx, build_limits);
+    let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx, build_limits, &config.auth);
     tokio::spawn(async move {
         engine.run().await;
     });

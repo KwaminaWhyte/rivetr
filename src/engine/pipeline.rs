@@ -2,11 +2,12 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::crypto;
 use crate::db::{App, SshKey};
 use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RegistryAuth, RunConfig};
 use crate::DbPool;
 
-use super::{add_deployment_log, update_deployment_status, BuildLimits};
+use super::{add_deployment_log, update_deployment_status, BuildLimits, KEY_LENGTH};
 
 /// Execute deployment commands (pre or post) in a container
 /// For pre-deploy: runs in a temporary container using the built image
@@ -277,6 +278,7 @@ pub async fn run_deployment(
     deployment_id: &str,
     app: &App,
     build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
     // Determine the image to use based on deployment source
     let image_tag = if app.uses_registry_image() {
@@ -297,13 +299,26 @@ pub async fn run_deployment(
     update_deployment_status(db, deployment_id, "starting", None).await?;
 
     // Get env vars from database
-    let env_vars = sqlx::query_as::<_, (String, String)>(
+    let raw_env_vars = sqlx::query_as::<_, (String, String)>(
         "SELECT key, value FROM env_vars WHERE app_id = ?",
     )
     .bind(&app.id)
     .fetch_all(db)
     .await
     .unwrap_or_default();
+
+    // Decrypt env var values if encryption is enabled
+    let env_vars: Vec<(String, String)> = raw_env_vars
+        .into_iter()
+        .map(|(key, value)| {
+            let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to decrypt env var {}: {}", key, e);
+                    value
+                });
+            (key, decrypted)
+        })
+        .collect();
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
@@ -616,6 +631,7 @@ pub async fn run_rollback(
     rollback_deployment_id: &str,
     target_deployment: &crate::db::Deployment,
     app: &App,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
     let image_tag = target_deployment
         .image_tag
@@ -637,13 +653,26 @@ pub async fn run_rollback(
     let _ = runtime.remove(&container_name).await;
 
     // Get env vars from database
-    let env_vars = sqlx::query_as::<_, (String, String)>(
+    let raw_env_vars = sqlx::query_as::<_, (String, String)>(
         "SELECT key, value FROM env_vars WHERE app_id = ?",
     )
     .bind(&app.id)
     .fetch_all(db)
     .await
     .unwrap_or_default();
+
+    // Decrypt env var values if encryption is enabled
+    let env_vars: Vec<(String, String)> = raw_env_vars
+        .into_iter()
+        .map(|(key, value)| {
+            let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to decrypt env var {}: {}", key, e);
+                    value
+                });
+            (key, decrypted)
+        })
+        .collect();
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(

@@ -11,6 +11,10 @@ data_dir = "./data"
 [auth]
 # API token for programmatic access (generate a secure token for production!)
 admin_token = "change-me-in-production"
+# Secret key for encrypting environment variables at rest in the database
+# If not set, environment variables are stored in plaintext (backwards compatible)
+# Recommended: Use a strong, random 32+ character string
+# encryption_key = "your-strong-encryption-key-here"
 
 [runtime]
 # Options: "auto", "docker", "podman"

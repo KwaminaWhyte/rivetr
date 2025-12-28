@@ -44,6 +44,7 @@ parking_lot = "0.12"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 toml = "0.8"
 
 # Logging
@@ -83,6 +84,9 @@ rcgen = { version = "0.13", default-features = false, features = ["ring"] }
 base64 = "0.22"
 ring = "0.17"
 pem = "3"
+
+# Encryption (AES-256-GCM for env var encryption)
+aes-gcm = "0.10"
 
 # Email (SMTP)
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
