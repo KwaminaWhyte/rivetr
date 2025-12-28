@@ -272,7 +272,7 @@
 - [ ] **T2.6.1** Add unit tests for core modules
 - [ ] **T2.6.2** Add integration tests for API
 - [ ] **T2.6.3** Add E2E deployment tests
-- [ ] **T2.6.4** Set up CI pipeline
+- [x] **T2.6.4** Set up CI pipeline (.github/workflows/ci.yml, release.yml)
 - [ ] **T2.6.5** Add test coverage reporting
 
 ### 2.7 Documentation
@@ -435,25 +435,27 @@
 
 ---
 
-## Phase 4: Platform Services (Coolify-inspired) - NOT STARTED
+## Phase 4: Platform Services (Coolify-inspired) - IN PROGRESS
 
-### 4.1 Managed Databases
+### 4.1 Managed Databases ✅ COMPLETE
 
 One-click database deployments with automatic configuration.
 
-- [ ] **T4.1.1** Create `databases` table (id, name, type, version, port, credentials)
-- [ ] **T4.1.2** Add `GET /api/databases` endpoint (list databases)
-- [ ] **T4.1.3** Add `POST /api/databases` endpoint (create database)
-- [ ] **T4.1.4** Add `DELETE /api/databases/:id` endpoint
-- [ ] **T4.1.5** Implement PostgreSQL one-click deployment
-- [ ] **T4.1.6** Implement MySQL/MariaDB one-click deployment
-- [ ] **T4.1.7** Implement MongoDB one-click deployment
-- [ ] **T4.1.8** Implement Redis one-click deployment
-- [ ] **T4.1.9** Add connection string generation (internal URL)
-- [ ] **T4.1.10** Add public port exposure option (via Nginx TCP proxy)
-- [ ] **T4.1.11** Add database backup scheduling
-- [ ] **T4.1.12** Create Databases management page in frontend
-- [ ] **T4.1.13** Add database credentials reveal/copy UI
+- [x] **T4.1.1** Create `databases` table (id, name, type, version, port, credentials) - migrations/019_databases.sql
+- [x] **T4.1.2** Add `GET /api/databases` endpoint (list databases) - src/api/databases.rs
+- [x] **T4.1.3** Add `POST /api/databases` endpoint (create database)
+- [x] **T4.1.4** Add `DELETE /api/databases/:id` endpoint
+- [x] **T4.1.5** Implement PostgreSQL one-click deployment - src/engine/database_config.rs
+- [x] **T4.1.6** Implement MySQL/MariaDB one-click deployment
+- [x] **T4.1.7** Implement MongoDB one-click deployment
+- [x] **T4.1.8** Implement Redis one-click deployment
+- [x] **T4.1.9** Add connection string generation (internal URL) - src/db/models.rs
+- [x] **T4.1.10** Add public port exposure option (via host port binding)
+- [x] **T4.1.11** Add database backup scheduling (src/engine/database_backups.rs, migrations/021)
+- [x] **T4.1.12** Create Databases management page in frontend (under projects with grid view)
+- [x] **T4.1.13** Add database credentials reveal/copy UI - frontend/app/routes/databases/$id/_index.tsx
+- [x] **T4.1.14** Add backup file download functionality (API endpoint + frontend button)
+- [x] **T4.1.15** Add database stats to dashboard (container stats aggregated with apps)
 
 ### 4.2 Services (Docker Compose Support)
 
@@ -549,28 +551,27 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 28 | 17 | 61% |
+| Phase 2 | 28 | 18 | 64% |
 | Phase 3 | 90 | 78 | 87% |
-| Phase 4 | 40 | 0 | 0% |
-| **Total** | **276** | **209** | **76%** |
+| Phase 4 | 41 | 15 | 37% |
+| **Total** | **277** | **225** | **81%** |
 
 ---
 
 ## Next Priority Tasks
 
-**Phase 3 - Enhanced Features:**
-1. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-2. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
+**Phase 4 - Platform Services:**
+1. **T4.2.1-12** - Services (Docker Compose support)
+2. **T4.3.1-15** - One-Click Service Templates (Portainer, Grafana, Gitea, etc.)
 
-**Phase 4 - Platform Services (Coolify-inspired):**
-3. **T4.1.1-13** - Managed Databases (PostgreSQL, MySQL, MongoDB, Redis one-click)
-4. **T4.2.1-12** - Services (Docker Compose support)
-5. **T4.3.1-15** - One-Click Service Templates (Portainer, Grafana, Gitea, etc.)
+**Phase 3 - Enhanced Features:**
+3. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+4. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
 
 **Phase 2 - Production Ready:**
-6. **T2.1.3** - Add CSRF tokens for UI forms
-7. **T2.2.2** - Add deployment failure recovery
-8. **T2.2.5** - Database integrity checks
+5. **T2.1.3** - Add CSRF tokens for UI forms
+6. **T2.2.2** - Add deployment failure recovery
+7. **T2.2.5** - Database integrity checks
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -623,10 +624,13 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Teams & RBAC** - Team management with owner/admin/developer/viewer roles and permission-based access control
 - **Container Labels** - Custom Docker/Podman labels for Traefik/Caddy integration with preset templates
 - **Volumes Management** - Persistent data volumes with full CRUD, bind mounts, and tar.gz backup/export
+- **GitHub Actions CI/CD** - Automated lint/test/build on PRs, cross-platform release builds (Linux, macOS, Windows)
+- **Managed Databases** - One-click PostgreSQL, MySQL, MongoDB, Redis deployments with credentials UI (100% complete)
+- **Database Backup Scheduling** - Automated backups with hourly/daily/weekly schedules, retention policies, manual triggers
+- **Apps & Databases Grid View** - Card-based grid layout for apps and databases under projects
 
 ### Planned Features
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
 - **Docker Compose support** - Deploy multi-container apps
-- **One-click templates** - Pre-configured apps (PostgreSQL, Redis, etc.)
-- **Managed Databases** - One-click database deployments (PostgreSQL, MySQL, MongoDB, Redis)
+- **One-click templates** - Pre-configured apps (Portainer, Grafana, Gitea, etc.)
 - **Services (Docker Compose)** - Deploy services from docker-compose.yml files

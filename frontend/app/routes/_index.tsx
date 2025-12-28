@@ -159,10 +159,10 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Running Services"
-          value={stats?.running_apps_count ?? 0}
+          value={(stats?.running_apps_count ?? 0) + (stats?.running_databases_count ?? 0)}
           icon={<Activity className="h-5 w-5 text-green-600" />}
           iconBgColor="bg-green-100 dark:bg-green-900/30"
-          trend={stats?.running_apps_count ? `${Math.round((stats.running_apps_count / Math.max(stats.total_apps_count, 1)) * 100)}% active` : undefined}
+          trend={stats ? `${stats.running_apps_count} apps, ${stats.running_databases_count} dbs` : undefined}
           trendPositive
         />
         <StatCard

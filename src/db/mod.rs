@@ -244,6 +244,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/020_databases_project.sql")).await?;
     }
 
+    // Migration 021: Add database backups and backup schedules tables
+    let has_database_backups_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='database_backups'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_database_backups_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/021_database_backups.sql")).await?;
+    }
+
     info!("Migrations completed");
     Ok(())
 }

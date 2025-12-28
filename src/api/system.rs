@@ -6,7 +6,7 @@ use axum::{extract::State, Json};
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::db::{App, Deployment};
+use crate::db::{App, Deployment, ManagedDatabase};
 use crate::engine::get_current_disk_stats;
 use crate::startup::{get_system_health, SystemHealthStatus};
 use crate::AppState;
@@ -20,6 +20,10 @@ pub struct SystemStats {
     pub running_apps_count: u32,
     /// Total number of apps
     pub total_apps_count: u32,
+    /// Number of running databases
+    pub running_databases_count: u32,
+    /// Total number of databases
+    pub total_databases_count: u32,
     /// Aggregate CPU usage percentage across all running containers
     pub total_cpu_percent: f64,
     /// Aggregate memory usage in bytes across all running containers
@@ -81,12 +85,25 @@ pub async fn get_system_stats(
 
     let running_apps_count = running_deployments.len() as u32;
 
-    // Aggregate container stats for running apps
+    // Get databases count
+    let databases: Vec<ManagedDatabase> = sqlx::query_as("SELECT * FROM databases")
+        .fetch_all(&state.db)
+        .await?;
+
+    let total_databases_count = databases.len() as u32;
+    let running_databases: Vec<&ManagedDatabase> = databases
+        .iter()
+        .filter(|db| db.status == "running")
+        .collect();
+    let running_databases_count = running_databases.len() as u32;
+
+    // Aggregate container stats for running apps and databases
     let mut total_cpu_percent = 0.0;
     let mut memory_used_bytes: u64 = 0;
     let mut memory_total_bytes: u64 = 0;
     let mut has_unlimited_container = false;
 
+    // Stats from running app deployments
     for deployment in &running_deployments {
         if let Some(container_id) = &deployment.container_id {
             match state.runtime.stats(container_id).await {
@@ -103,6 +120,30 @@ pub async fn get_system_stats(
                 Err(e) => {
                     tracing::debug!(
                         "Could not get stats for container {}: {}",
+                        container_id,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // Stats from running databases
+    for database in &running_databases {
+        if let Some(container_id) = &database.container_id {
+            match state.runtime.stats(container_id).await {
+                Ok(stats) => {
+                    total_cpu_percent += stats.cpu_percent;
+                    memory_used_bytes += stats.memory_usage;
+                    if stats.memory_limit == 0 {
+                        has_unlimited_container = true;
+                    } else {
+                        memory_total_bytes += stats.memory_limit;
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Could not get stats for database container {}: {}",
                         container_id,
                         e
                     );
@@ -130,6 +171,8 @@ pub async fn get_system_stats(
     Ok(Json(SystemStats {
         running_apps_count,
         total_apps_count,
+        running_databases_count,
+        total_databases_count,
         total_cpu_percent,
         memory_used_bytes,
         memory_total_bytes,

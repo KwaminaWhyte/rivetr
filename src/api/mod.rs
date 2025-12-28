@@ -1,6 +1,7 @@
 mod apps;
 pub mod auth;
 mod basic_auth;
+mod database_backups;
 mod databases;
 mod deployments;
 mod env_vars;
@@ -142,6 +143,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/start", post(databases::start_database))
         .route("/databases/:id/stop", post(databases::stop_database))
         .route("/databases/:id/logs", get(databases::get_database_logs))
+        .route("/databases/:id/stats", get(databases::get_database_stats))
+        // Database Backups
+        .route("/databases/:id/backups", get(database_backups::list_backups))
+        .route("/databases/:id/backups", post(database_backups::create_backup))
+        .route("/databases/:id/backups/:backup_id", get(database_backups::get_backup))
+        .route("/databases/:id/backups/:backup_id", delete(database_backups::delete_backup))
+        .route("/databases/:id/backups/:backup_id/download", get(database_backups::download_backup))
+        .route("/databases/:id/backups/schedule", get(database_backups::get_schedule))
+        .route("/databases/:id/backups/schedule", post(database_backups::upsert_schedule))
+        .route("/databases/:id/backups/schedule", delete(database_backups::delete_schedule))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/disk", get(system::get_disk_stats))

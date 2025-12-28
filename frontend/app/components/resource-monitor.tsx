@@ -5,7 +5,10 @@ import { api } from "@/lib/api";
 import type { ContainerStats } from "@/types/api";
 
 interface ResourceMonitorProps {
-  appId: string;
+  /** App ID (for app stats) */
+  appId?: string;
+  /** Database ID (for database stats) */
+  databaseId?: string;
   /** Auth token for API calls */
   token: string;
   /** Polling interval in milliseconds (default: 5000) */
@@ -143,9 +146,12 @@ const NetworkIcon = () => (
   </svg>
 );
 
-export function ResourceMonitor({ appId, token, pollInterval = 5000 }: ResourceMonitorProps) {
+export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 }: ResourceMonitorProps) {
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [memoryHistory, setMemoryHistory] = useState<number[]>([]);
+
+  const resourceId = appId || databaseId;
+  const resourceType = appId ? "app" : "database";
 
   const {
     data: stats,
@@ -153,8 +159,11 @@ export function ResourceMonitor({ appId, token, pollInterval = 5000 }: ResourceM
     error,
     isError,
   } = useQuery<ContainerStats>({
-    queryKey: ["app-stats", appId],
-    queryFn: () => api.getAppStats(appId, token),
+    queryKey: [`${resourceType}-stats`, resourceId],
+    queryFn: () => appId
+      ? api.getAppStats(appId, token)
+      : api.getDatabaseStats(databaseId!, token),
+    enabled: !!resourceId,
     refetchInterval: pollInterval,
     refetchIntervalInBackground: false,
     retry: 1,

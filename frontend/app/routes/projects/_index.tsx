@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ProjectCard } from "@/components/project-card";
-import type { App, CreateProjectRequest, DeploymentStatus, ProjectWithApps } from "@/types/api";
+import type { App, CreateProjectRequest, DeploymentStatus, ManagedDatabase, ProjectWithApps } from "@/types/api";
 
 export function meta() {
   return [
@@ -36,14 +36,15 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { api } = await import("@/lib/api.server");
 
   const token = await requireAuth(request);
-  const [projectList, apps] = await Promise.all([
+  const [projectList, apps, databases] = await Promise.all([
     api.getProjects(token).catch(() => []),
     api.getApps(token).catch(() => []),
+    api.getDatabases(token).catch(() => []),
   ]);
 
-  // Get full project details with apps
+  // Get full project details with apps and databases
   const projectsWithApps = await Promise.all(
-    projectList.map((p) => api.getProject(token, p.id).catch(() => ({ ...p, apps: [] })))
+    projectList.map((p) => api.getProject(token, p.id).catch(() => ({ ...p, apps: [], databases: [] })))
   );
 
   // Get app statuses (latest deployment status for each app)
@@ -72,7 +73,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     })
   );
 
-  return { projects: projectsWithApps, apps, appStatuses, token };
+  // Get database statuses (directly from the database status field)
+  const databaseStatuses: Record<string, string> = {};
+  for (const db of databases) {
+    databaseStatuses[db.id] = db.status;
+  }
+
+  return { projects: projectsWithApps, apps, databases, appStatuses, databaseStatuses, token };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -101,15 +108,31 @@ export async function action({ request }: Route.ActionArgs) {
 
 type FilterTab = "all" | "healthy" | "issues" | "building";
 
-function getProjectHealth(project: ProjectWithApps, appStatuses: Record<string, DeploymentStatus>): FilterTab {
-  if (project.apps.length === 0) return "healthy";
+function getProjectHealth(
+  project: ProjectWithApps,
+  appStatuses: Record<string, DeploymentStatus>,
+  databaseStatuses: Record<string, string>
+): FilterTab {
+  const databases = project.databases || [];
+  if (project.apps.length === 0 && databases.length === 0) return "healthy";
 
-  const statuses = project.apps.map((app) => appStatuses[app.id]);
+  const appStatusValues = project.apps.map((app) => appStatuses[app.id]);
+  const dbStatusValues = databases.map((db) => databaseStatuses[db.id] || db.status);
 
-  if (statuses.some((s) => s === "building" || s === "cloning" || s === "starting" || s === "checking" || s === "pending")) {
+  // Check for building status in apps
+  if (appStatusValues.some((s) => s === "building" || s === "cloning" || s === "starting" || s === "checking" || s === "pending")) {
     return "building";
   }
-  if (statuses.some((s) => s === "failed" || s === "stopped")) {
+  // Check for starting status in databases
+  if (dbStatusValues.some((s) => s === "starting" || s === "pulling" || s === "pending")) {
+    return "building";
+  }
+  // Check for issues in apps
+  if (appStatusValues.some((s) => s === "failed" || s === "stopped")) {
+    return "issues";
+  }
+  // Check for issues in databases
+  if (dbStatusValues.some((s) => s === "failed" || s === "stopped")) {
     return "issues";
   }
   return "healthy";
@@ -140,27 +163,28 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
     initialData: loaderData.apps,
   });
 
-  // Use real app statuses from loader
+  // Use real statuses from loader
   const appStatuses = loaderData.appStatuses || {};
+  const databaseStatuses = loaderData.databaseStatuses || {};
 
   // Filter projects by tab
   const filteredProjects = useMemo(() => {
     if (activeTab === "all") return projects;
     return projects.filter((project) => {
-      const health = getProjectHealth(project, appStatuses);
+      const health = getProjectHealth(project, appStatuses, databaseStatuses);
       return health === activeTab;
     });
-  }, [projects, activeTab, appStatuses]);
+  }, [projects, activeTab, appStatuses, databaseStatuses]);
 
   // Count projects by status
   const statusCounts = useMemo(() => {
     const counts = { all: projects.length, healthy: 0, issues: 0, building: 0 };
     for (const project of projects) {
-      const health = getProjectHealth(project, appStatuses);
+      const health = getProjectHealth(project, appStatuses, databaseStatuses);
       counts[health]++;
     }
     return counts;
-  }, [projects, appStatuses]);
+  }, [projects, appStatuses, databaseStatuses]);
 
   // Close dialog on successful creation
   const isSubmitting = navigation.state === "submitting";
@@ -277,6 +301,7 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
               key={project.id}
               project={project}
               appStatuses={appStatuses}
+              databaseStatuses={databaseStatuses}
             />
           ))}
         </div>

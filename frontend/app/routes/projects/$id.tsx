@@ -49,14 +49,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -488,47 +480,29 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               </div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Environment</TableHead>
-                  <TableHead>Repository</TableHead>
-                  <TableHead>Domain</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {project.apps.map((app) => (
-                  <TableRow key={app.id}>
-                    <TableCell className="font-medium">{app.name}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={loaderData.appStatuses?.[app.id] || "stopped"} />
-                    </TableCell>
-                    <TableCell>
-                      <EnvironmentBadge environment={app.environment} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground max-w-xs truncate">
-                      {app.git_url}
-                    </TableCell>
-                    <TableCell>{app.domain || "-"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/apps/${app.id}`}>
-                            <ExternalLink className="mr-1 h-3 w-3" />
-                            View
-                          </Link>
-                        </Button>
-                        <Form method="post">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {project.apps.map((app) => {
+                const status = loaderData.appStatuses?.[app.id] || "stopped";
+                return (
+                  <Card key={app.id} className="group relative hover:shadow-md transition-shadow">
+                    <Link to={`/apps/${app.id}`} className="absolute inset-0 z-0" />
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-base font-semibold">{app.name}</CardTitle>
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={status} />
+                            <EnvironmentBadge environment={app.environment} />
+                          </div>
+                        </div>
+                        <Form method="post" className="relative z-10">
                           <input type="hidden" name="intent" value="remove-app" />
                           <input type="hidden" name="appId" value={app.id} />
                           <Button
                             type="submit"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
                             disabled={isSubmitting}
                             title="Remove from project"
                           >
@@ -536,11 +510,26 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
                           </Button>
                         </Form>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </CardHeader>
+                    <CardContent className="pt-0 pb-4">
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        {app.domain && (
+                          <div className="flex items-center gap-2 truncate">
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{app.domain}</span>
+                          </div>
+                        )}
+                        {app.git_url && (
+                          <div className="truncate text-xs opacity-75">
+                            {app.git_url.replace(/^https?:\/\//, '').replace(/\.git$/, '')}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -567,115 +556,115 @@ export default function ProjectDetailPage({ loaderData, actionData }: Route.Comp
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Port</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {project.databases.map((db) => (
-                  <TableRow key={db.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to={`/databases/${db.id}`}
-                          className="hover:underline text-primary"
-                        >
-                          {db.name}
-                        </Link>
-                        {db.status === "failed" && db.error_message && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <AlertCircle className="h-4 w-4 text-destructive" />
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p className="text-sm">{db.error_message}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {project.databases.map((db) => {
+                const dbTypeInfo = DATABASE_TYPES[db.db_type as DatabaseType];
+                return (
+                  <Card key={db.id} className="group relative hover:shadow-md transition-shadow">
+                    <Link to={`/databases/${db.id}`} className="absolute inset-0 z-0" />
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base font-semibold">{db.name}</CardTitle>
+                            {db.status === "failed" && db.error_message && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <AlertCircle className="h-4 w-4 text-destructive" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    <p className="text-sm">{db.error_message}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DatabaseStatusBadge status={db.status} />
+                            <Badge variant="outline" className="capitalize text-xs">
+                              {dbTypeInfo?.label || db.db_type} {db.version}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="View Credentials"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleViewCredentials(db);
+                            }}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            title="Delete Database"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSelectedDatabase(db);
+                              setIsDeleteDbDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {db.db_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{db.version}</TableCell>
-                    <TableCell>
-                      <DatabaseStatusBadge status={db.status} />
-                    </TableCell>
-                    <TableCell>
-                      {db.public_access && db.external_port > 0 ? (
-                        <span className="font-mono text-sm">{db.external_port}</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Internal</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="View Credentials"
-                          onClick={() => handleViewCredentials(db)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {db.status === "stopped" && (
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="start-database" />
-                            <input type="hidden" name="databaseId" value={db.id} />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              type="submit"
-                              title="Start Database"
-                              disabled={isSubmitting}
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                          </Form>
-                        )}
-                        {db.status === "running" && (
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="stop-database" />
-                            <input type="hidden" name="databaseId" value={db.id} />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              type="submit"
-                              title="Stop Database"
-                              disabled={isSubmitting}
-                            >
-                              <Square className="h-4 w-4" />
-                            </Button>
-                          </Form>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Delete Database"
-                          onClick={() => {
-                            setSelectedDatabase(db);
-                            setIsDeleteDbDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                    </CardHeader>
+                    <CardContent className="pt-0 pb-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {db.public_access && db.external_port > 0 ? (
+                            <span className="font-mono">Port {db.external_port}</span>
+                          ) : (
+                            "Internal only"
+                          )}
+                        </span>
+                        <div className="relative z-10 flex items-center gap-1">
+                          {db.status === "stopped" && (
+                            <Form method="post">
+                              <input type="hidden" name="intent" value="start-database" />
+                              <input type="hidden" name="databaseId" value={db.id} />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="submit"
+                                className="h-7 px-2"
+                                disabled={isSubmitting}
+                              >
+                                <Play className="h-3 w-3 mr-1" />
+                                Start
+                              </Button>
+                            </Form>
+                          )}
+                          {db.status === "running" && (
+                            <Form method="post">
+                              <input type="hidden" name="intent" value="stop-database" />
+                              <input type="hidden" name="databaseId" value={db.id} />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                type="submit"
+                                className="h-7 px-2"
+                                disabled={isSubmitting}
+                              >
+                                <Square className="h-3 w-3 mr-1" />
+                                Stop
+                              </Button>
+                            </Form>
+                          )}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

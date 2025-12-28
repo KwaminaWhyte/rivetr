@@ -317,6 +317,10 @@ export interface SystemStats {
   running_apps_count: number;
   /** Total number of apps */
   total_apps_count: number;
+  /** Number of running databases */
+  running_databases_count: number;
+  /** Total number of databases */
+  total_databases_count: number;
   /** Aggregate CPU usage percentage across all running containers */
   total_cpu_percent: number;
   /** Aggregate memory usage in bytes across all running containers */
@@ -725,6 +729,55 @@ export interface DatabaseLogEntry {
   timestamp: string;
   message: string;
   stream: "stdout" | "stderr";
+}
+
+/** Database backup status */
+export type BackupStatus = "pending" | "running" | "completed" | "failed";
+
+/** Database backup type */
+export type BackupType = "manual" | "scheduled";
+
+/** Schedule type for backups */
+export type ScheduleType = "hourly" | "daily" | "weekly";
+
+/** Database backup record */
+export interface DatabaseBackup {
+  id: string;
+  database_id: string;
+  backup_type: BackupType;
+  status: BackupStatus;
+  file_path?: string;
+  file_size?: number;
+  file_size_human?: string;
+  backup_format?: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+  error_message?: string;
+  created_at: string;
+}
+
+/** Database backup schedule */
+export interface DatabaseBackupSchedule {
+  id: string;
+  database_id: string;
+  enabled: boolean;
+  schedule_type: ScheduleType;
+  schedule_hour: number;
+  schedule_day?: number;
+  retention_count: number;
+  last_run_at?: string;
+  next_run_at?: string;
+  created_at: string;
+}
+
+/** Request to create/update backup schedule */
+export interface CreateBackupScheduleRequest {
+  enabled?: boolean;
+  schedule_type?: ScheduleType;
+  schedule_hour?: number;
+  schedule_day?: number;
+  retention_count?: number;
 }
 
 /** Available database configurations */

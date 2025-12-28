@@ -1,0 +1,385 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/build
+          retention-days: 1
+
+  build-linux-x86_64:
+    name: Build Linux x86_64
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: static/dist
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: linux-x86_64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-x86_64-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-x86_64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-x86_64-cargo-build-
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-linux-x86_64
+          cd dist
+          sha256sum rivetr-${{ steps.version.outputs.VERSION }}-linux-x86_64 > rivetr-${{ steps.version.outputs.VERSION }}-linux-x86_64.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivetr-linux-x86_64
+          path: dist/*
+          retention-days: 1
+
+  build-linux-aarch64:
+    name: Build Linux aarch64
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: static/dist
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: linux-aarch64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-aarch64-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-aarch64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-aarch64-cargo-build-
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build release binary with cross
+        run: cross build --release --target aarch64-unknown-linux-gnu
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/aarch64-unknown-linux-gnu/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-linux-aarch64
+          cd dist
+          sha256sum rivetr-${{ steps.version.outputs.VERSION }}-linux-aarch64 > rivetr-${{ steps.version.outputs.VERSION }}-linux-aarch64.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivetr-linux-aarch64
+          path: dist/*
+          retention-days: 1
+
+  build-macos-x86_64:
+    name: Build macOS x86_64
+    needs: build-frontend
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: static/dist
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: macos-x86_64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-x86_64-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: macos-x86_64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-x86_64-cargo-build-
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/x86_64-apple-darwin/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64
+          cd dist
+          shasum -a 256 rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64 > rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivetr-macos-x86_64
+          path: dist/*
+          retention-days: 1
+
+  build-macos-aarch64:
+    name: Build macOS aarch64
+    needs: build-frontend
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: static/dist
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: macos-aarch64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-aarch64-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: macos-aarch64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-aarch64-cargo-build-
+
+      - name: Build release binary
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/aarch64-apple-darwin/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64
+          cd dist
+          shasum -a 256 rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64 > rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivetr-macos-aarch64
+          path: dist/*
+          retention-days: 1
+
+  build-windows-x86_64:
+    name: Build Windows x86_64
+    needs: build-frontend
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: static/dist
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: windows-x86_64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-x86_64-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: windows-x86_64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-x86_64-cargo-build-
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target/release/rivetr.exe dist/rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe
+          cd dist
+          Get-FileHash rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe" } | Out-File -Encoding utf8 rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivetr-windows-x86_64
+          path: dist/*
+          retention-days: 1
+
+  create-release:
+    name: Create Release
+    needs:
+      - build-linux-x86_64
+      - build-linux-aarch64
+      - build-macos-x86_64
+      - build-macos-aarch64
+      - build-windows-x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: rivetr-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Create checksums file
+        run: |
+          cd artifacts
+          cat *.sha256 > checksums.txt
+          echo "Checksums:"
+          cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Rivetr ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          generate_release_notes: true
+          files: |
+            artifacts/rivetr-*
+            artifacts/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

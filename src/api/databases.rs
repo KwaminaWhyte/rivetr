@@ -15,7 +15,7 @@ use crate::db::{
     ManagedDatabase, ManagedDatabaseResponse,
 };
 use crate::engine::database_config::{generate_env_vars, generate_password, generate_username, get_config};
-use crate::runtime::{PortMapping, RunConfig};
+use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -474,4 +474,45 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
     );
 
     Ok(())
+}
+
+/// Get container stats for a database
+pub async fn get_database_stats(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ContainerStats>, StatusCode> {
+    // Get the database
+    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get database: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Check if database is running
+    if database.status != "running" {
+        tracing::warn!("Database {} is not running (status: {})", id, database.status);
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Get container ID
+    let container_id = database.container_id.ok_or_else(|| {
+        tracing::warn!("Database {} has no container ID", id);
+        StatusCode::NOT_FOUND
+    })?;
+
+    // Get stats from the container runtime
+    let stats = state
+        .runtime
+        .stats(&container_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(stats))
 }

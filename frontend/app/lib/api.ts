@@ -6,12 +6,15 @@ import type {
   AppStatus,
   BasicAuthStatus,
   ContainerStats,
+  CreateBackupScheduleRequest,
   CreateEnvVarRequest,
   CreateManagedDatabaseRequest,
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   CreateTeamRequest,
   CreateVolumeRequest,
+  DatabaseBackup,
+  DatabaseBackupSchedule,
   DatabaseLogEntry,
   Deployment,
   DeploymentLog,
@@ -417,6 +420,94 @@ export const api = {
       {},
       token
     ),
+  getDatabaseStats: (id: string, token?: string) =>
+    apiRequest<ContainerStats>(`/databases/${id}/stats`, {}, token),
+
+  // Database Backups
+  getDatabaseBackups: (databaseId: string, limit = 50, token?: string) =>
+    apiRequest<DatabaseBackup[]>(
+      `/databases/${databaseId}/backups?limit=${limit}`,
+      {},
+      token
+    ),
+  getDatabaseBackup: (databaseId: string, backupId: string, token?: string) =>
+    apiRequest<DatabaseBackup>(
+      `/databases/${databaseId}/backups/${backupId}`,
+      {},
+      token
+    ),
+  createDatabaseBackup: (databaseId: string, token?: string) =>
+    apiRequest<DatabaseBackup>(
+      `/databases/${databaseId}/backups`,
+      { method: "POST" },
+      token
+    ),
+  deleteDatabaseBackup: (databaseId: string, backupId: string, token?: string) =>
+    apiRequest<void>(
+      `/databases/${databaseId}/backups/${backupId}`,
+      { method: "DELETE" },
+      token
+    ),
+  getDatabaseBackupSchedule: (databaseId: string, token?: string) =>
+    apiRequest<DatabaseBackupSchedule | null>(
+      `/databases/${databaseId}/backups/schedule`,
+      {},
+      token
+    ),
+  upsertDatabaseBackupSchedule: (
+    databaseId: string,
+    data: CreateBackupScheduleRequest,
+    token?: string
+  ) =>
+    apiRequest<DatabaseBackupSchedule>(
+      `/databases/${databaseId}/backups/schedule`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteDatabaseBackupSchedule: (databaseId: string, token?: string) =>
+    apiRequest<void>(
+      `/databases/${databaseId}/backups/schedule`,
+      { method: "DELETE" },
+      token
+    ),
+
+  // Database Backup Download
+  downloadDatabaseBackup: async (databaseId: string, backupId: string, token?: string) => {
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const response = await fetch(`/api/databases/${databaseId}/backups/${backupId}/download`, {
+      headers,
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || `Download failed: ${response.status}`);
+    }
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let filename = "backup.sql";
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+    // Convert to blob and trigger download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 export default api;

@@ -168,6 +168,14 @@ async fn main() -> Result<()> {
         config.container_monitor.clone(),
     );
 
+    // Start database backup scheduler
+    rivetr::engine::spawn_database_backup_task(
+        db.clone(),
+        runtime.clone(),
+        config.database_backup.clone(),
+        config.server.data_dir.clone(),
+    );
+
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
 

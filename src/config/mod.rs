@@ -27,6 +27,8 @@ pub struct Config {
     pub disk_monitor: DiskMonitorConfig,
     #[serde(default)]
     pub container_monitor: ContainerMonitorConfig,
+    #[serde(default)]
+    pub database_backup: DatabaseBackupConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -520,6 +522,49 @@ impl Default for ContainerMonitorConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct DatabaseBackupConfig {
+    /// Enable automatic database backup scheduling (default: true)
+    #[serde(default = "default_db_backup_enabled")]
+    pub enabled: bool,
+    /// Interval between schedule checks in seconds (default: 60)
+    #[serde(default = "default_db_backup_check_interval")]
+    pub check_interval_seconds: u64,
+    /// Directory to store backups (relative to data_dir, default: "backups")
+    #[serde(default = "default_db_backup_dir")]
+    pub backup_dir: String,
+    /// Timeout for backup commands in seconds (default: 3600 = 1 hour)
+    #[serde(default = "default_db_backup_timeout")]
+    pub timeout_seconds: u64,
+}
+
+fn default_db_backup_enabled() -> bool {
+    true
+}
+
+fn default_db_backup_check_interval() -> u64 {
+    60 // 1 minute
+}
+
+fn default_db_backup_dir() -> String {
+    "backups".to_string()
+}
+
+fn default_db_backup_timeout() -> u64 {
+    3600 // 1 hour
+}
+
+impl Default for DatabaseBackupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_db_backup_enabled(),
+            check_interval_seconds: default_db_backup_check_interval(),
+            backup_dir: default_db_backup_dir(),
+            timeout_seconds: default_db_backup_timeout(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -548,6 +593,7 @@ impl Config {
             cleanup: CleanupConfig::default(),
             disk_monitor: DiskMonitorConfig::default(),
             container_monitor: ContainerMonitorConfig::default(),
+            database_backup: DatabaseBackupConfig::default(),
         }
     }
 }

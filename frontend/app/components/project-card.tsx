@@ -1,13 +1,14 @@
 import { Link } from "react-router";
-import { Settings, ExternalLink, ArrowRight } from "lucide-react";
+import { Settings, ExternalLink, ArrowRight, Database } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { App, ProjectWithApps, DeploymentStatus } from "@/types/api";
+import type { App, ManagedDatabase, ProjectWithApps, DeploymentStatus } from "@/types/api";
 
 interface ProjectCardProps {
   project: ProjectWithApps;
   appStatuses?: Record<string, DeploymentStatus>;
+  databaseStatuses?: Record<string, string>;
 }
 
 function getStatusColor(status?: DeploymentStatus): string {
@@ -30,17 +31,38 @@ function getStatusColor(status?: DeploymentStatus): string {
   }
 }
 
-function StatusDot({ status }: { status?: DeploymentStatus }) {
+function StatusDot({ status }: { status?: DeploymentStatus | string }) {
+  const color = typeof status === "string" ? getDbStatusColor(status) : getStatusColor(status);
   return (
     <span
-      className={`inline-block w-2 h-2 rounded-full ${getStatusColor(status)}`}
+      className={`inline-block w-2 h-2 rounded-full ${color}`}
       title={status || "unknown"}
     />
   );
 }
 
-export function ProjectCard({ project, appStatuses = {} }: ProjectCardProps) {
-  const serviceCount = project.apps.length;
+function getDbStatusColor(status?: string): string {
+  if (!status) return "bg-gray-400";
+  switch (status) {
+    case "running":
+      return "bg-green-500";
+    case "starting":
+    case "pulling":
+    case "pending":
+      return "bg-yellow-500";
+    case "failed":
+    case "stopped":
+      return "bg-red-500";
+    default:
+      return "bg-gray-400";
+  }
+}
+
+export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }: ProjectCardProps) {
+  const databases = project.databases || [];
+  const appCount = project.apps.length;
+  const dbCount = databases.length;
+  const serviceCount = appCount + dbCount;
 
   return (
     <Card className="group hover:shadow-md transition-shadow">
@@ -65,24 +87,35 @@ export function ProjectCard({ project, appStatuses = {} }: ProjectCardProps) {
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* App list */}
+        {/* Services list (apps + databases) */}
         <div className="space-y-2">
-          {project.apps.length === 0 ? (
+          {serviceCount === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              No apps in this project
+              No services in this project
             </p>
           ) : (
-            project.apps.slice(0, 5).map((app) => (
-              <AppListItem
-                key={app.id}
-                app={app}
-                status={appStatuses[app.id]}
-              />
-            ))
+            <>
+              {/* Apps */}
+              {project.apps.slice(0, 3).map((app) => (
+                <AppListItem
+                  key={app.id}
+                  app={app}
+                  status={appStatuses[app.id]}
+                />
+              ))}
+              {/* Databases */}
+              {databases.slice(0, Math.max(0, 3 - project.apps.length)).map((db) => (
+                <DatabaseListItem
+                  key={db.id}
+                  database={db}
+                  status={databaseStatuses[db.id] || db.status}
+                />
+              ))}
+            </>
           )}
-          {project.apps.length > 5 && (
+          {serviceCount > 3 && (
             <p className="text-xs text-muted-foreground">
-              +{project.apps.length - 5} more apps
+              +{serviceCount - 3} more {serviceCount - 3 === 1 ? "service" : "services"}
             </p>
           )}
         </div>
@@ -90,7 +123,10 @@ export function ProjectCard({ project, appStatuses = {} }: ProjectCardProps) {
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t">
           <span className="text-sm text-muted-foreground">
-            {serviceCount} {serviceCount === 1 ? "service" : "services"}
+            {appCount > 0 && `${appCount} app${appCount !== 1 ? "s" : ""}`}
+            {appCount > 0 && dbCount > 0 && ", "}
+            {dbCount > 0 && `${dbCount} db${dbCount !== 1 ? "s" : ""}`}
+            {serviceCount === 0 && "No services"}
           </span>
           <Link
             to={`/projects/${project.id}`}
@@ -128,6 +164,35 @@ function AppListItem({ app, status }: AppListItemProps) {
       >
         <Link to={`/apps/${app.id}`} title="View App">
           <ExternalLink className="h-3 w-3" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+interface DatabaseListItemProps {
+  database: ManagedDatabase;
+  status?: string;
+}
+
+function DatabaseListItem({ database, status }: DatabaseListItemProps) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div className="flex items-center gap-2 min-w-0">
+        <StatusDot status={status} />
+        <span className="text-sm font-medium truncate">{database.name}</span>
+        <Badge variant="outline" className="text-xs shrink-0 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+          {database.db_type.toUpperCase()}
+        </Badge>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 shrink-0"
+        asChild
+      >
+        <Link to={`/databases/${database.id}`} title="View Database">
+          <Database className="h-3 w-3" />
         </Link>
       </Button>
     </div>

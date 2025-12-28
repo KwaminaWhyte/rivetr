@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ResourceMonitor } from "@/components/resource-monitor";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Check, ExternalLink } from "lucide-react";
 
@@ -295,6 +296,11 @@ export default function DatabaseGeneralTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Resource Usage - only show when running */}
+      {database.status === "running" && (
+        <ResourceMonitor databaseId={database.id} token={token} />
+      )}
     </div>
   );
 }

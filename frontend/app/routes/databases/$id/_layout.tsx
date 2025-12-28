@@ -130,6 +130,7 @@ const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
   { id: "storage", label: "Storage", path: "/storage" },
+  { id: "backups", label: "Backups", path: "/backups" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];

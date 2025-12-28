@@ -163,3 +163,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 Inspired by [Coolify](https://coolify.io/), built for developers who want simplicity and efficiency.
+
+To create a release:
+git tag v0.1.0
+git push origin v0.1.0
