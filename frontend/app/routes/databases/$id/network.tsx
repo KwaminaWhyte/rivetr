@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { useOutletContext, Form, useNavigation } from "react-router";
-import type { Route } from "./+types/network";
+import { useOutletContext } from "react-router";
 import type { ManagedDatabase } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, Check, Globe, Lock, Server } from "lucide-react";
+import { Copy, Check, Globe, Lock, Server, Container, Network } from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
@@ -25,11 +23,8 @@ const DEFAULT_PORTS: Record<string, number> = {
 };
 
 export default function DatabaseNetworkTab() {
-  const { database, token } = useOutletContext<OutletContext>();
-  const navigation = useNavigation();
+  const { database } = useOutletContext<OutletContext>();
   const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  const isSubmitting = navigation.state === "submitting";
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -235,8 +230,11 @@ export default function DatabaseNetworkTab() {
       {/* Container Network Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Container Network</CardTitle>
-          <CardDescription>Docker network information</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Container className="h-5 w-5" />
+            Container Network
+          </CardTitle>
+          <CardDescription>Docker container and network information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -252,19 +250,51 @@ export default function DatabaseNetworkTab() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Network Alias</Label>
+              <Label>Container ID</Label>
               <div className="flex gap-2">
                 <Input
-                  value={`rivetr-db-${database.name}`}
+                  value={database.container_id?.substring(0, 12) || "Not running"}
                   readOnly
                   className="font-mono"
                 />
-                <CopyButton text={`rivetr-db-${database.name}`} field="network_alias" />
+                {database.container_id && (
+                  <CopyButton text={database.container_id} field="container_id" />
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Other containers can reach this database using this hostname
-              </p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Internal Hostname</Label>
+            <div className="flex gap-2">
+              <Input
+                value={`rivetr-db-${database.name}`}
+                readOnly
+                className="font-mono"
+              />
+              <CopyButton text={`rivetr-db-${database.name}`} field="internal_hostname" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Other containers can reach this database using this hostname for service-to-service communication
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Network className="h-4 w-4" />
+              Docker Network
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                value="rivetr-network"
+                readOnly
+                className="font-mono"
+              />
+              <CopyButton text="rivetr-network" field="network_name" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              All Rivetr services share this network for internal communication
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -279,6 +309,19 @@ export default function DatabaseNetworkTab() {
         </CardHeader>
         <CardContent>
           <ConnectionExamples database={database} />
+        </CardContent>
+      </Card>
+
+      {/* Environment Variables Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Environment Variable Examples</CardTitle>
+          <CardDescription>
+            How to configure other containers to connect to this database
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <EnvironmentVariableExamples database={database} />
         </CardContent>
       </Card>
     </div>
@@ -395,6 +438,128 @@ function ConnectionExamples({ database }: { database: ManagedDatabase }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Environment variable examples for connecting from other containers
+function EnvironmentVariableExamples({ database }: { database: ManagedDatabase }) {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const containerName = `rivetr-db-${database.name}`;
+  const { username, password, database: dbName } = database.credentials || {};
+  const port = database.internal_port || DEFAULT_PORTS[database.db_type];
+
+  // Environment variable name (uppercase, replace dashes with underscores)
+  const envVarPrefix = database.name.toUpperCase().replace(/-/g, "_");
+
+  // Build individual environment variable lines
+  const envVars = [
+    { name: `${envVarPrefix}_HOST`, value: containerName },
+    { name: `${envVarPrefix}_PORT`, value: String(port) },
+    { name: `${envVarPrefix}_USER`, value: username || "user" },
+    { name: `${envVarPrefix}_PASSWORD`, value: password || "********" },
+  ];
+
+  // Add database name for non-Redis databases
+  if (database.db_type !== "redis" && dbName) {
+    envVars.push({ name: `${envVarPrefix}_DATABASE`, value: dbName });
+  }
+
+  // Connection string env var
+  const connectionStringEnvVar = {
+    name: `${envVarPrefix}_URL`,
+    value: database.internal_connection_string || "Connection string not available",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Connection String */}
+      <div className="rounded-md bg-muted p-4">
+        <p className="text-sm mb-3 font-medium">For Rivetr Apps (Internal Network):</p>
+        <div className="space-y-2 text-sm font-mono">
+          <div className="p-2 bg-background rounded flex items-center justify-between gap-2">
+            <span className="break-all">{connectionStringEnvVar.name}={connectionStringEnvVar.value}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 flex-shrink-0"
+              onClick={() => copyToClipboard(`${connectionStringEnvVar.name}=${connectionStringEnvVar.value}`, "env_url")}
+            >
+              {copiedField === "env_url" ? (
+                <Check className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Individual Variables */}
+      <div className="rounded-md bg-muted p-4">
+        <p className="text-sm mb-3 font-medium">Individual Variables:</p>
+        <div className="space-y-2 text-sm font-mono">
+          {envVars.map((envVar, idx) => (
+            <div key={idx} className="p-2 bg-background rounded flex items-center justify-between gap-2">
+              <span className="break-all">{envVar.name}={envVar.value}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 flex-shrink-0"
+                onClick={() => copyToClipboard(`${envVar.name}=${envVar.value}`, `env_${idx}`)}
+              >
+                {copiedField === `env_${idx}` ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* External Access Note */}
+      {database.public_access && database.external_connection_string && (
+        <div className="rounded-md bg-muted p-4">
+          <p className="text-sm mb-3 font-medium">For External Services:</p>
+          <div className="space-y-2 text-sm font-mono">
+            <div className="p-2 bg-background rounded flex items-center justify-between gap-2">
+              <span className="break-all">{envVarPrefix}_URL={database.external_connection_string}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 flex-shrink-0"
+                onClick={() => copyToClipboard(`${envVarPrefix}_URL=${database.external_connection_string}`, "env_external_url")}
+              >
+                {copiedField === "env_external_url" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tip */}
+      <div className="rounded-md border p-3">
+        <p className="text-sm text-muted-foreground">
+          <strong>Tip:</strong> When connecting from another Rivetr app, use the internal hostname (<code className="bg-muted px-1 rounded">{containerName}</code>) instead of <code className="bg-muted px-1 rounded">localhost</code> for better performance and security.
+        </p>
+      </div>
     </div>
   );
 }

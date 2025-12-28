@@ -425,6 +425,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (intent === "deploy-from-template") {
     const templateId = formData.get("templateId");
     const serviceName = formData.get("serviceName");
+    const envVarsJson = formData.get("envVars");
 
     if (typeof templateId !== "string") {
       return { error: "Template ID is required" };
@@ -433,10 +434,21 @@ export async function action({ request, params }: Route.ActionArgs) {
       return { error: "Service name is required" };
     }
 
+    // Parse env vars from JSON
+    let envVars: Record<string, string> = {};
+    if (typeof envVarsJson === "string" && envVarsJson.trim()) {
+      try {
+        envVars = JSON.parse(envVarsJson);
+      } catch {
+        return { error: "Invalid environment variables format" };
+      }
+    }
+
     try {
       await api.deployTemplate(token, templateId, {
         name: serviceName.trim(),
         project_id: params.id!,
+        env_vars: envVars,
       });
       return { success: true, action: "deploy-from-template" };
     } catch (error) {
@@ -488,6 +500,8 @@ export default function ProjectDetailPage({
   const [selectedTemplate, setSelectedTemplate] =
     useState<ServiceTemplate | null>(null);
   const [templateServiceName, setTemplateServiceName] = useState("");
+  const [templateEnvVars, setTemplateEnvVars] = useState<Record<string, string>>({});
+  const [showTemplateSecrets, setShowTemplateSecrets] = useState<Record<string, boolean>>({});
 
   // Use React Query with SSR initial data
   const { data: project, refetch } = useQuery<ProjectWithApps>({
@@ -521,7 +535,7 @@ export default function ProjectDetailPage({
       const matchesSearch =
         !templateSearch ||
         t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
-        t.description.toLowerCase().includes(templateSearch.toLowerCase());
+        (t.description && t.description.toLowerCase().includes(templateSearch.toLowerCase()));
       const matchesCategory =
         selectedCategory === "all" || t.category === selectedCategory;
       return matchesSearch && matchesCategory;
@@ -587,6 +601,8 @@ export default function ProjectDetailPage({
         setIsTemplatesModalOpen(false);
         setSelectedTemplate(null);
         setTemplateServiceName("");
+        setTemplateEnvVars({});
+        setShowTemplateSecrets({});
       }
       queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -811,7 +827,7 @@ export default function ProjectDetailPage({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {project.databases.map((db) => {
-                const dbTypeInfo = DATABASE_TYPES[db.db_type as DatabaseType];
+                const dbTypeInfo = DATABASE_TYPES.find((t) => t.type === db.db_type);
                 return (
                   <Card
                     key={db.id}
@@ -849,7 +865,7 @@ export default function ProjectDetailPage({
                               variant="outline"
                               className="capitalize text-xs"
                             >
-                              {dbTypeInfo?.label || db.db_type} {db.version}
+                              {dbTypeInfo?.name || db.db_type} {db.version}
                             </Badge>
                           </div>
                         </div>
@@ -1753,6 +1769,8 @@ services:
             setTemplateServiceName("");
             setTemplateSearch("");
             setSelectedCategory("all");
+            setTemplateEnvVars({});
+            setShowTemplateSecrets({});
           }
         }}
       >
@@ -1816,6 +1834,18 @@ services:
                                 .toLowerCase()
                                 .replace(/[^a-z0-9]/g, "-")
                             );
+                            // Initialize env vars with defaults from template
+                            const defaults: Record<string, string> = {};
+                            // Add PORT with default value
+                            defaults["PORT"] = "8080";
+                            // Add template-defined env vars
+                            if (template.env_schema) {
+                              for (const entry of template.env_schema) {
+                                defaults[entry.name] = entry.default || "";
+                              }
+                            }
+                            setTemplateEnvVars(defaults);
+                            setShowTemplateSecrets({});
                           }}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -1871,6 +1901,11 @@ services:
                 name="templateId"
                 value={selectedTemplate.id}
               />
+              <input
+                type="hidden"
+                name="envVars"
+                value={JSON.stringify(templateEnvVars)}
+              />
               <DialogHeader>
                 <DialogTitle>Deploy {selectedTemplate.name}</DialogTitle>
                 <DialogDescription>
@@ -1893,6 +1928,75 @@ services:
                     Lowercase letters, numbers, and hyphens only
                   </p>
                 </div>
+
+                {/* PORT configuration */}
+                <div className="space-y-2">
+                  <Label htmlFor="template-port">
+                    Port
+                    <span className="text-destructive ml-1">*</span>
+                  </Label>
+                  <Input
+                    id="template-port"
+                    type="number"
+                    value={templateEnvVars["PORT"] || "8080"}
+                    onChange={(e) =>
+                      setTemplateEnvVars((prev) => ({ ...prev, PORT: e.target.value }))
+                    }
+                    placeholder="8080"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Container port to expose (use unique ports to avoid conflicts)
+                  </p>
+                </div>
+
+                {/* Template-defined environment variables */}
+                {selectedTemplate.env_schema && selectedTemplate.env_schema.length > 0 && (
+                  <div className="space-y-4 pt-2">
+                    <Label className="text-base">Configuration</Label>
+                    {selectedTemplate.env_schema.map((entry) => (
+                      <div key={entry.name} className="space-y-1">
+                        <Label htmlFor={`template-env-${entry.name}`} className="text-sm">
+                          {entry.label}
+                          {entry.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id={`template-env-${entry.name}`}
+                            type={entry.secret && !showTemplateSecrets[entry.name] ? "password" : "text"}
+                            value={templateEnvVars[entry.name] || ""}
+                            onChange={(e) =>
+                              setTemplateEnvVars((prev) => ({ ...prev, [entry.name]: e.target.value }))
+                            }
+                            placeholder={entry.default || `Enter ${entry.label.toLowerCase()}`}
+                            required={entry.required}
+                            className={entry.secret ? "pr-10" : ""}
+                          />
+                          {entry.secret && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-0 top-0 h-full px-3"
+                              onClick={() =>
+                                setShowTemplateSecrets((prev) => ({
+                                  ...prev,
+                                  [entry.name]: !prev[entry.name],
+                                }))
+                              }
+                            >
+                              {showTemplateSecrets[entry.name] ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button
@@ -1901,6 +2005,8 @@ services:
                   onClick={() => {
                     setSelectedTemplate(null);
                     setTemplateServiceName("");
+                    setTemplateEnvVars({});
+                    setShowTemplateSecrets({});
                   }}
                 >
                   Back
