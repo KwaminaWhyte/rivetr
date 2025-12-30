@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router";
+import { Fragment, useEffect } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
@@ -15,82 +16,137 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useRequireAuth } from "@/lib/auth";
+import { BreadcrumbProvider, useBreadcrumb, type BreadcrumbItem as BreadcrumbItemType } from "@/lib/breadcrumb-context";
 
-const routeTitles: Record<
-  string,
-  { parent?: string; parentUrl?: string; title: string }
-> = {
-  "/": { title: "Dashboard" },
-  "/projects": { title: "Projects" },
-  "/deployments": { title: "Deployments" },
-  "/monitoring": { title: "Monitoring" },
-  "/notifications": { title: "Notifications" },
-  "/settings": { title: "Settings" },
-  "/settings/git-providers": {
-    parent: "Settings",
-    parentUrl: "/settings",
-    title: "Git Providers",
-  },
-  "/settings/ssh-keys": {
-    parent: "Settings",
-    parentUrl: "/settings",
-    title: "SSH Keys",
-  },
-  "/settings/webhooks": {
-    parent: "Settings",
-    parentUrl: "/settings",
-    title: "Webhooks",
-  },
-  "/settings/tokens": {
-    parent: "Settings",
-    parentUrl: "/settings",
-    title: "API Tokens",
-  },
-  "/settings/notifications": {
-    parent: "Settings",
-    parentUrl: "/settings",
-    title: "Notifications",
-  },
+// Static route titles as fallback
+const routeTitles: Record<string, BreadcrumbItemType[]> = {
+  "/": [{ label: "Dashboard" }],
+  "/projects": [{ label: "Projects" }],
+  "/deployments": [{ label: "Deployments" }],
+  "/monitoring": [{ label: "Monitoring" }],
+  "/notifications": [{ label: "Notifications" }],
+  "/settings": [{ label: "Settings" }],
+  "/settings/git-providers": [
+    { label: "Settings", href: "/settings" },
+    { label: "Git Providers" },
+  ],
+  "/settings/ssh-keys": [
+    { label: "Settings", href: "/settings" },
+    { label: "SSH Keys" },
+  ],
+  "/settings/webhooks": [
+    { label: "Settings", href: "/settings" },
+    { label: "Webhooks" },
+  ],
+  "/settings/tokens": [
+    { label: "Settings", href: "/settings" },
+    { label: "API Tokens" },
+  ],
+  "/settings/notifications": [
+    { label: "Settings", href: "/settings" },
+    { label: "Notifications" },
+  ],
+  "/settings/audit": [
+    { label: "Settings", href: "/settings" },
+    { label: "Audit Log" },
+  ],
 };
 
-function getBreadcrumb(pathname: string) {
-  // Handle dynamic routes
+function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
+  // Check static routes first
+  if (routeTitles[pathname]) {
+    return routeTitles[pathname];
+  }
+
+  // Handle dynamic routes with defaults
   if (pathname.match(/^\/apps\/[^/]+\/settings$/)) {
-    return { parent: "App Details", parentUrl: pathname.replace("/settings", ""), title: "Settings" };
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Settings" },
+    ];
   }
   if (pathname.match(/^\/apps\/[^/]+\/deployments$/)) {
-    return { parent: "App Details", parentUrl: pathname.replace("/deployments", ""), title: "Deployments" };
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Deployments" },
+    ];
+  }
+  if (pathname.match(/^\/apps\/[^/]+\/network$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Network" },
+    ];
   }
   if (pathname.match(/^\/apps\/[^/]+\/logs$/)) {
-    return { parent: "App Details", parentUrl: pathname.replace("/logs", ""), title: "Logs" };
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Logs" },
+    ];
   }
   if (pathname.match(/^\/apps\/[^/]+\/terminal$/)) {
-    return { parent: "App Details", parentUrl: pathname.replace("/terminal", ""), title: "Terminal" };
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Terminal" },
+    ];
   }
-  if (pathname.startsWith("/apps/")) {
-    return { parent: "Projects", parentUrl: "/projects", title: "App Details" };
+  if (pathname.match(/^\/apps\/[^/]+$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+    ];
+  }
+  if (pathname.match(/^\/databases\/[^/]+/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Databases" },
+    ];
+  }
+  if (pathname.match(/^\/services\/[^/]+/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Services" },
+    ];
   }
   if (pathname.startsWith("/projects/") && pathname.includes("/apps/new")) {
-    return {
-      parent: "Projects",
-      parentUrl: "/projects",
-      title: "New Application",
-    };
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "New Application" },
+    ];
   }
-  if (pathname.startsWith("/projects/")) {
-    return {
-      parent: "Projects",
-      parentUrl: "/projects",
-      title: "Project Details",
-    };
+  if (pathname.match(/^\/projects\/[^/]+$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Project" },
+    ];
   }
-  return routeTitles[pathname] || { title: "Page" };
+
+  return [{ label: "Page" }];
 }
 
-export default function DashboardLayout() {
+// Inner component that uses the breadcrumb context
+function DashboardLayoutInner() {
   const location = useLocation();
-  const breadcrumb = getBreadcrumb(location.pathname);
+  const { items: contextItems, setItems } = useBreadcrumb();
   const { isLoading, isAuthenticated } = useRequireAuth();
+
+  // Set default breadcrumbs based on route when no context items are set
+  useEffect(() => {
+    if (contextItems.length === 0) {
+      setItems(getDefaultBreadcrumbs(location.pathname));
+    }
+  }, [location.pathname, contextItems.length, setItems]);
+
+  // Reset breadcrumbs when route changes
+  useEffect(() => {
+    setItems(getDefaultBreadcrumbs(location.pathname));
+  }, [location.pathname, setItems]);
+
+  const breadcrumbItems = contextItems.length > 0 ? contextItems : getDefaultBreadcrumbs(location.pathname);
 
   // Show loading state while checking auth
   if (isLoading) {
@@ -119,21 +175,20 @@ export default function DashboardLayout() {
             />
             <Breadcrumb>
               <BreadcrumbList>
-                {breadcrumb.parent && breadcrumb.parentUrl && (
-                  <>
-                    <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink asChild>
-                        <Link to={breadcrumb.parentUrl}>
-                          {breadcrumb.parent}
-                        </Link>
-                      </BreadcrumbLink>
+                {breadcrumbItems.map((item, index) => (
+                  <Fragment key={index}>
+                    {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
+                    <BreadcrumbItem className={index < breadcrumbItems.length - 1 ? "hidden md:block" : ""}>
+                      {item.href && index < breadcrumbItems.length - 1 ? (
+                        <BreadcrumbLink asChild>
+                          <Link to={item.href}>{item.label}</Link>
+                        </BreadcrumbLink>
+                      ) : (
+                        <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                      )}
                     </BreadcrumbItem>
-                    <BreadcrumbSeparator className="hidden md:block" />
-                  </>
-                )}
-                <BreadcrumbItem>
-                  <BreadcrumbPage>{breadcrumb.title}</BreadcrumbPage>
-                </BreadcrumbItem>
+                  </Fragment>
+                ))}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
@@ -143,5 +198,13 @@ export default function DashboardLayout() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+export default function DashboardLayout() {
+  return (
+    <BreadcrumbProvider>
+      <DashboardLayoutInner />
+    </BreadcrumbProvider>
   );
 }

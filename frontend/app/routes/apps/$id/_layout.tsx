@@ -1,5 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
-import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
+import {
+  Link,
+  Outlet,
+  useLocation,
+  useParams,
+  useNavigate,
+} from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,8 +13,22 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
-import type { App, AppStatus, Deployment, DeploymentStatus } from "@/types/api";
-import { Play, Square, Circle } from "lucide-react";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import type { App, AppStatus, Deployment, DeploymentStatus, Project } from "@/types/api";
+import {
+  Play,
+  Square,
+  Circle,
+  RotateCw,
+  ChevronDown,
+  Rocket,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Running status badge component
 function RunningStatusBadge({ status }: { status?: AppStatus }) {
@@ -43,7 +63,13 @@ function RunningStatusBadge({ status }: { status?: AppStatus }) {
   return null;
 }
 
-const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
+const ACTIVE_STATUSES: DeploymentStatus[] = [
+  "pending",
+  "cloning",
+  "building",
+  "starting",
+  "checking",
+];
 
 function isActiveDeployment(status: DeploymentStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
@@ -64,13 +90,40 @@ export default function AppDetailLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { setItems } = useBreadcrumb();
 
   // Use React Query for app data
-  const { data: app, isLoading: appLoading, error: appError } = useQuery<App>({
+  const {
+    data: app,
+    isLoading: appLoading,
+    error: appError,
+  } = useQuery<App>({
     queryKey: ["app", id],
     queryFn: () => api.getApp(id!),
     enabled: !!id,
   });
+
+  // Fetch project for breadcrumb
+  const { data: project } = useQuery<Project>({
+    queryKey: ["project", app?.project_id],
+    queryFn: () => api.getProject(app!.project_id!),
+    enabled: !!app?.project_id,
+  });
+
+  // Set breadcrumbs when app and project are loaded
+  useEffect(() => {
+    if (app) {
+      const breadcrumbs = [];
+      if (project) {
+        breadcrumbs.push({ label: project.name, href: `/projects/${project.id}` });
+      } else {
+        breadcrumbs.push({ label: "Projects", href: "/projects" });
+      }
+      breadcrumbs.push({ label: "Apps" });
+      breadcrumbs.push({ label: app.name });
+      setItems(breadcrumbs);
+    }
+  }, [app, project, setItems]);
 
   const { data: deployments = [] } = useQuery<Deployment[]>({
     queryKey: ["deployments", id],
@@ -79,7 +132,9 @@ export default function AppDetailLayout() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.length === 0) return 5000;
-      const hasActive = data.some((d: Deployment) => isActiveDeployment(d.status));
+      const hasActive = data.some((d: Deployment) =>
+        isActiveDeployment(d.status)
+      );
       return hasActive ? 2000 : 30000;
     },
     refetchIntervalInBackground: false,
@@ -122,7 +177,9 @@ export default function AppDetailLayout() {
       refetchStatus();
       queryClient.invalidateQueries({ queryKey: ["app", id] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start app");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start app"
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -138,7 +195,27 @@ export default function AppDetailLayout() {
       refetchStatus();
       queryClient.invalidateQueries({ queryKey: ["app", id] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to stop app");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to stop app"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle restart action
+  const handleRestart = async () => {
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.restartApp(id);
+      toast.success("Application restarted");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to restart app"
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -147,12 +224,13 @@ export default function AppDetailLayout() {
   // Determine active tab from path
   const basePath = `/apps/${id}`;
   const currentPath = location.pathname;
-  const activeTab = tabs.find((tab) => {
-    if (tab.path === "") {
-      return currentPath === basePath || currentPath === basePath + "/";
-    }
-    return currentPath.startsWith(basePath + tab.path);
-  })?.id || "general";
+  const activeTab =
+    tabs.find((tab) => {
+      if (tab.path === "") {
+        return currentPath === basePath || currentPath === basePath + "/";
+      }
+      return currentPath.startsWith(basePath + tab.path);
+    })?.id || "general";
 
   if (appLoading) {
     return (
@@ -198,17 +276,28 @@ export default function AppDetailLayout() {
           <p className="text-muted-foreground">{app.git_url}</p>
         </div>
         <div className="flex gap-2">
-          {/* Start/Stop buttons */}
+          {/* Start/Stop/Restart buttons */}
           {appStatus?.status === "running" ? (
-            <Button
-              variant="outline"
-              disabled={isSubmitting || hasActiveDeployment}
-              className="gap-2"
-              onClick={handleStop}
-            >
-              <Square className="h-4 w-4" />
-              Stop
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                disabled={isSubmitting || hasActiveDeployment}
+                className="gap-2"
+                onClick={handleRestart}
+              >
+                <RotateCw className="h-4 w-4" />
+                Restart
+              </Button>
+              <Button
+                variant="outline"
+                disabled={isSubmitting || hasActiveDeployment}
+                className="gap-2"
+                onClick={handleStop}
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            </>
           ) : appStatus?.status === "stopped" ? (
             <Button
               variant="outline"
@@ -220,12 +309,39 @@ export default function AppDetailLayout() {
               Start
             </Button>
           ) : null}
-          <Button onClick={handleDeploy} disabled={isSubmitting || hasActiveDeployment}>
-            {isSubmitting ? "Deploying..." : "Deploy"}
-          </Button>
+          {/* Deploy button with dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                disabled={isSubmitting || hasActiveDeployment}
+                className="gap-2"
+              >
+                <Rocket className="h-4 w-4" />
+                {isSubmitting ? "Deploying..." : "Deploy"}
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem onClick={handleDeploy}>
+                <Rocket className="h-4 w-4 mr-2" />
+                Redeploy
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDeploy}
+                className="text-muted-foreground"
+              >
+                <RotateCw className="h-4 w-4 mr-2" />
+                Redeploy (clear cache)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {appStatus?.running && app.domain && (
             <Button variant="outline" asChild>
-              <a href={`https://${app.domain}`} target="_blank" rel="noopener noreferrer">
+              <a
+                href={`https://${app.domain}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Open Site
               </a>
             </Button>

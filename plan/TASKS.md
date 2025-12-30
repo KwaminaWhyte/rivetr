@@ -531,7 +531,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [ ] **Repository browser** - Select repos from connected Git providers in app creation
 
 **Medium Priority:**
-- [ ] **Build cache** - Speed up builds with layer caching
+- [x] **Build cache control** - Support `--no-cache` in custom docker options to force fresh builds
 - [x] **Resource limits UI** - Set CPU/memory limits per app from dashboard (ResourceLimitsCard.tsx)
 - [ ] **Deployment scheduling** - Schedule deployments for specific times
 - [ ] **S3 backup integration** - Backup volumes and databases to S3
@@ -617,6 +617,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Projects feature** - Group related apps, project cards with service counts
 - **Environment field** - Development/Staging/Production with color-coded badges
 - **Resource Limits UI** - Configure CPU/memory limits from dashboard
+- **App Restart API** - POST /api/apps/:id/restart to restart containers without rebuilding (picks up env/domain changes)
+- **Redeploy UI** - Deploy dropdown with redeploy options
+- **Git Providers UI** - Full OAuth connection management page at /settings/git-providers
 - **Environment Variables UI** - Full CRUD with secret masking
 - **Container Resource Metrics** - Live CPU/memory monitoring with sparklines
 - **Deployment Timeline** - Visual deployment history with status indicators

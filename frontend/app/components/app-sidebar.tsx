@@ -39,11 +39,6 @@ const navMain: NavMainItem[] = [
     title: "Monitoring",
     url: "/monitoring",
     icon: BarChart3,
-    items: [
-      { title: "Overview", url: "/monitoring" },
-      { title: "Metrics", url: "/monitoring/metrics" },
-      { title: "Logs", url: "/monitoring/logs" },
-    ],
   },
   {
     title: "Notifications",
@@ -62,7 +57,6 @@ const navMain: NavMainItem[] = [
       { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },
-      { title: "Backups", url: "/settings/backups" },
       { title: "Audit Log", url: "/settings/audit" },
     ],
   },

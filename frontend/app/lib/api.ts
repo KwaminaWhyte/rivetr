@@ -28,10 +28,13 @@ import type {
   DeployTemplateResponse,
   DiskStats,
   EnvVar,
+  GitProvider,
+  GitRepository,
   InviteMemberRequest,
   ManagedDatabase,
   NotificationChannel,
   NotificationSubscription,
+  OAuthAuthorizationResponse,
   Project,
   ProjectWithApps,
   RecentEvent,
@@ -155,6 +158,8 @@ export const api = {
     apiRequest<AppStatus>(`/apps/${id}/start`, { method: "POST" }, token),
   stopApp: (id: string, token?: string) =>
     apiRequest<AppStatus>(`/apps/${id}/stop`, { method: "POST" }, token),
+  restartApp: (id: string, token?: string) =>
+    apiRequest<AppStatus>(`/apps/${id}/restart`, { method: "POST" }, token),
   deleteApp: (id: string, password: string, token?: string) =>
     apiRequest<void>(
       `/apps/${id}`,
@@ -673,6 +678,30 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       },
+      token
+    ),
+
+  // Git Providers
+  getGitProviders: (token?: string) =>
+    apiRequest<GitProvider[]>("/git-providers", {}, token),
+  getGitProvider: (id: string, token?: string) =>
+    apiRequest<GitProvider>(`/git-providers/${id}`, {}, token),
+  deleteGitProvider: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/git-providers/${id}`,
+      { method: "DELETE" },
+      token
+    ),
+  getGitProviderRepos: (providerId: string, page = 1, perPage = 30, token?: string) =>
+    apiRequest<GitRepository[]>(
+      `/git-providers/${providerId}/repos?page=${page}&per_page=${perPage}`,
+      {},
+      token
+    ),
+  getGitProviderAuthUrl: (provider: "github" | "gitlab" | "bitbucket", token?: string) =>
+    apiRequest<OAuthAuthorizationResponse>(
+      `/auth/oauth/${provider}/authorize`,
+      {},
       token
     ),
 

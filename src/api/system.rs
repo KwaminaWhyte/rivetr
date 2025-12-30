@@ -2,8 +2,8 @@
 //!
 //! Provides aggregate system stats, disk stats, and recent events for the dashboard.
 
-use axum::{extract::State, Json};
-use serde::Serialize;
+use axum::{extract::{Query, State}, Json};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{App, Deployment, ManagedDatabase, Service};
@@ -502,24 +502,60 @@ pub struct StatsHistoryResponse {
     pub count: usize,
 }
 
+/// Query parameters for stats history
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatsHistoryQuery {
+    /// Time range in hours (default: 24)
+    /// Valid values: 1, 6, 24, 168 (7 days), 720 (30 days)
+    #[serde(default = "default_hours")]
+    pub hours: i64,
+}
+
+fn default_hours() -> i64 {
+    24
+}
+
 /// Get stats history for dashboard charts
 /// GET /api/system/stats/history
 ///
-/// Returns historical system stats for the past 24 hours.
+/// Returns historical system stats for the specified time range.
 /// Data points are recorded every 5 minutes.
+///
+/// Query parameters:
+/// - hours: Time range in hours (default: 24, valid: 1, 6, 24, 168, 720)
 pub async fn get_stats_history(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<StatsHistoryQuery>,
 ) -> Result<Json<StatsHistoryResponse>, ApiError> {
-    // Get last 24 hours of stats (288 records at 5-minute intervals)
+    // Validate and clamp hours to supported values
+    let hours = match query.hours {
+        h if h <= 1 => 1,
+        h if h <= 6 => 6,
+        h if h <= 24 => 24,
+        h if h <= 168 => 168, // 7 days
+        _ => 720, // 30 days
+    };
+
+    // Calculate number of records based on time range
+    // 5-minute intervals: 12 per hour
+    let limit = hours * 12;
+
+    // Calculate the cutoff time
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
+    let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+
     let history: Vec<StatsHistoryPoint> = sqlx::query_as(
         r#"
         SELECT timestamp, cpu_percent, memory_used_bytes, memory_total_bytes,
                running_apps, running_databases, running_services
         FROM stats_history
+        WHERE timestamp >= ?
         ORDER BY timestamp DESC
-        LIMIT 288
+        LIMIT ?
         "#,
     )
+    .bind(&cutoff_str)
+    .bind(limit)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();

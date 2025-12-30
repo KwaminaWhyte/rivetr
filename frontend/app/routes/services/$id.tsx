@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +48,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { Service, ServiceStatus } from "@/types/api";
+import type { Service, ServiceStatus, Project } from "@/types/api";
 
 export function meta() {
   return [
@@ -90,6 +91,7 @@ export default function ServiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { setItems } = useBreadcrumb();
   const serviceId = id!;
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -102,6 +104,28 @@ export default function ServiceDetailPage() {
     queryFn: () => api.getService(serviceId),
     refetchInterval: 5000, // Poll for status updates
   });
+
+  // Fetch project for breadcrumb
+  const { data: project } = useQuery<Project>({
+    queryKey: ["project", service?.project_id],
+    queryFn: () => api.getProject(service!.project_id!),
+    enabled: !!service?.project_id,
+  });
+
+  // Set breadcrumbs when service and project are loaded
+  useEffect(() => {
+    if (service) {
+      const breadcrumbs = [];
+      if (project) {
+        breadcrumbs.push({ label: project.name, href: `/projects/${project.id}` });
+      } else {
+        breadcrumbs.push({ label: "Projects", href: "/projects" });
+      }
+      breadcrumbs.push({ label: "Services" });
+      breadcrumbs.push({ label: service.name });
+      setItems(breadcrumbs);
+    }
+  }, [service, project, setItems]);
 
   // Mutations
   const updateMutation = useMutation({

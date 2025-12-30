@@ -657,6 +657,35 @@ pub async fn delete_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
+    // Stop any running containers for this app
+    let deployments: Vec<(String,)> = sqlx::query_as(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND container_id IS NOT NULL AND container_id != ''"
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    for (container_id,) in deployments {
+        if !container_id.is_empty() {
+            // Try to stop and remove the container, but don't fail if it doesn't exist
+            if let Err(e) = state.runtime.stop(&container_id).await {
+                tracing::warn!(container = %container_id, error = %e, "Failed to stop container during app deletion");
+            }
+            if let Err(e) = state.runtime.remove(&container_id).await {
+                tracing::warn!(container = %container_id, error = %e, "Failed to remove container during app deletion");
+            }
+        }
+    }
+
+    // Remove the proxy route if app has a domain
+    if let Some(domain) = &app.domain {
+        if !domain.is_empty() {
+            state.routes.load().remove_route(domain);
+            tracing::info!(domain = %domain, "Route removed during app deletion");
+        }
+    }
+
+    // Delete the app (cascades to deployments, env_vars, volumes, etc.)
     let result = sqlx::query("DELETE FROM apps WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -665,6 +694,8 @@ pub async fn delete_app(
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("App not found"));
     }
+
+    tracing::info!(app_id = %id, app_name = %app.name, "App deleted successfully");
 
     // Log audit event
     let ip = extract_client_ip(&headers, None);
@@ -886,5 +917,94 @@ pub async fn stop_app(
         container_id: Some(container_id),
         running: false,
         status: "stopped".to_string(),
+    }))
+}
+
+/// Restart an app's container.
+/// This stops and starts the container, which picks up new environment variables
+/// and other configuration changes without requiring a full rebuild.
+pub async fn restart_app(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<AppStatusResponse>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Get the latest running or stopped deployment with a container
+    let deployment: Option<(String,)> = sqlx::query_as(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let container_id = deployment
+        .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
+        .ok_or_else(|| ApiError::bad_request("No deployment with container found. Deploy the app first."))?;
+
+    // First stop the container (ignore errors if already stopped)
+    let _ = state.runtime.stop(&container_id).await;
+
+    // Brief pause to ensure clean stop
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Start the container
+    state.runtime.start(&container_id).await.map_err(|e| {
+        tracing::error!(container = %container_id, error = %e, "Failed to restart container");
+        ApiError::internal(&format!("Failed to restart container: {}", e))
+    })?;
+
+    tracing::info!(app = %app.name, container = %container_id, "App container restarted");
+
+    // Re-register the route if app has a domain
+    if let Some(domain) = &app.domain {
+        if !domain.is_empty() {
+            // Get container info for the port
+            if let Ok(info) = state.runtime.inspect(&container_id).await {
+                if let Some(host_port) = info.host_port {
+                    let backend = crate::proxy::Backend::new(
+                        container_id.clone(),
+                        "127.0.0.1".to_string(),
+                        host_port,
+                    )
+                    .with_healthcheck(app.healthcheck.clone());
+
+                    state.routes.load().add_route(domain.clone(), backend);
+                    tracing::info!(domain = %domain, port = host_port, "Route re-registered after restart");
+                }
+            }
+        }
+    }
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_RESTART,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
+    Ok(Json(AppStatusResponse {
+        app_id: id,
+        container_id: Some(container_id),
+        running: true,
+        status: "running".to_string(),
     }))
 }

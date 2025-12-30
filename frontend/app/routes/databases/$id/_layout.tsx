@@ -7,7 +7,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import type { ManagedDatabase, DatabaseStatus } from "@/types/api";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import type { ManagedDatabase, DatabaseStatus, Project } from "@/types/api";
 import { Play, Square, Circle, Database } from "lucide-react";
 
 // Status badge component
@@ -85,6 +86,7 @@ export default function DatabaseDetailLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { setItems } = useBreadcrumb();
   const databaseId = id!;
 
   // Fetch database data client-side
@@ -98,6 +100,28 @@ export default function DatabaseDetailLayout() {
       return isTransitioning ? 2000 : 30000;
     },
   });
+
+  // Fetch project for breadcrumb
+  const { data: project } = useQuery<Project>({
+    queryKey: ["project", database?.project_id],
+    queryFn: () => api.getProject(database!.project_id!),
+    enabled: !!database?.project_id,
+  });
+
+  // Set breadcrumbs when database and project are loaded
+  useEffect(() => {
+    if (database) {
+      const breadcrumbs = [];
+      if (project) {
+        breadcrumbs.push({ label: project.name, href: `/projects/${project.id}` });
+      } else {
+        breadcrumbs.push({ label: "Projects", href: "/projects" });
+      }
+      breadcrumbs.push({ label: "Databases" });
+      breadcrumbs.push({ label: database.name });
+      setItems(breadcrumbs);
+    }
+  }, [database, project, setItems]);
 
   // Mutations
   const startMutation = useMutation({

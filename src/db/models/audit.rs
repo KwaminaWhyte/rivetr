@@ -68,6 +68,7 @@ pub mod actions {
     pub const APP_DELETE: &str = "app.delete";
     pub const APP_START: &str = "app.start";
     pub const APP_STOP: &str = "app.stop";
+    pub const APP_RESTART: &str = "app.restart";
 
     // Deployment actions
     pub const DEPLOYMENT_TRIGGER: &str = "deployment.trigger";

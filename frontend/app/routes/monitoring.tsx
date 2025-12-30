@@ -10,11 +10,13 @@ import {
   XCircle,
   AlertTriangle,
   RefreshCw,
-  Container
+  Container,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import type { SystemHealthStatus, DiskStats, CheckResult } from "@/types/api";
+import { ResourceChart } from "@/components/resource-chart";
+import type { SystemHealthStatus, DiskStats, CheckResult, SystemStats } from "@/types/api";
 
 export function meta() {
   return [
@@ -74,6 +76,13 @@ function DiskUsageBar({ used, total }: { used: number; total: number }) {
 }
 
 export default function MonitoringPage() {
+  // Query for system stats
+  const { data: stats } = useQuery<SystemStats | null>({
+    queryKey: ["system-stats"],
+    queryFn: () => api.getSystemStats(),
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
   // Query for health status with polling
   const { data: health, isLoading: healthLoading, refetch: refetchHealth } = useQuery<SystemHealthStatus | null>({
     queryKey: ["systemHealth"],
@@ -92,6 +101,11 @@ export default function MonitoringPage() {
     refetchHealth();
     refetchDisk();
   };
+
+  // Calculate memory percentage
+  const memoryPercent = stats && stats.memory_total_bytes > 0
+    ? (stats.memory_used_bytes / stats.memory_total_bytes) * 100
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -218,6 +232,12 @@ export default function MonitoringPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Resource Utilization Chart */}
+      <ResourceChart
+        cpuPercent={stats?.total_cpu_percent ?? 0}
+        memoryPercent={memoryPercent}
+      />
 
       {/* Disk Usage Details */}
       {disk && (

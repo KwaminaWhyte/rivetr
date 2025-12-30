@@ -1,5 +1,12 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
 
 interface DataPoint {
@@ -20,10 +27,19 @@ interface ResourceChartProps {
   memoryPercent: number;
 }
 
+// Time range options
+const TIME_RANGES = [
+  { value: "1", label: "Last 1 hour", axisLabels: ["1h ago", "45m", "30m", "15m", "Now"] },
+  { value: "6", label: "Last 6 hours", axisLabels: ["6h ago", "4h 30m", "3h", "1h 30m", "Now"] },
+  { value: "24", label: "Last 24 hours", axisLabels: ["24h ago", "18h", "12h", "6h", "Now"] },
+  { value: "168", label: "Last 7 days", axisLabels: ["7d ago", "5d", "3d", "1d", "Now"] },
+  { value: "720", label: "Last 30 days", axisLabels: ["30d ago", "22d", "15d", "7d", "Now"] },
+] as const;
+
 // Fetch stats history from API
-async function fetchStatsHistory(): Promise<DataPoint[]> {
+async function fetchStatsHistory(hours: number): Promise<DataPoint[]> {
   try {
-    const response = await fetch("/api/system/stats/history");
+    const response = await fetch(`/api/system/stats/history?hours=${hours}`);
     if (!response.ok) {
       throw new Error("Failed to fetch stats history");
     }
@@ -67,10 +83,15 @@ function generatePlaceholderData(cpu: number, memory: number): DataPoint[] {
 }
 
 export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps) {
+  const [timeRange, setTimeRange] = useState("24");
+
+  // Get the current time range config
+  const timeRangeConfig = TIME_RANGES.find(t => t.value === timeRange) ?? TIME_RANGES[2];
+
   // Fetch real historical data
   const { data: historyData } = useQuery({
-    queryKey: ["statsHistory"],
-    queryFn: fetchStatsHistory,
+    queryKey: ["statsHistory", timeRange],
+    queryFn: () => fetchStatsHistory(parseInt(timeRange)),
     refetchInterval: 60000, // Refresh every minute
     staleTime: 30000,
   });
@@ -130,15 +151,29 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle>Global Resource Utilization</CardTitle>
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-              <span className="text-muted-foreground">CPU</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                <span className="text-muted-foreground">CPU</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+                <span className="text-muted-foreground">Memory</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full bg-purple-500" />
-              <span className="text-muted-foreground">Memory</span>
-            </div>
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-[140px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_RANGES.map((range) => (
+                  <SelectItem key={range.value} value={range.value}>
+                    {range.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </CardHeader>
@@ -210,11 +245,9 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
 
         {/* X-axis labels */}
         <div className="flex justify-between mt-2 text-xs text-muted-foreground px-1">
-          <span>24h ago</span>
-          <span>18h ago</span>
-          <span>12h ago</span>
-          <span>6h ago</span>
-          <span>Now</span>
+          {timeRangeConfig.axisLabels.map((label, i) => (
+            <span key={i}>{label}</span>
+          ))}
         </div>
       </CardContent>
     </Card>
