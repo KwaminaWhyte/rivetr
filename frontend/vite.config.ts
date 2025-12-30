@@ -9,11 +9,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.API_BASE || "http://localhost:9080",
         changeOrigin: true,
       },
       "/webhooks": {
-        target: "http://localhost:8080",
+        target: process.env.API_BASE || "http://localhost:9080",
         changeOrigin: true,
       },
     },

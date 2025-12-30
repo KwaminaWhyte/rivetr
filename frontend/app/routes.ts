@@ -73,6 +73,7 @@ export default [
       route("notifications", "routes/settings/notifications.tsx"),
       route("teams", "routes/settings/teams.tsx"),
       route("teams/:id", "routes/settings/teams/$id.tsx"),
+      route("audit", "routes/settings/audit.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

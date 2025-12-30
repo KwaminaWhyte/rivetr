@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -8,12 +8,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
-use crate::db::{App, Deployment, DeploymentLog};
+use crate::db::{actions, resource_types, App, Deployment, DeploymentLog, User};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
 use crate::runtime::ContainerStats;
 use crate::AppState;
 
+use super::audit::{audit_log, extract_client_ip};
 use super::error::ApiError;
 use super::validation::validate_uuid;
 
@@ -40,6 +41,8 @@ pub struct RollbackRequest {
 
 pub async fn trigger_deploy(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(app_id): Path<String>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
     // Validate app_id format
@@ -85,7 +88,7 @@ pub async fn trigger_deploy(
     .await?;
 
     // Queue the deployment job
-    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app)).await {
+    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
         tracing::error!("Failed to queue deployment: {}", e);
         return Err(ApiError::internal("Failed to queue deployment job"));
     }
@@ -94,6 +97,22 @@ pub async fn trigger_deploy(
         .bind(&deployment_id)
         .fetch_one(&state.db)
         .await?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DEPLOYMENT_TRIGGER,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "deployment_id": deployment.id,
+        })),
+    )
+    .await;
 
     Ok((StatusCode::ACCEPTED, Json(deployment)))
 }

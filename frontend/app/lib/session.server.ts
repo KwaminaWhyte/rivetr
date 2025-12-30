@@ -1,7 +1,7 @@
 import { createCookieSessionStorage, redirect } from "react-router";
 
 const SESSION_SECRET = process.env.SESSION_SECRET || "dev-secret-change-in-production";
-const API_BASE = process.env.API_BASE || "http://localhost:8080";
+const API_BASE = process.env.API_BASE || "http://localhost:9080";
 
 type SessionData = {
   token: string;

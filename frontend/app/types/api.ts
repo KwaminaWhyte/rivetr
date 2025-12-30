@@ -322,6 +322,10 @@ export interface SystemStats {
   running_databases_count: number;
   /** Total number of databases */
   total_databases_count: number;
+  /** Number of running services (Docker Compose) */
+  running_services_count: number;
+  /** Total number of services */
+  total_services_count: number;
   /** Aggregate CPU usage percentage across all running containers */
   total_cpu_percent: number;
   /** Aggregate memory usage in bytes across all running containers */
@@ -813,6 +817,13 @@ export interface UpdateServiceRequest {
   project_id?: string;
 }
 
+/** Service log entry */
+export interface ServiceLogEntry {
+  timestamp: string;
+  service: string;
+  message: string;
+}
+
 // -------------------------------------------------------------------------
 // Service Template types
 // -------------------------------------------------------------------------
@@ -883,6 +894,44 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
   { id: "networking", name: "Networking", description: "Network tools and proxies", icon: "network" },
   { id: "security", name: "Security", description: "Security and authentication", icon: "shield" },
 ];
+
+// -------------------------------------------------------------------------
+// Audit Log types
+// -------------------------------------------------------------------------
+
+/** Audit log entry */
+export interface AuditLog {
+  id: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  resource_name: string | null;
+  user_id: string | null;
+  ip_address: string | null;
+  details: string | null;
+  created_at: string;
+}
+
+/** Paginated audit log response */
+export interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+/** Query parameters for fetching audit logs */
+export interface AuditLogQuery {
+  action?: string;
+  resource_type?: string;
+  resource_id?: string;
+  user_id?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  per_page?: number;
+}
 
 /** Available database configurations */
 export const DATABASE_TYPES: DatabaseTypeInfo[] = [

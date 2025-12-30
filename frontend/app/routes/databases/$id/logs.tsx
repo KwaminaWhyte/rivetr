@@ -206,8 +206,9 @@ export default function DatabaseLogsTab() {
             <div className="p-6 text-center">
               <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
               <p className="text-sm text-destructive">
-                Failed to load logs:{" "}
-                {error instanceof Error ? error.message : "Unknown error"}
+                {error instanceof Error && error.message.includes("Container is stopped")
+                  ? "The database container is not running. Start the database to view logs."
+                  : `Failed to load logs: ${error instanceof Error ? error.message : "Unknown error"}`}
               </p>
             </div>
           ) : (

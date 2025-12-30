@@ -1,14 +1,15 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{App, CreateAppRequest, UpdateAppRequest, User};
+use crate::db::{actions, resource_types, App, CreateAppRequest, UpdateAppRequest, User};
 use crate::AppState;
 
+use super::audit::{audit_log, extract_client_ip};
 use super::auth::verify_password;
 
 use super::error::{ApiError, ValidationErrorBuilder};
@@ -290,6 +291,8 @@ pub async fn get_app(
 
 pub async fn create_app(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<App>), ApiError> {
     // Validate request
@@ -392,6 +395,24 @@ pub async fn create_app(
         .fetch_one(&state.db)
         .await?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_CREATE,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "git_url": req.git_url,
+            "branch": req.branch,
+            "docker_image": req.docker_image,
+        })),
+    )
+    .await;
+
     Ok((StatusCode::CREATED, Json(app)))
 }
 
@@ -424,6 +445,8 @@ fn merge_optional_json<T: serde::Serialize>(
 
 pub async fn update_app(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
 ) -> Result<Json<App>, ApiError> {
@@ -580,6 +603,20 @@ pub async fn update_app(
         .fetch_one(&state.db)
         .await?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_UPDATE,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok(Json(app))
 }
 
@@ -591,6 +628,7 @@ pub struct DeleteAppRequest {
 
 pub async fn delete_app(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     user: User,
     Json(req): Json<DeleteAppRequest>,
@@ -613,7 +651,7 @@ pub async fn delete_app(
     }
 
     // Check if app exists before deleting
-    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
         .await?
@@ -627,6 +665,20 @@ pub async fn delete_app(
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("App not found"));
     }
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_DELETE,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -690,6 +742,8 @@ pub async fn get_app_status(
 /// Start an app's container
 pub async fn start_app(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -744,6 +798,20 @@ pub async fn start_app(
         }
     }
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_START,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok(Json(AppStatusResponse {
         app_id: id,
         container_id: Some(container_id),
@@ -755,6 +823,8 @@ pub async fn start_app(
 /// Stop an app's container
 pub async fn stop_app(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -796,6 +866,20 @@ pub async fn stop_app(
             tracing::info!(domain = %domain, "Route removed after stop");
         }
     }
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::APP_STOP,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     Ok(Json(AppStatusResponse {
         app_id: id,

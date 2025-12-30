@@ -230,9 +230,9 @@
 - [x] **T2.1.1** Add input validation on all endpoints (src/api/validation.rs)
 - [x] **T2.1.2** Implement rate limiting (src/api/rate_limit.rs - sliding window algorithm, per-tier limits)
 - [ ] **T2.1.3** Add CSRF tokens for UI forms
-- [ ] **T2.1.4** Encrypt env vars at rest
+- [x] **T2.1.4** Encrypt env vars at rest (AES-256-GCM encryption)
 - [ ] **T2.1.5** Secure session cookies
-- [ ] **T2.1.6** Add audit logging
+- [x] **T2.1.6** Add audit logging (routes/settings/audit.tsx, src/api/audit.rs)
 
 ### 2.2 Error Handling
 
@@ -469,9 +469,9 @@ Deploy multi-container applications from docker-compose.yml files.
 - [x] **T4.2.6** Add `POST /api/services/:id/stop` endpoint
 - [x] **T4.2.7** Implement docker-compose.yml parsing and validation
 - [x] **T4.2.8** Implement docker compose up/down execution
-- [ ] **T4.2.9** Add service logs streaming (aggregate from all containers)
+- [x] **T4.2.9** Add service logs streaming (aggregate from all containers)
 - [x] **T4.2.10** Create Services management page in frontend (project detail page with services grid)
-- [ ] **T4.2.11** Add Compose editor with YAML syntax highlighting
+- [x] **T4.2.11** Add Compose editor with YAML syntax highlighting
 - [x] **T4.2.12** Add service container status display
 - [x] **T4.2.13** Add service detail page with tabs (General, Network, Logs, Settings)
 - [x] **T4.2.14** Add exposed ports display with clickable links
@@ -559,27 +559,41 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 24 | 20 | 83% |
 | Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 28 | 18 | 64% |
+| Phase 2 | 28 | 20 | 71% |
 | Phase 3 | 90 | 78 | 87% |
-| Phase 4 | 50 | 48 | 96% |
-| **Total** | **286** | **258** | **90%** |
+| Phase 4 | 50 | 50 | 100% |
+| **Total** | **286** | **262** | **92%** |
+
+---
+
+## Known Issues (Active Bugs)
+
+*No active bugs - all recently identified issues have been fixed.*
 
 ---
 
 ## Next Priority Tasks
 
-**Phase 4 - Platform Services (remaining):**
-1. **T4.2.9** - Add service logs streaming (aggregate from all containers)
-2. **T4.2.11** - Add Compose editor with YAML syntax highlighting
+1. **Preview Deployments** (T3.4.1-5)
+   - Parse PR events from webhooks
+   - Create preview deployment with unique subdomain
+   - Auto-cleanup on PR close/merge
+
+---
+
+## Backlog Priority Tasks
+
+**Phase 4 - Platform Services:**
+- **T4.2.9** - Service logs streaming (addressed above)
 
 **Phase 3 - Enhanced Features:**
-3. **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-4. **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
+- **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
+- **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
 
 **Phase 2 - Production Ready:**
-5. **T2.1.3** - Add CSRF tokens for UI forms
-6. **T2.2.2** - Add deployment failure recovery
-7. **T2.2.5** - Database integrity checks
+- **T2.1.3** - Add CSRF tokens for UI forms
+- **T2.2.2** - Add deployment failure recovery
+- **T2.2.5** - Database integrity checks
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -643,8 +657,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Service Detail Page** - Tabs for General, Network, Logs, Settings with exposed ports display
 - **Network Tabs** - Added network information tabs to Apps, Databases, and Services
 - **Template Gallery** - Category filtering, service name customization, env var configuration
+- **Template Env Vars Form** - Pre-deployment configuration with PORT field and required env vars
+- **Database Network Tab** - Enhanced with connection strings, env var examples, CLI commands
+- **Docker Compose Editor** - Edit compose YAML in service settings with save functionality
 
 ### Planned Features
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
-- **Service Log Streaming** - Aggregate logs from all containers in a compose service
-- **Compose YAML Editor** - Syntax highlighting for docker-compose.yml editing
+
+### Recently Completed
+- **Service Stats in Dashboard** - Docker Compose service resource usage now included in dashboard totals (uses compose project label filtering)

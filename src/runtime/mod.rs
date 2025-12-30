@@ -191,6 +191,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn is_available(&self) -> bool;
     /// List running containers with names matching the given prefix
     async fn list_containers(&self, name_prefix: &str) -> Result<Vec<ContainerInfo>>;
+    /// List running containers belonging to a Docker Compose project
+    async fn list_compose_containers(&self, project_name: &str) -> Result<Vec<ContainerInfo>>;
     /// Get container resource statistics (CPU, memory, network)
     async fn stats(&self, container_id: &str) -> Result<ContainerStats>;
     /// Remove a container image by tag or ID
@@ -238,6 +240,9 @@ impl ContainerRuntime for NoopRuntime {
         false
     }
     async fn list_containers(&self, _name_prefix: &str) -> Result<Vec<ContainerInfo>> {
+        Ok(vec![])
+    }
+    async fn list_compose_containers(&self, _project_name: &str) -> Result<Vec<ContainerInfo>> {
         Ok(vec![])
     }
     async fn stats(&self, _container_id: &str) -> Result<ContainerStats> {

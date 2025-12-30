@@ -392,67 +392,136 @@ impl ContainerRuntime for DockerRuntime {
         Ok(result)
     }
 
+    async fn list_compose_containers(&self, project_name: &str) -> Result<Vec<ContainerInfo>> {
+        let mut filters = HashMap::new();
+        filters.insert("status".to_string(), vec!["running".to_string()]);
+        // Filter by Docker Compose project label
+        filters.insert(
+            "label".to_string(),
+            vec![format!("com.docker.compose.project={}", project_name)],
+        );
+
+        let options = ListContainersOptions {
+            all: false,
+            filters,
+            ..Default::default()
+        };
+
+        let containers = self
+            .client
+            .list_containers(Some(options))
+            .await
+            .context("Failed to list compose containers")?;
+
+        let mut result = Vec::new();
+        for container in containers {
+            let name = container
+                .names
+                .and_then(|names| names.first().cloned())
+                .unwrap_or_default()
+                .trim_start_matches('/')
+                .to_string();
+
+            let port = container.ports.and_then(|ports| {
+                ports
+                    .iter()
+                    .find(|p| p.public_port.is_some())
+                    .and_then(|p| p.public_port.map(|port| port as u16))
+            });
+
+            let status = container.state.clone().unwrap_or_default();
+            let is_running = status.to_lowercase() == "running";
+
+            result.push(ContainerInfo {
+                id: container.id.unwrap_or_default(),
+                name,
+                status,
+                port,
+                running: is_running,
+                host_port: port,
+            });
+        }
+
+        Ok(result)
+    }
+
     async fn stats(&self, container_id: &str) -> Result<ContainerStats> {
+        // Use stream mode and take two samples to calculate CPU delta properly.
+        // The one_shot mode doesn't provide valid precpu_stats for delta calculation.
         let options = StatsOptions {
-            stream: false,
-            one_shot: true,
+            stream: true,
+            one_shot: false,
         };
 
         let mut stream = self.client.stats(container_id, Some(options));
 
-        if let Some(result) = stream.next().await {
-            let stats = result.context("Failed to get container stats")?;
+        // Get first sample
+        let first_stats = stream
+            .next()
+            .await
+            .context("No stats received for container")?
+            .context("Failed to get first stats sample")?;
 
-            // Calculate CPU percentage
-            // CPU percentage = (container_delta / system_delta) * num_cpus * 100
-            let cpu_stats = &stats.cpu_stats;
-            let precpu_stats = &stats.precpu_stats;
+        // Wait a short interval for meaningful CPU delta
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-            let cpu_delta = cpu_stats.cpu_usage.total_usage as f64
-                - precpu_stats.cpu_usage.total_usage as f64;
+        // Get second sample
+        let second_stats = stream
+            .next()
+            .await
+            .context("No second stats sample received")?
+            .context("Failed to get second stats sample")?;
 
-            let system_delta = cpu_stats.system_cpu_usage.unwrap_or(0) as f64
-                - precpu_stats.system_cpu_usage.unwrap_or(0) as f64;
+        // Calculate CPU percentage using delta between two samples
+        // CPU percentage = (container_delta / system_delta) * num_cpus * 100
+        let cpu_delta = second_stats.cpu_stats.cpu_usage.total_usage as f64
+            - first_stats.cpu_stats.cpu_usage.total_usage as f64;
 
-            let num_cpus = cpu_stats
-                .online_cpus
-                .or(cpu_stats.cpu_usage.percpu_usage.as_ref().map(|v: &Vec<u64>| v.len() as u64))
-                .unwrap_or(1) as f64;
+        let system_delta = second_stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64
+            - first_stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64;
 
-            let cpu_percent = if system_delta > 0.0 && cpu_delta > 0.0 {
-                (cpu_delta / system_delta) * num_cpus * 100.0
-            } else {
-                0.0
-            };
+        let num_cpus = second_stats
+            .cpu_stats
+            .online_cpus
+            .or(second_stats
+                .cpu_stats
+                .cpu_usage
+                .percpu_usage
+                .as_ref()
+                .map(|v: &Vec<u64>| v.len() as u64))
+            .unwrap_or(1) as f64;
 
-            // Get memory stats
-            let memory_stats = &stats.memory_stats;
-            let memory_usage = memory_stats.usage.unwrap_or(0);
-            let memory_limit = memory_stats.limit.unwrap_or(0);
-
-            // Get network stats
-            let (network_rx, network_tx) = if let Some(networks) = &stats.networks {
-                let mut rx: u64 = 0;
-                let mut tx: u64 = 0;
-                for (_name, net_stats) in networks {
-                    rx += net_stats.rx_bytes;
-                    tx += net_stats.tx_bytes;
-                }
-                (rx, tx)
-            } else {
-                (0, 0)
-            };
-
-            Ok(ContainerStats {
-                cpu_percent,
-                memory_usage,
-                memory_limit,
-                network_rx,
-                network_tx,
-            })
+        let cpu_percent = if system_delta > 0.0 && cpu_delta > 0.0 {
+            (cpu_delta / system_delta) * num_cpus * 100.0
         } else {
-            anyhow::bail!("No stats received for container")
-        }
+            0.0
+        };
+
+        // Get memory stats from the latest sample
+        let memory_stats = &second_stats.memory_stats;
+        let memory_usage = memory_stats.usage.unwrap_or(0);
+        let memory_limit = memory_stats.limit.unwrap_or(0);
+
+        // Get network stats from the latest sample
+        let (network_rx, network_tx) = if let Some(networks) = &second_stats.networks {
+            let mut rx: u64 = 0;
+            let mut tx: u64 = 0;
+            for (_name, net_stats) in networks {
+                rx += net_stats.rx_bytes;
+                tx += net_stats.tx_bytes;
+            }
+            (rx, tx)
+        } else {
+            (0, 0)
+        };
+
+        Ok(ContainerStats {
+            cpu_percent,
+            memory_usage,
+            memory_limit,
+            network_rx,
+            network_tx,
+        })
     }
 
     async fn remove_image(&self, image: &str) -> Result<()> {

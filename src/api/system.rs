@@ -6,7 +6,7 @@ use axum::{extract::State, Json};
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::db::{App, Deployment, ManagedDatabase};
+use crate::db::{App, Deployment, ManagedDatabase, Service};
 use crate::engine::get_current_disk_stats;
 use crate::startup::{get_system_health, SystemHealthStatus};
 use crate::AppState;
@@ -24,6 +24,10 @@ pub struct SystemStats {
     pub running_databases_count: u32,
     /// Total number of databases
     pub total_databases_count: u32,
+    /// Number of running services (Docker Compose)
+    pub running_services_count: u32,
+    /// Total number of services
+    pub total_services_count: u32,
     /// Aggregate CPU usage percentage across all running containers
     pub total_cpu_percent: f64,
     /// Aggregate memory usage in bytes across all running containers
@@ -97,6 +101,13 @@ pub async fn get_system_stats(
         .collect();
     let running_databases_count = running_databases.len() as u32;
 
+    // Get services count
+    let services: Vec<Service> = sqlx::query_as("SELECT * FROM services")
+        .fetch_all(&state.db)
+        .await?;
+
+    let total_services_count = services.len() as u32;
+
     // Aggregate container stats for running apps and databases
     let mut total_cpu_percent = 0.0;
     let mut memory_used_bytes: u64 = 0;
@@ -152,6 +163,50 @@ pub async fn get_system_stats(
         }
     }
 
+    // Stats from running services (Docker Compose)
+    let running_services: Vec<&Service> = services
+        .iter()
+        .filter(|s| s.status == "running")
+        .collect();
+
+    for service in &running_services {
+        // Get compose project name for this service (e.g., "rivetr-svc-myservice")
+        let project_name = service.compose_project_name();
+
+        // List all containers for this compose project by label
+        match state.runtime.list_compose_containers(&project_name).await {
+            Ok(containers) => {
+                for container in containers {
+                    match state.runtime.stats(&container.id).await {
+                        Ok(stats) => {
+                            total_cpu_percent += stats.cpu_percent;
+                            memory_used_bytes += stats.memory_usage;
+                            if stats.memory_limit == 0 {
+                                has_unlimited_container = true;
+                            } else {
+                                memory_total_bytes += stats.memory_limit;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                "Could not get stats for service container {}: {}",
+                                container.name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Could not list containers for service {}: {}",
+                    service.name,
+                    e
+                );
+            }
+        }
+    }
+
     // If any container has no memory limit, use system memory as total
     if has_unlimited_container || memory_total_bytes == 0 {
         memory_total_bytes = get_system_memory();
@@ -173,6 +228,8 @@ pub async fn get_system_stats(
         total_apps_count,
         running_databases_count,
         total_databases_count,
+        running_services_count: running_services.len() as u32,
+        total_services_count,
         total_cpu_percent,
         memory_used_bytes,
         memory_total_bytes,

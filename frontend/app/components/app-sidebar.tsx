@@ -63,6 +63,7 @@ const navMain: NavMainItem[] = [
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },
       { title: "Backups", url: "/settings/backups" },
+      { title: "Audit Log", url: "/settings/audit" },
     ],
   },
 ];

@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, BuildLimits, DeploymentEngine};
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, reconcile_container_status, BuildLimits, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -115,6 +115,10 @@ async fn main() -> Result<()> {
         tracing::warn!("Failed to restore routes: {}", e);
     }
 
+    // Reconcile container status on startup
+    // This updates database records for containers that stopped while server was down
+    reconcile_container_status(&db, &runtime).await;
+
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(
         AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone())
@@ -161,11 +165,12 @@ async fn main() -> Result<()> {
     // Start container stats collection task
     spawn_stats_collector_task(runtime.clone());
 
-    // Start container crash monitor task
+    // Start container crash monitor task (monitors apps, databases, and services)
     spawn_container_monitor_task(
         db.clone(),
         runtime.clone(),
         config.container_monitor.clone(),
+        config.server.data_dir.clone(),
     );
 
     // Start database backup scheduler

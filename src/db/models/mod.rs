@@ -3,6 +3,7 @@
 //! This module re-exports all types for backwards compatibility.
 
 pub mod app;
+pub mod audit;
 pub mod backup;
 pub mod common;
 pub mod database;
@@ -20,6 +21,7 @@ pub mod volume;
 
 // Re-export all types for backwards compatibility
 pub use app::*;
+pub use audit::*;
 pub use backup::*;
 pub use common::*;
 pub use database::*;

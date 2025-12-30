@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
@@ -11,12 +11,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    CreateManagedDatabaseRequest, DatabaseCredentials, DatabaseStatus, DatabaseType,
-    ManagedDatabase, ManagedDatabaseResponse,
+    actions, resource_types, CreateManagedDatabaseRequest, DatabaseCredentials, DatabaseStatus,
+    DatabaseType, ManagedDatabase, ManagedDatabaseResponse, User,
 };
 use crate::engine::database_config::{generate_env_vars, generate_password, generate_username, get_config};
 use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
+
+use super::audit::{audit_log, extract_client_ip};
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -71,6 +73,8 @@ pub async fn get_database(
 /// Create a new managed database
 pub async fn create_database(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<CreateManagedDatabaseRequest>,
 ) -> Result<(StatusCode, Json<ManagedDatabaseResponse>), StatusCode> {
     // Validate name
@@ -196,6 +200,23 @@ pub async fn create_database(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DATABASE_CREATE,
+        resource_types::DATABASE,
+        Some(&database.id),
+        Some(&database.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "db_type": req.db_type.to_string(),
+            "version": version,
+        })),
+    )
+    .await;
+
     let host = Some(state.config.server.host.as_str());
     Ok((StatusCode::CREATED, Json(database.to_response(true, host))))
 }
@@ -203,6 +224,8 @@ pub async fn create_database(
 /// Delete a managed database
 pub async fn delete_database(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Get the database record
@@ -236,6 +259,20 @@ pub async fn delete_database(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DATABASE_DELETE,
+        resource_types::DATABASE,
+        Some(&database.id),
+        Some(&database.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     tracing::info!("Deleted managed database: {}", database.name);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -243,6 +280,8 @@ pub async fn delete_database(
 /// Start a database container
 pub async fn start_database(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     // Check if database exists
@@ -270,6 +309,20 @@ pub async fn start_database(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DATABASE_START,
+        resource_types::DATABASE,
+        Some(&database.id),
+        Some(&database.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     let host = Some(state.config.server.host.as_str());
     Ok(Json(database.to_response(false, host)))
 }
@@ -277,6 +330,8 @@ pub async fn start_database(
 /// Stop a database container
 pub async fn stop_database(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
@@ -305,6 +360,20 @@ pub async fn stop_database(
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DATABASE_STOP,
+        resource_types::DATABASE,
+        Some(&database.id),
+        Some(&database.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     let host = Some(state.config.server.host.as_str());
     Ok(Json(database.to_response(false, host)))
@@ -335,27 +404,87 @@ pub async fn get_database_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(query): Query<LogsQuery>,
-) -> Result<Json<Vec<LogEntry>>, StatusCode> {
+) -> Result<Json<Vec<LogEntry>>, (StatusCode, Json<serde_json::Value>)> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get database: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get database"})),
+            )
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Database not found"})),
+            )
+        })?;
+
+    // Check if the database is running
+    if database.get_status() != DatabaseStatus::Running {
+        tracing::info!(
+            "Database {} is not running (status: {})",
+            database.name,
+            database.status
+        );
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "Container is stopped",
+                "message": "The database container is not running. Start the database to view logs.",
+                "status": database.status
+            })),
+        ));
+    }
 
     let container_id = database.container_id.ok_or_else(|| {
         tracing::warn!("Database {} has no container", database.name);
-        StatusCode::PRECONDITION_FAILED
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "Container is stopped",
+                "message": "The database container is not running. Start the database to view logs."
+            })),
+        )
     })?;
+
+    // Verify the container exists and is running
+    match state.runtime.inspect(&container_id).await {
+        Ok(info) => {
+            if !info.running {
+                tracing::info!("Database {} container exists but is not running", database.name);
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({
+                        "error": "Container is stopped",
+                        "message": "The database container is not running. Start the database to view logs."
+                    })),
+                ));
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to inspect container for database {}: {}", database.name, e);
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": "Container is stopped",
+                    "message": "The database container is not running. Start the database to view logs."
+                })),
+            ));
+        }
+    }
 
     // Get logs from the container
     use futures::StreamExt;
     let log_stream = state.runtime.logs(&container_id).await.map_err(|e| {
         tracing::error!("Failed to get container logs: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to get container logs: {}", e)})),
+        )
     })?;
 
     // Collect logs (limited to query.lines)

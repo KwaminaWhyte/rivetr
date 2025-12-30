@@ -1,4 +1,5 @@
 mod apps;
+mod audit;
 pub mod auth;
 mod basic_auth;
 mod database_backups;
@@ -163,6 +164,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/:id", delete(services::delete_service))
         .route("/services/:id/start", post(services::start_service))
         .route("/services/:id/stop", post(services::stop_service))
+        .route("/services/:id/logs", get(services::get_service_logs))
+        .route("/services/:id/logs/stream", get(services::stream_service_logs))
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
         .route("/templates/categories", get(service_templates::list_categories))
@@ -173,6 +176,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/disk", get(system::get_disk_stats))
         .route("/system/health", get(system::get_detailed_health))
         .route("/events/recent", get(system::get_recent_events))
+        // Audit logs
+        .route("/audit", get(audit::list_logs))
+        .route("/audit/actions", get(audit::list_action_types))
+        .route("/audit/resource-types", get(audit::list_resource_types))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

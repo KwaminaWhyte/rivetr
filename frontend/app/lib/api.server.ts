@@ -1,6 +1,8 @@
 import type {
   App,
   AppStatus,
+  AuditLogListResponse,
+  AuditLogQuery,
   ContainerStats,
   CreateAppRequest,
   CreateEnvVarRequest,
@@ -50,7 +52,7 @@ import type {
   Volume,
 } from "@/types/api";
 
-const API_BASE = process.env.API_BASE || "http://localhost:8080";
+const API_BASE = process.env.API_BASE || "http://localhost:9080";
 
 async function apiRequest<T>(
   path: string,
@@ -356,6 +358,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  // Audit Logs
+  getAuditLogs: (query: AuditLogQuery = {}, token: string) => {
+    const params = new URLSearchParams();
+    if (query.action) params.append("action", query.action);
+    if (query.resource_type) params.append("resource_type", query.resource_type);
+    if (query.resource_id) params.append("resource_id", query.resource_id);
+    if (query.user_id) params.append("user_id", query.user_id);
+    if (query.start_date) params.append("start_date", query.start_date);
+    if (query.end_date) params.append("end_date", query.end_date);
+    if (query.page) params.append("page", query.page.toString());
+    if (query.per_page) params.append("per_page", query.per_page.toString());
+    const queryString = params.toString();
+    return apiRequest<AuditLogListResponse>(
+      `/audit${queryString ? `?${queryString}` : ""}`,
+      token
+    );
+  },
+  getAuditActionTypes: (token: string) =>
+    apiRequest<string[]>("/audit/actions", token),
+  getAuditResourceTypes: (token: string) =>
+    apiRequest<string[]>("/audit/resource-types", token),
 };
 
 // Public API methods (no auth required)

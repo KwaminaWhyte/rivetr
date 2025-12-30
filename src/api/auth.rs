@@ -158,17 +158,39 @@ pub async fn auth_middleware(
         .get("Authorization")
         .and_then(|h| h.to_str().ok());
 
-    let token = match auth_header {
-        Some(header) if header.starts_with("Bearer ") => &header[7..],
-        _ => {
-            // Also check for X-API-Key header
-            request
-                .headers()
-                .get("X-API-Key")
-                .and_then(|h| h.to_str().ok())
-                .ok_or(StatusCode::UNAUTHORIZED)?
+    // First try Authorization header
+    let token = if let Some(header) = auth_header {
+        if header.starts_with("Bearer ") {
+            header[7..].to_string()
+        } else {
+            header.to_string()
         }
+    } else if let Some(api_key) = request.headers().get("X-API-Key").and_then(|h| h.to_str().ok()) {
+        // Try X-API-Key header
+        api_key.to_string()
+    } else {
+        // Try query parameter (for SSE/EventSource which doesn't support custom headers)
+        request
+            .uri()
+            .query()
+            .and_then(|q| {
+                // Simple query string parsing: find token=value
+                q.split('&')
+                    .find_map(|pair| {
+                        let mut parts = pair.splitn(2, '=');
+                        let key = parts.next()?;
+                        let value = parts.next()?;
+                        if key == "token" {
+                            Some(value.to_string())
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .ok_or(StatusCode::UNAUTHORIZED)?
     };
+
+    let token = token.as_str();
 
     // First check if it matches the admin token from config
     if token == state.config.auth.admin_token {

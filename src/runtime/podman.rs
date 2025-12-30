@@ -308,6 +308,46 @@ impl ContainerRuntime for PodmanRuntime {
         Ok(result)
     }
 
+    async fn list_compose_containers(&self, project_name: &str) -> Result<Vec<ContainerInfo>> {
+        // Filter by Docker Compose project label
+        let output = self
+            .run_command(&[
+                "ps".to_string(),
+                "--filter".to_string(),
+                format!("label=com.docker.compose.project={}", project_name),
+                "--format".to_string(),
+                "{{.ID}}|{{.Names}}|{{.State}}|{{.Ports}}".to_string(),
+            ])
+            .await?;
+
+        let mut result = Vec::new();
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() >= 3 {
+                let port = parts.get(3).and_then(|ports| {
+                    ports
+                        .split("->")
+                        .next()
+                        .and_then(|host_part| host_part.split(':').last())
+                        .and_then(|p| p.parse().ok())
+                });
+
+                let is_running = parts[2].to_lowercase() == "running";
+
+                result.push(ContainerInfo {
+                    id: parts[0].to_string(),
+                    name: parts[1].to_string(),
+                    status: parts[2].to_string(),
+                    port,
+                    running: is_running,
+                    host_port: port,
+                });
+            }
+        }
+
+        Ok(result)
+    }
+
     async fn stats(&self, container_id: &str) -> Result<ContainerStats> {
         // Use podman stats with JSON output for reliable parsing
         let output = Command::new("podman")

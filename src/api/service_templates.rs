@@ -15,6 +15,38 @@ use crate::db::{
 };
 use crate::AppState;
 
+/// Namespace container names in compose content to prevent global conflicts
+/// Prefixes all container_name values with "rivetr-{service_name}-"
+fn namespace_container_names(content: &str, service_name: &str) -> Result<String, String> {
+    let mut yaml: serde_yaml::Value = serde_yaml::from_str(content)
+        .map_err(|e| format!("Invalid YAML: {}", e))?;
+
+    let prefix = format!("rivetr-{}-", service_name);
+
+    if let Some(mapping) = yaml.as_mapping_mut() {
+        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string())) {
+            if let Some(services_map) = services.as_mapping_mut() {
+                for (_service_key, service_config) in services_map.iter_mut() {
+                    if let Some(config_map) = service_config.as_mapping_mut() {
+                        let container_name_key = serde_yaml::Value::String("container_name".to_string());
+                        if let Some(container_name_val) = config_map.get_mut(&container_name_key) {
+                            if let Some(name) = container_name_val.as_str() {
+                                // Only add prefix if not already prefixed
+                                if !name.starts_with(&prefix) && !name.starts_with("rivetr-") {
+                                    *container_name_val = serde_yaml::Value::String(format!("{}{}", prefix, name));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    serde_yaml::to_string(&yaml)
+        .map_err(|e| format!("Failed to serialize YAML: {}", e))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     /// Filter by category
@@ -214,15 +246,39 @@ async fn start_compose_service(
     let compose_dir = std::env::temp_dir().join(format!("rivetr-svc-{}", name));
     std::fs::create_dir_all(&compose_dir)?;
 
+    // Namespace container names to prevent global conflicts
+    let namespaced_content = namespace_container_names(compose_content, name)
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to namespace container names: {}. Using original content.", e);
+            compose_content.to_string()
+        });
+
     // Write compose file
     let compose_path = compose_dir.join("docker-compose.yml");
     let mut file = std::fs::File::create(&compose_path)?;
-    file.write_all(compose_content.as_bytes())?;
+    file.write_all(namespaced_content.as_bytes())?;
 
     tracing::info!("Starting compose service: {} at {:?}", name, compose_path);
 
     // Run docker compose up
     let project_name = format!("rivetr-svc-{}", name);
+
+    // Clean up any orphaned containers from previous failed deployments
+    // This prevents "container name already in use" errors
+    tracing::debug!("Cleaning up orphaned containers for project: {}", project_name);
+    let _ = Command::new("docker")
+        .args([
+            "compose",
+            "-p",
+            &project_name,
+            "-f",
+            compose_path.to_str().unwrap_or("docker-compose.yml"),
+            "down",
+            "--remove-orphans",
+        ])
+        .output()
+        .await;
+
     let output = Command::new("docker")
         .args([
             "compose",

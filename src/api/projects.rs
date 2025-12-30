@@ -2,18 +2,19 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase, Project, ProjectWithAppCount,
-    ProjectWithApps, Service, UpdateProjectRequest,
+    actions, resource_types, App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase,
+    Project, ProjectWithAppCount, ProjectWithApps, Service, UpdateProjectRequest, User,
 };
 use crate::AppState;
 
+use super::audit::{audit_log, extract_client_ip};
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::validate_uuid;
 
@@ -173,6 +174,8 @@ pub async fn get_project(
 /// Create a new project
 pub async fn create_project(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<Project>), ApiError> {
     // Validate request
@@ -209,12 +212,28 @@ pub async fn create_project(
         .fetch_one(&state.db)
         .await?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::PROJECT_CREATE,
+        resource_types::PROJECT,
+        Some(&project.id),
+        Some(&project.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok((StatusCode::CREATED, Json(project)))
 }
 
 /// Update a project
 pub async fn update_project(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> Result<Json<Project>, ApiError> {
@@ -265,18 +284,41 @@ pub async fn update_project(
         .fetch_one(&state.db)
         .await?;
 
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::PROJECT_UPDATE,
+        resource_types::PROJECT,
+        Some(&project.id),
+        Some(&project.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok(Json(project))
 }
 
 /// Delete a project (apps become unassigned)
 pub async fn delete_project(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID format
     if let Err(e) = validate_uuid(&id, "project_id") {
         return Err(ApiError::validation_field("project_id", e));
     }
+
+    // Get project before deleting for audit log
+    let project = sqlx::query_as::<_, Project>("SELECT * FROM projects WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Project not found"))?;
 
     // Delete the project - apps will have project_id set to NULL due to ON DELETE SET NULL
     let result = sqlx::query("DELETE FROM projects WHERE id = ?")
@@ -287,6 +329,20 @@ pub async fn delete_project(
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Project not found"));
     }
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::PROJECT_DELETE,
+        resource_types::PROJECT,
+        Some(&project.id),
+        Some(&project.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

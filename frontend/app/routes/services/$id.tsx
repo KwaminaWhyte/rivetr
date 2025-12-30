@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Form, Link, redirect, useNavigation } from "react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "./+types/$id";
 import { toast } from "sonner";
 import {
@@ -12,11 +12,14 @@ import {
   Trash2,
   Save,
   FileCode,
+  FileText,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ServiceLogs } from "@/components/service-logs";
 import {
   Dialog,
   DialogContent,
@@ -292,23 +295,43 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
         </Card>
       )}
 
-      {/* Docker Compose Content */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <FileCode className="h-5 w-5" />
-            <CardTitle>Docker Compose Configuration</CardTitle>
-          </div>
-          <CardDescription>
-            The docker-compose.yml content for this service
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
-            {service.compose_content}
-          </pre>
-        </CardContent>
-      </Card>
+      {/* Tabs for Configuration and Logs */}
+      <Tabs defaultValue="config" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="config" className="flex items-center gap-2">
+            <FileCode className="h-4 w-4" />
+            Configuration
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Logs
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="config" className="space-y-4">
+          {/* Docker Compose Content */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <FileCode className="h-5 w-5" />
+                <CardTitle>Docker Compose Configuration</CardTitle>
+              </div>
+              <CardDescription>
+                The docker-compose.yml content for this service
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
+                {service.compose_content}
+              </pre>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-4">
+          <ServiceLogs serviceId={service.id} serviceName={service.name} />
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
