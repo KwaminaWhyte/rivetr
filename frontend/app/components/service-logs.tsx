@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 import type { ServiceLogEntry } from "@/types/api";
 
 interface ServiceLogsProps {
@@ -12,7 +13,9 @@ interface ServiceLogsProps {
   token?: string;
 }
 
-export function ServiceLogs({ serviceId, serviceName, serviceStatus, token }: ServiceLogsProps) {
+export function ServiceLogs({ serviceId, serviceName, serviceStatus, token: propToken }: ServiceLogsProps) {
+  // Get token from props or localStorage
+  const token = propToken || getAuthToken() || "";
   const [logs, setLogs] = useState<ServiceLogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
