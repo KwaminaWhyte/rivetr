@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Route } from "./+types/monitoring";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,21 +21,6 @@ export function meta() {
     { title: "Monitoring - Rivetr" },
     { name: "description", content: "System health and resource monitoring" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-
-  // Fetch initial data on server
-  const [health, disk] = await Promise.all([
-    api.getSystemHealth(token).catch(() => null),
-    api.getDiskStats(token).catch(() => null),
-  ]);
-
-  return { health, disk, token };
 }
 
 function HealthStatusIcon({ passed, critical }: { passed: boolean; critical: boolean }) {
@@ -89,20 +73,18 @@ function DiskUsageBar({ used, total }: { used: number; total: number }) {
   );
 }
 
-export default function MonitoringPage({ loaderData }: Route.ComponentProps) {
+export default function MonitoringPage() {
   // Query for health status with polling
   const { data: health, isLoading: healthLoading, refetch: refetchHealth } = useQuery<SystemHealthStatus | null>({
     queryKey: ["systemHealth"],
-    queryFn: () => api.getSystemHealth(loaderData.token),
-    initialData: loaderData.health,
+    queryFn: () => api.getSystemHealth().catch(() => null),
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Query for disk stats with polling
   const { data: disk, isLoading: diskLoading, refetch: refetchDisk } = useQuery<DiskStats | null>({
     queryKey: ["diskStats"],
-    queryFn: () => api.getDiskStats(loaderData.token),
-    initialData: loaderData.disk,
+    queryFn: () => api.getDiskStats().catch(() => null),
     refetchInterval: 60000, // Refresh every minute
   });
 

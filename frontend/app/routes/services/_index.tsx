@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Form, useNavigation, Link } from "react-router";
-import type { Route } from "./+types/_index";
+import { Link } from "react-router";
 import { Plus, Play, Square, Trash2, Layers, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -38,62 +37,6 @@ export function meta() {
     { title: "Services - Rivetr" },
     { name: "description", content: "Manage Docker Compose services" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const services = await api.getServices(token).catch(() => []);
-
-  return { services, token };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "create") {
-    const name = formData.get("name");
-    const composeContent = formData.get("compose_content");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Service name is required" };
-    }
-    if (typeof composeContent !== "string" || !composeContent.trim()) {
-      return { error: "Docker Compose content is required" };
-    }
-
-    try {
-      const service = await api.createService(token, {
-        name: name.trim(),
-        compose_content: composeContent.trim(),
-      });
-      return { success: true, service };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to create service" };
-    }
-  }
-
-  if (intent === "delete") {
-    const serviceId = formData.get("service_id");
-    if (typeof serviceId !== "string") {
-      return { error: "Service ID is required" };
-    }
-    try {
-      await api.deleteService(token, serviceId);
-      return { success: true, deleted: true };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete service" };
-    }
-  }
-
-  return { error: "Unknown action" };
 }
 
 function getStatusColor(status: ServiceStatus) {
@@ -134,19 +77,34 @@ services:
       - "80"
 `;
 
-export default function ServicesPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function ServicesPage() {
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newComposeContent, setNewComposeContent] = useState(DEFAULT_COMPOSE);
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services = [], isLoading } = useQuery<Service[]>({
     queryKey: ["services"],
-    queryFn: () => api.getServices(loaderData.token),
-    initialData: loaderData.services,
+    queryFn: () => api.getServices(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { name: string; compose_content: string }) =>
+      api.createService(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+      toast.success("Service created");
+      setIsCreateDialogOpen(false);
+      setNewServiceName("");
+      setNewComposeContent(DEFAULT_COMPOSE);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create service");
+    },
   });
 
   const startMutation = useMutation({
-    mutationFn: (id: string) => api.startService(id, loaderData.token),
+    mutationFn: (id: string) => api.startService(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       toast.success("Service started");
@@ -157,7 +115,7 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
   });
 
   const stopMutation = useMutation({
-    mutationFn: (id: string) => api.stopService(id, loaderData.token),
+    mutationFn: (id: string) => api.stopService(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       toast.success("Service stopped");
@@ -167,13 +125,32 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
     },
   });
 
-  const isSubmitting = navigation.state === "submitting";
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteService(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+      toast.success("Service deleted");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete service");
+    },
+  });
 
-  // Close dialog on successful creation
-  if (actionData?.success && isCreateDialogOpen) {
-    setIsCreateDialogOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["services"] });
-  }
+  const handleCreateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!newServiceName.trim()) {
+      toast.error("Service name is required");
+      return;
+    }
+    if (!newComposeContent.trim()) {
+      toast.error("Docker Compose content is required");
+      return;
+    }
+    createMutation.mutate({
+      name: newServiceName.trim(),
+      compose_content: newComposeContent.trim(),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -201,17 +178,18 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
-              <Form method="post">
-                <input type="hidden" name="intent" value="create" />
+              <form onSubmit={handleCreateSubmit}>
                 <DialogHeader>
                   <DialogTitle>Create Docker Compose Service</DialogTitle>
                   <DialogDescription>
                     Deploy a multi-container application using Docker Compose.
                   </DialogDescription>
                 </DialogHeader>
-                {actionData?.error && (
+                {createMutation.error && (
                   <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                    {actionData.error}
+                    {createMutation.error instanceof Error
+                      ? createMutation.error.message
+                      : "Failed to create service"}
                   </div>
                 )}
                 <div className="space-y-4 py-4">
@@ -221,6 +199,8 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
                       id="service-name"
                       name="name"
                       placeholder="my-service"
+                      value={newServiceName}
+                      onChange={(e) => setNewServiceName(e.target.value)}
                       required
                     />
                   </div>
@@ -232,7 +212,8 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
                       placeholder="Paste your docker-compose.yml content..."
                       className="font-mono text-sm"
                       rows={12}
-                      defaultValue={DEFAULT_COMPOSE}
+                      value={newComposeContent}
+                      onChange={(e) => setNewComposeContent(e.target.value)}
                       required
                     />
                   </div>
@@ -245,18 +226,32 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Creating..." : "Create Service"}
+                  <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? "Creating..." : "Create Service"}
                   </Button>
                 </DialogFooter>
-              </Form>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
       {/* Services Grid */}
-      {services.length === 0 ? (
+      {isLoading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="pb-3">
+                <div className="h-5 w-32 bg-muted rounded" />
+                <div className="h-3 w-24 bg-muted rounded mt-2" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 w-full bg-muted rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : services.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -349,13 +344,13 @@ export default function ServicesPage({ loaderData, actionData }: Route.Component
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="delete" />
-                          <input type="hidden" name="service_id" value={service.id} />
-                          <AlertDialogAction type="submit" className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                            Delete
-                          </AlertDialogAction>
-                        </Form>
+                        <AlertDialogAction
+                          onClick={() => deleteMutation.mutate(service.id)}
+                          disabled={deleteMutation.isPending}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>

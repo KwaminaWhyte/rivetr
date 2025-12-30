@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { Form, useNavigation, useOutletContext } from "react-router";
+import { useState } from "react";
+import { useOutletContext, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/settings";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -43,80 +42,105 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
 
 interface OutletContext {
   app: App;
-  token: string;
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "update") {
-    const updates: UpdateAppRequest = {};
-    const name = formData.get("name");
-    const git_url = formData.get("git_url");
-    const branch = formData.get("branch");
-    const dockerfile = formData.get("dockerfile");
-    const port = formData.get("port");
-    const healthcheck = formData.get("healthcheck");
-    const environment = formData.get("environment");
-
-    // For required fields, only set if present
-    if (typeof name === "string" && name) updates.name = name;
-    if (typeof git_url === "string" && git_url) updates.git_url = git_url;
-    if (typeof branch === "string" && branch) updates.branch = branch;
-    if (typeof dockerfile === "string" && dockerfile) updates.dockerfile = dockerfile;
-    if (typeof port === "string" && port) updates.port = parseInt(port);
-    if (typeof environment === "string" && environment) updates.environment = environment as AppEnvironment;
-
-    // For optional fields, send empty string to clear, or the value to set
-    // Don't include the field at all if not present in form
-    if (typeof healthcheck === "string") updates.healthcheck = healthcheck; // Empty string means clear
-
-    // Advanced build options - same pattern: empty string means clear
-    const dockerfile_path = formData.get("dockerfile_path");
-    const base_directory = formData.get("base_directory");
-    const build_target = formData.get("build_target");
-    const watch_paths = formData.get("watch_paths");
-    const custom_docker_options = formData.get("custom_docker_options");
-
-    if (typeof dockerfile_path === "string") updates.dockerfile_path = dockerfile_path;
-    if (typeof base_directory === "string") updates.base_directory = base_directory;
-    if (typeof build_target === "string") updates.build_target = build_target;
-    if (typeof watch_paths === "string") updates.watch_paths = watch_paths;
-    if (typeof custom_docker_options === "string") updates.custom_docker_options = custom_docker_options;
-
-    try {
-      await api.updateApp(token, params.id!, updates);
-      return { success: true };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Update failed" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
-  const { app, token } = useOutletContext<OutletContext>();
-  const navigation = useNavigation();
+export default function AppSettingsTab() {
+  const { app } = useOutletContext<OutletContext>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingNetwork, setIsSavingNetwork] = useState(false);
   const [isSavingDomains, setIsSavingDomains] = useState(false);
   const [isSavingLabels, setIsSavingLabels] = useState(false);
 
-  const isSubmitting = navigation.state === "submitting";
+  // Form state for general settings
+  const [generalForm, setGeneralForm] = useState({
+    name: app.name,
+    git_url: app.git_url,
+    branch: app.branch,
+    port: app.port,
+    environment: app.environment || "development",
+    healthcheck: app.healthcheck || "",
+  });
+
+  // Form state for build settings
+  const [buildForm, setBuildForm] = useState({
+    dockerfile: app.dockerfile,
+    dockerfile_path: app.dockerfile_path || "",
+    base_directory: app.base_directory || "",
+    build_target: app.build_target || "",
+    watch_paths: app.watch_paths || "",
+    custom_docker_options: app.custom_docker_options || "",
+  });
+
+  // Handle general settings form submission
+  const handleGeneralSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const updates: UpdateAppRequest = {
+        name: generalForm.name,
+        git_url: generalForm.git_url,
+        branch: generalForm.branch,
+        port: generalForm.port,
+        environment: generalForm.environment as AppEnvironment,
+        healthcheck: generalForm.healthcheck,
+      };
+      await api.updateApp(app.id, updates);
+      toast.success("Settings saved");
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle build settings form submission
+  const handleBuildSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const updates: UpdateAppRequest = {
+        dockerfile: buildForm.dockerfile,
+        dockerfile_path: buildForm.dockerfile_path,
+        base_directory: buildForm.base_directory,
+        build_target: buildForm.build_target,
+        watch_paths: buildForm.watch_paths,
+        custom_docker_options: buildForm.custom_docker_options,
+      };
+      await api.updateApp(app.id, updates);
+      toast.success("Settings saved");
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle delete action
+  const handleDelete = async () => {
+    if (!deletePassword.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await api.deleteApp(app.id, deletePassword);
+      toast.success("Application deleted");
+      navigate("/projects");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Delete failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Handler for saving network configuration
   const handleSaveNetworkConfig = async (updates: UpdateAppRequest) => {
     setIsSavingNetwork(true);
     try {
-      await api.updateApp(app.id, updates, token);
+      await api.updateApp(app.id, updates);
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } finally {
       setIsSavingNetwork(false);
@@ -127,7 +151,7 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
   const handleSaveDomainConfig = async (updates: UpdateAppRequest) => {
     setIsSavingDomains(true);
     try {
-      await api.updateApp(app.id, updates, token);
+      await api.updateApp(app.id, updates);
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } finally {
       setIsSavingDomains(false);
@@ -138,22 +162,12 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
   const handleSaveContainerLabels = async (updates: UpdateAppRequest) => {
     setIsSavingLabels(true);
     try {
-      await api.updateApp(app.id, updates, token);
+      await api.updateApp(app.id, updates);
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } finally {
       setIsSavingLabels(false);
     }
   };
-
-  useEffect(() => {
-    if (actionData?.success) {
-      toast.success("Settings saved");
-      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, app.id, queryClient]);
 
   return (
     <div className="space-y-6">
@@ -176,35 +190,53 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Form method="post" className="space-y-6">
-                <input type="hidden" name="intent" value="update" />
-
+              <form onSubmit={handleGeneralSubmit} className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="name">Name</Label>
-                    <Input id="name" name="name" defaultValue={app.name} />
+                    <Input
+                      id="name"
+                      value={generalForm.name}
+                      onChange={(e) => setGeneralForm({ ...generalForm, name: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="git_url">Git URL</Label>
-                    <Input id="git_url" name="git_url" defaultValue={app.git_url} />
+                    <Input
+                      id="git_url"
+                      value={generalForm.git_url}
+                      onChange={(e) => setGeneralForm({ ...generalForm, git_url: e.target.value })}
+                    />
                   </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="branch">Branch</Label>
-                    <Input id="branch" name="branch" defaultValue={app.branch} />
+                    <Input
+                      id="branch"
+                      value={generalForm.branch}
+                      onChange={(e) => setGeneralForm({ ...generalForm, branch: e.target.value })}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="port">Port</Label>
-                    <Input id="port" name="port" type="number" defaultValue={app.port} />
+                    <Input
+                      id="port"
+                      type="number"
+                      value={generalForm.port}
+                      onChange={(e) => setGeneralForm({ ...generalForm, port: parseInt(e.target.value) || 0 })}
+                    />
                   </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="environment">Environment</Label>
-                    <Select name="environment" defaultValue={app.environment || "development"}>
+                    <Select
+                      value={generalForm.environment}
+                      onValueChange={(value) => setGeneralForm({ ...generalForm, environment: value as AppEnvironment })}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select environment" />
                       </SelectTrigger>
@@ -219,7 +251,12 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="healthcheck">Healthcheck Path</Label>
-                    <Input id="healthcheck" name="healthcheck" placeholder="/health" defaultValue={app.healthcheck || ""} />
+                    <Input
+                      id="healthcheck"
+                      placeholder="/health"
+                      value={generalForm.healthcheck}
+                      onChange={(e) => setGeneralForm({ ...generalForm, healthcheck: e.target.value })}
+                    />
                     <p className="text-xs text-muted-foreground">
                       Endpoint to check if the app is running
                     </p>
@@ -229,7 +266,7 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save Changes"}
                 </Button>
-              </Form>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -244,13 +281,15 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Form method="post" className="space-y-6">
-                <input type="hidden" name="intent" value="update" />
-
+              <form onSubmit={handleBuildSubmit} className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="dockerfile">Dockerfile</Label>
-                    <Input id="dockerfile" name="dockerfile" defaultValue={app.dockerfile} />
+                    <Input
+                      id="dockerfile"
+                      value={buildForm.dockerfile}
+                      onChange={(e) => setBuildForm({ ...buildForm, dockerfile: e.target.value })}
+                    />
                     <p className="text-xs text-muted-foreground">
                       Dockerfile name (e.g., Dockerfile)
                     </p>
@@ -259,9 +298,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                     <Label htmlFor="dockerfile_path">Dockerfile Path</Label>
                     <Input
                       id="dockerfile_path"
-                      name="dockerfile_path"
                       placeholder="Dockerfile.prod"
-                      defaultValue={app.dockerfile_path || ""}
+                      value={buildForm.dockerfile_path}
+                      onChange={(e) => setBuildForm({ ...buildForm, dockerfile_path: e.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">
                       Custom Dockerfile location (relative to base directory)
@@ -274,9 +313,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                     <Label htmlFor="base_directory">Base Directory</Label>
                     <Input
                       id="base_directory"
-                      name="base_directory"
                       placeholder="backend/"
-                      defaultValue={app.base_directory || ""}
+                      value={buildForm.base_directory}
+                      onChange={(e) => setBuildForm({ ...buildForm, base_directory: e.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">
                       Subdirectory to use as build context
@@ -286,9 +325,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                     <Label htmlFor="build_target">Build Target</Label>
                     <Input
                       id="build_target"
-                      name="build_target"
                       placeholder="production"
-                      defaultValue={app.build_target || ""}
+                      value={buildForm.build_target}
+                      onChange={(e) => setBuildForm({ ...buildForm, build_target: e.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">
                       Multi-stage build target (--target flag)
@@ -301,9 +340,9 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                     <Label htmlFor="watch_paths">Watch Paths</Label>
                     <Input
                       id="watch_paths"
-                      name="watch_paths"
                       placeholder='["src/", "package.json"]'
-                      defaultValue={app.watch_paths || ""}
+                      value={buildForm.watch_paths}
+                      onChange={(e) => setBuildForm({ ...buildForm, watch_paths: e.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">
                       JSON array of paths to trigger auto-deploy
@@ -313,10 +352,10 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                     <Label htmlFor="custom_docker_options">Custom Docker Options</Label>
                     <Textarea
                       id="custom_docker_options"
-                      name="custom_docker_options"
                       placeholder="--no-cache --build-arg FOO=bar"
                       rows={2}
-                      defaultValue={app.custom_docker_options || ""}
+                      value={buildForm.custom_docker_options}
+                      onChange={(e) => setBuildForm({ ...buildForm, custom_docker_options: e.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">
                       Extra Docker build arguments
@@ -327,12 +366,12 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save Changes"}
                 </Button>
-              </Form>
+              </form>
             </CardContent>
           </Card>
 
           {/* Docker Registry / Deployment Source */}
-          <DockerRegistryCard app={app} token={token} />
+          <DockerRegistryCard app={app} />
         </TabsContent>
 
         {/* Network Tab */}
@@ -362,21 +401,20 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
         {/* Storage Tab */}
         <TabsContent value="storage" className="space-y-6">
           {/* Volumes */}
-          <VolumesCard appId={app.id} token={token} />
+          <VolumesCard appId={app.id} />
 
           {/* Environment Variables */}
-          <EnvVarsTab appId={app.id} token={token} />
+          <EnvVarsTab appId={app.id} />
         </TabsContent>
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
           {/* HTTP Basic Auth */}
-          <BasicAuthCard appId={app.id} token={token} />
+          <BasicAuthCard appId={app.id} />
 
           {/* Deployment Commands */}
           <DeploymentCommandsCard
             app={app}
-            token={token}
             onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
           />
 
@@ -426,17 +464,13 @@ export default function AppSettingsTab({ actionData }: Route.ComponentProps) {
             }}>
               Cancel
             </Button>
-            <Form method="post" action={`/apps/${app.id}`}>
-              <input type="hidden" name="intent" value="delete" />
-              <input type="hidden" name="password" value={deletePassword} />
-              <Button
-                type="submit"
-                variant="destructive"
-                disabled={isSubmitting || !deletePassword.trim()}
-              >
-                {isSubmitting ? "Deleting..." : "Delete"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              disabled={isSubmitting || !deletePassword.trim()}
+              onClick={handleDelete}
+            >
+              {isSubmitting ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

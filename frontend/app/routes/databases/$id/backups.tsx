@@ -135,7 +135,7 @@ function getScheduleDescription(schedule: DatabaseBackupSchedule): string {
 }
 
 export default function DatabaseBackupsPage() {
-  const { database, token } = useOutletContext<{ database: ManagedDatabase; token: string }>();
+  const { database } = useOutletContext<{ database: ManagedDatabase }>();
   const queryClient = useQueryClient();
   const [deleteBackupId, setDeleteBackupId] = useState<string | null>(null);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
@@ -150,19 +150,19 @@ export default function DatabaseBackupsPage() {
   // Fetch backups
   const { data: backups, isLoading: backupsLoading } = useQuery<DatabaseBackup[]>({
     queryKey: ["database-backups", database.id],
-    queryFn: () => api.getDatabaseBackups(database.id, 50, token),
+    queryFn: () => api.getDatabaseBackups(database.id, 50),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   // Fetch schedule
   const { data: schedule, isLoading: scheduleLoading } = useQuery<DatabaseBackupSchedule | null>({
     queryKey: ["database-backup-schedule", database.id],
-    queryFn: () => api.getDatabaseBackupSchedule(database.id, token),
+    queryFn: () => api.getDatabaseBackupSchedule(database.id),
   });
 
   // Create backup mutation
   const createBackupMutation = useMutation({
-    mutationFn: () => api.createDatabaseBackup(database.id, token),
+    mutationFn: () => api.createDatabaseBackup(database.id),
     onSuccess: () => {
       toast.success("Backup started");
       queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] });
@@ -174,7 +174,7 @@ export default function DatabaseBackupsPage() {
 
   // Delete backup mutation
   const deleteBackupMutation = useMutation({
-    mutationFn: (backupId: string) => api.deleteDatabaseBackup(database.id, backupId, token),
+    mutationFn: (backupId: string) => api.deleteDatabaseBackup(database.id, backupId),
     onSuccess: () => {
       toast.success("Backup deleted");
       queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] });
@@ -196,8 +196,7 @@ export default function DatabaseBackupsPage() {
           schedule_hour: scheduleHour,
           schedule_day: scheduleType === "weekly" ? scheduleDay : undefined,
           retention_count: retentionCount,
-        },
-        token
+        }
       ),
     onSuccess: () => {
       toast.success("Backup schedule updated");
@@ -211,7 +210,7 @@ export default function DatabaseBackupsPage() {
 
   // Delete schedule mutation
   const deleteScheduleMutation = useMutation({
-    mutationFn: () => api.deleteDatabaseBackupSchedule(database.id, token),
+    mutationFn: () => api.deleteDatabaseBackupSchedule(database.id),
     onSuccess: () => {
       toast.success("Backup schedule removed");
       queryClient.invalidateQueries({ queryKey: ["database-backup-schedule", database.id] });
@@ -223,7 +222,7 @@ export default function DatabaseBackupsPage() {
 
   // Download backup mutation
   const downloadBackupMutation = useMutation({
-    mutationFn: (backupId: string) => api.downloadDatabaseBackup(database.id, backupId, token),
+    mutationFn: (backupId: string) => api.downloadDatabaseBackup(database.id, backupId),
     onSuccess: () => {
       toast.success("Backup download started");
     },

@@ -23,6 +23,8 @@ rivetr.toml
 # Build artifacts
 *.tar
 *.tar.gz
+/static/dist/
+/frontend/build/
 
 # Logs
 *.log

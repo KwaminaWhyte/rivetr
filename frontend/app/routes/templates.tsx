@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Form, useNavigation, useNavigate } from "react-router";
-import type { Route } from "./+types/templates";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import {
   Activity,
@@ -17,6 +16,7 @@ import {
   X,
   Eye,
   EyeOff,
+  Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,6 @@ import {
 import type {
   ServiceTemplate,
   TemplateCategory,
-  EnvSchemaEntry,
   DeployTemplateRequest,
 } from "@/types/api";
 import { TEMPLATE_CATEGORIES } from "@/types/api";
@@ -46,16 +45,6 @@ export function meta() {
     { title: "Templates - Rivetr" },
     { name: "description", content: "Browse and deploy service templates" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const templates = await api.getTemplates(token).catch(() => []);
-
-  return { templates, token };
 }
 
 // Map category to icon component
@@ -101,7 +90,7 @@ function getCategoryColor(category: TemplateCategory) {
   }
 }
 
-export default function TemplatesPage({ loaderData }: Route.ComponentProps) {
+export default function TemplatesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
@@ -111,15 +100,14 @@ export default function TemplatesPage({ loaderData }: Route.ComponentProps) {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
-  const { data: templates = [] } = useQuery<ServiceTemplate[]>({
+  const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
     queryKey: ["templates"],
-    queryFn: () => api.getTemplates(undefined, loaderData.token),
-    initialData: loaderData.templates,
+    queryFn: () => api.getTemplates(),
   });
 
   const deployMutation = useMutation({
     mutationFn: (data: { templateId: string; request: DeployTemplateRequest }) =>
-      api.deployTemplate(data.templateId, data.request, loaderData.token),
+      api.deployTemplate(data.templateId, data.request),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       toast.success("Template deployed successfully");
@@ -238,7 +226,14 @@ export default function TemplatesPage({ loaderData }: Route.ComponentProps) {
       </div>
 
       {/* Templates Grid */}
-      {filteredTemplates.length === 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Loader2 className="mx-auto h-12 w-12 text-muted-foreground mb-4 animate-spin" />
+            <p className="text-muted-foreground">Loading templates...</p>
+          </CardContent>
+        </Card>
+      ) : filteredTemplates.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-4" />

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Route } from "./+types/audit";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -27,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { AuditLogListResponse, AuditLogQuery } from "@/types/api";
 import {
@@ -63,31 +63,7 @@ function formatResourceType(resourceType: string): string {
   return resourceType.charAt(0).toUpperCase() + resourceType.slice(1);
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-
-  // Fetch initial data
-  const [auditLogs, actionTypes, resourceTypes] = await Promise.all([
-    api.getAuditLogs({}, token).catch(() => ({
-      items: [],
-      total: 0,
-      page: 1,
-      per_page: 50,
-      total_pages: 0,
-    })),
-    api.getAuditActionTypes(token).catch(() => []),
-    api.getAuditResourceTypes(token).catch(() => []),
-  ]);
-
-  return { auditLogs, actionTypes, resourceTypes, token };
-}
-
-export default function SettingsAuditPage({
-  loaderData,
-}: Route.ComponentProps) {
+export default function SettingsAuditPage() {
   const [query, setQuery] = useState<AuditLogQuery>({
     page: 1,
     per_page: 50,
@@ -96,20 +72,17 @@ export default function SettingsAuditPage({
 
   const { data: auditLogs, refetch, isLoading } = useQuery<AuditLogListResponse>({
     queryKey: ["auditLogs", query],
-    queryFn: () => api.getAuditLogs(query, loaderData.token),
-    initialData: loaderData.auditLogs,
+    queryFn: () => api.getAuditLogs(query),
   });
 
   const { data: actionTypes = [] } = useQuery<string[]>({
     queryKey: ["auditActionTypes"],
-    queryFn: () => api.getAuditActionTypes(loaderData.token),
-    initialData: loaderData.actionTypes,
+    queryFn: () => api.getAuditActionTypes(),
   });
 
   const { data: resourceTypes = [] } = useQuery<string[]>({
     queryKey: ["auditResourceTypes"],
-    queryFn: () => api.getAuditResourceTypes(loaderData.token),
-    initialData: loaderData.resourceTypes,
+    queryFn: () => api.getAuditResourceTypes(),
   });
 
   const handleFilterChange = (key: keyof AuditLogQuery, value: string) => {
@@ -129,6 +102,15 @@ export default function SettingsAuditPage({
   };
 
   const hasFilters = query.action || query.resource_type || query.start_date || query.end_date;
+
+  // Default empty data for loading state
+  const logs = auditLogs || {
+    items: [],
+    total: 0,
+    page: 1,
+    per_page: 50,
+    total_pages: 0,
+  };
 
   return (
     <div className="space-y-6">
@@ -246,11 +228,17 @@ export default function SettingsAuditPage({
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
           <CardDescription>
-            Showing {auditLogs.items.length} of {auditLogs.total} log entries
+            Showing {logs.items.length} of {logs.total} log entries
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {auditLogs.items.length === 0 ? (
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : logs.items.length === 0 ? (
             <div className="text-center py-8">
               <History className="mx-auto h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-muted-foreground">
@@ -271,7 +259,7 @@ export default function SettingsAuditPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {auditLogs.items.map((log) => (
+                  {logs.items.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="whitespace-nowrap">
                         {formatDate(log.created_at)}
@@ -311,17 +299,17 @@ export default function SettingsAuditPage({
               </Table>
 
               {/* Pagination */}
-              {auditLogs.total_pages > 1 && (
+              {logs.total_pages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t">
                   <div className="text-sm text-muted-foreground">
-                    Page {auditLogs.page} of {auditLogs.total_pages}
+                    Page {logs.page} of {logs.total_pages}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => goToPage(auditLogs.page - 1)}
-                      disabled={auditLogs.page <= 1}
+                      onClick={() => goToPage(logs.page - 1)}
+                      disabled={logs.page <= 1}
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Previous
@@ -329,8 +317,8 @@ export default function SettingsAuditPage({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => goToPage(auditLogs.page + 1)}
-                      disabled={auditLogs.page >= auditLogs.total_pages}
+                      onClick={() => goToPage(logs.page + 1)}
+                      disabled={logs.page >= logs.total_pages}
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />

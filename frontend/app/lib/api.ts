@@ -8,12 +8,15 @@ import type {
   AuditLogQuery,
   BasicAuthStatus,
   ContainerStats,
+  CreateAppRequest,
   CreateBackupScheduleRequest,
   CreateEnvVarRequest,
   CreateManagedDatabaseRequest,
   CreateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
+  CreateProjectRequest,
   CreateServiceRequest,
+  CreateSshKeyRequest,
   CreateTeamRequest,
   CreateVolumeRequest,
   DatabaseBackup,
@@ -49,6 +52,7 @@ import type {
   UpdateEnvVarRequest,
   UpdateMemberRoleRequest,
   UpdateNotificationChannelRequest,
+  UpdateProjectRequest,
   UpdateServiceRequest,
   UpdateTeamRequest,
   UpdateVolumeRequest,
@@ -92,10 +96,45 @@ export const api = {
   // Projects
   getProjects: () => apiRequest<Project[]>("/projects"),
   getProject: (id: string) => apiRequest<ProjectWithApps>(`/projects/${id}`),
+  createProject: (data: CreateProjectRequest, token?: string) =>
+    apiRequest<Project>(
+      "/projects",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  updateProject: (id: string, data: UpdateProjectRequest, token?: string) =>
+    apiRequest<Project>(
+      `/projects/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteProject: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/projects/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
 
   // Apps
   getApps: (token?: string) => apiRequest<App[]>("/apps", {}, token),
   getApp: (id: string, token?: string) => apiRequest<App>(`/apps/${id}`, {}, token),
+  createApp: (data: CreateAppRequest, token?: string) =>
+    apiRequest<App>(
+      "/apps",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
   updateApp: (id: string, data: UpdateAppRequest, token?: string) =>
     apiRequest<App>(
       `/apps/${id}`,
@@ -111,9 +150,44 @@ export const api = {
     apiRequest<AppStatus>(`/apps/${id}/start`, { method: "POST" }, token),
   stopApp: (id: string, token?: string) =>
     apiRequest<AppStatus>(`/apps/${id}/stop`, { method: "POST" }, token),
+  deleteApp: (id: string, password: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${id}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ password }),
+      },
+      token
+    ),
+  assignAppToProject: (appId: string, projectId: string | null, token?: string) =>
+    apiRequest<App>(
+      `/apps/${appId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ project_id: projectId }),
+      },
+      token
+    ),
 
   // SSH Keys
-  getSshKeys: () => apiRequest<SshKey[]>("/ssh-keys"),
+  getSshKeys: (token?: string) => apiRequest<SshKey[]>("/ssh-keys", {}, token),
+  createSshKey: (data: CreateSshKeyRequest, token?: string) =>
+    apiRequest<SshKey>(
+      "/ssh-keys",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+  deleteSshKey: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/ssh-keys/${id}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
 
   // Deployments
   getDeployments: (appId: string, token?: string) =>

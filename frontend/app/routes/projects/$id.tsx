@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
-import { Form, Link, redirect, useNavigation } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/$id";
+import { useState, useMemo } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -82,20 +81,18 @@ import type {
   ManagedDatabase,
   DatabaseType,
   Service,
-  ServiceStatus,
   ServiceTemplate,
 } from "@/types/api";
 import { DATABASE_TYPES } from "@/types/api";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-export function meta({ data }: Route.MetaArgs) {
-  const projectName = data?.project?.name || "Project";
+export function meta() {
   return [
-    { title: `${projectName} - Rivetr` },
+    { title: "Project - Rivetr" },
     {
       name: "description",
-      content: `Manage ${projectName} and its applications`,
+      content: "Manage project and its applications",
     },
   ];
 }
@@ -155,319 +152,10 @@ function ServiceStatusBadge({ status }: { status: string }) {
   }
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [project, allApps, templates] = await Promise.all([
-    api.getProject(token, params.id!),
-    api.getApps(token).catch(() => []),
-    api.getTemplates(token).catch(() => []),
-  ]);
-
-  // Get app statuses for apps in this project
-  const appStatuses: Record<string, string> = {};
-  await Promise.all(
-    project.apps.map(async (app) => {
-      try {
-        const status = await api.getAppStatus(token, app.id);
-        appStatuses[app.id] = status.status;
-      } catch {
-        appStatuses[app.id] = "stopped";
-      }
-    })
-  );
-
-  return { project, allApps, appStatuses, templates };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "delete") {
-    await api.deleteProject(token, params.id!);
-    return redirect("/projects");
-  }
-
-  if (intent === "update") {
-    const name = formData.get("name");
-    const description = formData.get("description");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Project name is required" };
-    }
-
-    try {
-      await api.updateProject(token, params.id!, {
-        name: name.trim(),
-        description: typeof description === "string" ? description : undefined,
-      });
-      return { success: true, action: "update" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to update project",
-      };
-    }
-  }
-
-  if (intent === "assign-app") {
-    const appId = formData.get("appId");
-    if (typeof appId !== "string") {
-      return { error: "App ID is required" };
-    }
-    try {
-      await api.assignAppToProject(token, appId, params.id!);
-      return { success: true, action: "assign-app" };
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : "Failed to add app",
-      };
-    }
-  }
-
-  if (intent === "remove-app") {
-    const appId = formData.get("appId");
-    if (typeof appId !== "string") {
-      return { error: "App ID is required" };
-    }
-    try {
-      await api.assignAppToProject(token, appId, null);
-      return { success: true, action: "remove-app" };
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : "Failed to remove app",
-      };
-    }
-  }
-
-  // Database operations
-  if (intent === "create-database") {
-    const name = formData.get("name");
-    const db_type = formData.get("db_type") as DatabaseType;
-    const version = formData.get("version") || "latest";
-    const public_access = formData.get("public_access") === "true";
-
-    // Optional credentials
-    const username = formData.get("username");
-    const password = formData.get("password");
-    const database = formData.get("database");
-    const root_password = formData.get("root_password");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Database name is required" };
-    }
-    if (!db_type) {
-      return { error: "Database type is required" };
-    }
-
-    try {
-      await api.createDatabase(token, {
-        name: name.trim(),
-        db_type,
-        version: version as string,
-        public_access,
-        project_id: params.id!,
-        // Only include credentials if provided
-        ...(username && typeof username === "string" && username.trim()
-          ? { username: username.trim() }
-          : {}),
-        ...(password && typeof password === "string" && password.trim()
-          ? { password: password.trim() }
-          : {}),
-        ...(database && typeof database === "string" && database.trim()
-          ? { database: database.trim() }
-          : {}),
-        ...(root_password &&
-        typeof root_password === "string" &&
-        root_password.trim()
-          ? { root_password: root_password.trim() }
-          : {}),
-      });
-      return { success: true, action: "create-database" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to create database",
-      };
-    }
-  }
-
-  if (intent === "delete-database") {
-    const databaseId = formData.get("databaseId");
-    if (typeof databaseId !== "string") {
-      return { error: "Database ID is required" };
-    }
-    try {
-      await api.deleteDatabase(token, databaseId);
-      return { success: true, action: "delete-database" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to delete database",
-      };
-    }
-  }
-
-  if (intent === "start-database") {
-    const databaseId = formData.get("databaseId");
-    if (typeof databaseId !== "string") {
-      return { error: "Database ID is required" };
-    }
-    try {
-      await api.startDatabase(token, databaseId);
-      return { success: true, action: "start-database" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to start database",
-      };
-    }
-  }
-
-  if (intent === "stop-database") {
-    const databaseId = formData.get("databaseId");
-    if (typeof databaseId !== "string") {
-      return { error: "Database ID is required" };
-    }
-    try {
-      await api.stopDatabase(token, databaseId);
-      return { success: true, action: "stop-database" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to stop database",
-      };
-    }
-  }
-
-  // Service operations
-  if (intent === "create-service") {
-    const name = formData.get("name");
-    const compose_content = formData.get("compose_content");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Service name is required" };
-    }
-    if (typeof compose_content !== "string" || !compose_content.trim()) {
-      return { error: "Docker Compose content is required" };
-    }
-
-    try {
-      await api.createService(token, {
-        name: name.trim(),
-        compose_content: compose_content.trim(),
-        project_id: params.id!,
-      });
-      return { success: true, action: "create-service" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to create service",
-      };
-    }
-  }
-
-  if (intent === "delete-service") {
-    const serviceId = formData.get("serviceId");
-    if (typeof serviceId !== "string") {
-      return { error: "Service ID is required" };
-    }
-    try {
-      await api.deleteService(token, serviceId);
-      return { success: true, action: "delete-service" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to delete service",
-      };
-    }
-  }
-
-  if (intent === "start-service") {
-    const serviceId = formData.get("serviceId");
-    if (typeof serviceId !== "string") {
-      return { error: "Service ID is required" };
-    }
-    try {
-      await api.startService(token, serviceId);
-      return { success: true, action: "start-service" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to start service",
-      };
-    }
-  }
-
-  if (intent === "stop-service") {
-    const serviceId = formData.get("serviceId");
-    if (typeof serviceId !== "string") {
-      return { error: "Service ID is required" };
-    }
-    try {
-      await api.stopService(token, serviceId);
-      return { success: true, action: "stop-service" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to stop service",
-      };
-    }
-  }
-
-  if (intent === "deploy-from-template") {
-    const templateId = formData.get("templateId");
-    const serviceName = formData.get("serviceName");
-    const envVarsJson = formData.get("envVars");
-
-    if (typeof templateId !== "string") {
-      return { error: "Template ID is required" };
-    }
-    if (typeof serviceName !== "string" || !serviceName.trim()) {
-      return { error: "Service name is required" };
-    }
-
-    // Parse env vars from JSON
-    let envVars: Record<string, string> = {};
-    if (typeof envVarsJson === "string" && envVarsJson.trim()) {
-      try {
-        envVars = JSON.parse(envVarsJson);
-      } catch {
-        return { error: "Invalid environment variables format" };
-      }
-    }
-
-    try {
-      await api.deployTemplate(token, templateId, {
-        name: serviceName.trim(),
-        project_id: params.id!,
-        env_vars: envVars,
-      });
-      return { success: true, action: "deploy-from-template" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to deploy template",
-      };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function ProjectDetailPage({
-  loaderData,
-  actionData,
-}: Route.ComponentProps) {
+export default function ProjectDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isAddAppDialogOpen, setIsAddAppDialogOpen] = useState(false);
@@ -503,24 +191,61 @@ export default function ProjectDetailPage({
   const [templateEnvVars, setTemplateEnvVars] = useState<Record<string, string>>({});
   const [showTemplateSecrets, setShowTemplateSecrets] = useState<Record<string, boolean>>({});
 
-  // Use React Query with SSR initial data
-  const { data: project, refetch } = useQuery<ProjectWithApps>({
-    queryKey: ["project", loaderData.project.id],
-    queryFn: () => api.getProject(loaderData.project.id),
-    initialData: loaderData.project,
+  // Form state for database creation
+  const [dbName, setDbName] = useState("");
+  const [dbVersion, setDbVersion] = useState("latest");
+  const [dbPublicAccess, setDbPublicAccess] = useState(false);
+  const [dbUsername, setDbUsername] = useState("");
+  const [dbPassword, setDbPassword] = useState("");
+  const [dbDatabase, setDbDatabase] = useState("");
+  const [dbRootPassword, setDbRootPassword] = useState("");
+
+  // Form state for service creation
+  const [serviceName, setServiceName] = useState("");
+  const [composeContent, setComposeContent] = useState(`version: "3.8"
+services:
+  app:
+    image: nginx:alpine
+    ports:
+      - "80"
+`);
+
+  // Use React Query for data fetching
+  const { data: project, isLoading: projectLoading } = useQuery<ProjectWithApps>({
+    queryKey: ["project", id],
+    queryFn: () => api.getProject(id!),
     refetchInterval: 5000, // Poll for database status updates
   });
 
   const { data: allApps = [] } = useQuery<App[]>({
     queryKey: ["apps"],
     queryFn: () => api.getApps(),
-    initialData: loaderData.allApps,
   });
 
   const { data: templates = [] } = useQuery<ServiceTemplate[]>({
     queryKey: ["service-templates"],
     queryFn: () => api.getTemplates(),
-    initialData: loaderData.templates,
+  });
+
+  // Fetch app statuses for apps in this project
+  const { data: appStatuses = {} } = useQuery<Record<string, string>>({
+    queryKey: ["app-statuses", project?.apps?.map((a) => a.id)],
+    queryFn: async () => {
+      if (!project?.apps) return {};
+      const statuses: Record<string, string> = {};
+      await Promise.all(
+        project.apps.map(async (app) => {
+          try {
+            const status = await api.getAppStatus(app.id);
+            statuses[app.id] = status.status;
+          } catch {
+            statuses[app.id] = "stopped";
+          }
+        })
+      );
+      return statuses;
+    },
+    enabled: !!project?.apps?.length,
   });
 
   // Get unique categories from templates
@@ -551,8 +276,6 @@ export default function ProjectDetailPage({
     );
   }, [allApps, project]);
 
-  const isSubmitting = navigation.state === "submitting";
-
   const openEditDialog = () => {
     if (project) {
       setEditData({
@@ -563,57 +286,235 @@ export default function ProjectDetailPage({
     }
   };
 
-  // Handle success actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "update") {
-        toast.success("Project updated");
-        setIsEditDialogOpen(false);
-      } else if (actionData.action === "assign-app") {
-        toast.success("App added to project");
-        setIsAddAppDialogOpen(false);
-      } else if (actionData.action === "remove-app") {
-        toast.success("App removed from project");
-      } else if (actionData.action === "create-database") {
-        toast.success("Database created");
-        setIsCreateDbDialogOpen(false);
-      } else if (actionData.action === "delete-database") {
-        toast.success("Database deleted");
-        setIsDeleteDbDialogOpen(false);
-        setSelectedDatabase(null);
-      } else if (actionData.action === "start-database") {
-        toast.success("Database starting");
-      } else if (actionData.action === "stop-database") {
-        toast.success("Database stopped");
-      } else if (actionData.action === "create-service") {
-        toast.success("Service created");
-        setIsCreateServiceDialogOpen(false);
-      } else if (actionData.action === "delete-service") {
-        toast.success("Service deleted");
-        setIsDeleteServiceDialogOpen(false);
-        setSelectedService(null);
-      } else if (actionData.action === "start-service") {
-        toast.success("Service starting");
-      } else if (actionData.action === "stop-service") {
-        toast.success("Service stopped");
-      } else if (actionData.action === "deploy-from-template") {
-        toast.success("Service deployed from template");
-        setIsTemplatesModalOpen(false);
-        setSelectedTemplate(null);
-        setTemplateServiceName("");
-        setTemplateEnvVars({});
-        setShowTemplateSecrets({});
+  // Mutations
+  const updateProjectMutation = useMutation({
+    mutationFn: async (data: UpdateProjectRequest) => {
+      if (!data.name?.trim()) {
+        throw new Error("Project name is required");
       }
-      queryClient.invalidateQueries({ queryKey: ["project", project?.id] });
+      return api.updateProject(id!, data);
+    },
+    onSuccess: () => {
+      toast.success("Project updated");
+      setIsEditDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["apps"] });
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-    }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
 
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, queryClient, project?.id]);
+  const deleteProjectMutation = useMutation({
+    mutationFn: () => api.deleteProject(id!),
+    onSuccess: () => {
+      toast.success("Project deleted");
+      navigate("/projects");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const assignAppMutation = useMutation({
+    mutationFn: (appId: string) => api.assignAppToProject(appId, id!),
+    onSuccess: () => {
+      toast.success("App added to project");
+      setIsAddAppDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const removeAppMutation = useMutation({
+    mutationFn: (appId: string) => api.assignAppToProject(appId, null),
+    onSuccess: () => {
+      toast.success("App removed from project");
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  // Database mutations
+  const createDatabaseMutation = useMutation({
+    mutationFn: async () => {
+      if (!dbName.trim()) {
+        throw new Error("Database name is required");
+      }
+      return api.createDatabase({
+        name: dbName.trim(),
+        db_type: selectedDbType,
+        version: dbVersion,
+        public_access: dbPublicAccess,
+        project_id: id!,
+        ...(dbUsername.trim() ? { username: dbUsername.trim() } : {}),
+        ...(dbPassword.trim() ? { password: dbPassword.trim() } : {}),
+        ...(dbDatabase.trim() ? { database: dbDatabase.trim() } : {}),
+        ...(dbRootPassword.trim() ? { root_password: dbRootPassword.trim() } : {}),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Database created");
+      setIsCreateDbDialogOpen(false);
+      resetDbForm();
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const deleteDatabaseMutation = useMutation({
+    mutationFn: (databaseId: string) => api.deleteDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database deleted");
+      setIsDeleteDbDialogOpen(false);
+      setSelectedDatabase(null);
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const startDatabaseMutation = useMutation({
+    mutationFn: (databaseId: string) => api.startDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database starting");
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const stopDatabaseMutation = useMutation({
+    mutationFn: (databaseId: string) => api.stopDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database stopped");
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  // Service mutations
+  const createServiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!serviceName.trim()) {
+        throw new Error("Service name is required");
+      }
+      if (!composeContent.trim()) {
+        throw new Error("Docker Compose content is required");
+      }
+      return api.createService({
+        name: serviceName.trim(),
+        compose_content: composeContent.trim(),
+        project_id: id!,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Service created");
+      setIsCreateServiceDialogOpen(false);
+      setServiceName("");
+      setComposeContent(`version: "3.8"
+services:
+  app:
+    image: nginx:alpine
+    ports:
+      - "80"
+`);
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const deleteServiceMutation = useMutation({
+    mutationFn: (serviceId: string) => api.deleteService(serviceId),
+    onSuccess: () => {
+      toast.success("Service deleted");
+      setIsDeleteServiceDialogOpen(false);
+      setSelectedService(null);
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const startServiceMutation = useMutation({
+    mutationFn: (serviceId: string) => api.startService(serviceId),
+    onSuccess: () => {
+      toast.success("Service starting");
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const stopServiceMutation = useMutation({
+    mutationFn: (serviceId: string) => api.stopService(serviceId),
+    onSuccess: () => {
+      toast.success("Service stopped");
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const deployTemplateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplate) {
+        throw new Error("No template selected");
+      }
+      if (!templateServiceName.trim()) {
+        throw new Error("Service name is required");
+      }
+      return api.deployTemplate(selectedTemplate.id, {
+        name: templateServiceName.trim(),
+        project_id: id!,
+        env_vars: templateEnvVars,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Service deployed from template");
+      setIsTemplatesModalOpen(false);
+      setSelectedTemplate(null);
+      setTemplateServiceName("");
+      setTemplateEnvVars({});
+      setShowTemplateSecrets({});
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const resetDbForm = () => {
+    setDbName("");
+    setDbVersion("latest");
+    setDbPublicAccess(false);
+    setDbUsername("");
+    setDbPassword("");
+    setDbDatabase("");
+    setDbRootPassword("");
+    setSelectedDbType("postgres");
+    setShowCustomCredentials(false);
+  };
 
   const handleViewCredentials = async (database: ManagedDatabase) => {
     try {
@@ -631,6 +532,35 @@ export default function ProjectDetailPage({
   };
 
   const dbTypeConfig = DATABASE_TYPES.find((t) => t.type === selectedDbType);
+
+  // Loading state
+  if (projectLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link to="/projects">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div className="flex-1">
+            <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
+          </div>
+        </div>
+        <Card>
+          <CardContent className="py-8">
+            <div className="h-6 w-32 bg-muted animate-pulse rounded mb-4" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-32 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!project) {
     return (
@@ -737,7 +667,7 @@ export default function ProjectDetailPage({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {project.apps.map((app) => {
-                const status = loaderData.appStatuses?.[app.id] || "stopped";
+                const status = appStatuses?.[app.id] || "stopped";
                 return (
                   <Card
                     key={app.id}
@@ -758,24 +688,20 @@ export default function ProjectDetailPage({
                             <EnvironmentBadge environment={app.environment} />
                           </div>
                         </div>
-                        <Form method="post" className="relative z-10">
-                          <input
-                            type="hidden"
-                            name="intent"
-                            value="remove-app"
-                          />
-                          <input type="hidden" name="appId" value={app.id} />
-                          <Button
-                            type="submit"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                            disabled={isSubmitting}
-                            title="Remove from project"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </Form>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity relative z-10"
+                          disabled={removeAppMutation.isPending}
+                          title="Remove from project"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            removeAppMutation.mutate(app.id);
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-0 pb-4">
@@ -911,52 +837,34 @@ export default function ProjectDetailPage({
                         </span>
                         <div className="relative z-10 flex items-center gap-1">
                           {db.status === "stopped" && (
-                            <Form method="post">
-                              <input
-                                type="hidden"
-                                name="intent"
-                                value="start-database"
-                              />
-                              <input
-                                type="hidden"
-                                name="databaseId"
-                                value={db.id}
-                              />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                type="submit"
-                                className="h-7 px-2"
-                                disabled={isSubmitting}
-                              >
-                                <Play className="h-3 w-3 mr-1" />
-                                Start
-                              </Button>
-                            </Form>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={startDatabaseMutation.isPending}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                startDatabaseMutation.mutate(db.id);
+                              }}
+                            >
+                              <Play className="h-3 w-3 mr-1" />
+                              Start
+                            </Button>
                           )}
                           {db.status === "running" && (
-                            <Form method="post">
-                              <input
-                                type="hidden"
-                                name="intent"
-                                value="stop-database"
-                              />
-                              <input
-                                type="hidden"
-                                name="databaseId"
-                                value={db.id}
-                              />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                type="submit"
-                                className="h-7 px-2"
-                                disabled={isSubmitting}
-                              >
-                                <Square className="h-3 w-3 mr-1" />
-                                Stop
-                              </Button>
-                            </Form>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={stopDatabaseMutation.isPending}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                stopDatabaseMutation.mutate(db.id);
+                              }}
+                            >
+                              <Square className="h-3 w-3 mr-1" />
+                              Stop
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -1065,52 +973,34 @@ export default function ProjectDetailPage({
                     <div className="flex items-center justify-end text-sm">
                       <div className="relative z-10 flex items-center gap-1">
                         {service.status === "stopped" && (
-                          <Form method="post">
-                            <input
-                              type="hidden"
-                              name="intent"
-                              value="start-service"
-                            />
-                            <input
-                              type="hidden"
-                              name="serviceId"
-                              value={service.id}
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="submit"
-                              className="h-7 px-2"
-                              disabled={isSubmitting}
-                            >
-                              <Play className="h-3 w-3 mr-1" />
-                              Start
-                            </Button>
-                          </Form>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            disabled={startServiceMutation.isPending}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              startServiceMutation.mutate(service.id);
+                            }}
+                          >
+                            <Play className="h-3 w-3 mr-1" />
+                            Start
+                          </Button>
                         )}
                         {service.status === "running" && (
-                          <Form method="post">
-                            <input
-                              type="hidden"
-                              name="intent"
-                              value="stop-service"
-                            />
-                            <input
-                              type="hidden"
-                              name="serviceId"
-                              value={service.id}
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="submit"
-                              className="h-7 px-2"
-                              disabled={isSubmitting}
-                            >
-                              <Square className="h-3 w-3 mr-1" />
-                              Stop
-                            </Button>
-                          </Form>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            disabled={stopServiceMutation.isPending}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              stopServiceMutation.mutate(service.id);
+                            }}
+                          >
+                            <Square className="h-3 w-3 mr-1" />
+                            Stop
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -1125,26 +1015,23 @@ export default function ProjectDetailPage({
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
-          <Form method="post">
-            <input type="hidden" name="intent" value="update" />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            updateProjectMutation.mutate(editData);
+          }}>
             <DialogHeader>
               <DialogTitle>Edit Project</DialogTitle>
               <DialogDescription>
                 Update your project details.
               </DialogDescription>
             </DialogHeader>
-            {actionData?.error && (
-              <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                {actionData.error}
-              </div>
-            )}
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-name">Name</Label>
                 <Input
                   id="edit-name"
-                  name="name"
-                  defaultValue={editData.name || ""}
+                  value={editData.name || ""}
+                  onChange={(e) => setEditData({ ...editData, name: e.target.value })}
                   required
                 />
               </div>
@@ -1152,8 +1039,8 @@ export default function ProjectDetailPage({
                 <Label htmlFor="edit-description">Description</Label>
                 <Textarea
                   id="edit-description"
-                  name="description"
-                  defaultValue={editData.description || ""}
+                  value={editData.description || ""}
+                  onChange={(e) => setEditData({ ...editData, description: e.target.value })}
                   rows={3}
                 />
               </div>
@@ -1166,11 +1053,11 @@ export default function ProjectDetailPage({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Changes"}
+              <Button type="submit" disabled={updateProjectMutation.isPending}>
+                {updateProjectMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1189,15 +1076,13 @@ export default function ProjectDetailPage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <AlertDialogAction
-                type="submit"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {isSubmitting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </Form>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteProjectMutation.mutate()}
+              disabled={deleteProjectMutation.isPending}
+            >
+              {deleteProjectMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1226,28 +1111,26 @@ export default function ProjectDetailPage({
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {availableApps.map((app) => (
-                  <Form method="post" key={app.id}>
-                    <input type="hidden" name="intent" value="assign-app" />
-                    <input type="hidden" name="appId" value={app.id} />
-                    <button
-                      type="submit"
-                      className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 cursor-pointer text-left"
-                      disabled={isSubmitting}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <p className="font-medium">{app.name}</p>
-                          <p className="text-sm text-muted-foreground truncate max-w-md">
-                            {app.git_url}
-                          </p>
-                        </div>
+                  <button
+                    key={app.id}
+                    type="button"
+                    className="flex items-center justify-between w-full p-3 rounded-lg border hover:bg-muted/50 cursor-pointer text-left"
+                    disabled={assignAppMutation.isPending}
+                    onClick={() => assignAppMutation.mutate(app.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="font-medium">{app.name}</p>
+                        <p className="text-sm text-muted-foreground truncate max-w-md">
+                          {app.git_url}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <EnvironmentBadge environment={app.environment} />
-                        <Plus className="h-4 w-4" />
-                      </div>
-                    </button>
-                  </Form>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <EnvironmentBadge environment={app.environment} />
+                      <Plus className="h-4 w-4" />
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -1266,11 +1149,16 @@ export default function ProjectDetailPage({
       {/* Create Database Dialog */}
       <Dialog
         open={isCreateDbDialogOpen}
-        onOpenChange={setIsCreateDbDialogOpen}
+        onOpenChange={(open) => {
+          setIsCreateDbDialogOpen(open);
+          if (!open) resetDbForm();
+        }}
       >
         <DialogContent className="max-w-lg">
-          <Form method="post">
-            <input type="hidden" name="intent" value="create-database" />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            createDatabaseMutation.mutate();
+          }}>
             <DialogHeader>
               <DialogTitle>Create Database</DialogTitle>
               <DialogDescription>
@@ -1282,7 +1170,8 @@ export default function ProjectDetailPage({
                 <Label htmlFor="db-name">Name</Label>
                 <Input
                   id="db-name"
-                  name="name"
+                  value={dbName}
+                  onChange={(e) => setDbName(e.target.value)}
                   placeholder="e.g., my-postgres-db"
                   pattern="[a-zA-Z0-9-]+"
                   title="Only alphanumeric characters and hyphens are allowed"
@@ -1314,12 +1203,11 @@ export default function ProjectDetailPage({
                     </button>
                   ))}
                 </div>
-                <input type="hidden" name="db_type" value={selectedDbType} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="db-version">Version</Label>
-                <Select name="version" defaultValue="latest">
+                <Select value={dbVersion} onValueChange={setDbVersion}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select version" />
                   </SelectTrigger>
@@ -1339,8 +1227,8 @@ export default function ProjectDetailPage({
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="public_access"
-                  name="public_access"
-                  value="true"
+                  checked={dbPublicAccess}
+                  onCheckedChange={(checked) => setDbPublicAccess(checked === true)}
                 />
                 <Label htmlFor="public_access" className="text-sm font-normal">
                   Enable public access (expose port to host)
@@ -1377,7 +1265,8 @@ export default function ProjectDetailPage({
                     <Label htmlFor="db-username">Username</Label>
                     <Input
                       id="db-username"
-                      name="username"
+                      value={dbUsername}
+                      onChange={(e) => setDbUsername(e.target.value)}
                       placeholder="Auto-generated if empty"
                     />
                   </div>
@@ -1385,7 +1274,8 @@ export default function ProjectDetailPage({
                     <Label htmlFor="db-password">Password</Label>
                     <Input
                       id="db-password"
-                      name="password"
+                      value={dbPassword}
+                      onChange={(e) => setDbPassword(e.target.value)}
                       type="password"
                       placeholder="Auto-generated if empty"
                     />
@@ -1394,7 +1284,8 @@ export default function ProjectDetailPage({
                     <Label htmlFor="db-database">Database Name</Label>
                     <Input
                       id="db-database"
-                      name="database"
+                      value={dbDatabase}
+                      onChange={(e) => setDbDatabase(e.target.value)}
                       placeholder="Defaults to username"
                     />
                   </div>
@@ -1403,7 +1294,8 @@ export default function ProjectDetailPage({
                       <Label htmlFor="db-root-password">Root Password</Label>
                       <Input
                         id="db-root-password"
-                        name="root_password"
+                        value={dbRootPassword}
+                        onChange={(e) => setDbRootPassword(e.target.value)}
                         type="password"
                         placeholder="Auto-generated if empty"
                       />
@@ -1423,11 +1315,11 @@ export default function ProjectDetailPage({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create Database"}
+              <Button type="submit" disabled={createDatabaseMutation.isPending}>
+                {createDatabaseMutation.isPending ? "Creating..." : "Create Database"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1498,7 +1390,7 @@ export default function ProjectDetailPage({
                       <code className="text-sm">
                         {showPasswords
                           ? revealedDatabase.credentials.password
-                          : "••••••••••••••••"}
+                          : "----------------"}
                       </code>
                     </div>
                     <Button
@@ -1565,7 +1457,7 @@ export default function ProjectDetailPage({
                         ? revealedDatabase.internal_connection_string
                         : revealedDatabase.internal_connection_string.replace(
                             /:[^:@]+@/,
-                            ":••••••••@"
+                            ":--------@"
                           )}
                     </code>
                   </div>
@@ -1595,7 +1487,7 @@ export default function ProjectDetailPage({
                         ? revealedDatabase.external_connection_string
                         : revealedDatabase.external_connection_string.replace(
                             /:[^:@]+@/,
-                            ":••••••••@"
+                            ":--------@"
                           )}
                     </code>
                   </div>
@@ -1638,21 +1530,17 @@ export default function ProjectDetailPage({
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete-database" />
-              <input
-                type="hidden"
-                name="databaseId"
-                value={selectedDatabase?.id || ""}
-              />
-              <Button
-                type="submit"
-                variant="destructive"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Deleting..." : "Delete Database"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              disabled={deleteDatabaseMutation.isPending}
+              onClick={() => {
+                if (selectedDatabase) {
+                  deleteDatabaseMutation.mutate(selectedDatabase.id);
+                }
+              }}
+            >
+              {deleteDatabaseMutation.isPending ? "Deleting..." : "Delete Database"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1663,8 +1551,10 @@ export default function ProjectDetailPage({
         onOpenChange={setIsCreateServiceDialogOpen}
       >
         <DialogContent className="max-w-2xl">
-          <Form method="post">
-            <input type="hidden" name="intent" value="create-service" />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            createServiceMutation.mutate();
+          }}>
             <DialogHeader>
               <DialogTitle>Create Docker Compose Service</DialogTitle>
               <DialogDescription>
@@ -1676,7 +1566,8 @@ export default function ProjectDetailPage({
                 <Label htmlFor="service-name">Service Name</Label>
                 <Input
                   id="service-name"
-                  name="name"
+                  value={serviceName}
+                  onChange={(e) => setServiceName(e.target.value)}
                   placeholder="my-service"
                   required
                 />
@@ -1685,17 +1576,11 @@ export default function ProjectDetailPage({
                 <Label htmlFor="compose-content">Docker Compose Content</Label>
                 <Textarea
                   id="compose-content"
-                  name="compose_content"
+                  value={composeContent}
+                  onChange={(e) => setComposeContent(e.target.value)}
                   placeholder="Paste your docker-compose.yml content..."
                   className="font-mono text-sm"
                   rows={12}
-                  defaultValue={`version: "3.8"
-services:
-  app:
-    image: nginx:alpine
-    ports:
-      - "80"
-`}
                   required
                 />
               </div>
@@ -1708,11 +1593,11 @@ services:
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create Service"}
+              <Button type="submit" disabled={createServiceMutation.isPending}>
+                {createServiceMutation.isPending ? "Creating..." : "Create Service"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1740,21 +1625,17 @@ services:
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete-service" />
-              <input
-                type="hidden"
-                name="serviceId"
-                value={selectedService?.id || ""}
-              />
-              <Button
-                type="submit"
-                variant="destructive"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Deleting..." : "Delete Service"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              disabled={deleteServiceMutation.isPending}
+              onClick={() => {
+                if (selectedService) {
+                  deleteServiceMutation.mutate(selectedService.id);
+                }
+              }}
+            >
+              {deleteServiceMutation.isPending ? "Deleting..." : "Delete Service"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1894,18 +1775,10 @@ services:
             </>
           ) : (
             /* Template Configuration */
-            <Form method="post">
-              <input type="hidden" name="intent" value="deploy-from-template" />
-              <input
-                type="hidden"
-                name="templateId"
-                value={selectedTemplate.id}
-              />
-              <input
-                type="hidden"
-                name="envVars"
-                value={JSON.stringify(templateEnvVars)}
-              />
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              deployTemplateMutation.mutate();
+            }}>
               <DialogHeader>
                 <DialogTitle>Deploy {selectedTemplate.name}</DialogTitle>
                 <DialogDescription>
@@ -1917,7 +1790,6 @@ services:
                   <Label htmlFor="template-service-name">Service Name</Label>
                   <Input
                     id="template-service-name"
-                    name="serviceName"
                     value={templateServiceName}
                     onChange={(e) => setTemplateServiceName(e.target.value)}
                     placeholder="my-service"
@@ -2011,12 +1883,12 @@ services:
                 >
                   Back
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={deployTemplateMutation.isPending}>
                   <Rocket className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Deploying..." : "Deploy Service"}
+                  {deployTemplateMutation.isPending ? "Deploying..." : "Deploy Service"}
                 </Button>
               </DialogFooter>
-            </Form>
+            </form>
           )}
         </DialogContent>
       </Dialog>

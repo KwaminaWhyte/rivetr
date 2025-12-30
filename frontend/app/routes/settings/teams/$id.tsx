@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { Form, useNavigation, Link, useParams } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/$id";
+import { useState } from "react";
+import { Link, useParams, useNavigate } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,7 +53,6 @@ import type {
   TeamMemberWithUser,
 } from "@/types/api";
 import {
-  hasRoleAtLeast,
   canManageMembers,
   canDeleteTeam,
 } from "@/types/api";
@@ -67,6 +65,7 @@ import {
   Shield,
   Code,
   Eye,
+  Loader2,
 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
@@ -127,129 +126,10 @@ const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] =
     },
   ];
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const team = await api.getTeam(token, params.id);
-  return { team, token };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-  const teamId = params.id;
-
-  if (intent === "update") {
-    const name = formData.get("name");
-    const slug = formData.get("slug");
-
-    try {
-      await api.updateTeam(token, teamId, {
-        name: typeof name === "string" && name.trim() ? name.trim() : undefined,
-        slug: typeof slug === "string" && slug.trim() ? slug.trim() : undefined,
-      });
-      return { success: true, action: "update" };
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : "Failed to update team",
-      };
-    }
-  }
-
-  if (intent === "invite") {
-    const userIdentifier = formData.get("userIdentifier");
-    const role = formData.get("role");
-
-    if (typeof userIdentifier !== "string" || !userIdentifier.trim()) {
-      return { error: "User email is required" };
-    }
-    if (typeof role !== "string") {
-      return { error: "Role is required" };
-    }
-
-    try {
-      await api.inviteTeamMember(token, teamId, {
-        user_identifier: userIdentifier.trim(),
-        role: role as TeamRole,
-      });
-      return { success: true, action: "invite" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to invite member",
-      };
-    }
-  }
-
-  if (intent === "updateRole") {
-    const userId = formData.get("userId");
-    const role = formData.get("role");
-
-    if (typeof userId !== "string" || typeof role !== "string") {
-      return { error: "Invalid request" };
-    }
-
-    try {
-      await api.updateTeamMemberRole(token, teamId, userId, {
-        role: role as TeamRole,
-      });
-      return { success: true, action: "updateRole" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update member role",
-      };
-    }
-  }
-
-  if (intent === "removeMember") {
-    const userId = formData.get("userId");
-
-    if (typeof userId !== "string") {
-      return { error: "User ID is required" };
-    }
-
-    try {
-      await api.removeTeamMember(token, teamId, userId);
-      return { success: true, action: "removeMember" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to remove member",
-      };
-    }
-  }
-
-  if (intent === "delete") {
-    try {
-      await api.deleteTeam(token, teamId);
-      return { success: true, action: "delete", redirect: "/settings/teams" };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Failed to delete team",
-      };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function TeamDetailPage({
-  loaderData,
-  actionData,
-}: Route.ComponentProps) {
+export default function TeamDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
@@ -257,13 +137,76 @@ export default function TeamDetailPage({
     useState<TeamMemberWithUser | null>(null);
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
 
-  const { data: team } = useQuery<TeamDetail>({
+  const { data: team, isLoading } = useQuery<TeamDetail>({
     queryKey: ["team", id],
-    queryFn: () => api.getTeam(id!, loaderData.token),
-    initialData: loaderData.team,
+    queryFn: () => api.getTeam(id!),
+    enabled: !!id,
   });
 
-  const isSubmitting = navigation.state === "submitting";
+  const updateTeamMutation = useMutation({
+    mutationFn: ({ name, slug }: { name?: string; slug?: string }) =>
+      api.updateTeam(id!, { name, slug }),
+    onSuccess: () => {
+      toast.success("Team updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["team", id] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update team");
+    },
+  });
+
+  const inviteMemberMutation = useMutation({
+    mutationFn: ({ userIdentifier, role }: { userIdentifier: string; role: TeamRole }) =>
+      api.inviteTeamMember(id!, {
+        user_identifier: userIdentifier,
+        role,
+      }),
+    onSuccess: () => {
+      toast.success("Member invited successfully");
+      setShowInviteDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["team", id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to invite member");
+    },
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: TeamRole }) =>
+      api.updateTeamMemberRole(id!, userId, { role }),
+    onSuccess: () => {
+      toast.success("Member role updated");
+      queryClient.invalidateQueries({ queryKey: ["team", id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update member role");
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) => api.removeTeamMember(id!, userId),
+    onSuccess: () => {
+      toast.success("Member removed");
+      setShowRemoveMemberDialog(false);
+      setSelectedMember(null);
+      queryClient.invalidateQueries({ queryKey: ["team", id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to remove member");
+    },
+  });
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: () => api.deleteTeam(id!),
+    onSuccess: () => {
+      toast.success("Team deleted");
+      navigate("/settings/teams");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete team");
+    },
+  });
 
   // Find current user's role in this team
   // For now, we'll get it from the members list by checking the current session
@@ -271,46 +214,59 @@ export default function TeamDetailPage({
   const currentUserRole: TeamRole | null =
     team?.members.find((m) => m.role === "owner")?.role || "viewer";
 
-  // Handle success actions
-  useEffect(() => {
-    if (actionData?.success) {
-      switch (actionData.action) {
-        case "update":
-          toast.success("Team updated successfully");
-          break;
-        case "invite":
-          toast.success("Member invited successfully");
-          setShowInviteDialog(false);
-          break;
-        case "updateRole":
-          toast.success("Member role updated");
-          break;
-        case "removeMember":
-          toast.success("Member removed");
-          setShowRemoveMemberDialog(false);
-          setSelectedMember(null);
-          break;
-        case "delete":
-          toast.success("Team deleted");
-          // Redirect will be handled by the action
-          window.location.href = "/settings/teams";
-          return;
-      }
-      queryClient.invalidateQueries({ queryKey: ["team", id] });
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+  const canManage = canManageMembers(currentUserRole);
+  const canDelete = canDeleteTeam(currentUserRole);
+
+  const isSubmitting =
+    updateTeamMutation.isPending ||
+    inviteMemberMutation.isPending ||
+    updateRoleMutation.isPending ||
+    removeMemberMutation.isPending ||
+    deleteTeamMutation.isPending;
+
+  const handleUpdateTeam = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    const slug = formData.get("slug") as string;
+
+    updateTeamMutation.mutate({
+      name: name?.trim() || undefined,
+      slug: slug?.trim() || undefined,
+    });
+  };
+
+  const handleInviteSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const userIdentifier = formData.get("userIdentifier") as string;
+
+    if (!userIdentifier?.trim()) {
+      toast.error("User email is required");
+      return;
     }
 
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, queryClient, id]);
+    inviteMemberMutation.mutate({
+      userIdentifier: userIdentifier.trim(),
+      role: inviteRole,
+    });
+  };
+
+  const handleRoleChange = (userId: string, newRole: TeamRole) => {
+    updateRoleMutation.mutate({ userId, role: newRole });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   if (!team) {
     return <div>Team not found</div>;
   }
-
-  const canManage = canManageMembers(currentUserRole);
-  const canDelete = canDeleteTeam(currentUserRole);
 
   return (
     <div className="space-y-6">
@@ -349,8 +305,7 @@ export default function TeamDetailPage({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Form method="post" className="space-y-4">
-              <input type="hidden" name="intent" value="update" />
+            <form onSubmit={handleUpdateTeam} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="name">Team Name</Label>
@@ -372,9 +327,9 @@ export default function TeamDetailPage({
                 </div>
               </div>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save Changes"}
+                {updateTeamMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
-            </Form>
+            </form>
           </CardContent>
         </Card>
       )}
@@ -435,40 +390,28 @@ export default function TeamDetailPage({
                       <div className="flex items-center gap-2">
                         {/* Role change dropdown */}
                         {member.role !== "owner" && (
-                          <Form method="post" className="flex-1">
-                            <input type="hidden" name="intent" value="updateRole" />
-                            <input type="hidden" name="userId" value={member.user_id} />
-                            <Select
-                              name="role"
-                              defaultValue={member.role}
-                              onValueChange={(value) => {
-                                const form = document.createElement("form");
-                                form.method = "post";
-                                form.innerHTML = `
-                                  <input type="hidden" name="intent" value="updateRole" />
-                                  <input type="hidden" name="userId" value="${member.user_id}" />
-                                  <input type="hidden" name="role" value="${value}" />
-                                `;
-                                document.body.appendChild(form);
-                                form.submit();
-                              }}
-                            >
-                              <SelectTrigger className="w-28 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ROLE_OPTIONS.filter((r) =>
-                                  currentUserRole === "owner"
-                                    ? true
-                                    : r.value !== "owner"
-                                ).map((role) => (
-                                  <SelectItem key={role.value} value={role.value}>
-                                    {role.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </Form>
+                          <Select
+                            defaultValue={member.role}
+                            onValueChange={(value) =>
+                              handleRoleChange(member.user_id, value as TeamRole)
+                            }
+                            disabled={updateRoleMutation.isPending}
+                          >
+                            <SelectTrigger className="w-28 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_OPTIONS.filter((r) =>
+                                currentUserRole === "owner"
+                                  ? true
+                                  : r.value !== "owner"
+                              ).map((role) => (
+                                <SelectItem key={role.value} value={role.value}>
+                                  {role.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
                         {/* Remove button */}
                         {member.role !== "owner" && (
@@ -518,8 +461,7 @@ export default function TeamDetailPage({
       {/* Invite Member Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent>
-          <Form method="post">
-            <input type="hidden" name="intent" value="invite" />
+          <form onSubmit={handleInviteSubmit}>
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
               <DialogDescription>
@@ -541,7 +483,6 @@ export default function TeamDetailPage({
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
                 <Select
-                  name="role"
                   value={inviteRole}
                   onValueChange={(value) => setInviteRole(value as TeamRole)}
                 >
@@ -573,11 +514,11 @@ export default function TeamDetailPage({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Inviting..." : "Send Invitation"}
+              <Button type="submit" disabled={inviteMemberMutation.isPending}>
+                {inviteMemberMutation.isPending ? "Inviting..." : "Send Invitation"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -603,19 +544,17 @@ export default function TeamDetailPage({
             >
               Cancel
             </AlertDialogCancel>
-            <Form method="post">
-              <input type="hidden" name="intent" value="removeMember" />
-              <input
-                type="hidden"
-                name="userId"
-                value={selectedMember?.user_id || ""}
-              />
-              <AlertDialogAction asChild>
-                <Button type="submit" variant="destructive">
-                  Remove Member
-                </Button>
-              </AlertDialogAction>
-            </Form>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                disabled={removeMemberMutation.isPending}
+                onClick={() =>
+                  selectedMember && removeMemberMutation.mutate(selectedMember.user_id)
+                }
+              >
+                {removeMemberMutation.isPending ? "Removing..." : "Remove Member"}
+              </Button>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -632,14 +571,15 @@ export default function TeamDetailPage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <AlertDialogAction asChild>
-                <Button type="submit" variant="destructive">
-                  Delete Team
-                </Button>
-              </AlertDialogAction>
-            </Form>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                disabled={deleteTeamMutation.isPending}
+                onClick={() => deleteTeamMutation.mutate()}
+              >
+                {deleteTeamMutation.isPending ? "Deleting..." : "Delete Team"}
+              </Button>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

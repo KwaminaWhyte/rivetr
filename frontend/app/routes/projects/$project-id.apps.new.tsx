@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Form, Link, redirect, useNavigation } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import type { Route } from "./+types/$project-id.apps.new";
+import { Link, useNavigate, useParams } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Eye, EyeOff, GitBranch, Package } from "lucide-react";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { api } from "@/lib/api";
-import type { AppEnvironment, Project } from "@/types/api";
+import type { AppEnvironment, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "development", label: "Development" },
@@ -25,109 +24,121 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "production", label: "Production" },
 ];
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const project = await api.getProject(token, params.projectId!);
-  const projects = await api.getProjects(token).catch(() => []);
-  return { project, projects };
+export function meta() {
+  return [
+    { title: "New Application - Rivetr" },
+    { name: "description", content: "Create a new application" },
+  ];
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-
-  const name = formData.get("name");
-  const deployment_source = formData.get("deployment_source") || "git";
-  const port = parseInt(formData.get("port") as string) || 3000;
-  const domain = formData.get("domain") || undefined;
-  const healthcheck = formData.get("healthcheck") || undefined;
-  const cpu_limit = formData.get("cpu_limit") || "1";
-  const memory_limit = formData.get("memory_limit") || "512m";
-  const environment = (formData.get("environment") || "development") as AppEnvironment;
-
-  if (typeof name !== "string" || !name.trim()) {
-    return { error: "Name is required" };
-  }
-
-  try {
-    if (deployment_source === "registry") {
-      // Registry-based deployment
-      const docker_image = formData.get("docker_image");
-      const docker_image_tag = formData.get("docker_image_tag") || "latest";
-      const registry_url = formData.get("registry_url") || undefined;
-      const registry_username = formData.get("registry_username") || undefined;
-      const registry_password = formData.get("registry_password") || undefined;
-
-      if (typeof docker_image !== "string" || !docker_image.trim()) {
-        return { error: "Docker image is required" };
-      }
-
-      const app = await api.createApp(token, {
-        name: name.trim(),
-        docker_image: docker_image.trim(),
-        docker_image_tag: docker_image_tag as string,
-        registry_url: registry_url as string | undefined,
-        registry_username: registry_username as string | undefined,
-        registry_password: registry_password as string | undefined,
-        port,
-        domain: domain as string | undefined,
-        healthcheck: healthcheck as string | undefined,
-        cpu_limit: cpu_limit as string,
-        memory_limit: memory_limit as string,
-        environment,
-        project_id: params.projectId,
-      });
-      return redirect(`/apps/${app.id}`);
-    } else {
-      // Git-based deployment
-      const git_url = formData.get("git_url");
-      const branch = formData.get("branch") || "main";
-      const dockerfile = formData.get("dockerfile") || "Dockerfile";
-
-      if (typeof git_url !== "string" || !git_url.trim()) {
-        return { error: "Git URL is required" };
-      }
-
-      const app = await api.createApp(token, {
-        name: name.trim(),
-        git_url: git_url.trim(),
-        branch: branch as string,
-        dockerfile: dockerfile as string,
-        port,
-        domain: domain as string | undefined,
-        healthcheck: healthcheck as string | undefined,
-        cpu_limit: cpu_limit as string,
-        memory_limit: memory_limit as string,
-        environment,
-        project_id: params.projectId,
-      });
-      return redirect(`/apps/${app.id}`);
-    }
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "Failed to create app" };
-  }
-}
-
-export default function NewAppPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
+export default function NewAppPage() {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
+  const queryClient = useQueryClient();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry">("git");
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Use React Query with SSR initial data
+  // Use React Query for data fetching
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["projects"],
     queryFn: () => api.getProjects(),
-    initialData: loaderData.projects,
   });
 
-  const projectId = params.projectId;
+  const { data: project } = useQuery<ProjectWithApps>({
+    queryKey: ["project", projectId],
+    queryFn: () => api.getProject(projectId!),
+    enabled: !!projectId,
+  });
+
+  // Mutation for creating app
+  const createAppMutation = useMutation({
+    mutationFn: (data: CreateAppRequest) => api.createApp(data),
+    onSuccess: (app) => {
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
+      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      navigate(`/apps/${app.id}`);
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+    },
+  });
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+
+    const formData = new FormData(event.currentTarget);
+
+    const name = formData.get("name") as string;
+    const port = parseInt(formData.get("port") as string) || 3000;
+    const domain = (formData.get("domain") as string) || undefined;
+    const healthcheck = (formData.get("healthcheck") as string) || undefined;
+    const cpu_limit = (formData.get("cpu_limit") as string) || "1";
+    const memory_limit = (formData.get("memory_limit") as string) || "512m";
+    const environment = (formData.get("environment") || "development") as AppEnvironment;
+
+    if (!name?.trim()) {
+      setError("Name is required");
+      return;
+    }
+
+    if (deploymentSource === "registry") {
+      // Registry-based deployment
+      const docker_image = formData.get("docker_image") as string;
+      const docker_image_tag = (formData.get("docker_image_tag") as string) || "latest";
+      const registry_url = (formData.get("registry_url") as string) || undefined;
+      const registry_username = (formData.get("registry_username") as string) || undefined;
+      const registry_password = (formData.get("registry_password") as string) || undefined;
+
+      if (!docker_image?.trim()) {
+        setError("Docker image is required");
+        return;
+      }
+
+      createAppMutation.mutate({
+        name: name.trim(),
+        docker_image: docker_image.trim(),
+        docker_image_tag,
+        registry_url,
+        registry_username,
+        registry_password,
+        port,
+        domain,
+        healthcheck,
+        cpu_limit,
+        memory_limit,
+        environment,
+        project_id: projectId,
+      });
+    } else {
+      // Git-based deployment
+      const git_url = formData.get("git_url") as string;
+      const branch = (formData.get("branch") as string) || "main";
+      const dockerfile = (formData.get("dockerfile") as string) || "Dockerfile";
+
+      if (!git_url?.trim()) {
+        setError("Git URL is required");
+        return;
+      }
+
+      createAppMutation.mutate({
+        name: name.trim(),
+        git_url: git_url.trim(),
+        branch,
+        dockerfile,
+        port,
+        domain,
+        healthcheck,
+        cpu_limit,
+        memory_limit,
+        environment,
+        project_id: projectId,
+      });
+    }
+  }
+
+  const isSubmitting = createAppMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -141,13 +152,13 @@ export default function NewAppPage({ loaderData, actionData, params }: Route.Com
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {actionData?.error && (
+          {error && (
             <div className="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-              {actionData.error}
+              {error}
             </div>
           )}
 
-          <Form method="post" className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <input type="hidden" name="deployment_source" value={deploymentSource} />
 
             <div className="space-y-2">
@@ -428,7 +439,7 @@ export default function NewAppPage({ loaderData, actionData, params }: Route.Com
                 <Link to={`/projects/${projectId}`}>Cancel</Link>
               </Button>
             </div>
-          </Form>
+          </form>
         </CardContent>
       </Card>
     </div>

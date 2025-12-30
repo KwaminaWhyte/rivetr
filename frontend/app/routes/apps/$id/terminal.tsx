@@ -8,11 +8,10 @@ import type { App, Deployment } from "@/types/api";
 interface OutletContext {
   app: App;
   deployments: Deployment[];
-  token: string;
 }
 
 export default function AppTerminalTab() {
-  const { app, deployments, token } = useOutletContext<OutletContext>();
+  const { app, deployments } = useOutletContext<OutletContext>();
 
   const runningDeployment = useMemo(() => {
     return deployments.find((d) => d.status === "running");
@@ -41,7 +40,7 @@ export default function AppTerminalTab() {
         </CardHeader>
         <CardContent>
           {runningDeployment ? (
-            <ContainerTerminal appId={app.id} token={token} />
+            <ContainerTerminal appId={app.id} />
           ) : (
             <div className="bg-gray-900 rounded-lg p-6 text-center">
               <div className="text-gray-400 mb-4">

@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
-import { Form, useNavigation, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/deployments";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +30,7 @@ import {
 import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { DeploymentLogs } from "@/components/deployment-logs";
+import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus, DeploymentLog } from "@/types/api";
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
@@ -58,51 +58,21 @@ function formatDate(dateStr: string): string {
 interface OutletContext {
   app: App;
   deployments: Deployment[];
-  token: string;
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "rollback") {
-    const deploymentId = formData.get("deploymentId");
-    if (typeof deploymentId !== "string") {
-      return { error: "Deployment ID is required" };
-    }
-    try {
-      await api.rollbackDeployment(token, deploymentId);
-      return { success: true, action: "rollback" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Rollback failed" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) {
-  const { app, deployments, token } = useOutletContext<OutletContext>();
-  const navigation = useNavigation();
+export default function AppDeploymentsTab() {
+  const { app, deployments } = useOutletContext<OutletContext>();
   const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
   const [deploymentView, setDeploymentView] = useState<"timeline" | "table">("timeline");
 
-  const isSubmitting = navigation.state === "submitting";
-
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
     queryKey: ["deployment-logs", selectedDeploymentId],
-    queryFn: async () => {
-      const { api } = await import("@/lib/api");
-      return api.getDeploymentLogs(selectedDeploymentId!, token);
-    },
+    queryFn: () => api.getDeploymentLogs(selectedDeploymentId!),
     enabled: !!selectedDeploymentId && showBuildLogsDialog,
   });
 
@@ -118,17 +88,22 @@ export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) 
     return deployment.status === "stopped" && deployment.container_id !== null;
   };
 
-  // Handle action results
-  if (actionData?.success && actionData.action === "rollback") {
-    toast.success("Rollback started");
-    setShowRollbackDialog(false);
-    setSelectedDeploymentId(null);
-    queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
-  }
-
-  if (actionData?.error) {
-    toast.error(actionData.error);
-  }
+  // Handle rollback action
+  const handleRollback = async () => {
+    if (!selectedDeploymentId) return;
+    setIsSubmitting(true);
+    try {
+      await api.rollbackDeployment(selectedDeploymentId);
+      toast.success("Rollback started");
+      setShowRollbackDialog(false);
+      setSelectedDeploymentId(null);
+      queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rollback failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -314,7 +289,6 @@ export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) 
         <DeploymentLogs
           deploymentId={activeDeployment.id}
           isActive={isActiveDeployment(activeDeployment.status)}
-          token={token}
         />
       )}
 
@@ -338,13 +312,9 @@ export default function AppDeploymentsTab({ actionData }: Route.ComponentProps) 
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="rollback" />
-              <input type="hidden" name="deploymentId" value={selectedDeploymentId || ""} />
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Rolling back..." : "Rollback"}
-              </Button>
-            </Form>
+            <Button onClick={handleRollback} disabled={isSubmitting}>
+              {isSubmitting ? "Rolling back..." : "Rollback"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

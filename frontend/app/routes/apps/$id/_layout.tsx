@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { Link, Outlet, useLocation, useNavigation, Form, redirect } from "react-router";
+import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/_layout";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,14 +9,6 @@ import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
 import type { App, AppStatus, Deployment, DeploymentStatus } from "@/types/api";
 import { Play, Square, Circle } from "lucide-react";
-
-export function meta({ data }: Route.MetaArgs) {
-  const appName = data?.app?.name || "App";
-  return [
-    { title: `${appName} - Rivetr` },
-    { name: "description", content: `Manage and monitor ${appName}` },
-  ];
-}
 
 // Running status badge component
 function RunningStatusBadge({ status }: { status?: AppStatus }) {
@@ -58,65 +49,6 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [app, deployments] = await Promise.all([
-    api.getApp(token, params.id!),
-    api.getDeployments(token, params.id!).catch(() => []),
-  ]);
-  return { app, deployments, token };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "delete") {
-    const password = formData.get("password");
-    if (typeof password !== "string" || !password.trim()) {
-      return { error: "Password is required" };
-    }
-    await api.deleteApp(token, params.id!, password);
-    return redirect("/projects");
-  }
-
-  if (intent === "deploy") {
-    try {
-      await api.triggerDeploy(token, params.id!);
-      return { success: true, action: "deploy" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Deployment failed" };
-    }
-  }
-
-  if (intent === "start") {
-    try {
-      await api.startApp(token, params.id!);
-      return { success: true, action: "start" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to start app" };
-    }
-  }
-
-  if (intent === "stop") {
-    try {
-      await api.stopApp(token, params.id!);
-      return { success: true, action: "stop" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to stop app" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
 const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
@@ -126,22 +58,24 @@ const tabs = [
   { id: "terminal", label: "Terminal", path: "/terminal" },
 ];
 
-export default function AppDetailLayout({ loaderData, actionData, params }: Route.ComponentProps) {
+export default function AppDetailLayout() {
+  const { id } = useParams();
   const location = useLocation();
-  const navigation = useNavigation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Use React Query with SSR initial data
-  const { data: app } = useQuery<App>({
-    queryKey: ["app", loaderData.app.id],
-    queryFn: () => api.getApp(loaderData.app.id, loaderData.token),
-    initialData: loaderData.app,
+  // Use React Query for app data
+  const { data: app, isLoading: appLoading, error: appError } = useQuery<App>({
+    queryKey: ["app", id],
+    queryFn: () => api.getApp(id!),
+    enabled: !!id,
   });
 
   const { data: deployments = [] } = useQuery<Deployment[]>({
-    queryKey: ["deployments", loaderData.app.id],
-    queryFn: () => api.getDeployments(loaderData.app.id, loaderData.token),
-    initialData: loaderData.deployments,
+    queryKey: ["deployments", id],
+    queryFn: () => api.getDeployments(id!),
+    enabled: !!id,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.length === 0) return 5000;
@@ -153,8 +87,9 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
 
   // Query for app status (running/stopped)
   const { data: appStatus, refetch: refetchStatus } = useQuery<AppStatus>({
-    queryKey: ["appStatus", loaderData.app.id],
-    queryFn: () => api.getAppStatus(loaderData.app.id, loaderData.token),
+    queryKey: ["appStatus", id],
+    queryFn: () => api.getAppStatus(id!),
+    enabled: !!id,
     refetchInterval: 10000, // Poll every 10 seconds
   });
 
@@ -162,34 +97,55 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
     return deployments.some((d) => isActiveDeployment(d.status));
   }, [deployments]);
 
-  const runningDeployment = useMemo(() => {
-    return deployments.find((d) => d.status === "running");
-  }, [deployments]);
-
-  const isSubmitting = navigation.state === "submitting";
-
-  // Handle successful actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "deploy") {
-        toast.success("Deployment started");
-      } else if (actionData.action === "start") {
-        toast.success("Application started");
-        refetchStatus();
-      } else if (actionData.action === "stop") {
-        toast.success("Application stopped");
-        refetchStatus();
-      }
-      queryClient.invalidateQueries({ queryKey: ["app", app?.id] });
-      queryClient.invalidateQueries({ queryKey: ["deployments", app?.id] });
+  // Handle deploy action
+  const handleDeploy = async () => {
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.triggerDeploy(id);
+      toast.success("Deployment started");
+      queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Deployment failed");
+    } finally {
+      setIsSubmitting(false);
     }
-    if (actionData?.error) {
-      toast.error(actionData.error);
+  };
+
+  // Handle start action
+  const handleStart = async () => {
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.startApp(id);
+      toast.success("Application started");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start app");
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [actionData, app?.id, queryClient, refetchStatus]);
+  };
+
+  // Handle stop action
+  const handleStop = async () => {
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.stopApp(id);
+      toast.success("Application stopped");
+      refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to stop app");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Determine active tab from path
-  const basePath = `/apps/${params.id}`;
+  const basePath = `/apps/${id}`;
   const currentPath = location.pathname;
   const activeTab = tabs.find((tab) => {
     if (tab.path === "") {
@@ -198,7 +154,18 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
     return currentPath.startsWith(basePath + tab.path);
   })?.id || "general";
 
-  if (!app) {
+  if (appLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-muted rounded w-1/3 mb-2"></div>
+          <div className="h-4 bg-muted rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (appError || !app) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Application Not Found</h1>
@@ -233,38 +200,29 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
         <div className="flex gap-2">
           {/* Start/Stop buttons */}
           {appStatus?.status === "running" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="stop" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting || hasActiveDeployment}
-                className="gap-2"
-              >
-                <Square className="h-4 w-4" />
-                Stop
-              </Button>
-            </Form>
-          ) : appStatus?.status === "stopped" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="start" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting || hasActiveDeployment}
-                className="gap-2"
-              >
-                <Play className="h-4 w-4" />
-                Start
-              </Button>
-            </Form>
-          ) : null}
-          <Form method="post">
-            <input type="hidden" name="intent" value="deploy" />
-            <Button type="submit" disabled={isSubmitting || hasActiveDeployment}>
-              {isSubmitting ? "Deploying..." : "Deploy"}
+            <Button
+              variant="outline"
+              disabled={isSubmitting || hasActiveDeployment}
+              className="gap-2"
+              onClick={handleStop}
+            >
+              <Square className="h-4 w-4" />
+              Stop
             </Button>
-          </Form>
+          ) : appStatus?.status === "stopped" ? (
+            <Button
+              variant="outline"
+              disabled={isSubmitting || hasActiveDeployment}
+              className="gap-2"
+              onClick={handleStart}
+            >
+              <Play className="h-4 w-4" />
+              Start
+            </Button>
+          ) : null}
+          <Button onClick={handleDeploy} disabled={isSubmitting || hasActiveDeployment}>
+            {isSubmitting ? "Deploying..." : "Deploy"}
+          </Button>
           {appStatus?.running && app.domain && (
             <Button variant="outline" asChild>
               <a href={`https://${app.domain}`} target="_blank" rel="noopener noreferrer">
@@ -287,7 +245,7 @@ export default function AppDetailLayout({ loaderData, actionData, params }: Rout
       </Tabs>
 
       {/* Tab Content via Outlet */}
-      <Outlet context={{ app, deployments, token: loaderData.token }} />
+      <Outlet context={{ app, deployments }} />
     </div>
   );
 }

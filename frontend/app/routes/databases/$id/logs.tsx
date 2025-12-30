@@ -26,11 +26,10 @@ import { RefreshCw, Download, Terminal, AlertCircle } from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
-  token: string;
 }
 
 export default function DatabaseLogsTab() {
-  const { database, token } = useOutletContext<OutletContext>();
+  const { database } = useOutletContext<OutletContext>();
   const [lines, setLines] = useState(100);
   const [autoScroll, setAutoScroll] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -49,13 +48,12 @@ export default function DatabaseLogsTab() {
     error,
     refetch,
   } = useQuery<DatabaseLogEntry[]>({
-    queryKey: ["databaseLogs", database.id, lines, token],
-    queryFn: () => api.getDatabaseLogs(database.id, lines, token),
+    queryKey: ["databaseLogs", database.id, lines],
+    queryFn: () => api.getDatabaseLogs(database.id, lines),
     enabled:
       isClient &&
       database.status === "running" &&
-      !!database.container_id &&
-      !!token,
+      !!database.container_id,
     refetchInterval: autoRefresh ? 5000 : false,
   });
 

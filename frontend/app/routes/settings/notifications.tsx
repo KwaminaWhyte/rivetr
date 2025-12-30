@@ -1,7 +1,5 @@
-import { useState, useEffect } from "react";
-import { Form, useNavigation } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/notifications";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -86,182 +84,8 @@ export function meta() {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [channels, apps] = await Promise.all([
-    api.getNotificationChannels(token).catch(() => []),
-    api.getApps(token).catch(() => []),
-  ]);
-  return { channels, apps, token };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "create") {
-    const name = formData.get("name") as string;
-    const channelType = formData.get("channel_type") as NotificationChannelType;
-
-    if (!name?.trim()) {
-      return { error: "Name is required" };
-    }
-
-    let config: SlackConfig | DiscordConfig | EmailConfig;
-
-    if (channelType === "slack") {
-      const webhookUrl = formData.get("webhook_url") as string;
-      if (!webhookUrl?.trim()) {
-        return { error: "Webhook URL is required" };
-      }
-      config = { webhook_url: webhookUrl.trim() };
-    } else if (channelType === "discord") {
-      const webhookUrl = formData.get("webhook_url") as string;
-      if (!webhookUrl?.trim()) {
-        return { error: "Webhook URL is required" };
-      }
-      config = { webhook_url: webhookUrl.trim() };
-    } else if (channelType === "email") {
-      const smtpHost = formData.get("smtp_host") as string;
-      const smtpPort = parseInt(formData.get("smtp_port") as string, 10);
-      const smtpUsername = formData.get("smtp_username") as string;
-      const smtpPassword = formData.get("smtp_password") as string;
-      const smtpTls = formData.get("smtp_tls") === "true";
-      const fromAddress = formData.get("from_address") as string;
-      const toAddresses = (formData.get("to_addresses") as string)
-        .split(",")
-        .map((a) => a.trim())
-        .filter((a) => a);
-
-      if (!smtpHost?.trim()) {
-        return { error: "SMTP host is required" };
-      }
-      if (!smtpPort || smtpPort <= 0) {
-        return { error: "Valid SMTP port is required" };
-      }
-      if (!fromAddress?.trim()) {
-        return { error: "From address is required" };
-      }
-      if (toAddresses.length === 0) {
-        return { error: "At least one recipient address is required" };
-      }
-
-      config = {
-        smtp_host: smtpHost.trim(),
-        smtp_port: smtpPort,
-        smtp_username: smtpUsername?.trim() || undefined,
-        smtp_password: smtpPassword || undefined,
-        smtp_tls: smtpTls,
-        from_address: fromAddress.trim(),
-        to_addresses: toAddresses,
-      };
-    } else {
-      return { error: "Invalid channel type" };
-    }
-
-    try {
-      await api.createNotificationChannel(token, {
-        name: name.trim(),
-        channel_type: channelType,
-        config,
-        enabled: true,
-      });
-      return { success: true, action: "create" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to create channel" };
-    }
-  }
-
-  if (intent === "delete") {
-    const channelId = formData.get("channelId") as string;
-    if (!channelId) {
-      return { error: "Channel ID is required" };
-    }
-    try {
-      await api.deleteNotificationChannel(token, channelId);
-      return { success: true, action: "delete" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete channel" };
-    }
-  }
-
-  if (intent === "toggle") {
-    const channelId = formData.get("channelId") as string;
-    const enabled = formData.get("enabled") === "true";
-    if (!channelId) {
-      return { error: "Channel ID is required" };
-    }
-    try {
-      await api.updateNotificationChannel(token, channelId, { enabled });
-      return { success: true, action: "toggle" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to update channel" };
-    }
-  }
-
-  if (intent === "test") {
-    const channelId = formData.get("channelId") as string;
-    if (!channelId) {
-      return { error: "Channel ID is required" };
-    }
-    try {
-      await api.testNotificationChannel(token, channelId);
-      return { success: true, action: "test" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to send test notification" };
-    }
-  }
-
-  if (intent === "add_subscription") {
-    const channelId = formData.get("channelId") as string;
-    const eventType = formData.get("event_type") as NotificationEventType;
-    const appIdRaw = formData.get("app_id") as string;
-    const appId = appIdRaw && appIdRaw !== "__all__" ? appIdRaw : undefined;
-
-    if (!channelId) {
-      return { error: "Channel ID is required" };
-    }
-    if (!eventType) {
-      return { error: "Event type is required" };
-    }
-
-    try {
-      await api.createNotificationSubscription(token, channelId, {
-        event_type: eventType,
-        app_id: appId,
-      });
-      return { success: true, action: "add_subscription" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to add subscription" };
-    }
-  }
-
-  if (intent === "delete_subscription") {
-    const subscriptionId = formData.get("subscriptionId") as string;
-    if (!subscriptionId) {
-      return { error: "Subscription ID is required" };
-    }
-    try {
-      await api.deleteNotificationSubscription(token, subscriptionId);
-      return { success: true, action: "delete_subscription" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete subscription" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function SettingsNotificationsPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function SettingsNotificationsPage() {
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSubscriptionsDialog, setShowSubscriptionsDialog] = useState(false);
@@ -270,53 +94,155 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
   const [subscriptions, setSubscriptions] = useState<NotificationSubscription[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
 
-  const { data: channels = [] } = useQuery<NotificationChannel[]>({
+  // Form state for create dialog
+  const [formName, setFormName] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpTls, setSmtpTls] = useState(true);
+  const [fromAddress, setFromAddress] = useState("");
+  const [toAddresses, setToAddresses] = useState("");
+
+  // Subscription form state
+  const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");
+  const [subAppId, setSubAppId] = useState<string>("__all__");
+
+  const { data: channels = [], isLoading: channelsLoading } = useQuery<NotificationChannel[]>({
     queryKey: ["notification-channels"],
-    queryFn: () => api.getNotificationChannels(loaderData.token),
-    initialData: loaderData.channels,
+    queryFn: () => api.getNotificationChannels(),
   });
 
-  const apps = loaderData.apps as App[];
-  const isSubmitting = navigation.state === "submitting";
+  const { data: apps = [] } = useQuery<App[]>({
+    queryKey: ["apps"],
+    queryFn: () => api.getApps(),
+  });
 
-  // Handle success actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "create") {
-        toast.success("Notification channel created");
-        setShowCreateDialog(false);
-      } else if (actionData.action === "delete") {
-        toast.success("Notification channel deleted");
-        setShowDeleteDialog(false);
-        setSelectedChannel(null);
-      } else if (actionData.action === "toggle") {
-        toast.success("Channel updated");
-      } else if (actionData.action === "test") {
-        toast.success("Test notification sent");
-      } else if (actionData.action === "add_subscription") {
-        toast.success("Subscription added");
-        // Reload subscriptions
-        if (selectedChannel) {
-          loadSubscriptions(selectedChannel.id);
-        }
-      } else if (actionData.action === "delete_subscription") {
-        toast.success("Subscription removed");
-        if (selectedChannel) {
-          loadSubscriptions(selectedChannel.id);
-        }
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      let config: SlackConfig | DiscordConfig | EmailConfig;
+
+      if (channelType === "slack") {
+        config = { webhook_url: webhookUrl.trim() };
+      } else if (channelType === "discord") {
+        config = { webhook_url: webhookUrl.trim() };
+      } else {
+        const addresses = toAddresses
+          .split(",")
+          .map((a) => a.trim())
+          .filter((a) => a);
+        config = {
+          smtp_host: smtpHost.trim(),
+          smtp_port: parseInt(smtpPort, 10),
+          smtp_username: smtpUsername.trim() || undefined,
+          smtp_password: smtpPassword || undefined,
+          smtp_tls: smtpTls,
+          from_address: fromAddress.trim(),
+          to_addresses: addresses,
+        };
       }
-      queryClient.invalidateQueries({ queryKey: ["notification-channels"] });
-    }
 
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, queryClient, selectedChannel]);
+      return api.createNotificationChannel({
+        name: formName.trim(),
+        channel_type: channelType,
+        config,
+        enabled: true,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Notification channel created");
+      queryClient.invalidateQueries({ queryKey: ["notification-channels"] });
+      setShowCreateDialog(false);
+      resetCreateForm();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create channel");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (channelId: string) => api.deleteNotificationChannel(channelId),
+    onSuccess: () => {
+      toast.success("Notification channel deleted");
+      queryClient.invalidateQueries({ queryKey: ["notification-channels"] });
+      setShowDeleteDialog(false);
+      setSelectedChannel(null);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete channel");
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ channelId, enabled }: { channelId: string; enabled: boolean }) =>
+      api.updateNotificationChannel(channelId, { enabled }),
+    onSuccess: () => {
+      toast.success("Channel updated");
+      queryClient.invalidateQueries({ queryKey: ["notification-channels"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update channel");
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: (channelId: string) => api.testNotificationChannel(channelId),
+    onSuccess: () => {
+      toast.success("Test notification sent");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to send test notification");
+    },
+  });
+
+  const addSubscriptionMutation = useMutation({
+    mutationFn: ({ channelId, eventType, appId }: { channelId: string; eventType: NotificationEventType; appId?: string }) =>
+      api.createNotificationSubscription(channelId, {
+        event_type: eventType,
+        app_id: appId,
+      }),
+    onSuccess: () => {
+      toast.success("Subscription added");
+      if (selectedChannel) {
+        loadSubscriptions(selectedChannel.id);
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to add subscription");
+    },
+  });
+
+  const deleteSubscriptionMutation = useMutation({
+    mutationFn: (subscriptionId: string) => api.deleteNotificationSubscription(subscriptionId),
+    onSuccess: () => {
+      toast.success("Subscription removed");
+      if (selectedChannel) {
+        loadSubscriptions(selectedChannel.id);
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete subscription");
+    },
+  });
+
+  const resetCreateForm = () => {
+    setFormName("");
+    setWebhookUrl("");
+    setSmtpHost("");
+    setSmtpPort("587");
+    setSmtpUsername("");
+    setSmtpPassword("");
+    setSmtpTls(true);
+    setFromAddress("");
+    setToAddresses("");
+    setChannelType("slack");
+  };
 
   const loadSubscriptions = async (channelId: string) => {
     setLoadingSubscriptions(true);
     try {
-      const subs = await api.getNotificationSubscriptions(channelId, loaderData.token);
+      const subs = await api.getNotificationSubscriptions(channelId);
       setSubscriptions(subs);
     } catch {
       toast.error("Failed to load subscriptions");
@@ -330,6 +256,59 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
     setShowSubscriptionsDialog(true);
     loadSubscriptions(channel.id);
   };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+
+    if (channelType === "slack" || channelType === "discord") {
+      if (!webhookUrl.trim()) {
+        toast.error("Webhook URL is required");
+        return;
+      }
+    } else if (channelType === "email") {
+      if (!smtpHost.trim()) {
+        toast.error("SMTP host is required");
+        return;
+      }
+      const port = parseInt(smtpPort, 10);
+      if (!port || port <= 0) {
+        toast.error("Valid SMTP port is required");
+        return;
+      }
+      if (!fromAddress.trim()) {
+        toast.error("From address is required");
+        return;
+      }
+      const addresses = toAddresses.split(",").map((a) => a.trim()).filter((a) => a);
+      if (addresses.length === 0) {
+        toast.error("At least one recipient address is required");
+        return;
+      }
+    }
+
+    createMutation.mutate();
+  };
+
+  const handleAddSubscription = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChannel || !subEventType) {
+      toast.error("Event type is required");
+      return;
+    }
+    addSubscriptionMutation.mutate({
+      channelId: selectedChannel.id,
+      eventType: subEventType as NotificationEventType,
+      appId: subAppId !== "__all__" ? subAppId : undefined,
+    });
+    setSubEventType("");
+    setSubAppId("__all__");
+  };
+
+  const isSubmitting = createMutation.isPending || deleteMutation.isPending || toggleMutation.isPending || testMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -354,7 +333,11 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {channels.length === 0 ? (
+          {channelsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : channels.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center">
               No notification channels configured. Add one to receive deployment alerts.
             </p>
@@ -382,34 +365,25 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="toggle" />
-                        <input type="hidden" name="channelId" value={channel.id} />
-                        <input
-                          type="hidden"
-                          name="enabled"
-                          value={channel.enabled ? "false" : "true"}
-                        />
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          size="sm"
-                          className="p-0"
-                          disabled={isSubmitting}
-                        >
-                          {channel.enabled ? (
-                            <Badge variant="default" className="bg-green-600">
-                              <Check className="mr-1 h-3 w-3" />
-                              Enabled
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">
-                              <X className="mr-1 h-3 w-3" />
-                              Disabled
-                            </Badge>
-                          )}
-                        </Button>
-                      </Form>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="p-0"
+                        disabled={isSubmitting}
+                        onClick={() => toggleMutation.mutate({ channelId: channel.id, enabled: !channel.enabled })}
+                      >
+                        {channel.enabled ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <Check className="mr-1 h-3 w-3" />
+                            Enabled
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            <X className="mr-1 h-3 w-3" />
+                            Disabled
+                          </Badge>
+                        )}
+                      </Button>
                     </TableCell>
                     <TableCell>{formatDate(channel.created_at)}</TableCell>
                     <TableCell>
@@ -421,18 +395,14 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                         >
                           Subscriptions
                         </Button>
-                        <Form method="post" className="inline">
-                          <input type="hidden" name="intent" value="test" />
-                          <input type="hidden" name="channelId" value={channel.id} />
-                          <Button
-                            type="submit"
-                            variant="outline"
-                            size="sm"
-                            disabled={isSubmitting || !channel.enabled}
-                          >
-                            <Send className="h-4 w-4" />
-                          </Button>
-                        </Form>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSubmitting || !channel.enabled}
+                          onClick={() => testMutation.mutate(channel.id)}
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="destructive"
                           size="sm"
@@ -454,11 +424,12 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
       </Card>
 
       {/* Create Channel Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => {
+        setShowCreateDialog(open);
+        if (!open) resetCreateForm();
+      }}>
         <DialogContent className="max-w-lg">
-          <Form method="post">
-            <input type="hidden" name="intent" value="create" />
-            <input type="hidden" name="channel_type" value={channelType} />
+          <form onSubmit={handleCreateSubmit}>
             <DialogHeader>
               <DialogTitle>Add Notification Channel</DialogTitle>
               <DialogDescription>
@@ -470,7 +441,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                 <Label htmlFor="name">Channel Name</Label>
                 <Input
                   id="name"
-                  name="name"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
                   placeholder="e.g., Production Alerts"
                   required
                 />
@@ -511,7 +483,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                   <Label htmlFor="webhook_url">Webhook URL</Label>
                   <Input
                     id="webhook_url"
-                    name="webhook_url"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
                     placeholder="https://hooks.slack.com/services/..."
                     required
                   />
@@ -527,7 +500,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                   <Label htmlFor="webhook_url">Webhook URL</Label>
                   <Input
                     id="webhook_url"
-                    name="webhook_url"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
                     placeholder="https://discord.com/api/webhooks/..."
                     required
                   />
@@ -545,7 +519,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                       <Label htmlFor="smtp_host">SMTP Host</Label>
                       <Input
                         id="smtp_host"
-                        name="smtp_host"
+                        value={smtpHost}
+                        onChange={(e) => setSmtpHost(e.target.value)}
                         placeholder="smtp.example.com"
                         required
                       />
@@ -554,10 +529,10 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                       <Label htmlFor="smtp_port">SMTP Port</Label>
                       <Input
                         id="smtp_port"
-                        name="smtp_port"
                         type="number"
+                        value={smtpPort}
+                        onChange={(e) => setSmtpPort(e.target.value)}
                         placeholder="587"
-                        defaultValue="587"
                         required
                       />
                     </div>
@@ -567,7 +542,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                       <Label htmlFor="smtp_username">Username (optional)</Label>
                       <Input
                         id="smtp_username"
-                        name="smtp_username"
+                        value={smtpUsername}
+                        onChange={(e) => setSmtpUsername(e.target.value)}
                         placeholder="user@example.com"
                       />
                     </div>
@@ -575,22 +551,27 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                       <Label htmlFor="smtp_password">Password (optional)</Label>
                       <Input
                         id="smtp_password"
-                        name="smtp_password"
                         type="password"
+                        value={smtpPassword}
+                        onChange={(e) => setSmtpPassword(e.target.value)}
                         placeholder="********"
                       />
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch id="smtp_tls" name="smtp_tls" defaultChecked />
+                    <Switch
+                      id="smtp_tls"
+                      checked={smtpTls}
+                      onCheckedChange={setSmtpTls}
+                    />
                     <Label htmlFor="smtp_tls">Use TLS</Label>
-                    <input type="hidden" name="smtp_tls" value="true" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="from_address">From Address</Label>
                     <Input
                       id="from_address"
-                      name="from_address"
+                      value={fromAddress}
+                      onChange={(e) => setFromAddress(e.target.value)}
                       placeholder="noreply@example.com"
                       required
                     />
@@ -599,7 +580,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                     <Label htmlFor="to_addresses">To Addresses (comma-separated)</Label>
                     <Input
                       id="to_addresses"
-                      name="to_addresses"
+                      value={toAddresses}
+                      onChange={(e) => setToAddresses(e.target.value)}
                       placeholder="admin@example.com, devops@example.com"
                       required
                     />
@@ -615,8 +597,8 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creating...
@@ -626,7 +608,7 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                 )}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -650,13 +632,13 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <input type="hidden" name="channelId" value={selectedChannel?.id || ""} />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
-                {isSubmitting ? "Deleting..." : "Delete"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => selectedChannel && deleteMutation.mutate(selectedChannel.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -672,12 +654,10 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Add Subscription Form */}
-            <Form method="post" className="flex items-end gap-4">
-              <input type="hidden" name="intent" value="add_subscription" />
-              <input type="hidden" name="channelId" value={selectedChannel?.id || ""} />
+            <form onSubmit={handleAddSubscription} className="flex items-end gap-4">
               <div className="flex-1 space-y-2">
                 <Label>Event Type</Label>
-                <Select name="event_type" required>
+                <Select value={subEventType} onValueChange={(v) => setSubEventType(v as NotificationEventType)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>
@@ -692,7 +672,7 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
               </div>
               <div className="flex-1 space-y-2">
                 <Label>App (optional)</Label>
-                <Select name="app_id" defaultValue="__all__">
+                <Select value={subAppId} onValueChange={setSubAppId}>
                   <SelectTrigger>
                     <SelectValue placeholder="All apps" />
                   </SelectTrigger>
@@ -706,11 +686,11 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={addSubscriptionMutation.isPending}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add
               </Button>
-            </Form>
+            </form>
 
             {/* Subscriptions List */}
             <div className="border rounded-md">
@@ -740,18 +720,14 @@ export default function SettingsNotificationsPage({ loaderData, actionData }: Ro
                         </TableCell>
                         <TableCell>{sub.app_name || "All Apps"}</TableCell>
                         <TableCell>
-                          <Form method="post">
-                            <input type="hidden" name="intent" value="delete_subscription" />
-                            <input type="hidden" name="subscriptionId" value={sub.id} />
-                            <Button
-                              type="submit"
-                              variant="destructive"
-                              size="sm"
-                              disabled={isSubmitting}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </Form>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={deleteSubscriptionMutation.isPending}
+                            onClick={() => deleteSubscriptionMutation.mutate(sub.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -9,8 +9,8 @@ interface ResourceMonitorProps {
   appId?: string;
   /** Database ID (for database stats) */
   databaseId?: string;
-  /** Auth token for API calls */
-  token: string;
+  /** Auth token for API calls (optional - uses cookies if not provided) */
+  token?: string;
   /** Polling interval in milliseconds (default: 5000) */
   pollInterval?: number;
 }

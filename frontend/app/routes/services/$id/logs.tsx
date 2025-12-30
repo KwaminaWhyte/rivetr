@@ -4,11 +4,10 @@ import type { Service } from "@/types/api";
 
 interface OutletContext {
   service: Service;
-  token: string;
 }
 
 export default function ServiceLogsTab() {
-  const { service, token } = useOutletContext<OutletContext>();
+  const { service } = useOutletContext<OutletContext>();
 
   return (
     <div className="space-y-6">
@@ -16,7 +15,6 @@ export default function ServiceLogsTab() {
         serviceId={service.id}
         serviceName={service.name}
         serviceStatus={service.status}
-        token={token}
       />
     </div>
   );

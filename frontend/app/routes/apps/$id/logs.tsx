@@ -8,11 +8,10 @@ import type { App, Deployment } from "@/types/api";
 interface OutletContext {
   app: App;
   deployments: Deployment[];
-  token: string;
 }
 
 export default function AppLogsTab() {
-  const { app, deployments, token } = useOutletContext<OutletContext>();
+  const { app, deployments } = useOutletContext<OutletContext>();
   const [showRuntimeLogs, setShowRuntimeLogs] = useState(true);
 
   const runningDeployment = useMemo(() => {
@@ -58,7 +57,7 @@ export default function AppLogsTab() {
         </CardHeader>
         {showRuntimeLogs && (
           <CardContent>
-            <RuntimeLogs appId={app.id} token={token} />
+            <RuntimeLogs appId={app.id} />
           </CardContent>
         )}
       </Card>

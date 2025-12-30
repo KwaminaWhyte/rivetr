@@ -11,7 +11,6 @@ import { Copy, Check, Network, Server, ExternalLink, Globe, Container } from "lu
 
 interface OutletContext {
   service: Service;
-  token: string;
 }
 
 interface ParsedPort {

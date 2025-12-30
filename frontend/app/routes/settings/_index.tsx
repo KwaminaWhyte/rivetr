@@ -1,4 +1,3 @@
-import type { Route } from "./+types/_index";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -9,12 +8,6 @@ export function meta() {
     { title: "Settings - Rivetr" },
     { name: "description", content: "Configure your Rivetr instance settings" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  await requireAuth(request);
-  return null;
 }
 
 export default function SettingsPage() {

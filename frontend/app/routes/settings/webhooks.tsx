@@ -1,12 +1,5 @@
-import type { Route } from "./+types/webhooks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  await requireAuth(request);
-  return null;
-}
 
 export default function SettingsWebhooksPage() {
   return (

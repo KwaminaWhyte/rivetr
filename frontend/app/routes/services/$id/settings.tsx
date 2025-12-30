@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useOutletContext, Form, useNavigation, useActionData } from "react-router";
+import { useOutletContext, useNavigate } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,75 +18,52 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import type { Route } from "./+types/settings";
+import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
 import { Trash2, AlertTriangle, Code, Pencil, X, Save, AlertCircle } from "lucide-react";
 
 interface OutletContext {
   service: Service;
-  token: string;
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-  const { redirect } = await import("react-router");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "update-compose") {
-    const composeContent = formData.get("compose_content");
-    if (typeof composeContent !== "string") {
-      return { error: "Invalid compose content" };
-    }
-
-    try {
-      await api.updateService(token, params.id!, { compose_content: composeContent });
-      return { success: true, action: "update-compose" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to update compose configuration" };
-    }
-  }
-
-  if (intent === "delete") {
-    const projectId = formData.get("projectId");
-    try {
-      await api.deleteService(token, params.id!);
-      if (projectId) {
-        return redirect(`/projects/${projectId}`);
-      }
-      return redirect("/projects");
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete service" };
-    }
-  }
-
-  return { error: "Unknown action" };
 }
 
 export default function ServiceSettingsTab() {
   const { service } = useOutletContext<OutletContext>();
-  const navigation = useNavigation();
-  const actionData = useActionData<typeof action>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [composeContent, setComposeContent] = useState(service.compose_content);
 
-  const isSubmitting = navigation.state === "submitting";
-  const submittingIntent = navigation.formData?.get("intent");
-
-  // Handle action results
-  useEffect(() => {
-    if (actionData?.success && actionData.action === "update-compose") {
+  // Mutations
+  const updateComposeMutation = useMutation({
+    mutationFn: (composeContent: string) =>
+      api.updateService(service.id, { compose_content: composeContent }),
+    onSuccess: () => {
       toast.success("Compose configuration updated. Restart the service to apply changes.");
       setIsEditing(false);
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData]);
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update compose configuration");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteService(service.id),
+    onSuccess: () => {
+      toast.success("Service deleted");
+      if (service.project_id) {
+        navigate(`/projects/${service.project_id}`);
+      } else {
+        navigate("/projects");
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete service");
+    },
+  });
+
+  const isSubmitting = updateComposeMutation.isPending || deleteMutation.isPending;
 
   // Reset compose content when service changes (e.g., after save)
   useEffect(() => {
@@ -97,6 +75,15 @@ export default function ServiceSettingsTab() {
   const handleCancelEdit = () => {
     setComposeContent(service.compose_content);
     setIsEditing(false);
+  };
+
+  const handleSaveCompose = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    updateComposeMutation.mutate(composeContent);
+  };
+
+  const handleDelete = () => {
+    deleteMutation.mutate();
   };
 
   return (
@@ -137,8 +124,7 @@ export default function ServiceSettingsTab() {
             </div>
           )}
 
-          <Form method="post">
-            <input type="hidden" name="intent" value="update-compose" />
+          <form onSubmit={handleSaveCompose}>
             <div className="space-y-4">
               <div className="relative">
                 <Textarea
@@ -162,7 +148,7 @@ export default function ServiceSettingsTab() {
                     type="button"
                     variant="outline"
                     onClick={handleCancelEdit}
-                    disabled={isSubmitting && submittingIntent === "update-compose"}
+                    disabled={isSubmitting}
                     className="gap-2"
                   >
                     <X className="h-4 w-4" />
@@ -170,18 +156,16 @@ export default function ServiceSettingsTab() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting && submittingIntent === "update-compose"}
+                    disabled={isSubmitting}
                     className="gap-2"
                   >
                     <Save className="h-4 w-4" />
-                    {isSubmitting && submittingIntent === "update-compose"
-                      ? "Saving..."
-                      : "Save Changes"}
+                    {updateComposeMutation.isPending ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               )}
             </div>
-          </Form>
+          </form>
         </CardContent>
       </Card>
 
@@ -236,17 +220,13 @@ export default function ServiceSettingsTab() {
                   <AlertDialogCancel onClick={() => setDeleteConfirmName("")}>
                     Cancel
                   </AlertDialogCancel>
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="delete" />
-                    <input type="hidden" name="projectId" value={service.project_id || ""} />
-                    <AlertDialogAction
-                      type="submit"
-                      disabled={deleteConfirmName !== service.name || isSubmitting}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
-                      {isSubmitting ? "Deleting..." : "Delete Service"}
-                    </AlertDialogAction>
-                  </Form>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    disabled={deleteConfirmName !== service.name || isSubmitting}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleteMutation.isPending ? "Deleting..." : "Delete Service"}
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>

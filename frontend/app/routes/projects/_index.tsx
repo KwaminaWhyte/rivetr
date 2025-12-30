@@ -1,9 +1,6 @@
 import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Form, useNavigation } from "react-router";
-import type { Route } from "./+types/_index";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,88 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ProjectCard } from "@/components/project-card";
-import type { App, CreateProjectRequest, DeploymentStatus, ManagedDatabase, ProjectWithApps } from "@/types/api";
+import type { App, DeploymentStatus, ManagedDatabase, ProjectWithApps } from "@/types/api";
 
 export function meta() {
   return [
     { title: "Projects - Rivetr" },
     { name: "description", content: "Manage your projects and applications" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [projectList, apps, databases] = await Promise.all([
-    api.getProjects(token).catch(() => []),
-    api.getApps(token).catch(() => []),
-    api.getDatabases(token).catch(() => []),
-  ]);
-
-  // Get full project details with apps and databases
-  const projectsWithApps = await Promise.all(
-    projectList.map((p) => api.getProject(token, p.id).catch(() => ({ ...p, apps: [], databases: [] })))
-  );
-
-  // Get app statuses (latest deployment status for each app)
-  const appStatuses: Record<string, DeploymentStatus> = {};
-  await Promise.all(
-    apps.map(async (app) => {
-      try {
-        const status = await api.getAppStatus(token, app.id);
-        // Map AppStatus.status to DeploymentStatus
-        if (status.status === "running") {
-          appStatuses[app.id] = "running";
-        } else if (status.status === "stopped") {
-          appStatuses[app.id] = "stopped";
-        } else {
-          // For not_deployed, no_container, not_found - check latest deployment
-          const deployments = await api.getDeployments(token, app.id).catch(() => []);
-          if (deployments.length > 0) {
-            appStatuses[app.id] = deployments[0].status as DeploymentStatus;
-          } else {
-            appStatuses[app.id] = "stopped";
-          }
-        }
-      } catch {
-        appStatuses[app.id] = "stopped";
-      }
-    })
-  );
-
-  // Get database statuses (directly from the database status field)
-  const databaseStatuses: Record<string, string> = {};
-  for (const db of databases) {
-    databaseStatuses[db.id] = db.status;
-  }
-
-  return { projects: projectsWithApps, apps, databases, appStatuses, databaseStatuses, token };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const name = formData.get("name");
-  const description = formData.get("description");
-
-  if (typeof name !== "string" || !name.trim()) {
-    return { error: "Project name is required" };
-  }
-
-  try {
-    const project = await api.createProject(token, {
-      name: name.trim(),
-      description: typeof description === "string" ? description : undefined,
-    });
-    return { success: true, project };
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "Failed to create project" };
-  }
 }
 
 type FilterTab = "all" | "healthy" | "issues" | "building";
@@ -138,34 +60,75 @@ function getProjectHealth(
   return "healthy";
 }
 
-export default function ProjectsPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function ProjectsPage() {
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  // Use React Query with SSR initial data for real-time updates
-  const { data: projects = [] } = useQuery<ProjectWithApps[]>({
-    queryKey: ["projects"],
+  // Use React Query for data fetching
+  const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectWithApps[]>({
+    queryKey: ["projects-with-apps"],
     queryFn: async () => {
-      const projectList = await api.getProjects(loaderData.token);
+      const projectList = await api.getProjects();
       const projectsWithApps = await Promise.all(
-        projectList.map((p) => api.getProject(p.id, loaderData.token).catch(() => ({ ...p, apps: [] })))
+        projectList.map((p) => api.getProject(p.id).catch(() => ({ ...p, apps: [], databases: [], services: [] } as ProjectWithApps)))
       );
       return projectsWithApps;
     },
-    initialData: loaderData.projects,
   });
 
   const { data: apps = [] } = useQuery<App[]>({
     queryKey: ["apps"],
-    queryFn: () => api.getApps(loaderData.token),
-    initialData: loaderData.apps,
+    queryFn: () => api.getApps(),
   });
 
-  // Use real statuses from loader
-  const appStatuses = loaderData.appStatuses || {};
-  const databaseStatuses = loaderData.databaseStatuses || {};
+  const { data: databases = [] } = useQuery<ManagedDatabase[]>({
+    queryKey: ["databases"],
+    queryFn: () => api.getDatabases(),
+  });
+
+  // Fetch app statuses
+  const { data: appStatuses = {} } = useQuery<Record<string, DeploymentStatus>>({
+    queryKey: ["app-statuses", apps.map((a) => a.id)],
+    queryFn: async () => {
+      const statuses: Record<string, DeploymentStatus> = {};
+      await Promise.all(
+        apps.map(async (app) => {
+          try {
+            const status = await api.getAppStatus(app.id);
+            if (status.status === "running") {
+              statuses[app.id] = "running";
+            } else if (status.status === "stopped") {
+              statuses[app.id] = "stopped";
+            } else {
+              const deployments = await api.getDeployments(app.id).catch(() => []);
+              if (deployments.length > 0) {
+                statuses[app.id] = deployments[0].status as DeploymentStatus;
+              } else {
+                statuses[app.id] = "stopped";
+              }
+            }
+          } catch {
+            statuses[app.id] = "stopped";
+          }
+        })
+      );
+      return statuses;
+    },
+    enabled: apps.length > 0,
+  });
+
+  // Database statuses from the database objects
+  const databaseStatuses = useMemo(() => {
+    const statuses: Record<string, string> = {};
+    for (const db of databases) {
+      statuses[db.id] = db.status;
+    }
+    return statuses;
+  }, [databases]);
 
   // Filter projects by tab
   const filteredProjects = useMemo(() => {
@@ -186,13 +149,60 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
     return counts;
   }, [projects, appStatuses, databaseStatuses]);
 
-  // Close dialog on successful creation
-  const isSubmitting = navigation.state === "submitting";
+  // Create project mutation
+  const createProjectMutation = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) {
+        throw new Error("Project name is required");
+      }
+      return api.createProject({
+        name: name.trim(),
+        description: description.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      setIsCreateDialogOpen(false);
+      setName("");
+      setDescription("");
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["projects-with-apps"] });
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+    },
+  });
 
-  // Effect to close dialog and invalidate on success
-  if (actionData?.success && isCreateDialogOpen) {
-    setIsCreateDialogOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["projects"] });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    createProjectMutation.mutate();
+  };
+
+  // Show loading state
+  if (projectsLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Projects</h1>
+            <p className="text-muted-foreground">
+              Manage your applications and service groups
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <Skeleton className="h-6 w-32 mb-4" />
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -206,7 +216,14 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
           </p>
         </div>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+          setIsCreateDialogOpen(open);
+          if (!open) {
+            setName("");
+            setDescription("");
+            setError(null);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -214,16 +231,16 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <Form method="post">
+            <form onSubmit={handleSubmit}>
               <DialogHeader>
                 <DialogTitle>Create New Project</DialogTitle>
                 <DialogDescription>
                   Projects help you organize related applications together.
                 </DialogDescription>
               </DialogHeader>
-              {actionData?.error && (
+              {error && (
                 <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  {actionData.error}
+                  {error}
                 </div>
               )}
               <div className="space-y-4 py-4">
@@ -231,7 +248,8 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
                   <Label htmlFor="project-name">Name</Label>
                   <Input
                     id="project-name"
-                    name="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     placeholder="my-project"
                     required
                   />
@@ -240,7 +258,8 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
                   <Label htmlFor="project-description">Description</Label>
                   <Textarea
                     id="project-description"
-                    name="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                     placeholder="A brief description of your project..."
                     rows={3}
                   />
@@ -254,11 +273,11 @@ export default function ProjectsPage({ loaderData, actionData }: Route.Component
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Creating..." : "Create Project"}
+                <Button type="submit" disabled={createProjectMutation.isPending}>
+                  {createProjectMutation.isPending ? "Creating..." : "Create Project"}
                 </Button>
               </DialogFooter>
-            </Form>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

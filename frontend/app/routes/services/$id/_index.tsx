@@ -22,7 +22,6 @@ import {
 
 interface OutletContext {
   service: Service;
-  token: string;
 }
 
 interface ParsedPort {

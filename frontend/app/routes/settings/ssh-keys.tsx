@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { Form, useNavigation } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/ssh-keys";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -32,97 +30,80 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const sshKeys = await api.getSshKeys(token).catch(() => []);
-  return { sshKeys };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "create") {
-    const name = formData.get("name");
-    const private_key = formData.get("private_key");
-    const public_key = formData.get("public_key");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Name is required" };
-    }
-    if (typeof private_key !== "string" || !private_key.trim()) {
-      return { error: "Private key is required" };
-    }
-
-    try {
-      await api.createSshKey(token, {
-        name: name.trim(),
-        private_key: private_key.trim(),
-        public_key: typeof public_key === "string" ? public_key.trim() || undefined : undefined,
-        is_global: true,
-      });
-      return { success: true, action: "create" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to create SSH key" };
-    }
-  }
-
-  if (intent === "delete") {
-    const keyId = formData.get("keyId");
-    if (typeof keyId !== "string") {
-      return { error: "Key ID is required" };
-    }
-    try {
-      await api.deleteSshKey(token, keyId);
-      return { success: true, action: "delete" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete SSH key" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function SettingsSshKeysPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function SettingsSshKeysPage() {
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
 
-  const { data: sshKeys = [] } = useQuery<SshKey[]>({
+  // Form state
+  const [name, setName] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [publicKey, setPublicKey] = useState("");
+
+  const { data: sshKeys = [], isLoading } = useQuery<SshKey[]>({
     queryKey: ["ssh-keys"],
     queryFn: () => api.getSshKeys(),
-    initialData: loaderData.sshKeys,
   });
 
-  const isSubmitting = navigation.state === "submitting";
-
-  // Handle success actions
-  if (actionData?.success) {
-    if (actionData.action === "create") {
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.createSshKey({
+        name: name.trim(),
+        private_key: privateKey.trim(),
+        public_key: publicKey.trim() || undefined,
+        is_global: true,
+      }),
+    onSuccess: () => {
       toast.success("SSH key created");
-      if (showCreateDialog) setShowCreateDialog(false);
-    } else if (actionData.action === "delete") {
-      toast.success("SSH key deleted");
-      if (showDeleteDialog) {
-        setShowDeleteDialog(false);
-        setSelectedKeyId(null);
-      }
-    }
-    queryClient.invalidateQueries({ queryKey: ["ssh-keys"] });
-  }
+      queryClient.invalidateQueries({ queryKey: ["ssh-keys"] });
+      setShowCreateDialog(false);
+      resetForm();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create SSH key");
+    },
+  });
 
-  if (actionData?.error) {
-    toast.error(actionData.error);
-  }
+  const deleteMutation = useMutation({
+    mutationFn: (keyId: string) => api.deleteSshKey(keyId),
+    onSuccess: () => {
+      toast.success("SSH key deleted");
+      queryClient.invalidateQueries({ queryKey: ["ssh-keys"] });
+      setShowDeleteDialog(false);
+      setSelectedKeyId(null);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete SSH key");
+    },
+  });
+
+  const resetForm = () => {
+    setName("");
+    setPrivateKey("");
+    setPublicKey("");
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    if (!privateKey.trim()) {
+      toast.error("Private key is required");
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  const handleDeleteConfirm = () => {
+    if (selectedKeyId) {
+      deleteMutation.mutate(selectedKeyId);
+    }
+  };
+
+  const isSubmitting = createMutation.isPending || deleteMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -144,7 +125,9 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {sshKeys.length === 0 ? (
+          {isLoading ? (
+            <p className="text-muted-foreground py-4 text-center">Loading...</p>
+          ) : sshKeys.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center">
               No SSH keys configured. Add one to deploy from private repositories.
             </p>
@@ -191,10 +174,12 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
       </Card>
 
       {/* Create SSH Key Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => {
+        setShowCreateDialog(open);
+        if (!open) resetForm();
+      }}>
         <DialogContent className="max-w-2xl">
-          <Form method="post">
-            <input type="hidden" name="intent" value="create" />
+          <form onSubmit={handleCreateSubmit}>
             <DialogHeader>
               <DialogTitle>Add SSH Key</DialogTitle>
               <DialogDescription>
@@ -207,7 +192,8 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
-                  name="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., github-deploy-key"
                   required
                 />
@@ -216,7 +202,8 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
                 <Label htmlFor="private_key">Private Key</Label>
                 <Textarea
                   id="private_key"
-                  name="private_key"
+                  value={privateKey}
+                  onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
 ...
 -----END OPENSSH PRIVATE KEY-----"
@@ -231,7 +218,8 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
                 <Label htmlFor="public_key">Public Key (optional)</Label>
                 <Textarea
                   id="public_key"
-                  name="public_key"
+                  value={publicKey}
+                  onChange={(e) => setPublicKey(e.target.value)}
                   placeholder="ssh-ed25519 AAAA... user@host"
                   className="font-mono text-xs min-h-16"
                 />
@@ -252,7 +240,7 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
                 {isSubmitting ? "Creating..." : "Create"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -276,13 +264,13 @@ export default function SettingsSshKeysPage({ loaderData, actionData }: Route.Co
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <input type="hidden" name="keyId" value={selectedKeyId || ""} />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
-                {isSubmitting ? "Deleting..." : "Delete"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

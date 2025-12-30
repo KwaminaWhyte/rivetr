@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Link, useParams, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/$id";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +40,6 @@ import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, Deployment, DeploymentStatus, DeploymentLog, UpdateAppRequest } from "@/types/api";
 import { DeploymentLogs } from "@/components/deployment-logs";
-import { RuntimeLogs } from "@/components/runtime-logs";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
 import { DeploymentTimeline } from "@/components/deployment-timeline";
@@ -75,107 +73,29 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [app, deployments] = await Promise.all([
-    api.getApp(token, params.id!),
-    api.getDeployments(token, params.id!).catch(() => []),
-  ]);
-  return { app, deployments };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "delete") {
-    await api.deleteApp(token, params.id!);
-    return redirect("/projects");
-  }
-
-  if (intent === "deploy") {
-    try {
-      await api.triggerDeploy(token, params.id!);
-      return { success: true, action: "deploy" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Deployment failed" };
-    }
-  }
-
-  if (intent === "rollback") {
-    const deploymentId = formData.get("deploymentId");
-    if (typeof deploymentId !== "string") {
-      return { error: "Deployment ID is required" };
-    }
-    try {
-      await api.rollbackDeployment(token, deploymentId);
-      return { success: true, action: "rollback" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Rollback failed" };
-    }
-  }
-
-  if (intent === "update") {
-    const updates: UpdateAppRequest = {};
-    const name = formData.get("name");
-    const git_url = formData.get("git_url");
-    const branch = formData.get("branch");
-    const dockerfile = formData.get("dockerfile");
-    const domain = formData.get("domain");
-    const port = formData.get("port");
-    const healthcheck = formData.get("healthcheck");
-    const environment = formData.get("environment");
-
-    if (typeof name === "string") updates.name = name;
-    if (typeof git_url === "string") updates.git_url = git_url;
-    if (typeof branch === "string") updates.branch = branch;
-    if (typeof dockerfile === "string") updates.dockerfile = dockerfile;
-    if (typeof domain === "string") updates.domain = domain || undefined;
-    if (typeof port === "string") updates.port = parseInt(port) || undefined;
-    if (typeof healthcheck === "string") updates.healthcheck = healthcheck || undefined;
-    if (typeof environment === "string") updates.environment = environment as AppEnvironment;
-
-    try {
-      await api.updateApp(token, params.id!, updates);
-      return { success: true, action: "update" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Update failed" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function AppDetailPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function AppDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
-  const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
   const [editFormData, setEditFormData] = useState<UpdateAppRequest>({});
   const [deploymentView, setDeploymentView] = useState<"timeline" | "table">("timeline");
 
-  // Use React Query with SSR initial data
-  const { data: app } = useQuery<App>({
-    queryKey: ["app", loaderData.app.id],
-    queryFn: () => api.getApp(loaderData.app.id),
-    initialData: loaderData.app,
+  // Use React Query to fetch data client-side
+  const { data: app, isLoading: appLoading } = useQuery<App>({
+    queryKey: ["app", id],
+    queryFn: () => api.getApp(id!),
+    enabled: !!id,
   });
 
   const { data: deployments = [] } = useQuery<Deployment[]>({
-    queryKey: ["deployments", loaderData.app.id],
-    queryFn: () => api.getDeployments(loaderData.app.id),
-    initialData: loaderData.deployments,
+    queryKey: ["deployments", id],
+    queryFn: () => api.getDeployments(id!),
+    enabled: !!id,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.length === 0) return 5000;
@@ -188,11 +108,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
     queryKey: ["deployment-logs", selectedDeploymentId],
-    queryFn: async () => {
-      // This would need to be fetched client-side
-      const response = await fetch(`/api/deployments/${selectedDeploymentId}/logs`);
-      return response.json();
-    },
+    queryFn: () => api.getDeploymentLogs(selectedDeploymentId!),
     enabled: !!selectedDeploymentId && showBuildLogsDialog,
   });
 
@@ -228,32 +144,70 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
     }
   }, [app]);
 
-  // Handle successful actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "deploy") {
-        toast.success("Deployment started");
-      } else if (actionData.action === "rollback") {
-        toast.success("Rollback started");
-        setShowRollbackDialog(false);
-        setSelectedDeploymentId(null);
-      } else if (actionData.action === "update") {
-        toast.success("Application updated");
-        setShowEditDialog(false);
-      }
-      queryClient.invalidateQueries({ queryKey: ["app", app?.id] });
-      queryClient.invalidateQueries({ queryKey: ["deployments", app?.id] });
+  // Handle deploy action
+  const handleDeploy = async () => {
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.triggerDeploy(id);
+      toast.success("Deployment started");
+      queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Deployment failed");
+    } finally {
+      setIsSubmitting(false);
     }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, app?.id, queryClient]);
+  };
 
-  const isSubmitting = navigation.state === "submitting";
+  // Handle rollback action
+  const handleRollback = async () => {
+    if (!selectedDeploymentId) return;
+    setIsSubmitting(true);
+    try {
+      await api.rollbackDeployment(selectedDeploymentId);
+      toast.success("Rollback started");
+      setShowRollbackDialog(false);
+      setSelectedDeploymentId(null);
+      queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Rollback failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle update action
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setIsSubmitting(true);
+    try {
+      await api.updateApp(id, editFormData);
+      toast.success("Application updated");
+      setShowEditDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   const handleEditChange = (field: keyof UpdateAppRequest, value: string | number | undefined) => {
     setEditFormData((prev) => ({ ...prev, [field]: value }));
   };
+
+  if (appLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-muted rounded w-48 mb-4"></div>
+          <div className="h-4 bg-muted rounded w-96"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!app) {
     return (
@@ -279,25 +233,11 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
           <p className="text-muted-foreground">{app.git_url}</p>
         </div>
         <div className="flex gap-2">
-          <Form method="post">
-            <input type="hidden" name="intent" value="deploy" />
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Deploying..." : "Deploy"}
-            </Button>
-          </Form>
-          {runningDeployment && (
-            <Button
-              variant="outline"
-              onClick={() => setShowRuntimeLogs(!showRuntimeLogs)}
-            >
-              {showRuntimeLogs ? "Hide Logs" : "View Logs"}
-            </Button>
-          )}
+          <Button onClick={handleDeploy} disabled={isSubmitting}>
+            {isSubmitting ? "Deploying..." : "Deploy"}
+          </Button>
           <Button variant="outline" onClick={() => setShowEditDialog(true)}>
             Edit
-          </Button>
-          <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-            Delete
           </Button>
         </div>
       </div>
@@ -558,15 +498,10 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
         />
       )}
 
-      {showRuntimeLogs && runningDeployment && app && (
-        <RuntimeLogs appId={app.id} />
-      )}
-
       {/* Edit app dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl">
-          <Form method="post">
-            <input type="hidden" name="intent" value="update" />
+          <form onSubmit={handleUpdate}>
             <DialogHeader>
               <DialogTitle>Edit Application</DialogTitle>
               <DialogDescription>
@@ -579,8 +514,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-name">Name</Label>
                   <Input
                     id="edit-name"
-                    name="name"
-                    defaultValue={editFormData.name || ""}
+                    value={editFormData.name || ""}
                     onChange={(e) => handleEditChange("name", e.target.value)}
                   />
                 </div>
@@ -588,8 +522,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-git_url">Git URL</Label>
                   <Input
                     id="edit-git_url"
-                    name="git_url"
-                    defaultValue={editFormData.git_url || ""}
+                    value={editFormData.git_url || ""}
                     onChange={(e) => handleEditChange("git_url", e.target.value)}
                   />
                 </div>
@@ -599,8 +532,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-branch">Branch</Label>
                   <Input
                     id="edit-branch"
-                    name="branch"
-                    defaultValue={editFormData.branch || ""}
+                    value={editFormData.branch || ""}
                     onChange={(e) => handleEditChange("branch", e.target.value)}
                   />
                 </div>
@@ -608,9 +540,8 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-port">Port</Label>
                   <Input
                     id="edit-port"
-                    name="port"
                     type="number"
-                    defaultValue={editFormData.port || ""}
+                    value={editFormData.port || ""}
                     onChange={(e) => handleEditChange("port", parseInt(e.target.value) || undefined)}
                   />
                 </div>
@@ -620,8 +551,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-dockerfile">Dockerfile</Label>
                   <Input
                     id="edit-dockerfile"
-                    name="dockerfile"
-                    defaultValue={editFormData.dockerfile || ""}
+                    value={editFormData.dockerfile || ""}
                     onChange={(e) => handleEditChange("dockerfile", e.target.value)}
                   />
                 </div>
@@ -629,9 +559,8 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-domain">Domain</Label>
                   <Input
                     id="edit-domain"
-                    name="domain"
                     placeholder="app.example.com"
-                    defaultValue={editFormData.domain || ""}
+                    value={editFormData.domain || ""}
                     onChange={(e) => handleEditChange("domain", e.target.value || undefined)}
                   />
                 </div>
@@ -641,17 +570,15 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                   <Label htmlFor="edit-healthcheck">Healthcheck Path</Label>
                   <Input
                     id="edit-healthcheck"
-                    name="healthcheck"
                     placeholder="/health"
-                    defaultValue={editFormData.healthcheck || ""}
+                    value={editFormData.healthcheck || ""}
                     onChange={(e) => handleEditChange("healthcheck", e.target.value || undefined)}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-environment">Environment</Label>
                   <Select
-                    name="environment"
-                    defaultValue={editFormData.environment || "development"}
+                    value={editFormData.environment || "development"}
                     onValueChange={(value) => handleEditChange("environment", value)}
                   >
                     <SelectTrigger className="w-full">
@@ -676,7 +603,7 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
                 {isSubmitting ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -700,37 +627,9 @@ export default function AppDetailPage({ loaderData, actionData }: Route.Componen
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="rollback" />
-              <input type="hidden" name="deploymentId" value={selectedDeploymentId || ""} />
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Rolling back..." : "Rollback"}
-              </Button>
-            </Form>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete confirmation dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Application</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{app.name}"? This action cannot
-              be undone. All deployments and logs will be permanently deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
+            <Button onClick={handleRollback} disabled={isSubmitting}>
+              {isSubmitting ? "Rolling back..." : "Rollback"}
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
-                {isSubmitting ? "Deleting..." : "Delete"}
-              </Button>
-            </Form>
           </DialogFooter>
         </DialogContent>
       </Dialog>

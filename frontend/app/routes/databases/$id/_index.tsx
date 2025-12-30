@@ -12,7 +12,6 @@ import { Eye, EyeOff, Copy, Check, ExternalLink } from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
-  token: string;
 }
 
 // Database type descriptions
@@ -24,7 +23,7 @@ const DB_DESCRIPTIONS: Record<string, string> = {
 };
 
 export default function DatabaseGeneralTab() {
-  const { database, token } = useOutletContext<OutletContext>();
+  const { database } = useOutletContext<OutletContext>();
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -299,7 +298,7 @@ export default function DatabaseGeneralTab() {
 
       {/* Resource Usage - only show when running */}
       {database.status === "running" && (
-        <ResourceMonitor databaseId={database.id} token={token} />
+        <ResourceMonitor databaseId={database.id} />
       )}
     </div>
   );

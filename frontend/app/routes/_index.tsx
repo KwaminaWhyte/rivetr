@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import type { Route } from "./+types/_index";
 import { api } from "@/lib/api";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResourceChart } from "@/components/resource-chart";
@@ -15,19 +14,6 @@ export function meta() {
     { title: "Dashboard - Rivetr" },
     { name: "description", content: "System overview and real-time health monitoring for your services" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const [stats, diskStats, events] = await Promise.all([
-    api.getSystemStats(token).catch(() => null),
-    api.getDiskStats(token).catch(() => null),
-    api.getRecentEvents(token).catch(() => []),
-  ]);
-  return { stats, diskStats, events, token };
 }
 
 function formatBytes(bytes: number): string {
@@ -107,20 +93,24 @@ function StatCard({
   );
 }
 
-export default function DashboardPage({ loaderData }: Route.ComponentProps) {
-  // Use React Query with SSR initial data for real-time updates
-  const { data: stats } = useQuery<SystemStats | null>({
+export default function DashboardPage() {
+  // Use React Query for real-time updates
+  const { data: stats, isLoading: statsLoading } = useQuery<SystemStats | null>({
     queryKey: ["system-stats"],
-    queryFn: () => api.getSystemStats(loaderData.token),
-    initialData: loaderData.stats,
+    queryFn: () => api.getSystemStats(),
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  const { data: diskStats } = useQuery<DiskStats | null>({
+  const { data: diskStats, isLoading: diskLoading } = useQuery<DiskStats | null>({
     queryKey: ["disk-stats"],
-    queryFn: () => api.getDiskStats(loaderData.token),
-    initialData: loaderData.diskStats,
+    queryFn: () => api.getDiskStats(),
     refetchInterval: 30000, // Refresh every 30 seconds (disk stats change less frequently)
+  });
+
+  const { data: events = [] } = useQuery({
+    queryKey: ["recent-events"],
+    queryFn: () => api.getRecentEvents(),
+    refetchInterval: 15000,
   });
 
   // Calculate memory display values - use formatBytes for accurate display
@@ -136,6 +126,8 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
   const diskDisplay = diskStats
     ? `${diskStats.used_human} / ${diskStats.total_human}`
     : "N/A";
+
+  const isLoading = statsLoading || diskLoading;
 
   return (
     <div className="space-y-6">
@@ -159,7 +151,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Running Services"
-          value={(stats?.running_apps_count ?? 0) + (stats?.running_databases_count ?? 0) + (stats?.running_services_count ?? 0)}
+          value={isLoading ? "..." : (stats?.running_apps_count ?? 0) + (stats?.running_databases_count ?? 0) + (stats?.running_services_count ?? 0)}
           icon={<Activity className="h-5 w-5 text-green-600" />}
           iconBgColor="bg-green-100 dark:bg-green-900/30"
           trend={stats ? `${stats.running_apps_count} apps, ${stats.running_databases_count} dbs, ${stats.running_services_count} svcs` : undefined}
@@ -167,19 +159,19 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
         />
         <StatCard
           title="Total CPU Usage"
-          value={`${stats?.total_cpu_percent?.toFixed(1) ?? 0}%`}
+          value={isLoading ? "..." : `${stats?.total_cpu_percent?.toFixed(1) ?? 0}%`}
           icon={<Cpu className="h-5 w-5 text-blue-600" />}
           iconBgColor="bg-blue-100 dark:bg-blue-900/30"
         />
         <StatCard
           title="Memory Usage"
-          value={memoryDisplay}
+          value={isLoading ? "..." : memoryDisplay}
           icon={<HardDrive className="h-5 w-5 text-purple-600" />}
           iconBgColor="bg-purple-100 dark:bg-purple-900/30"
         />
         <StatCard
           title="Disk Usage"
-          value={diskDisplay}
+          value={isLoading ? "..." : diskDisplay}
           icon={<Database className="h-5 w-5 text-orange-600" />}
           iconBgColor="bg-orange-100 dark:bg-orange-900/30"
           trend={diskStats ? `${diskStats.usage_percent.toFixed(1)}% used` : undefined}
@@ -187,7 +179,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
         />
         <StatCard
           title="Uptime"
-          value={`${stats?.uptime_percent?.toFixed(2) ?? 99.99}%`}
+          value={isLoading ? "..." : `${stats?.uptime_percent?.toFixed(2) ?? 99.99}%`}
           subtitle={stats ? formatUptime(stats.uptime_seconds) : undefined}
           icon={<Clock className="h-5 w-5 text-amber-600" />}
           iconBgColor="bg-amber-100 dark:bg-amber-900/30"
@@ -203,7 +195,7 @@ export default function DashboardPage({ loaderData }: Route.ComponentProps) {
           />
         </div>
         <div>
-          <RecentEvents initialEvents={loaderData.events} token={loaderData.token} />
+          <RecentEvents initialEvents={events} />
         </div>
       </div>
     </div>

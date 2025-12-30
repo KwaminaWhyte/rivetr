@@ -1,4 +1,3 @@
-import type { Route } from "./+types/notifications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bell, Mail, MessageSquare, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,12 +7,6 @@ export function meta() {
     { title: "Notifications - Rivetr" },
     { name: "description", content: "Configure notification channels and preferences" },
   ];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  await requireAuth(request);
-  return null;
 }
 
 export default function NotificationsPage() {

@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useOutletContext, Form, useNavigation, redirect } from "react-router";
-import type { Route } from "./+types/settings";
+import { useOutletContext, useNavigate } from "react-router";
+import { useMutation } from "@tanstack/react-query";
 import type { ManagedDatabase } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -20,41 +19,36 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 import { AlertTriangle, Trash2, Settings2, Cpu, HardDrive } from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
-  token: string;
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "delete") {
-    try {
-      await api.deleteDatabase(token, params.id!);
-      return redirect("/projects");
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete database" };
-    }
-  }
-
-  return { error: "Unknown action" };
 }
 
 export default function DatabaseSettingsTab() {
-  const { database, token } = useOutletContext<OutletContext>();
-  const navigation = useNavigation();
+  const { database } = useOutletContext<OutletContext>();
+  const navigate = useNavigate();
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const isSubmitting = navigation.state === "submitting";
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteDatabase(database.id),
+    onSuccess: () => {
+      toast.success("Database deleted");
+      navigate("/projects");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete database");
+    },
+  });
+
+  const isSubmitting = deleteMutation.isPending;
   const canDelete = deleteConfirmName === database.name;
+
+  const handleDelete = () => {
+    deleteMutation.mutate();
+  };
 
   return (
     <div className="space-y-6">
@@ -252,16 +246,13 @@ export default function DatabaseSettingsTab() {
                     <AlertDialogCancel onClick={() => setDeleteConfirmName("")}>
                       Cancel
                     </AlertDialogCancel>
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="delete" />
-                      <Button
-                        type="submit"
-                        variant="destructive"
-                        disabled={!canDelete || isSubmitting}
-                      >
-                        {isSubmitting ? "Deleting..." : "Delete Database"}
-                      </Button>
-                    </Form>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      disabled={!canDelete || isSubmitting}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {isSubmitting ? "Deleting..." : "Delete Database"}
+                    </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

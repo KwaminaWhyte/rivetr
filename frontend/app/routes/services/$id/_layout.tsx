@@ -1,7 +1,6 @@
-import { useEffect } from "react";
-import { Link, Outlet, useLocation, useNavigation, Form, redirect } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/_layout";
+import { useState, useEffect } from "react";
+import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,11 +9,10 @@ import { api } from "@/lib/api";
 import type { Service, ServiceStatus } from "@/types/api";
 import { Play, Square, Circle, Layers } from "lucide-react";
 
-export function meta({ data }: Route.MetaArgs) {
-  const serviceName = data?.service?.name || "Service";
+export function meta() {
   return [
-    { title: `${serviceName} - Rivetr` },
-    { name: "description", content: `Manage and monitor ${serviceName}` },
+    { title: "Service - Rivetr" },
+    { name: "description", content: "Manage and monitor service" },
   ];
 }
 
@@ -38,14 +36,13 @@ function StatusBadge({ status }: { status?: ServiceStatus }) {
         </Badge>
       );
     case "pending":
-    case "starting":
       return (
         <Badge variant="outline" className="gap-1 text-blue-600 border-blue-300">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
             <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
           </span>
-          {status === "pending" ? "Pending" : "Starting"}
+          Pending
         </Badge>
       );
     case "failed":
@@ -60,57 +57,6 @@ function StatusBadge({ status }: { status?: ServiceStatus }) {
   }
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const service = await api.getService(token, params.id!);
-  return { service, token };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "start") {
-    try {
-      await api.startService(token, params.id!);
-      return { success: true, action: "start" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to start service" };
-    }
-  }
-
-  if (intent === "stop") {
-    try {
-      await api.stopService(token, params.id!);
-      return { success: true, action: "stop" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to stop service" };
-    }
-  }
-
-  if (intent === "delete") {
-    const projectId = formData.get("projectId");
-    try {
-      await api.deleteService(token, params.id!);
-      if (projectId) {
-        return redirect(`/projects/${projectId}`);
-      }
-      return redirect("/projects");
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete service" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
 const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
@@ -118,43 +64,67 @@ const tabs = [
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
-export default function ServiceDetailLayout({ loaderData, actionData, params }: Route.ComponentProps) {
+export default function ServiceDetailLayout() {
+  const { id } = useParams();
   const location = useLocation();
-  const navigation = useNavigation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const serviceId = id!;
 
-  // Use React Query with SSR initial data
-  const { data: service } = useQuery<Service>({
-    queryKey: ["service", loaderData.service.id],
-    queryFn: () => api.getService(loaderData.service.id, loaderData.token),
-    initialData: loaderData.service,
+  // Use React Query for client-side fetching
+  const { data: service, isLoading } = useQuery<Service>({
+    queryKey: ["service", serviceId],
+    queryFn: () => api.getService(serviceId),
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 5000;
-      const isTransitioning = ["pending", "starting"].includes(data.status);
+      const isTransitioning = data.status === "pending";
       return isTransitioning ? 2000 : 30000;
     },
   });
 
-  const isSubmitting = navigation.state === "submitting";
+  // Mutations for start/stop
+  const startMutation = useMutation({
+    mutationFn: () => api.startService(serviceId),
+    onSuccess: () => {
+      toast.success("Service started");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to start service");
+    },
+  });
 
-  // Handle successful actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "start") {
-        toast.success("Service started");
-      } else if (actionData.action === "stop") {
-        toast.success("Service stopped");
+  const stopMutation = useMutation({
+    mutationFn: () => api.stopService(serviceId),
+    onSuccess: () => {
+      toast.success("Service stopped");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to stop service");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteService(serviceId),
+    onSuccess: () => {
+      toast.success("Service deleted");
+      if (service?.project_id) {
+        navigate(`/projects/${service.project_id}`);
+      } else {
+        navigate("/projects");
       }
-      queryClient.invalidateQueries({ queryKey: ["service", service?.id] });
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, service?.id, queryClient]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete service");
+    },
+  });
+
+  const isSubmitting = startMutation.isPending || stopMutation.isPending || deleteMutation.isPending;
 
   // Determine active tab from path
-  const basePath = `/services/${params.id}`;
+  const basePath = `/services/${serviceId}`;
   const currentPath = location.pathname;
   const activeTab = tabs.find((tab) => {
     if (tab.path === "") {
@@ -162,6 +132,17 @@ export default function ServiceDetailLayout({ loaderData, actionData, params }: 
     }
     return currentPath.startsWith(basePath + tab.path);
   })?.id || "general";
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 w-48 bg-muted rounded mb-2" />
+          <div className="h-4 w-64 bg-muted rounded" />
+        </div>
+      </div>
+    );
+  }
 
   if (!service) {
     return (
@@ -174,7 +155,15 @@ export default function ServiceDetailLayout({ loaderData, actionData, params }: 
     );
   }
 
-  const isTransitioning = ["pending", "starting"].includes(service.status);
+  const isTransitioning = service.status === "pending";
+
+  const handleStart = () => {
+    startMutation.mutate();
+  };
+
+  const handleStop = () => {
+    stopMutation.mutate();
+  };
 
   return (
     <div className="space-y-6">
@@ -200,31 +189,25 @@ export default function ServiceDetailLayout({ loaderData, actionData, params }: 
         <div className="flex gap-2">
           {/* Start/Stop buttons */}
           {service.status === "running" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="stop" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting}
-                className="gap-2"
-              >
-                <Square className="h-4 w-4" />
-                Stop
-              </Button>
-            </Form>
+            <Button
+              variant="outline"
+              disabled={isSubmitting}
+              className="gap-2"
+              onClick={handleStop}
+            >
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
           ) : service.status === "stopped" || service.status === "failed" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="start" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting || isTransitioning}
-                className="gap-2"
-              >
-                <Play className="h-4 w-4" />
-                Start
-              </Button>
-            </Form>
+            <Button
+              variant="outline"
+              disabled={isSubmitting || isTransitioning}
+              className="gap-2"
+              onClick={handleStart}
+            >
+              <Play className="h-4 w-4" />
+              Start
+            </Button>
           ) : null}
         </div>
       </div>
@@ -241,7 +224,7 @@ export default function ServiceDetailLayout({ loaderData, actionData, params }: 
       </Tabs>
 
       {/* Tab Content via Outlet */}
-      <Outlet context={{ service, token: loaderData.token }} />
+      <Outlet context={{ service }} />
     </div>
   );
 }

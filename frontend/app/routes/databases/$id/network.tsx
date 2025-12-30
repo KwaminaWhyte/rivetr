@@ -11,7 +11,6 @@ import { Copy, Check, Globe, Lock, Server, Container, Network } from "lucide-rea
 
 interface OutletContext {
   database: ManagedDatabase;
-  token: string;
 }
 
 // Port defaults for each database type

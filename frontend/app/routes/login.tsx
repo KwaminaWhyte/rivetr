@@ -1,5 +1,5 @@
-import { Form, redirect, useNavigation, Link } from "react-router";
-import type { Route } from "./+types/login";
+import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Rocket } from "lucide-react";
+import { validateAuth, checkSetupStatus } from "@/lib/auth";
 
 export function meta() {
   return [
@@ -18,51 +19,77 @@ export function meta() {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { getToken, checkSetupStatus } = await import("@/lib/session.server");
+export default function LoginPage() {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Check if setup is needed
-  const needsSetup = await checkSetupStatus();
-  if (needsSetup) {
-    throw redirect("/setup");
+  // Check auth status on mount
+  useEffect(() => {
+    async function checkAuth() {
+      // Check if setup is needed
+      const needsSetup = await checkSetupStatus();
+      if (needsSetup) {
+        navigate("/setup", { replace: true });
+        return;
+      }
+
+      // Check if already logged in
+      const isAuthenticated = await validateAuth();
+      if (isAuthenticated) {
+        navigate("/", { replace: true });
+        return;
+      }
+
+      setIsLoading(false);
+    }
+    checkAuth();
+  }, [navigate]);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    const formData = new FormData(event.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+
+    if (!email || !password) {
+      setError("Email and password are required");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Invalid email or password");
+      }
+
+      // Successful login - navigate to dashboard
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+      setIsSubmitting(false);
+    }
   }
 
-  // Check if already logged in
-  const token = await getToken(request);
-  if (token) {
-    throw redirect("/");
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
   }
-
-  return null;
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { createUserSession } = await import("@/lib/session.server");
-  const { login } = await import("@/lib/api.server");
-
-  const formData = await request.formData();
-  const email = formData.get("email");
-  const password = formData.get("password");
-
-  if (typeof email !== "string" || typeof password !== "string") {
-    return { error: "Invalid form data" };
-  }
-
-  if (!email || !password) {
-    return { error: "Email and password are required" };
-  }
-
-  try {
-    const result = await login(email, password);
-    return createUserSession(result.token, "/");
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "Invalid email or password" };
-  }
-}
-
-export default function LoginPage({ actionData }: Route.ComponentProps) {
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
 
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
@@ -77,7 +104,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
-            <Form method="post" className="flex flex-col gap-6">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
               <FieldGroup>
                 <div className="flex flex-col items-center gap-1 text-center">
                   <h1 className="text-2xl font-bold">Login to your account</h1>
@@ -85,9 +112,9 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                     Enter your credentials to access the dashboard
                   </p>
                 </div>
-                {actionData?.error && (
+                {error && (
                   <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm text-center">
-                    {actionData.error}
+                    {error}
                   </div>
                 )}
                 <Field>
@@ -133,7 +160,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                   </FieldDescription>
                 </Field>
               </FieldGroup>
-            </Form>
+            </form>
           </div>
         </div>
       </div>

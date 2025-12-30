@@ -1,22 +1,14 @@
-import { useState, useMemo, useEffect } from "react";
-import { Link, Outlet, useLocation, useNavigation, Form, redirect } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/_layout";
+import { useEffect } from "react";
+import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { ManagedDatabase, DatabaseStatus } from "@/types/api";
 import { Play, Square, Circle, Database } from "lucide-react";
-
-export function meta({ data }: Route.MetaArgs) {
-  const dbName = data?.database?.name || "Database";
-  return [
-    { title: `${dbName} - Rivetr` },
-    { name: "description", content: `Manage and monitor ${dbName}` },
-  ];
-}
 
 // Status badge component
 function StatusBadge({ status }: { status?: DatabaseStatus }) {
@@ -79,53 +71,6 @@ function DatabaseTypeBadge({ dbType }: { dbType: string }) {
   );
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const database = await api.getDatabase(token, params.id!, true);
-  return { database, token };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "start") {
-    try {
-      await api.startDatabase(token, params.id!);
-      return { success: true, action: "start" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to start database" };
-    }
-  }
-
-  if (intent === "stop") {
-    try {
-      await api.stopDatabase(token, params.id!);
-      return { success: true, action: "stop" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to stop database" };
-    }
-  }
-
-  if (intent === "delete") {
-    try {
-      await api.deleteDatabase(token, params.id!);
-      return redirect("/projects");
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete database" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
 const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
@@ -135,16 +80,17 @@ const tabs = [
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 
-export default function DatabaseDetailLayout({ loaderData, actionData, params }: Route.ComponentProps) {
+export default function DatabaseDetailLayout() {
+  const { id } = useParams();
   const location = useLocation();
-  const navigation = useNavigation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const databaseId = id!;
 
-  // Use React Query with SSR initial data
-  const { data: database } = useQuery<ManagedDatabase>({
-    queryKey: ["database", loaderData.database.id],
-    queryFn: () => api.getDatabase(loaderData.database.id, true, loaderData.token),
-    initialData: loaderData.database,
+  // Fetch database data client-side
+  const { data: database, isLoading, error } = useQuery<ManagedDatabase>({
+    queryKey: ["database", databaseId],
+    queryFn: () => api.getDatabase(databaseId, true),
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 5000;
@@ -153,25 +99,44 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
     },
   });
 
-  const isSubmitting = navigation.state === "submitting";
+  // Mutations
+  const startMutation = useMutation({
+    mutationFn: () => api.startDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database started");
+      queryClient.invalidateQueries({ queryKey: ["database", databaseId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to start database");
+    },
+  });
 
-  // Handle successful actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "start") {
-        toast.success("Database started");
-      } else if (actionData.action === "stop") {
-        toast.success("Database stopped");
-      }
-      queryClient.invalidateQueries({ queryKey: ["database", database?.id] });
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, database?.id, queryClient]);
+  const stopMutation = useMutation({
+    mutationFn: () => api.stopDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database stopped");
+      queryClient.invalidateQueries({ queryKey: ["database", databaseId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to stop database");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteDatabase(databaseId),
+    onSuccess: () => {
+      toast.success("Database deleted");
+      navigate("/projects");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete database");
+    },
+  });
+
+  const isSubmitting = startMutation.isPending || stopMutation.isPending || deleteMutation.isPending;
 
   // Determine active tab from path
-  const basePath = `/databases/${params.id}`;
+  const basePath = `/databases/${databaseId}`;
   const currentPath = location.pathname;
   const activeTab = tabs.find((tab) => {
     if (tab.path === "") {
@@ -180,7 +145,25 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
     return currentPath.startsWith(basePath + tab.path);
   })?.id || "general";
 
-  if (!database) {
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Database className="h-8 w-8 text-muted-foreground" />
+            <Skeleton className="h-9 w-48" />
+            <Skeleton className="h-6 w-24" />
+          </div>
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  // Error or not found state
+  if (error || !database) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Database Not Found</h1>
@@ -192,6 +175,14 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
   }
 
   const isTransitioning = ["pending", "pulling", "starting"].includes(database.status);
+
+  const handleStart = () => {
+    startMutation.mutate();
+  };
+
+  const handleStop = () => {
+    stopMutation.mutate();
+  };
 
   return (
     <div className="space-y-6">
@@ -208,7 +199,7 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
           {database.project_id && (
             <p className="text-muted-foreground mt-1">
               <Link to={`/projects/${database.project_id}`} className="hover:underline">
-                ← Back to Project
+                Back to Project
               </Link>
             </p>
           )}
@@ -216,31 +207,25 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
         <div className="flex gap-2">
           {/* Start/Stop buttons */}
           {database.status === "running" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="stop" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting}
-                className="gap-2"
-              >
-                <Square className="h-4 w-4" />
-                Stop
-              </Button>
-            </Form>
+            <Button
+              variant="outline"
+              disabled={isSubmitting}
+              className="gap-2"
+              onClick={handleStop}
+            >
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
           ) : database.status === "stopped" || database.status === "failed" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="start" />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={isSubmitting || isTransitioning}
-                className="gap-2"
-              >
-                <Play className="h-4 w-4" />
-                Start
-              </Button>
-            </Form>
+            <Button
+              variant="outline"
+              disabled={isSubmitting || isTransitioning}
+              className="gap-2"
+              onClick={handleStart}
+            >
+              <Play className="h-4 w-4" />
+              Start
+            </Button>
           ) : null}
         </div>
       </div>
@@ -257,7 +242,7 @@ export default function DatabaseDetailLayout({ loaderData, actionData, params }:
       </Tabs>
 
       {/* Tab Content via Outlet */}
-      <Outlet context={{ database, token: loaderData.token }} />
+      <Outlet context={{ database }} />
     </div>
   );
 }

@@ -29,6 +29,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::AppState;
@@ -205,12 +206,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             rate_limit_webhook,
         ));
 
+    // Static file serving for SPA frontend
+    // Serves from static/dist/client with fallback to __spa-fallback.html for client-side routing
+    // Note: index.html is pre-rendered for "/" only, __spa-fallback.html is the proper SPA shell
+    let static_dir = std::path::Path::new("static/dist/client");
+    let fallback_file = static_dir.join("__spa-fallback.html");
+
+    let serve_static = ServeDir::new(static_dir)
+        .not_found_service(ServeFile::new(&fallback_file));
+
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
         .nest("/api/auth", auth_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)
+        // Fallback to static files for frontend SPA
+        .fallback_service(serve_static)
         .layer(middleware::from_fn(metrics::metrics_middleware))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

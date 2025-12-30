@@ -1,5 +1,4 @@
 import { Link, Outlet, useLocation } from "react-router";
-import type { Route } from "./+types/_layout";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
@@ -15,12 +14,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  await requireAuth(request);
-  return null;
-}
+import { useRequireAuth } from "@/lib/auth";
 
 const routeTitles: Record<
   string,
@@ -96,6 +90,21 @@ function getBreadcrumb(pathname: string) {
 export default function DashboardLayout() {
   const location = useLocation();
   const breadcrumb = getBreadcrumb(location.pathname);
+  const { isLoading, isAuthenticated } = useRequireAuth();
+
+  // Show loading state while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  // Don't render content if not authenticated (redirect will happen)
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <SidebarProvider>

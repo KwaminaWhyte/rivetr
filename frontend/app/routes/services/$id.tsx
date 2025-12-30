@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { Form, Link, redirect, useNavigation } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/$id";
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -50,75 +49,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Service, ServiceStatus } from "@/types/api";
 
-export function meta({ data }: Route.MetaArgs) {
-  const serviceName = data?.service?.name || "Service";
+export function meta() {
   return [
-    { title: `${serviceName} - Rivetr` },
-    { name: "description", content: `Manage ${serviceName} Docker Compose service` },
+    { title: "Service - Rivetr" },
+    { name: "description", content: "Manage Docker Compose service" },
   ];
-}
-
-export async function loader({ request, params }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const service = await api.getService(token, params.id!);
-
-  return { service, token };
-}
-
-export async function action({ request, params }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "delete") {
-    await api.deleteService(token, params.id!);
-    return redirect("/services");
-  }
-
-  if (intent === "update") {
-    const name = formData.get("name");
-    const composeContent = formData.get("compose_content");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Service name is required" };
-    }
-
-    try {
-      await api.updateService(token, params.id!, {
-        name: name.trim(),
-        compose_content: typeof composeContent === "string" ? composeContent.trim() : undefined,
-      });
-      return { success: true, action: "update" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to update service" };
-    }
-  }
-
-  if (intent === "start") {
-    try {
-      await api.startService(token, params.id!);
-      return { success: true, action: "start" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to start service" };
-    }
-  }
-
-  if (intent === "stop") {
-    try {
-      await api.stopService(token, params.id!);
-      return { success: true, action: "stop" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to stop service" };
-    }
-  }
-
-  return { error: "Unknown action" };
 }
 
 function getStatusColor(status: ServiceStatus) {
@@ -151,22 +86,78 @@ function getStatusLabel(status: ServiceStatus) {
   }
 }
 
-export default function ServiceDetailPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function ServiceDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
+  const serviceId = id!;
+
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editCompose, setEditCompose] = useState("");
 
-  const { data: service, refetch } = useQuery<Service>({
-    queryKey: ["service", loaderData.service.id],
-    queryFn: () => api.getService(loaderData.service.id, loaderData.token),
-    initialData: loaderData.service,
+  const { data: service, isLoading, error } = useQuery<Service>({
+    queryKey: ["service", serviceId],
+    queryFn: () => api.getService(serviceId),
     refetchInterval: 5000, // Poll for status updates
   });
 
-  const isSubmitting = navigation.state === "submitting";
+  // Mutations
+  const updateMutation = useMutation({
+    mutationFn: (data: { name: string; compose_content?: string }) =>
+      api.updateService(serviceId, data),
+    onSuccess: () => {
+      toast.success("Service updated");
+      setIsEditDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update service");
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: () => api.startService(serviceId),
+    onSuccess: () => {
+      toast.success("Service starting");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to start service");
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: () => api.stopService(serviceId),
+    onSuccess: () => {
+      toast.success("Service stopped");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+      queryClient.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to stop service");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteService(serviceId),
+    onSuccess: () => {
+      toast.success("Service deleted");
+      navigate("/services");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete service");
+    },
+  });
+
+  const isSubmitting =
+    updateMutation.isPending ||
+    startMutation.isPending ||
+    stopMutation.isPending ||
+    deleteMutation.isPending;
 
   const openEditDialog = () => {
     if (service) {
@@ -176,28 +167,45 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
     }
   };
 
-  // Handle success actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "update") {
-        toast.success("Service updated");
-        setIsEditDialogOpen(false);
-      } else if (actionData.action === "start") {
-        toast.success("Service starting");
-      } else if (actionData.action === "stop") {
-        toast.success("Service stopped");
-      }
-      queryClient.invalidateQueries({ queryKey: ["service", service?.id] });
-      queryClient.invalidateQueries({ queryKey: ["services"] });
-      refetch();
+  const handleUpdateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    const composeContent = formData.get("compose_content") as string;
+
+    if (!name?.trim()) {
+      toast.error("Service name is required");
+      return;
     }
 
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData, queryClient, service?.id, refetch]);
+    updateMutation.mutate({
+      name: name.trim(),
+      compose_content: composeContent?.trim() || undefined,
+    });
+  };
 
-  if (!service) {
+  const handleDelete = () => {
+    deleteMutation.mutate();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Button variant="ghost" asChild>
+          <Link to="/services">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Services
+          </Link>
+        </Button>
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 w-48 bg-muted rounded" />
+          <div className="h-64 bg-muted rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !service) {
     return (
       <div className="space-y-6">
         <Button variant="ghost" asChild>
@@ -242,21 +250,22 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
           {service.status === "running" ? (
-            <Form method="post">
-              <input type="hidden" name="intent" value="stop" />
-              <Button variant="outline" type="submit" disabled={isSubmitting}>
-                <Square className="mr-2 h-4 w-4" />
-                Stop
-              </Button>
-            </Form>
+            <Button
+              variant="outline"
+              onClick={() => stopMutation.mutate()}
+              disabled={isSubmitting}
+            >
+              <Square className="mr-2 h-4 w-4" />
+              Stop
+            </Button>
           ) : (
-            <Form method="post">
-              <input type="hidden" name="intent" value="start" />
-              <Button type="submit" disabled={isSubmitting}>
-                <Play className="mr-2 h-4 w-4" />
-                Start
-              </Button>
-            </Form>
+            <Button
+              onClick={() => startMutation.mutate()}
+              disabled={isSubmitting}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Start
+            </Button>
           )}
           <Button variant="outline" onClick={openEditDialog}>
             <Edit2 className="mr-2 h-4 w-4" />
@@ -336,8 +345,7 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-2xl">
-          <Form method="post">
-            <input type="hidden" name="intent" value="update" />
+          <form onSubmit={handleUpdateSubmit}>
             <DialogHeader>
               <DialogTitle>Edit Service</DialogTitle>
               <DialogDescription>
@@ -345,9 +353,11 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
                 compose content requires a restart to take effect.
               </DialogDescription>
             </DialogHeader>
-            {actionData?.error && (
+            {updateMutation.error && (
               <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                {actionData.error}
+                {updateMutation.error instanceof Error
+                  ? updateMutation.error.message
+                  : "Failed to update service"}
               </div>
             )}
             <div className="space-y-4 py-4">
@@ -384,10 +394,10 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 <Save className="mr-2 h-4 w-4" />
-                {isSubmitting ? "Saving..." : "Save Changes"}
+                {updateMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -403,15 +413,13 @@ export default function ServiceDetailPage({ loaderData, actionData }: Route.Comp
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <AlertDialogAction
-                type="submit"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {isSubmitting ? "Deleting..." : "Delete Service"}
-              </AlertDialogAction>
-            </Form>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete Service"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

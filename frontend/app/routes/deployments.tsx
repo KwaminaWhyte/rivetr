@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import type { Route } from "./+types/deployments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,9 +17,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus } from "@/types/api";
+import type { Deployment, DeploymentStatus } from "@/types/api";
 
 export function meta() {
   return [
@@ -38,6 +37,7 @@ const statusColors: Record<DeploymentStatus, string> = {
   running: "bg-green-500",
   failed: "bg-red-500",
   stopped: "bg-gray-500",
+  replaced: "bg-gray-400",
 };
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
@@ -50,29 +50,9 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const apps = await api.getApps(token).catch(() => []);
-
-  // Fetch deployments for all apps
-  const deploymentPromises = apps.map(async (app) => {
-    const deployments = await api.getDeployments(token, app.id).catch(() => []);
-    return deployments.map((d) => ({ ...d, appName: app.name }));
-  });
-  const results = await Promise.all(deploymentPromises);
-  const allDeployments = results
-    .flat()
-    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
-
-  return { apps, deployments: allDeployments };
-}
-
-export default function DeploymentsPage({ loaderData }: Route.ComponentProps) {
-  // Use React Query with SSR initial data for real-time updates
-  const { data: allDeployments = [] } = useQuery<(Deployment & { appName: string })[]>({
+export default function DeploymentsPage() {
+  // Use React Query for client-side data fetching
+  const { data: allDeployments = [], isLoading } = useQuery<(Deployment & { appName: string })[]>({
     queryKey: ["all-deployments"],
     queryFn: async () => {
       const apps = await api.getApps();
@@ -85,7 +65,6 @@ export default function DeploymentsPage({ loaderData }: Route.ComponentProps) {
         .flat()
         .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
     },
-    initialData: loaderData.deployments,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.length === 0) return 10000;
@@ -119,7 +98,11 @@ export default function DeploymentsPage({ loaderData }: Route.ComponentProps) {
           <CardTitle>All Deployments</CardTitle>
         </CardHeader>
         <CardContent>
-          {allDeployments.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : allDeployments.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center">
               No deployments yet. Deploy an app to see activity here.
             </p>

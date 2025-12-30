@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { Form, useNavigation, Link } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Route } from "./+types/teams";
+import { useState } from "react";
+import { Link } from "react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,8 +24,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
-import type { TeamWithMemberCount, TeamRole } from "@/types/api";
-import { Users, Settings, ChevronRight } from "lucide-react";
+import type { TeamWithMemberCount, TeamRole, CreateTeamRequest } from "@/types/api";
+import { Users, Settings, ChevronRight, Loader2 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
@@ -48,93 +47,68 @@ function formatRole(role: TeamRole | null): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const teams = await api.getTeams(token).catch(() => []);
-  return { teams, token };
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const { requireAuth } = await import("@/lib/session.server");
-  const { api } = await import("@/lib/api.server");
-
-  const token = await requireAuth(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  if (intent === "create") {
-    const name = formData.get("name");
-    const slug = formData.get("slug");
-
-    if (typeof name !== "string" || !name.trim()) {
-      return { error: "Team name is required" };
-    }
-
-    try {
-      await api.createTeam(token, {
-        name: name.trim(),
-        slug: typeof slug === "string" && slug.trim() ? slug.trim() : undefined,
-      });
-      return { success: true, action: "create" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to create team" };
-    }
-  }
-
-  if (intent === "delete") {
-    const teamId = formData.get("teamId");
-    if (typeof teamId !== "string") {
-      return { error: "Team ID is required" };
-    }
-    try {
-      await api.deleteTeam(token, teamId);
-      return { success: true, action: "delete" };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : "Failed to delete team" };
-    }
-  }
-
-  return { error: "Unknown action" };
-}
-
-export default function SettingsTeamsPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function SettingsTeamsPage() {
   const queryClient = useQueryClient();
-  const navigation = useNavigation();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedTeamName, setSelectedTeamName] = useState<string>("");
 
-  const { data: teams = [] } = useQuery<TeamWithMemberCount[]>({
+  const { data: teams = [], isLoading } = useQuery<TeamWithMemberCount[]>({
     queryKey: ["teams"],
-    queryFn: () => api.getTeams(loaderData.token),
-    initialData: loaderData.teams,
+    queryFn: () => api.getTeams(),
   });
 
-  const isSubmitting = navigation.state === "submitting";
-
-  // Handle success actions
-  useEffect(() => {
-    if (actionData?.success) {
-      if (actionData.action === "create") {
-        toast.success("Team created successfully");
-        setShowCreateDialog(false);
-      } else if (actionData.action === "delete") {
-        toast.success("Team deleted successfully");
-        setShowDeleteDialog(false);
-        setSelectedTeamId(null);
-        setSelectedTeamName("");
-      }
+  const createMutation = useMutation({
+    mutationFn: (data: CreateTeamRequest) => api.createTeam(data),
+    onSuccess: () => {
+      toast.success("Team created successfully");
+      setShowCreateDialog(false);
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create team");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (teamId: string) => api.deleteTeam(teamId),
+    onSuccess: () => {
+      toast.success("Team deleted successfully");
+      setShowDeleteDialog(false);
+      setSelectedTeamId(null);
+      setSelectedTeamName("");
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to delete team");
+    },
+  });
+
+  const isSubmitting = createMutation.isPending || deleteMutation.isPending;
+
+  const handleCreateSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
+    const slug = formData.get("slug") as string;
+
+    if (!name?.trim()) {
+      toast.error("Team name is required");
+      return;
     }
 
-    if (actionData?.error) {
-      toast.error(actionData.error);
+    createMutation.mutate({
+      name: name.trim(),
+      slug: slug?.trim() || undefined,
+    });
+  };
+
+  const handleDeleteSubmit = () => {
+    if (selectedTeamId) {
+      deleteMutation.mutate(selectedTeamId);
     }
-  }, [actionData, queryClient]);
+  };
 
   return (
     <div className="space-y-6">
@@ -157,7 +131,11 @@ export default function SettingsTeamsPage({ loaderData, actionData }: Route.Comp
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {teams.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : teams.length === 0 ? (
             <div className="text-center py-8">
               <Users className="mx-auto h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-muted-foreground">
@@ -223,8 +201,7 @@ export default function SettingsTeamsPage({ loaderData, actionData }: Route.Comp
       {/* Create Team Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent>
-          <Form method="post">
-            <input type="hidden" name="intent" value="create" />
+          <form onSubmit={handleCreateSubmit}>
             <DialogHeader>
               <DialogTitle>Create Team</DialogTitle>
               <DialogDescription>
@@ -267,7 +244,7 @@ export default function SettingsTeamsPage({ loaderData, actionData }: Route.Comp
                 {isSubmitting ? "Creating..." : "Create Team"}
               </Button>
             </DialogFooter>
-          </Form>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -293,13 +270,13 @@ export default function SettingsTeamsPage({ loaderData, actionData }: Route.Comp
             >
               Cancel
             </Button>
-            <Form method="post">
-              <input type="hidden" name="intent" value="delete" />
-              <input type="hidden" name="teamId" value={selectedTeamId || ""} />
-              <Button type="submit" variant="destructive" disabled={isSubmitting}>
-                {isSubmitting ? "Deleting..." : "Delete Team"}
-              </Button>
-            </Form>
+            <Button
+              variant="destructive"
+              disabled={isSubmitting}
+              onClick={handleDeleteSubmit}
+            >
+              {isSubmitting ? "Deleting..." : "Delete Team"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

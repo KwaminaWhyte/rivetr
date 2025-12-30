@@ -11,7 +11,6 @@ import { Copy, Check, HardDrive, FolderOpen, Database } from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
-  token: string;
 }
 
 // Data paths for each database type
@@ -35,7 +34,7 @@ const DATA_PATHS: Record<string, { path: string; description: string }> = {
 };
 
 export default function DatabaseStorageTab() {
-  const { database, token } = useOutletContext<OutletContext>();
+  const { database } = useOutletContext<OutletContext>();
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, field: string) => {
