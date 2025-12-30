@@ -173,6 +173,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/templates/:id/deploy", post(service_templates::deploy_template))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
+        .route("/system/stats/history", get(system::get_stats_history))
         .route("/system/disk", get(system::get_disk_stats))
         .route("/system/health", get(system::get_detailed_health))
         .route("/events/recent", get(system::get_recent_events))

@@ -2,18 +2,26 @@
 //!
 //! This module periodically collects resource statistics (CPU, memory, network)
 //! from all running containers and updates Prometheus metrics with labels for
-//! each app.
+//! each app. It also saves aggregate stats to the database for dashboard charts.
 
 use crate::api::metrics::{
     set_container_cpu_percent, set_container_memory_bytes, set_container_memory_limit_bytes,
     set_container_network_rx_bytes, set_container_network_tx_bytes,
 };
+use crate::db::{Deployment, ManagedDatabase, Service};
 use crate::runtime::ContainerRuntime;
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 /// Default interval for collecting container stats (in seconds)
 const DEFAULT_STATS_INTERVAL_SECS: u64 = 15;
+
+/// Interval for saving stats to the database (in seconds) - every 5 minutes
+const STATS_HISTORY_INTERVAL_SECS: u64 = 300;
+
+/// Maximum number of stats history records to keep (7 days at 5-minute intervals)
+const MAX_STATS_HISTORY_RECORDS: i64 = 7 * 24 * 12;
 
 /// Container stats collector that periodically fetches stats from running containers
 /// and updates Prometheus gauges.
@@ -155,6 +163,205 @@ pub fn spawn_stats_collector_task_with_interval(
             }
         }
     });
+}
+
+/// Spawn the stats history recording task that saves aggregate stats to the database
+pub fn spawn_stats_history_task(db: SqlitePool, runtime: Arc<dyn ContainerRuntime>) {
+    tracing::info!(
+        interval_secs = STATS_HISTORY_INTERVAL_SECS,
+        "Starting stats history recording task"
+    );
+
+    tokio::spawn(async move {
+        // Wait before first record
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        let mut tick = interval(Duration::from_secs(STATS_HISTORY_INTERVAL_SECS));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tick.tick().await;
+
+            if let Err(e) = record_stats_snapshot(&db, &runtime).await {
+                tracing::warn!(error = %e, "Failed to record stats snapshot");
+            }
+        }
+    });
+}
+
+/// Record a snapshot of current system stats to the database
+async fn record_stats_snapshot(
+    db: &SqlitePool,
+    runtime: &Arc<dyn ContainerRuntime>,
+) -> anyhow::Result<()> {
+    // Get running deployments count
+    let running_deployments: Vec<Deployment> = sqlx::query_as(
+        "SELECT * FROM deployments WHERE status = 'running'"
+    )
+    .fetch_all(db)
+    .await?;
+
+    let running_apps = running_deployments.len() as i64;
+
+    // Get running databases count
+    let running_databases: Vec<ManagedDatabase> = sqlx::query_as(
+        "SELECT * FROM databases WHERE status = 'running'"
+    )
+    .fetch_all(db)
+    .await?;
+
+    let running_dbs = running_databases.len() as i64;
+
+    // Get running services count
+    let running_services: Vec<Service> = sqlx::query_as(
+        "SELECT * FROM services WHERE status = 'running'"
+    )
+    .fetch_all(db)
+    .await?;
+
+    let running_svcs = running_services.len() as i64;
+
+    // Collect aggregate stats from all running containers
+    let mut total_cpu = 0.0;
+    let mut total_memory_used: i64 = 0;
+    let mut total_memory_limit: i64 = 0;
+
+    // Stats from app deployments
+    for deployment in &running_deployments {
+        if let Some(container_id) = &deployment.container_id {
+            if let Ok(stats) = runtime.stats(container_id).await {
+                total_cpu += stats.cpu_percent;
+                total_memory_used += stats.memory_usage as i64;
+                total_memory_limit += stats.memory_limit as i64;
+            }
+        }
+    }
+
+    // Stats from databases
+    for database in &running_databases {
+        if let Some(container_id) = &database.container_id {
+            if let Ok(stats) = runtime.stats(container_id).await {
+                total_cpu += stats.cpu_percent;
+                total_memory_used += stats.memory_usage as i64;
+                total_memory_limit += stats.memory_limit as i64;
+            }
+        }
+    }
+
+    // Stats from services (Docker Compose)
+    for service in &running_services {
+        let project_name = service.compose_project_name();
+        if let Ok(containers) = runtime.list_compose_containers(&project_name).await {
+            for container in containers {
+                if let Ok(stats) = runtime.stats(&container.id).await {
+                    total_cpu += stats.cpu_percent;
+                    total_memory_used += stats.memory_usage as i64;
+                    total_memory_limit += stats.memory_limit as i64;
+                }
+            }
+        }
+    }
+
+    // Use system memory if no limit set
+    if total_memory_limit == 0 {
+        total_memory_limit = get_system_memory() as i64;
+    }
+
+    // Insert stats record
+    sqlx::query(
+        r#"
+        INSERT INTO stats_history (cpu_percent, memory_used_bytes, memory_total_bytes, running_apps, running_databases, running_services)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(total_cpu)
+    .bind(total_memory_used)
+    .bind(total_memory_limit)
+    .bind(running_apps)
+    .bind(running_dbs)
+    .bind(running_svcs)
+    .execute(db)
+    .await?;
+
+    // Clean up old records
+    sqlx::query(
+        r#"
+        DELETE FROM stats_history WHERE id NOT IN (
+            SELECT id FROM stats_history ORDER BY timestamp DESC LIMIT ?
+        )
+        "#,
+    )
+    .bind(MAX_STATS_HISTORY_RECORDS)
+    .execute(db)
+    .await?;
+
+    tracing::debug!(
+        cpu_percent = total_cpu,
+        memory_mb = total_memory_used / (1024 * 1024),
+        apps = running_apps,
+        dbs = running_dbs,
+        svcs = running_svcs,
+        "Recorded stats snapshot"
+    );
+
+    Ok(())
+}
+
+/// Get system memory in bytes
+fn get_system_memory() -> u64 {
+    #[cfg(windows)]
+    {
+        use std::mem::MaybeUninit;
+
+        #[repr(C)]
+        struct MemoryStatusEx {
+            dw_length: u32,
+            dw_memory_load: u32,
+            ull_total_phys: u64,
+            ull_avail_phys: u64,
+            ull_total_page_file: u64,
+            ull_avail_page_file: u64,
+            ull_total_virtual: u64,
+            ull_avail_virtual: u64,
+            ull_avail_extended_virtual: u64,
+        }
+
+        extern "system" {
+            fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
+        }
+
+        let mut status: MaybeUninit<MemoryStatusEx> = MaybeUninit::uninit();
+        unsafe {
+            let ptr = status.as_mut_ptr();
+            (*ptr).dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
+            if GlobalMemoryStatusEx(ptr) != 0 {
+                return (*ptr).ull_total_phys;
+            }
+        }
+        0
+    }
+
+    #[cfg(unix)]
+    {
+        use std::fs;
+        if let Ok(content) = fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(kb_str) = line.split_whitespace().nth(1) {
+                        if let Ok(kb) = kb_str.parse::<u64>() {
+                            return kb * 1024;
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    #[cfg(not(any(windows, unix)))]
+    {
+        0
+    }
 }
 
 #[cfg(test)]

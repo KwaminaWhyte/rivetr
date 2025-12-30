@@ -665,4 +665,5 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
 
 ### Recently Completed
+- **Real-Time Resource Charts** - Dashboard charts now display actual historical data from stats_history table (5-min intervals, 7-day retention)
 - **Service Stats in Dashboard** - Docker Compose service resource usage now included in dashboard totals (uses compose project label filtering)

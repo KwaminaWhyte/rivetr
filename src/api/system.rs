@@ -480,3 +480,55 @@ pub async fn get_detailed_health(
     let health = get_system_health(&state.config, &state.db).await;
     Ok(Json(health))
 }
+
+/// Stats history data point
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct StatsHistoryPoint {
+    pub timestamp: String,
+    pub cpu_percent: f64,
+    pub memory_used_bytes: i64,
+    pub memory_total_bytes: i64,
+    pub running_apps: i64,
+    pub running_databases: i64,
+    pub running_services: i64,
+}
+
+/// Stats history response
+#[derive(Debug, Clone, Serialize)]
+pub struct StatsHistoryResponse {
+    /// Historical data points
+    pub history: Vec<StatsHistoryPoint>,
+    /// Number of data points returned
+    pub count: usize,
+}
+
+/// Get stats history for dashboard charts
+/// GET /api/system/stats/history
+///
+/// Returns historical system stats for the past 24 hours.
+/// Data points are recorded every 5 minutes.
+pub async fn get_stats_history(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<StatsHistoryResponse>, ApiError> {
+    // Get last 24 hours of stats (288 records at 5-minute intervals)
+    let history: Vec<StatsHistoryPoint> = sqlx::query_as(
+        r#"
+        SELECT timestamp, cpu_percent, memory_used_bytes, memory_total_bytes,
+               running_apps, running_databases, running_services
+        FROM stats_history
+        ORDER BY timestamp DESC
+        LIMIT 288
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    // Reverse to get chronological order
+    let mut history = history;
+    history.reverse();
+
+    let count = history.len();
+
+    Ok(Json(StatsHistoryResponse { history, count }))
+}

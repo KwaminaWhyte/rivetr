@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, reconcile_container_status, BuildLimits, DeploymentEngine};
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, spawn_stats_history_task, reconcile_container_status, BuildLimits, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -164,6 +164,9 @@ async fn main() -> Result<()> {
 
     // Start container stats collection task
     spawn_stats_collector_task(runtime.clone());
+
+    // Start stats history recording task (for dashboard charts)
+    spawn_stats_history_task(db.clone(), runtime.clone());
 
     // Start container crash monitor task (monitors apps, databases, and services)
     spawn_container_monitor_task(

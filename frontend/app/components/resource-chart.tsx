@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
 
 interface DataPoint {
   time: string;
@@ -7,43 +8,80 @@ interface DataPoint {
   memory: number;
 }
 
+interface StatsHistoryPoint {
+  timestamp: string;
+  cpu_percent: number;
+  memory_used_bytes: number;
+  memory_total_bytes: number;
+}
+
 interface ResourceChartProps {
   cpuPercent: number;
   memoryPercent: number;
 }
 
-// Generate mock historical data based on current values
-function generateMockData(cpu: number, memory: number): DataPoint[] {
-  const now = new Date();
+// Fetch stats history from API
+async function fetchStatsHistory(): Promise<DataPoint[]> {
+  try {
+    const response = await fetch("/api/system/stats/history");
+    if (!response.ok) {
+      throw new Error("Failed to fetch stats history");
+    }
+    const data = await response.json();
+
+    if (!data.history || data.history.length === 0) {
+      return [];
+    }
+
+    // Convert API response to chart data points
+    return data.history.map((point: StatsHistoryPoint) => {
+      const date = new Date(point.timestamp);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const memoryPercent = point.memory_total_bytes > 0
+        ? (point.memory_used_bytes / point.memory_total_bytes) * 100
+        : 0;
+
+      return {
+        time: timeStr,
+        cpu: point.cpu_percent,
+        memory: memoryPercent,
+      };
+    });
+  } catch (error) {
+    console.error("Error fetching stats history:", error);
+    return [];
+  }
+}
+
+// Generate placeholder data when no history is available
+function generatePlaceholderData(cpu: number, memory: number): DataPoint[] {
   const points: DataPoint[] = [];
-
   for (let i = 23; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // Add some variation around the current values
-    const variation = () => (Math.random() - 0.5) * 20;
     points.push({
-      time: timeStr,
-      cpu: Math.max(0, Math.min(100, cpu + variation() + (i * 0.5 - 12))),
-      memory: Math.max(0, Math.min(100, memory + variation() * 0.5 + (i * 0.2 - 5))),
+      time: `${i}h`,
+      cpu: i === 0 ? cpu : 0,
+      memory: i === 0 ? memory : 0,
     });
   }
-
-  // Ensure last point matches current values
-  if (points.length > 0) {
-    points[points.length - 1].cpu = cpu;
-    points[points.length - 1].memory = memory;
-  }
-
   return points;
 }
 
 export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps) {
-  const data = useMemo(
-    () => generateMockData(cpuPercent, memoryPercent),
-    [cpuPercent, memoryPercent]
-  );
+  // Fetch real historical data
+  const { data: historyData } = useQuery({
+    queryKey: ["statsHistory"],
+    queryFn: fetchStatsHistory,
+    refetchInterval: 60000, // Refresh every minute
+    staleTime: 30000,
+  });
+
+  // Use real data if available, otherwise show placeholder with current values
+  const data = useMemo(() => {
+    if (historyData && historyData.length > 0) {
+      return historyData;
+    }
+    return generatePlaceholderData(cpuPercent, memoryPercent);
+  }, [historyData, cpuPercent, memoryPercent]);
 
   const width = 100;
   const height = 40;

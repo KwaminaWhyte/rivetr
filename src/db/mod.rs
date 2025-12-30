@@ -284,6 +284,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/024_audit_logs.sql")).await?;
     }
 
+    // Migration 025: Add stats_history table for dashboard charts
+    let has_stats_history_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='stats_history'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_stats_history_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/025_stats_history.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seed_builtin_templates(pool).await?;
 
