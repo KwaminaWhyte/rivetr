@@ -7,7 +7,7 @@ This guide covers deploying Rivetr in production. Rivetr is a lightweight, singl
 Run this single command on your server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rivetr/rivetr/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
 ```
 
 This script will:
