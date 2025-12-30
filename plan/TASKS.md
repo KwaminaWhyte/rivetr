@@ -23,7 +23,7 @@
 - [x] **T0.2.3** Create migration: `001_initial.sql`
 - [x] **T0.2.4** Implement `db::init()` function
 - [x] **T0.2.5** Add migration runner at startup
-- [ ] **T0.2.6** Test database initialization
+- [x] **T0.2.6** Test database initialization ✅ VERIFIED (database healthy, 21 tables, migrations run)
 
 ### 0.3 Configuration System
 
@@ -32,7 +32,7 @@
 - [x] **T0.3.3** Add environment variable overrides
 - [x] **T0.3.4** Create example `rivetr.example.toml`
 - [x] **T0.3.5** Add config validation
-- [ ] **T0.3.6** Test config loading
+- [x] **T0.3.6** Test config loading ✅ VERIFIED (server starts with TOML config, env overrides work)
 
 ### 0.4 Logging & CLI
 
@@ -41,7 +41,7 @@
 - [x] **T0.4.3** Add CLI argument parsing with clap
 - [x] **T0.4.4** Implement `--config` flag
 - [x] **T0.4.5** Implement `--version` flag
-- [ ] **T0.4.6** Test logging output
+- [x] **T0.4.6** Test logging output ✅ VERIFIED (tracing logs visible in console with timestamps)
 
 ### 0.5 Basic Server
 
@@ -49,7 +49,7 @@
 - [x] **T0.5.2** Add health check endpoint `GET /health`
 - [x] **T0.5.3** Add tracing middleware
 - [x] **T0.5.4** Implement graceful shutdown
-- [ ] **T0.5.5** Test server starts and responds
+- [x] **T0.5.5** Test server starts and responds ✅ VERIFIED (/health returns OK, /api/system/health returns full status)
 
 **Phase 0 Checkpoint**: ✅ Server runs, connects to SQLite, responds to `/health`
 
@@ -108,7 +108,7 @@
 - [x] **T1.4.7** Implement `PUT /api/apps/:id`
 - [x] **T1.4.8** Implement `DELETE /api/apps/:id`
 - [x] **T1.4.9** Add input validation (src/api/validation.rs)
-- [ ] **T1.4.10** Test all CRUD operations
+- [x] **T1.4.10** Test all CRUD operations ✅ VERIFIED (apps, databases, services, projects API all working)
 
 ### 1.5 REST API - Deployments ✅ COMPLETE
 
@@ -117,14 +117,14 @@
 - [x] **T1.5.3** Implement `GET /api/apps/:id/deployments`
 - [x] **T1.5.4** Implement `GET /api/deployments/:id`
 - [x] **T1.5.5** Implement `POST /api/deployments/:id/rollback`
-- [ ] **T1.5.6** Test deployment API
+- [x] **T1.5.6** Test deployment API ✅ VERIFIED (deployment history, status tracking, build logs all working)
 
 ### 1.6 REST API - Logs ✅ COMPLETE
 
 - [ ] **T1.6.1** Create `api/logs.rs`
 - [x] **T1.6.2** Implement `GET /api/deployments/:id/logs` (build logs)
 - [x] **T1.6.3** Implement WebSocket for runtime logs (GET /api/apps/:id/logs/stream)
-- [ ] **T1.6.4** Test log streaming
+- [x] **T1.6.4** Test log streaming ✅ VERIFIED (build logs panel, runtime logs tab, WebSocket connections working)
 
 ### 1.7 REST API - Webhooks ✅ COMPLETE
 
@@ -349,12 +349,16 @@
 - [x] **T3.7.4** Mount volumes at container start (binds in RunConfig, Docker/Podman support)
 - [x] **T3.7.5** Add volume backup/export (tar.gz backup endpoint)
 
-### 3.8 Build Improvements
+### 3.8 Build Improvements (Buildpacks - from Coolify/Dokploy research)
 
-- [ ] **T3.8.1** Add Nixpacks builder support
-- [ ] **T3.8.2** Add Heroku Buildpacks support
-- [ ] **T3.8.3** Auto-detect build type from repo
-- [ ] **T3.8.4** Build type selector in UI
+- [ ] **T3.8.1** Add Nixpacks builder support (auto-generate Dockerfile)
+- [ ] **T3.8.2** Add Railpack builder support (Nixpacks successor with optimizations)
+- [ ] **T3.8.3** Add Static site builder (NGINX-based, for Astro/Next/Vite static exports)
+- [ ] **T3.8.4** Add Heroku Buildpacks support
+- [ ] **T3.8.5** Add Paketo Buildpacks support (cloud-native buildpacks)
+- [ ] **T3.8.6** Auto-detect build type from repo (package.json, requirements.txt, Cargo.toml, etc.)
+- [ ] **T3.8.7** Build type selector in UI (dropdown in app creation/settings)
+- [ ] **T3.8.8** Publish directory field for static builds (e.g., dist, build, out)
 
 ### 3.9 Multi-User & Teams ✅ COMPLETE
 
@@ -497,12 +501,114 @@ Pre-configured templates for popular applications.
 - [x] **T4.3.14** Create template: Adminer (database management)
 - [x] **T4.3.15** Create template: Mailhog (email testing)
 - [x] **T4.3.16** Create template: Traefik (reverse proxy)
+- [x] **T4.3.21** Create template: Nextcloud (file sharing/productivity)
+- [x] **T4.3.22** Create template: pgAdmin (PostgreSQL management)
+- [x] **T4.3.23** Create template: Filebrowser (file management)
+- [x] **T4.3.24** Create template: Dozzle (container logs viewer)
+- [x] **T4.3.25** Create template: Watchtower (container auto-updates)
+- [x] **T4.3.26** Create template: Heimdall (application dashboard)
+- [x] **T4.3.27** Create template: RabbitMQ (message broker)
+- [x] **T4.3.28** Create template: Metabase (business intelligence)
+- [x] **T4.3.29** Create template: Drone CI (continuous integration)
+- [x] **T4.3.30** Create template: NocoDB (Airtable alternative)
+- [x] **T4.3.31** Create template: Outline (team wiki)
 - [x] **T4.3.17** Create Template Gallery modal in project page
 - [x] **T4.3.18** Add template category filtering (monitoring, database, storage, etc.)
 - [x] **T4.3.19** Add template customization before deploy (service name, env vars)
-- [x] **T4.3.20** Seed 12 builtin templates on first run
+- [x] **T4.3.20** Seed 26 builtin templates on first run (Portainer, Uptime Kuma, Grafana, Gitea, MinIO, n8n, Traefik, Plausible, Nginx, Vaultwarden, WordPress, Ghost, Redis, Adminer, Mailhog, Nextcloud, pgAdmin, Filebrowser, Dozzle, Watchtower, Heimdall, RabbitMQ, Metabase, Drone CI, NocoDB, Outline)
 
 **Phase 4 Checkpoint**: Full platform with databases, services, and one-click templates
+
+---
+
+## Phase 5: Advanced CI/CD Features (from Coolify/Dokploy research) - NOT STARTED
+
+### 5.1 GitHub App Integration (Coolify-inspired)
+
+Full GitHub integration for automatic deployments without manual webhook setup.
+
+- [ ] **T5.1.1** Create GitHub App registration flow
+- [ ] **T5.1.2** Implement GitHub App OAuth for installation
+- [ ] **T5.1.3** Store GitHub App installation tokens
+- [ ] **T5.1.4** Auto-configure webhooks via GitHub App
+- [ ] **T5.1.5** Repository browser from GitHub App installations
+- [ ] **T5.1.6** System-wide GitHub App sharing across teams
+- [ ] **T5.1.7** GitHub App settings UI page
+
+### 5.2 Advanced Rollback Features (Dokploy-inspired)
+
+Enhanced rollback capabilities with registry integration.
+
+- [ ] **T5.2.1** Automatic health-based rollback (rollback on failed health checks)
+- [ ] **T5.2.2** Registry-based image storage for rollbacks
+- [ ] **T5.2.3** Push built images to Docker registry on deploy
+- [ ] **T5.2.4** Rollback to any previous deployment version
+- [ ] **T5.2.5** Rollback settings UI (enable registry push, select registry)
+- [ ] **T5.2.6** Configure Docker Swarm update config (parallelism, delay, failure action)
+
+### 5.3 Preview Deployments (from existing plan + enhancements)
+
+Auto-deploy PRs with unique preview URLs.
+
+- [ ] **T5.3.1** Parse PR events from webhooks (open, sync, close, merge)
+- [ ] **T5.3.2** Create preview deployment with unique subdomain (pr-{number}.{app}.{domain})
+- [ ] **T5.3.3** Add preview deployments list to app detail page
+- [ ] **T5.3.4** Auto-cleanup on PR close/merge
+- [ ] **T5.3.5** Comment preview URL on PR (GitHub API)
+- [ ] **T5.3.6** Support GitLab/Gitea PR/MR previews
+- [ ] **T5.3.7** Preview deployment resource limits (lower than production)
+
+---
+
+## Phase 6: Unique Rivetr Features - NOT STARTED
+
+Features that differentiate Rivetr from Coolify/Dokploy.
+
+### 6.1 Resource Alerts & Cost Estimation
+
+- [ ] **T6.1.1** Resource usage alerts (CPU/memory threshold notifications)
+- [ ] **T6.1.2** Alert channels (email, Slack, Discord via existing notifications)
+- [ ] **T6.1.3** Alert history log
+- [ ] **T6.1.4** Cost estimation based on resource usage (configurable rates)
+- [ ] **T6.1.5** Monthly cost projection per app
+- [ ] **T6.1.6** Cost dashboard widget
+
+### 6.2 Deployment Enhancements
+
+- [ ] **T6.2.1** Zero-downtime deployment indicator (blue/green strategy status)
+- [ ] **T6.2.2** Deployment preview diff (show env/domain/config changes before deploy)
+- [ ] **T6.2.3** Deployment approval workflow (require approval before production)
+- [ ] **T6.2.4** Scheduled deployments (deploy at specific time)
+- [ ] **T6.2.5** Deployment freeze periods (prevent deployments during windows)
+
+### 6.3 Bulk Operations & App Management
+
+- [ ] **T6.3.1** Bulk start/stop/restart multiple apps
+- [ ] **T6.3.2** Bulk deploy multiple apps
+- [ ] **T6.3.3** App cloning (duplicate app configuration)
+- [ ] **T6.3.4** Configuration snapshots (save/restore app configs)
+- [ ] **T6.3.5** Export/import projects (JSON backup of entire project)
+- [ ] **T6.3.6** Maintenance mode with custom page (503 with HTML)
+
+### 6.4 Advanced Monitoring
+
+- [ ] **T6.4.1** Log search (full-text search across deployment logs)
+- [ ] **T6.4.2** Log retention policies (configurable per app)
+- [ ] **T6.4.3** Scheduled container restarts (auto-restart at intervals)
+- [ ] **T6.4.4** Dependency graph visualization (show service relationships)
+- [ ] **T6.4.5** Uptime tracking per app (availability percentage)
+- [ ] **T6.4.6** Response time monitoring (via health checks)
+
+### 6.5 S3 Backup Integration
+
+- [ ] **T6.5.1** S3 storage configuration (AWS, MinIO, R2)
+- [ ] **T6.5.2** Volume backup to S3
+- [ ] **T6.5.3** Database backup to S3
+- [ ] **T6.5.4** Scheduled S3 backups
+- [ ] **T6.5.5** S3 backup restore functionality
+- [ ] **T6.5.6** S3 backup settings UI
+
+**Phase 6 Checkpoint**: Differentiated PaaS with unique enterprise features
 
 ---
 
@@ -524,8 +630,8 @@ Research conducted to identify feature gaps and improvement opportunities.
 ### Priority Features to Add (from Coolify/Dokploy)
 
 **High Priority:**
-- [ ] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml
-- [ ] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.)
+- [x] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml ✅ IMPLEMENTED (Phase 4.2)
+- [x] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.) ✅ IMPLEMENTED (Phase 4.3 - 26 templates)
 - [ ] **Pull request preview deployments** - Auto-deploy PRs with unique URLs
 - [x] **Browser terminal** - In-browser shell access to containers (xterm.js) ✅ IMPLEMENTED
 - [ ] **Repository browser** - Select repos from connected Git providers in app creation
@@ -535,12 +641,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [x] **Resource limits UI** - Set CPU/memory limits per app from dashboard (ResourceLimitsCard.tsx)
 - [ ] **Deployment scheduling** - Schedule deployments for specific times
 - [ ] **S3 backup integration** - Backup volumes and databases to S3
-- [ ] **Custom domains per app** - Multiple domains pointing to one app
+- [x] **Custom domains per app** - Multiple domains pointing to one app ✅ IMPLEMENTED (Phase 3.14)
 
 **Lower Priority:**
 - [ ] **Multi-server support** - Deploy to multiple servers from one dashboard
 - [ ] **Service dependencies** - Define app startup order and dependencies
-- [ ] **Build from Dockerfile path** - Specify custom Dockerfile location
+- [x] **Build from Dockerfile path** - Specify custom Dockerfile location ✅ IMPLEMENTED (Phase 3.10.1)
 - [ ] **Auto-scaling** - Scale containers based on load
 
 ### UI/UX Improvements (from Dokploy)
@@ -557,12 +663,14 @@ Research conducted to identify feature gaps and improvement opportunities.
 
 | Phase | Total Tasks | Completed | Progress |
 |-------|-------------|-----------|----------|
-| Phase 0 | 24 | 20 | 83% |
+| Phase 0 | 30 | 28 | 93% |
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 20 | 71% |
-| Phase 3 | 90 | 78 | 87% |
-| Phase 4 | 50 | 50 | 100% |
-| **Total** | **286** | **262** | **92%** |
+| Phase 3 | 94 | 78 | 83% |
+| Phase 4 | 61 | 61 | 100% |
+| Phase 5 | 20 | 0 | 0% |
+| Phase 6 | 28 | 0 | 0% |
+| **Total** | **355** | **281** | **79%** |
 
 ---
 
@@ -574,21 +682,38 @@ Research conducted to identify feature gaps and improvement opportunities.
 
 ## Next Priority Tasks
 
-1. **Preview Deployments** (T3.4.1-5)
+1. **Build Improvements** (T3.8.1-8)
+   - Add Nixpacks builder for auto-detecting projects
+   - Add static site builder for frontend apps
+   - Build type selector in UI
+
+2. **Preview Deployments** (T5.3.1-7)
    - Parse PR events from webhooks
    - Create preview deployment with unique subdomain
    - Auto-cleanup on PR close/merge
+
+3. **GitHub App Integration** (T5.1.1-7)
+   - Full GitHub integration without manual webhooks
+   - Repository browser for easy app creation
 
 ---
 
 ## Backlog Priority Tasks
 
-**Phase 4 - Platform Services:**
-- **T4.2.9** - Service logs streaming (addressed above)
+**Phase 5 - Advanced CI/CD (NEW from competitor research):**
+- **T5.1.1-7** - GitHub App Integration (full GitHub integration without manual webhooks)
+- **T5.2.1-6** - Advanced Rollbacks (health-based auto-rollback, registry storage)
+- **T5.3.1-7** - Preview Deployments (PR auto-deploy with unique URLs)
+
+**Phase 6 - Unique Features (NEW - differentiators):**
+- **T6.1.1-6** - Resource Alerts & Cost Estimation
+- **T6.2.1-5** - Deployment Enhancements (scheduled, approval workflow, freeze periods)
+- **T6.3.1-6** - Bulk Operations & App Management (cloning, snapshots, maintenance mode)
+- **T6.4.1-6** - Advanced Monitoring (log search, uptime tracking)
+- **T6.5.1-6** - S3 Backup Integration
 
 **Phase 3 - Enhanced Features:**
-- **T3.4.1-5** - Preview Deployments (PR auto-deploy with unique URLs)
-- **T3.8.1-4** - Build Improvements (Nixpacks, Buildpacks, auto-detect)
+- **T3.8.1-8** - Build Improvements (Nixpacks, Railpack, Static, Buildpacks, auto-detect)
 
 **Phase 2 - Production Ready:**
 - **T2.1.3** - Add CSRF tokens for UI forms
@@ -664,9 +789,27 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Database Network Tab** - Enhanced with connection strings, env var examples, CLI commands
 - **Docker Compose Editor** - Edit compose YAML in service settings with save functionality
 
-### Planned Features
+### Planned Features (from Coolify/Dokploy research)
+- **Nixpacks/Railpack Builders** - Auto-generate Dockerfiles from source code
+- **Static Site Builder** - Optimized NGINX-based deployments
+- **GitHub App Integration** - Full GitHub integration without manual webhooks
+- **Advanced Rollbacks** - Health-based auto-rollback, registry image storage
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
 
+### Unique Rivetr Features (differentiators)
+- **Resource Alerts** - Notifications when CPU/memory exceeds thresholds
+- **Cost Estimation** - Estimate hosting costs based on resource usage
+- **Deployment Approval Workflow** - Require approval before production deploys
+- **Bulk Operations** - Start/stop/restart multiple apps at once
+- **App Cloning** - Duplicate app configurations
+- **Configuration Snapshots** - Save/restore app configs
+- **Maintenance Mode** - Put apps in maintenance with custom page
+- **Log Search** - Full-text search across deployment logs
+- **S3 Backup Integration** - Backup volumes/databases to S3
+
 ### Recently Completed
+- **26 Service Templates** - Added 14 new templates: Redis, Adminer, Mailhog, Nextcloud, pgAdmin, Filebrowser, Dozzle, Watchtower, Heimdall, RabbitMQ, Metabase, Drone CI, NocoDB, Outline
 - **Real-Time Resource Charts** - Dashboard charts now display actual historical data from stats_history table (5-min intervals, 7-day retention)
 - **Service Stats in Dashboard** - Docker Compose service resource usage now included in dashboard totals (uses compose project label filtering)
+- **Breadcrumbs** - Dynamic breadcrumb navigation showing project context
+- **Time Range Selectors** - Global resource charts with 1h/6h/24h/7d/30d time range selection
