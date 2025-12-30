@@ -7,6 +7,9 @@ api_port = 8080
 proxy_port = 80
 proxy_https_port = 443
 data_dir = "./data"
+# External URL for GitHub App callbacks (required for ngrok/tunnels in development)
+# Set this to your ngrok URL when testing GitHub App integration locally
+external_url = "https://ce84db70b5c8.ngrok-free.app"
 
 [auth]
 # API token for programmatic access (generate a secure token for production!)

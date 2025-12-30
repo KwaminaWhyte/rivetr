@@ -15,11 +15,11 @@ use super::auth::verify_password;
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::{
     validate_app_name, validate_base_directory, validate_branch, validate_build_target,
-    validate_cpu_limit, validate_custom_docker_options, validate_deployment_commands,
-    validate_docker_image, validate_dockerfile, validate_domain, validate_domains,
-    validate_environment, validate_extra_hosts, validate_git_url, validate_healthcheck,
-    validate_memory_limit, validate_network_aliases, validate_port, validate_port_mappings,
-    validate_uuid, validate_watch_paths,
+    validate_build_type, validate_cpu_limit, validate_custom_docker_options,
+    validate_deployment_commands, validate_docker_image, validate_dockerfile, validate_domain,
+    validate_domains, validate_environment, validate_extra_hosts, validate_git_url,
+    validate_healthcheck, validate_memory_limit, validate_network_aliases, validate_port,
+    validate_port_mappings, validate_uuid, validate_watch_paths,
 };
 
 /// Validate a CreateAppRequest
@@ -142,6 +142,11 @@ fn validate_create_request(req: &CreateAppRequest) -> Result<(), ApiError> {
         errors.add("domains", &e);
     }
 
+    // Build type validation
+    if let Err(e) = validate_build_type(&req.build_type) {
+        errors.add("build_type", &e);
+    }
+
     errors.finish()
 }
 
@@ -258,6 +263,15 @@ fn validate_update_request(req: &UpdateAppRequest) -> Result<(), ApiError> {
         errors.add("domains", &e);
     }
 
+    // Build type validation (only if provided)
+    if let Some(ref build_type) = req.build_type {
+        if !build_type.is_empty() {
+            if let Err(e) = validate_build_type(build_type) {
+                errors.add("build_type", &e);
+            }
+        }
+    }
+
     errors.finish()
 }
 
@@ -341,8 +355,8 @@ pub async fn create_app(
 
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -376,6 +390,10 @@ pub async fn create_app(
     .bind(&req.registry_username)
     .bind(&req.registry_password)
     .bind(&container_labels_json)
+    .bind(&req.build_type)
+    .bind(&req.nixpacks_config)
+    .bind(&req.publish_directory)
+    .bind(req.preview_enabled)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -519,6 +537,12 @@ pub async fn update_app(
         None => existing.container_labels.clone(), // Keep existing
     };
 
+    // Build type and Nixpacks fields
+    let build_type = merge_optional_string(&req.build_type, &existing.build_type);
+    let nixpacks_config = merge_optional_string(&req.nixpacks_config, &existing.nixpacks_config);
+    let publish_directory = merge_optional_string(&req.publish_directory, &existing.publish_directory);
+    let preview_enabled = req.preview_enabled.unwrap_or(existing.preview_enabled != 0);
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -551,6 +575,10 @@ pub async fn update_app(
             registry_username = ?,
             registry_password = ?,
             container_labels = ?,
+            build_type = ?,
+            nixpacks_config = ?,
+            publish_directory = ?,
+            preview_enabled = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -584,6 +612,10 @@ pub async fn update_app(
     .bind(&registry_username)
     .bind(&registry_password)
     .bind(&container_labels)
+    .bind(&build_type)
+    .bind(&nixpacks_config)
+    .bind(&publish_directory)
+    .bind(preview_enabled)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

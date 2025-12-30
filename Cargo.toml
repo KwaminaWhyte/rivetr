@@ -74,6 +74,7 @@ rand = "0.9"
 sha2 = "0.10"
 hex = "0.4"
 hmac = "0.12"
+jsonwebtoken = "9"
 
 # Metrics
 metrics = "0.24"

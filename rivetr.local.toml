@@ -2,7 +2,7 @@
 
 [server]
 host = "0.0.0.0"
-api_port = 9080
+api_port = 8080
 proxy_port = 9000
 proxy_https_port = 9443
 data_dir = "./data"

@@ -250,6 +250,9 @@ pub fn validate_uuid(id: &str, field_name: &str) -> Result<(), String> {
 /// Valid environment values
 const VALID_ENVIRONMENTS: [&str; 3] = ["development", "staging", "production"];
 
+/// Valid build type values
+const VALID_BUILD_TYPES: [&str; 3] = ["dockerfile", "nixpacks", "static"];
+
 /// Validate an environment value
 pub fn validate_environment(environment: &str) -> Result<(), String> {
     let env_lower = environment.to_lowercase();
@@ -257,6 +260,18 @@ pub fn validate_environment(environment: &str) -> Result<(), String> {
         return Err(format!(
             "Invalid environment. Must be one of: {}",
             VALID_ENVIRONMENTS.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a build type value
+pub fn validate_build_type(build_type: &str) -> Result<(), String> {
+    let build_type_lower = build_type.to_lowercase();
+    if !VALID_BUILD_TYPES.contains(&build_type_lower.as_str()) {
+        return Err(format!(
+            "Invalid build_type. Must be one of: {}",
+            VALID_BUILD_TYPES.join(", ")
         ));
     }
     Ok(())

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::crypto;
 use crate::db::{App, SshKey};
+use crate::engine::nixpacks;
 use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RegistryAuth, RunConfig};
 use crate::DbPool;
 
@@ -182,7 +183,6 @@ async fn run_git_deployment(
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
 
     // Step 2: Build
-    add_deployment_log(db, deployment_id, "info", "Building Docker image...").await?;
     update_deployment_status(db, deployment_id, "building", None).await?;
 
     // Determine the actual build path (consider base_directory)
@@ -196,75 +196,201 @@ async fn run_git_deployment(
         work_dir.clone()
     };
 
-    // Determine the dockerfile to use (dockerfile_path takes precedence over dockerfile)
-    let dockerfile = app
-        .dockerfile_path
-        .as_ref()
-        .filter(|p| !p.is_empty())
-        .cloned()
-        .unwrap_or_else(|| app.dockerfile.clone());
-
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
-    let build_ctx = BuildContext {
-        path: build_path.to_string_lossy().to_string(),
-        dockerfile,
-        tag: image_tag.clone(),
-        build_args: vec![],
-        build_target: app.build_target.clone(),
-        custom_options: app.custom_docker_options.clone(),
-        cpu_limit: build_limits.cpu_limit.clone(),
-        memory_limit: build_limits.memory_limit.clone(),
-    };
+    let build_type = app.get_build_type();
 
-    // Log build resource limits if configured
-    if build_limits.cpu_limit.is_some() || build_limits.memory_limit.is_some() {
-        let mut limits = vec![];
-        if let Some(ref cpu) = build_limits.cpu_limit {
-            limits.push(format!("cpu={}", cpu));
-        }
-        if let Some(ref mem) = build_limits.memory_limit {
-            limits.push(format!("memory={}", mem));
-        }
-        add_deployment_log(
-            db,
-            deployment_id,
-            "info",
-            &format!("Build resource limits: {}", limits.join(", ")),
-        )
-        .await?;
-    }
-
-    // Log build options if any are set
-    if app.base_directory.is_some() || app.dockerfile_path.is_some() || app.build_target.is_some() {
-        let mut opts = vec![];
-        if let Some(ref base_dir) = app.base_directory {
-            if !base_dir.is_empty() {
-                opts.push(format!("base_directory={}", base_dir));
-            }
-        }
-        if let Some(ref df_path) = app.dockerfile_path {
-            if !df_path.is_empty() {
-                opts.push(format!("dockerfile_path={}", df_path));
-            }
-        }
-        if let Some(ref target) = app.build_target {
-            if !target.is_empty() {
-                opts.push(format!("target={}", target));
-            }
-        }
-        if !opts.is_empty() {
+    // Build based on build_type
+    match build_type {
+        "nixpacks" => {
+            // Nixpacks build
             add_deployment_log(
                 db,
                 deployment_id,
                 "info",
-                &format!("Build options: {}", opts.join(", ")),
+                "Building with Nixpacks (auto-detecting language and framework)...",
             )
             .await?;
+
+            // Check if Nixpacks is available
+            if !nixpacks::is_available().await {
+                anyhow::bail!(
+                    "Nixpacks is not installed. Please install it with: curl -sSL https://nixpacks.com/install.sh | bash"
+                );
+            }
+
+            // Log Nixpacks version
+            if let Some(version) = nixpacks::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Nixpacks version: {}", version),
+                )
+                .await?;
+            }
+
+            // Get Nixpacks config if provided
+            let nixpacks_config = app.get_nixpacks_config();
+            if nixpacks_config.is_some() {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    "Using custom Nixpacks configuration",
+                )
+                .await?;
+            }
+
+            // Get env vars for the build
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            // Build with Nixpacks
+            nixpacks::build_image(
+                &build_path,
+                &image_tag,
+                nixpacks_config.as_ref(),
+                &env_vars,
+            )
+            .await
+            .context("Nixpacks build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Nixpacks build completed successfully")
+                .await?;
+        }
+        "static" => {
+            // Static site build - for now, we treat this similar to dockerfile
+            // In the future, this could use a lightweight static file server image
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building static site...",
+            )
+            .await?;
+
+            // For static builds, we could use Nixpacks with a static provider
+            // or fall back to a simple nginx-based Dockerfile
+            if nixpacks::is_available().await {
+                let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                    "SELECT key, value FROM env_vars WHERE app_id = ?",
+                )
+                .bind(&app.id)
+                .fetch_all(db)
+                .await
+                .unwrap_or_default();
+
+                nixpacks::build_image(&build_path, &image_tag, None, &env_vars)
+                    .await
+                    .context("Static site build failed")?;
+            } else {
+                // Fall back to Dockerfile build
+                let dockerfile = app
+                    .dockerfile_path
+                    .as_ref()
+                    .filter(|p| !p.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| app.dockerfile.clone());
+
+                let build_ctx = BuildContext {
+                    path: build_path.to_string_lossy().to_string(),
+                    dockerfile,
+                    tag: image_tag.clone(),
+                    build_args: vec![],
+                    build_target: app.build_target.clone(),
+                    custom_options: app.custom_docker_options.clone(),
+                    cpu_limit: build_limits.cpu_limit.clone(),
+                    memory_limit: build_limits.memory_limit.clone(),
+                };
+
+                runtime.build(&build_ctx).await.context("Build failed")?;
+            }
+
+            add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
+                .await?;
+        }
+        _ => {
+            // Default: Dockerfile build
+            add_deployment_log(db, deployment_id, "info", "Building Docker image...").await?;
+
+            // Determine the dockerfile to use (dockerfile_path takes precedence over dockerfile)
+            let dockerfile = app
+                .dockerfile_path
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or_else(|| app.dockerfile.clone());
+
+            let build_ctx = BuildContext {
+                path: build_path.to_string_lossy().to_string(),
+                dockerfile,
+                tag: image_tag.clone(),
+                build_args: vec![],
+                build_target: app.build_target.clone(),
+                custom_options: app.custom_docker_options.clone(),
+                cpu_limit: build_limits.cpu_limit.clone(),
+                memory_limit: build_limits.memory_limit.clone(),
+            };
+
+            // Log build resource limits if configured
+            if build_limits.cpu_limit.is_some() || build_limits.memory_limit.is_some() {
+                let mut limits = vec![];
+                if let Some(ref cpu) = build_limits.cpu_limit {
+                    limits.push(format!("cpu={}", cpu));
+                }
+                if let Some(ref mem) = build_limits.memory_limit {
+                    limits.push(format!("memory={}", mem));
+                }
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Build resource limits: {}", limits.join(", ")),
+                )
+                .await?;
+            }
+
+            // Log build options if any are set
+            if app.base_directory.is_some()
+                || app.dockerfile_path.is_some()
+                || app.build_target.is_some()
+            {
+                let mut opts = vec![];
+                if let Some(ref base_dir) = app.base_directory {
+                    if !base_dir.is_empty() {
+                        opts.push(format!("base_directory={}", base_dir));
+                    }
+                }
+                if let Some(ref df_path) = app.dockerfile_path {
+                    if !df_path.is_empty() {
+                        opts.push(format!("dockerfile_path={}", df_path));
+                    }
+                }
+                if let Some(ref target) = app.build_target {
+                    if !target.is_empty() {
+                        opts.push(format!("target={}", target));
+                    }
+                }
+                if !opts.is_empty() {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Build options: {}", opts.join(", ")),
+                    )
+                    .await?;
+                }
+            }
+
+            runtime.build(&build_ctx).await.context("Build failed")?;
+            add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
         }
     }
-
-    runtime.build(&build_ctx).await.context("Build failed")?;
-    add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
 
     // Cleanup work directory
     let _ = tokio::fs::remove_dir_all(&work_dir).await;

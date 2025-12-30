@@ -3,7 +3,9 @@ mod container_monitor;
 pub mod database_backups;
 pub mod database_config;
 mod disk_monitor;
+pub mod nixpacks;
 mod pipeline;
+pub mod preview;
 mod stats_collector;
 
 pub use cleanup::*;
@@ -11,6 +13,7 @@ pub use container_monitor::*;
 pub use database_backups::*;
 pub use disk_monitor::*;
 pub use pipeline::*;
+pub use preview::*;
 pub use stats_collector::*;
 
 use arc_swap::ArcSwap;

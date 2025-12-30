@@ -13,10 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, EyeOff, GitBranch, Package } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2 } from "lucide-react";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
+import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import { api } from "@/lib/api";
-import type { AppEnvironment, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
+import type { AppEnvironment, BuildType, NixpacksConfig, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "development", label: "Development" },
@@ -36,8 +38,25 @@ export default function NewAppPage() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry">("git");
+  const [gitSourceType, setGitSourceType] = useState<"github" | "manual">("github");
+  const [buildType, setBuildType] = useState<BuildType>("nixpacks");
+  const [previewEnabled, setPreviewEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // GitHub repo picker state
+  const [selectedRepo, setSelectedRepo] = useState<SelectedRepo | null>(null);
+  const [manualGitUrl, setManualGitUrl] = useState("");
+  const [manualBranch, setManualBranch] = useState("main");
+
+  // Nixpacks config state
+  const [nixpacksConfig, setNixpacksConfig] = useState<NixpacksConfig>({
+    install_cmd: undefined,
+    build_cmd: undefined,
+    start_cmd: undefined,
+    packages: undefined,
+    apt_packages: undefined,
+  });
 
   // Use React Query for data fetching
   const { data: projects = [] } = useQuery<Project[]>({
@@ -113,20 +132,48 @@ export default function NewAppPage() {
       });
     } else {
       // Git-based deployment
-      const git_url = formData.get("git_url") as string;
-      const branch = (formData.get("branch") as string) || "main";
+      let git_url: string;
+      let branch: string;
+
+      if (gitSourceType === "github" && selectedRepo) {
+        // Use GitHub repo picker selection
+        git_url = selectedRepo.gitUrl;
+        branch = selectedRepo.branch;
+      } else {
+        // Manual URL entry
+        git_url = manualGitUrl;
+        branch = manualBranch || "main";
+      }
+
       const dockerfile = (formData.get("dockerfile") as string) || "Dockerfile";
+      const publish_directory = (formData.get("publish_directory") as string) || undefined;
 
       if (!git_url?.trim()) {
-        setError("Git URL is required");
+        setError(gitSourceType === "github" ? "Please select a repository" : "Git URL is required");
         return;
+      }
+
+      // Build Nixpacks config if build type is nixpacks
+      let nixpacksConfigToSend: NixpacksConfig | undefined = undefined;
+      if (buildType === "nixpacks") {
+        // Only include non-empty values
+        nixpacksConfigToSend = {};
+        if (nixpacksConfig.install_cmd) nixpacksConfigToSend.install_cmd = nixpacksConfig.install_cmd;
+        if (nixpacksConfig.build_cmd) nixpacksConfigToSend.build_cmd = nixpacksConfig.build_cmd;
+        if (nixpacksConfig.start_cmd) nixpacksConfigToSend.start_cmd = nixpacksConfig.start_cmd;
+        if (nixpacksConfig.packages?.length) nixpacksConfigToSend.packages = nixpacksConfig.packages;
+        if (nixpacksConfig.apt_packages?.length) nixpacksConfigToSend.apt_packages = nixpacksConfig.apt_packages;
+        // If empty, don't send
+        if (Object.keys(nixpacksConfigToSend).length === 0) {
+          nixpacksConfigToSend = undefined;
+        }
       }
 
       createAppMutation.mutate({
         name: name.trim(),
         git_url: git_url.trim(),
         branch,
-        dockerfile,
+        dockerfile: buildType === "dockerfile" ? dockerfile : undefined,
         port,
         domain,
         healthcheck,
@@ -134,6 +181,11 @@ export default function NewAppPage() {
         memory_limit,
         environment,
         project_id: projectId,
+        build_type: buildType,
+        nixpacks_config: nixpacksConfigToSend,
+        publish_directory: buildType === "static" ? publish_directory : undefined,
+        preview_enabled: previewEnabled,
+        github_app_installation_id: gitSourceType === "github" && selectedRepo ? selectedRepo.installationId : undefined,
       });
     }
   }
@@ -191,30 +243,154 @@ export default function NewAppPage() {
 
                 {/* Git Source Tab */}
                 <TabsContent value="git" className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="git_url">Git Repository URL *</Label>
-                    <Input
-                      id="git_url"
-                      name="git_url"
-                      placeholder="https://github.com/user/repo.git"
-                      required={deploymentSource === "git"}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The Git repository URL to clone
-                    </p>
+                  {/* Git Source Type Toggle */}
+                  <div className="space-y-3">
+                    <Label>Source</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setGitSourceType("github")}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-colors ${
+                          gitSourceType === "github"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Github className="h-5 w-5" />
+                        <div className="text-left">
+                          <span className="text-sm font-medium block">GitHub</span>
+                          <span className="text-xs text-muted-foreground">Select from your repos</span>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGitSourceType("manual")}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-colors ${
+                          gitSourceType === "manual"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Link2 className="h-5 w-5" />
+                        <div className="text-left">
+                          <span className="text-sm font-medium block">Manual URL</span>
+                          <span className="text-xs text-muted-foreground">Enter any Git URL</span>
+                        </div>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  {/* GitHub Repository Picker */}
+                  {gitSourceType === "github" && (
+                    <GitHubRepoPicker
+                      onSelect={(selection) => setSelectedRepo(selection)}
+                      selectedInstallationId={selectedRepo?.installationId}
+                      selectedRepoFullName={selectedRepo?.repository.full_name}
+                    />
+                  )}
+
+                  {/* Manual Git URL Input */}
+                  {gitSourceType === "manual" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="git_url">Git Repository URL *</Label>
+                        <Input
+                          id="git_url"
+                          name="git_url"
+                          placeholder="https://github.com/user/repo.git"
+                          value={manualGitUrl}
+                          onChange={(e) => setManualGitUrl(e.target.value)}
+                          required={deploymentSource === "git" && gitSourceType === "manual"}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The Git repository URL to clone
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="branch">Branch</Label>
+                        <Input
+                          id="branch"
+                          name="branch"
+                          placeholder="main"
+                          value={manualBranch}
+                          onChange={(e) => setManualBranch(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Show selected branch from GitHub picker */}
+                  {gitSourceType === "github" && selectedRepo && (
                     <div className="space-y-2">
                       <Label htmlFor="branch">Branch</Label>
                       <Input
                         id="branch"
                         name="branch"
-                        placeholder="main"
-                        defaultValue="main"
+                        value={selectedRepo.branch}
+                        readOnly
+                        className="bg-muted"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Default branch from the repository
+                      </p>
                     </div>
+                  )}
 
+                  {/* Build Type Selection */}
+                  <div className="space-y-3">
+                    <Label>Build Type</Label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setBuildType("nixpacks")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                          buildType === "nixpacks"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Sparkles className="h-6 w-6" />
+                        <span className="text-sm font-medium">Nixpacks</span>
+                        <span className="text-xs text-muted-foreground text-center">
+                          Auto-detect
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuildType("dockerfile")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                          buildType === "dockerfile"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <FileCode className="h-6 w-6" />
+                        <span className="text-sm font-medium">Dockerfile</span>
+                        <span className="text-xs text-muted-foreground text-center">
+                          Custom build
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuildType("static")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                          buildType === "static"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Package className="h-6 w-6" />
+                        <span className="text-sm font-medium">Static</span>
+                        <span className="text-xs text-muted-foreground text-center">
+                          HTML/CSS/JS
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dockerfile options */}
+                  {buildType === "dockerfile" && (
                     <div className="space-y-2">
                       <Label htmlFor="dockerfile">Dockerfile</Label>
                       <Input
@@ -223,7 +399,80 @@ export default function NewAppPage() {
                         placeholder="Dockerfile"
                         defaultValue="Dockerfile"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Path to your Dockerfile in the repository
+                      </p>
                     </div>
+                  )}
+
+                  {/* Nixpacks options */}
+                  {buildType === "nixpacks" && (
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Nixpacks will automatically detect your project type and build it.
+                        You can optionally override the default commands.
+                      </p>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="install_cmd">Install Command</Label>
+                          <Input
+                            id="install_cmd"
+                            placeholder="npm install"
+                            value={nixpacksConfig.install_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, install_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="build_cmd">Build Command</Label>
+                          <Input
+                            id="build_cmd"
+                            placeholder="npm run build"
+                            value={nixpacksConfig.build_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, build_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="start_cmd">Start Command</Label>
+                          <Input
+                            id="start_cmd"
+                            placeholder="npm start"
+                            value={nixpacksConfig.start_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, start_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Static options */}
+                  {buildType === "static" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="publish_directory">Publish Directory</Label>
+                      <Input
+                        id="publish_directory"
+                        name="publish_directory"
+                        placeholder="dist, build, public"
+                        defaultValue="dist"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Directory containing your built static files
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Preview deployments toggle */}
+                  <div className="flex items-center justify-between p-4 rounded-lg border">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="preview-enabled" className="text-base">Enable PR Previews</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically deploy preview environments for pull requests
+                      </p>
+                    </div>
+                    <Switch
+                      id="preview-enabled"
+                      checked={previewEnabled}
+                      onCheckedChange={setPreviewEnabled}
+                    />
                   </div>
                 </TabsContent>
 

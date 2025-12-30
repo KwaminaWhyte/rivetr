@@ -1,5 +1,134 @@
 export type AppEnvironment = "development" | "staging" | "production";
 
+// -------------------------------------------------------------------------
+// Build Types (Nixpacks, Dockerfile, Static)
+// -------------------------------------------------------------------------
+
+/** Build type for applications */
+export type BuildType = "dockerfile" | "nixpacks" | "static";
+
+/** Nixpacks configuration for auto-build */
+export interface NixpacksConfig {
+  /** Custom install command (overrides auto-detected) */
+  install_cmd?: string;
+  /** Custom build command (overrides auto-detected) */
+  build_cmd?: string;
+  /** Custom start command (overrides auto-detected) */
+  start_cmd?: string;
+  /** Additional Nix packages to install */
+  packages?: string[];
+  /** Additional apt packages to install */
+  apt_packages?: string[];
+}
+
+// -------------------------------------------------------------------------
+// Preview Deployment Types
+// -------------------------------------------------------------------------
+
+/** Preview deployment status */
+export type PreviewDeploymentStatus =
+  | "pending"
+  | "cloning"
+  | "building"
+  | "starting"
+  | "running"
+  | "failed"
+  | "closed";
+
+/** Preview deployment for a pull request */
+export interface PreviewDeployment {
+  id: string;
+  app_id: string;
+  pr_number: number;
+  pr_title: string | null;
+  pr_source_branch: string;
+  pr_target_branch: string;
+  pr_author: string | null;
+  pr_url: string | null;
+  provider_type: "github" | "gitlab" | "gitea";
+  repo_full_name: string;
+  preview_domain: string;
+  container_id: string | null;
+  container_name: string | null;
+  image_tag: string | null;
+  port: number | null;
+  commit_sha: string | null;
+  commit_message: string | null;
+  status: PreviewDeploymentStatus;
+  error_message: string | null;
+  github_comment_id: number | null;
+  memory_limit: string | null;
+  cpu_limit: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+// -------------------------------------------------------------------------
+// GitHub App Types
+// -------------------------------------------------------------------------
+
+/** GitHub App configuration */
+export interface GitHubApp {
+  id: string;
+  name: string;
+  app_id: number;
+  client_id: string;
+  slug: string | null;
+  owner: string | null;
+  permissions: string | null;
+  events: string | null;
+  is_system_wide: boolean;
+  team_id: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+/** GitHub App installation */
+export interface GitHubAppInstallation {
+  id: string;
+  github_app_id: string;
+  installation_id: number;
+  account_type: "user" | "organization";
+  account_login: string;
+  account_id: number;
+  permissions: string | null;
+  repository_selection: "all" | "selected" | null;
+  suspended_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Repository from GitHub App installation */
+export interface GitHubAppRepository {
+  id: number;
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
+  private: boolean;
+  owner: string;
+  installation_id: string;
+}
+
+/** GitHub App manifest request */
+export interface CreateGitHubAppManifestRequest {
+  name: string;
+  is_system_wide: boolean;
+  team_id?: string;
+}
+
+/** GitHub App manifest response */
+export interface GitHubAppManifestResponse {
+  manifest_url: string;
+  manifest: string;
+  state: string;
+}
+
 /** Port mapping configuration for containers */
 export interface PortMapping {
   /** Host port to bind (0 for auto-assign) */
@@ -59,6 +188,14 @@ export interface App {
   registry_username: string | null;
   // Container labels (JSON object stored as string)
   container_labels: string | null;
+  // Build type configuration
+  build_type: BuildType;
+  nixpacks_config: string | null;
+  publish_directory: string | null;
+  // Preview deployments
+  preview_enabled: boolean;
+  // GitHub App installation (for auto-deploy)
+  github_app_installation_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -172,6 +309,14 @@ export interface CreateAppRequest {
   registry_password?: string;
   // Container labels
   container_labels?: Record<string, string>;
+  // Build type configuration
+  build_type?: BuildType;
+  nixpacks_config?: NixpacksConfig;
+  publish_directory?: string;
+  // Preview deployments
+  preview_enabled?: boolean;
+  // GitHub App installation
+  github_app_installation_id?: string;
 }
 
 export interface UpdateAppRequest {
@@ -215,6 +360,14 @@ export interface UpdateAppRequest {
   registry_password?: string;
   // Container labels
   container_labels?: Record<string, string>;
+  // Build type configuration
+  build_type?: BuildType;
+  nixpacks_config?: NixpacksConfig;
+  publish_directory?: string;
+  // Preview deployments
+  preview_enabled?: boolean;
+  // GitHub App installation
+  github_app_installation_id?: string | null;
 }
 
 export interface SshKey {
@@ -714,8 +867,13 @@ export interface CreateManagedDatabaseRequest {
 
 /** Request to update a managed database */
 export interface UpdateManagedDatabaseRequest {
+  /** Enable/disable public access (internet-accessible) */
   public_access?: boolean;
+  /** Custom external port (0 = auto-assign, 1024-65535 = specific port) */
+  external_port?: number;
+  /** Memory limit (e.g., "512mb", "1g") */
   memory_limit?: string;
+  /** CPU limit (e.g., "0.5", "1", "2") */
   cpu_limit?: string;
 }
 

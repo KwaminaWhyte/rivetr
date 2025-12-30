@@ -296,6 +296,36 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/025_stats_history.sql")).await?;
     }
 
+    // Migration 026: Add build_type for Nixpacks support
+    let has_build_type: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'build_type'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_build_type.is_none() {
+        execute_sql(pool, include_str!("../../migrations/026_build_type.sql")).await?;
+    }
+
+    // Migration 027: Add preview_deployments table for PR preview environments
+    let has_preview_deployments_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='preview_deployments'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_preview_deployments_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/027_preview_deployments.sql")).await?;
+    }
+
+    // Migration 028: Add GitHub Apps tables for system-wide app registration
+    let has_github_apps_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='github_apps'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_github_apps_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/028_github_apps.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

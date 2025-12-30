@@ -80,6 +80,7 @@ const tabs = [
   { id: "network", label: "Network", path: "/network" },
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "deployments", label: "Deployments", path: "/deployments" },
+  { id: "previews", label: "Previews", path: "/previews" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "terminal", label: "Terminal", path: "/terminal" },
 ];

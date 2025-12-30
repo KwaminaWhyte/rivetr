@@ -3,6 +3,7 @@ pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod engine;
+pub mod github;
 pub mod notifications;
 pub mod proxy;
 pub mod runtime;

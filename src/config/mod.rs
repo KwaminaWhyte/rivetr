@@ -43,6 +43,10 @@ pub struct ServerConfig {
     pub proxy_https_port: u16,
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
+    /// External URL for callbacks (e.g., ngrok URL for development)
+    /// If set, this is used for GitHub App callbacks and webhooks
+    #[serde(default)]
+    pub external_url: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -53,6 +57,7 @@ impl Default for ServerConfig {
             proxy_port: default_proxy_port(),
             proxy_https_port: default_proxy_https_port(),
             data_dir: default_data_dir(),
+            external_url: None,
         }
     }
 }
@@ -188,6 +193,9 @@ pub struct ProxyConfig {
     /// Enable sslip.io automatic domains (generates domains like abc123.192.168.1.1.sslip.io)
     #[serde(default)]
     pub sslip_enabled: bool,
+    /// Base domain for PR preview deployments (e.g., "preview.example.com")
+    /// Preview environments get subdomains like "pr-123.my-app.preview.example.com"
+    pub preview_domain: Option<String>,
 }
 
 fn default_acme_cache_dir() -> PathBuf {
@@ -220,6 +228,7 @@ impl Default for ProxyConfig {
             auto_subdomain_enabled: false,
             server_ip: None,
             sslip_enabled: false,
+            preview_domain: None,
         }
     }
 }

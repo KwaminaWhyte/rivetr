@@ -9,7 +9,11 @@ use sha2::Sha256;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::App;
+use crate::crypto;
+use crate::db::{App, PreviewDeployment};
+use crate::engine::preview::{
+    cleanup_preview, find_or_create_preview, run_preview_deployment, PreviewDeploymentInfo,
+};
 use crate::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -76,6 +80,36 @@ pub struct GitHubCommit {
     pub message: String,
 }
 
+/// GitHub Pull Request event payload
+#[derive(Debug, Deserialize)]
+pub struct GitHubPullRequestEvent {
+    pub action: String,
+    pub number: i64,
+    pub pull_request: GitHubPullRequest,
+    pub repository: GitHubRepository,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitHubPullRequest {
+    pub title: String,
+    pub html_url: String,
+    pub head: GitHubPullRequestRef,
+    pub base: GitHubPullRequestRef,
+    pub user: GitHubUser,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitHubPullRequestRef {
+    #[serde(rename = "ref")]
+    pub branch: String,
+    pub sha: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GitHubUser {
+    pub login: String,
+}
+
 pub async fn github_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -98,10 +132,35 @@ pub async fn github_webhook(
         tracing::debug!("GitHub webhook signature verified");
     }
 
+    // Check the event type from X-GitHub-Event header
+    let event_type = headers
+        .get("X-GitHub-Event")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("push");
+
+    match event_type {
+        "pull_request" => handle_github_pull_request(state, &body).await,
+        "push" => handle_github_push(state, &body).await,
+        "ping" => {
+            tracing::info!("GitHub ping received");
+            Ok(StatusCode::OK)
+        }
+        _ => {
+            tracing::debug!("Ignoring GitHub event type: {}", event_type);
+            Ok(StatusCode::OK)
+        }
+    }
+}
+
+/// Handle GitHub push events (regular deployments)
+async fn handle_github_push(
+    state: Arc<AppState>,
+    body: &[u8],
+) -> Result<StatusCode, StatusCode> {
     // Parse the JSON payload
-    let payload: GitHubPushEvent = serde_json::from_slice(&body)
+    let payload: GitHubPushEvent = serde_json::from_slice(body)
         .map_err(|e| {
-            tracing::error!("Failed to parse GitHub webhook payload: {}", e);
+            tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
             StatusCode::BAD_REQUEST
         })?;
 
@@ -112,7 +171,7 @@ pub async fn github_webhook(
         .unwrap_or(&payload.git_ref);
 
     tracing::info!(
-        "GitHub webhook received: {} branch {}",
+        "GitHub push webhook received: {} branch {}",
         payload.repository.full_name,
         branch
     );
@@ -129,7 +188,7 @@ pub async fn github_webhook(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if apps.is_empty() {
-        tracing::warn!("No matching app found for webhook");
+        tracing::warn!("No matching app found for push webhook");
         return Ok(StatusCode::OK);
     }
 
@@ -162,6 +221,190 @@ pub async fn github_webhook(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Handle GitHub pull request events (preview deployments)
+async fn handle_github_pull_request(
+    state: Arc<AppState>,
+    body: &[u8],
+) -> Result<StatusCode, StatusCode> {
+    // Parse the JSON payload
+    let payload: GitHubPullRequestEvent = serde_json::from_slice(body)
+        .map_err(|e| {
+            tracing::error!("Failed to parse GitHub PR webhook payload: {}", e);
+            StatusCode::BAD_REQUEST
+        })?;
+
+    tracing::info!(
+        "GitHub PR webhook received: {} PR #{} action={}",
+        payload.repository.full_name,
+        payload.number,
+        payload.action
+    );
+
+    // Find apps that match this repository and have preview_enabled
+    let apps = sqlx::query_as::<_, App>(
+        "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND preview_enabled = 1",
+    )
+    .bind(format!("%{}", payload.repository.clone_url))
+    .bind(format!("%{}", payload.repository.ssh_url))
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if apps.is_empty() {
+        tracing::debug!(
+            "No apps with preview_enabled found for PR webhook: {}",
+            payload.repository.full_name
+        );
+        return Ok(StatusCode::OK);
+    }
+
+    match payload.action.as_str() {
+        "opened" | "synchronize" | "reopened" => {
+            // Deploy or redeploy preview
+            for app in apps {
+                handle_preview_deploy(&state, &app, &payload).await?;
+            }
+        }
+        "closed" => {
+            // Clean up preview deployment
+            for app in apps {
+                handle_preview_cleanup(&state, &app, &payload).await?;
+            }
+        }
+        _ => {
+            tracing::debug!("Ignoring PR action: {}", payload.action);
+        }
+    }
+
+    Ok(StatusCode::OK)
+}
+
+/// Deploy or redeploy a preview environment for a PR
+async fn handle_preview_deploy(
+    state: &Arc<AppState>,
+    app: &App,
+    payload: &GitHubPullRequestEvent,
+) -> Result<(), StatusCode> {
+    // Get preview domain base from config, default to "preview.localhost"
+    let base_domain = state
+        .config
+        .proxy
+        .preview_domain
+        .clone()
+        .unwrap_or_else(|| "preview.localhost".to_string());
+
+    let info = PreviewDeploymentInfo {
+        app_id: app.id.clone(),
+        pr_number: payload.number,
+        pr_title: Some(payload.pull_request.title.clone()),
+        pr_source_branch: payload.pull_request.head.branch.clone(),
+        pr_target_branch: payload.pull_request.base.branch.clone(),
+        pr_author: Some(payload.pull_request.user.login.clone()),
+        pr_url: Some(payload.pull_request.html_url.clone()),
+        commit_sha: Some(payload.pull_request.head.sha.clone()),
+        commit_message: None, // Not available in PR event
+        provider_type: "github".to_string(),
+        repo_full_name: payload.repository.full_name.clone(),
+    };
+
+    // Find or create the preview deployment
+    let preview = find_or_create_preview(&state.db, app, &info, &base_domain)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to create preview deployment: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    tracing::info!(
+        preview_id = %preview.id,
+        app = %app.name,
+        pr = payload.number,
+        domain = %preview.preview_domain,
+        "Starting preview deployment"
+    );
+
+    // Run the preview deployment in a background task
+    let db = state.db.clone();
+    let runtime = state.runtime.clone();
+    let routes = state.routes.clone();
+    let app_clone = app.clone();
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|secret| crypto::derive_key(secret));
+
+    tokio::spawn(async move {
+        if let Err(e) = run_preview_deployment(
+            &db,
+            runtime,
+            routes,
+            &preview,
+            &app_clone,
+            encryption_key.as_ref(),
+        )
+        .await
+        {
+            tracing::error!(
+                preview_id = %preview.id,
+                error = %e,
+                "Preview deployment failed"
+            );
+        }
+    });
+
+    Ok(())
+}
+
+/// Clean up a preview environment when a PR is closed
+async fn handle_preview_cleanup(
+    state: &Arc<AppState>,
+    app: &App,
+    payload: &GitHubPullRequestEvent,
+) -> Result<(), StatusCode> {
+    // Find the preview deployment
+    let preview: Option<PreviewDeployment> = sqlx::query_as(
+        "SELECT * FROM preview_deployments WHERE app_id = ? AND pr_number = ?",
+    )
+    .bind(&app.id)
+    .bind(payload.number)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if let Some(preview) = preview {
+        tracing::info!(
+            preview_id = %preview.id,
+            app = %app.name,
+            pr = payload.number,
+            "Cleaning up preview deployment"
+        );
+
+        let db = state.db.clone();
+        let runtime = state.runtime.clone();
+        let routes = state.routes.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) = cleanup_preview(&db, runtime, routes, &preview).await {
+                tracing::error!(
+                    preview_id = %preview.id,
+                    error = %e,
+                    "Preview cleanup failed"
+                );
+            }
+        });
+    } else {
+        tracing::debug!(
+            app = %app.name,
+            pr = payload.number,
+            "No preview deployment found for cleanup"
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

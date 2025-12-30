@@ -54,6 +54,7 @@ const navMain: NavMainItem[] = [
       { title: "Teams", url: "/settings/teams" },
       { title: "Notifications", url: "/settings/notifications" },
       { title: "Git Providers", url: "/settings/git-providers" },
+      { title: "GitHub Apps", url: "/settings/github-apps" },
       { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },

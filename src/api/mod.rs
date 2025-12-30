@@ -8,8 +8,10 @@ mod deployments;
 mod env_vars;
 pub mod error;
 mod git_providers;
+mod github_apps;
 pub mod metrics;
 mod notifications;
+mod previews;
 mod projects;
 pub mod rate_limit;
 mod routes;
@@ -45,6 +47,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // OAuth routes
         .route("/oauth/:provider/authorize", get(git_providers::get_auth_url))
         .route("/oauth/:provider/callback", get(git_providers::oauth_callback))
+        // GitHub App callbacks (public - GitHub redirects here)
+        .route("/github-apps/callback", get(github_apps::manifest_callback))
+        .route("/github-apps/installation/callback", get(github_apps::installation_callback))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -144,6 +149,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases", get(databases::list_databases))
         .route("/databases", post(databases::create_database))
         .route("/databases/:id", get(databases::get_database))
+        .route("/databases/:id", put(databases::update_database))
         .route("/databases/:id", delete(databases::delete_database))
         .route("/databases/:id/start", post(databases::start_database))
         .route("/databases/:id/stop", post(databases::stop_database))
@@ -183,6 +189,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))
         .route("/audit/resource-types", get(audit::list_resource_types))
+        // GitHub Apps (callbacks are in public auth_routes)
+        .route("/github-apps", get(github_apps::list_apps))
+        .route("/github-apps", post(github_apps::create_manifest))
+        // List all installations (must be before :id routes)
+        .route("/github-apps/installations", get(github_apps::list_all_installations))
+        // Get repos by installation ID (simpler pattern for frontend)
+        .route("/github-apps/installations/:installation_id/repos", get(github_apps::list_repos_by_installation))
+        .route("/github-apps/:id", get(github_apps::get_app))
+        .route("/github-apps/:id/install", get(github_apps::get_install_url))
+        .route("/github-apps/:id/installations", get(github_apps::list_installations))
+        .route("/github-apps/:id/installations/:iid/repos", get(github_apps::list_installation_repos))
+        // Preview Deployments (PR previews)
+        .route("/apps/:id/previews", get(previews::list_app_previews))
+        .route("/previews", get(previews::list_all_previews))
+        .route("/previews/status/:status", get(previews::list_previews_by_status))
+        .route("/previews/:id", get(previews::get_preview))
+        .route("/previews/:id", delete(previews::delete_preview))
+        .route("/previews/:id/redeploy", post(previews::redeploy_preview))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

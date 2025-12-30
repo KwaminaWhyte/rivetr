@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use super::common::{parse_domains, Domain, Environment, PortMapping};
+use crate::engine::nixpacks::NixpacksConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct App {
@@ -63,6 +64,15 @@ pub struct App {
     pub registry_password: Option<String>,
     /// Container labels (JSON object stored as TEXT)
     pub container_labels: Option<String>,
+    /// Build type: "dockerfile" (default), "nixpacks", or "static"
+    pub build_type: Option<String>,
+    /// Nixpacks-specific configuration (JSON)
+    pub nixpacks_config: Option<String>,
+    /// Publish directory for static site builds (e.g., "dist", "build", "out")
+    pub publish_directory: Option<String>,
+    /// Enable PR preview deployments for this app
+    #[serde(default)]
+    pub preview_enabled: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -109,6 +119,12 @@ pub struct AppResponse {
     pub registry_username: Option<String>,
     // Container labels
     pub container_labels: Option<String>,
+    // Build type and Nixpacks support
+    pub build_type: Option<String>,
+    pub nixpacks_config: Option<String>,
+    pub publish_directory: Option<String>,
+    // Preview deployments
+    pub preview_enabled: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -148,6 +164,10 @@ impl From<App> for AppResponse {
             registry_url: app.registry_url,
             registry_username: app.registry_username,
             container_labels: app.container_labels,
+            build_type: app.build_type,
+            nixpacks_config: app.nixpacks_config,
+            publish_directory: app.publish_directory,
+            preview_enabled: app.preview_enabled != 0,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -296,6 +316,27 @@ impl App {
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default()
     }
+
+    /// Get the build type, defaulting to "dockerfile" if empty or not set
+    pub fn get_build_type(&self) -> &str {
+        self.build_type
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.as_str())
+            .unwrap_or("dockerfile")
+    }
+
+    /// Check if this app uses Nixpacks for building
+    pub fn uses_nixpacks(&self) -> bool {
+        self.get_build_type() == "nixpacks"
+    }
+
+    /// Parse nixpacks_config JSON into NixpacksConfig
+    pub fn get_nixpacks_config(&self) -> Option<NixpacksConfig> {
+        self.nixpacks_config
+            .as_ref()
+            .and_then(|s| NixpacksConfig::from_json(s).ok())
+    }
 }
 
 // DTOs for API
@@ -349,6 +390,21 @@ pub struct CreateAppRequest {
     pub registry_password: Option<String>,
     /// Container labels (key-value pairs)
     pub container_labels: Option<std::collections::HashMap<String, String>>,
+    // Build type and Nixpacks support
+    /// Build type: "dockerfile" (default), "nixpacks", or "static"
+    #[serde(default = "default_build_type")]
+    pub build_type: String,
+    /// Nixpacks-specific configuration (JSON object)
+    pub nixpacks_config: Option<String>,
+    /// Publish directory for static site builds (e.g., "dist", "build", "out")
+    pub publish_directory: Option<String>,
+    /// Enable PR preview deployments
+    #[serde(default)]
+    pub preview_enabled: bool,
+}
+
+fn default_build_type() -> String {
+    "dockerfile".to_string()
 }
 
 fn default_image_tag() -> Option<String> {
@@ -414,6 +470,15 @@ pub struct UpdateAppRequest {
     pub registry_password: Option<String>,
     /// Container labels (key-value pairs)
     pub container_labels: Option<std::collections::HashMap<String, String>>,
+    // Build type and Nixpacks support
+    /// Build type: "dockerfile", "nixpacks", or "static"
+    pub build_type: Option<String>,
+    /// Nixpacks-specific configuration (JSON object)
+    pub nixpacks_config: Option<String>,
+    /// Publish directory for static site builds (e.g., "dist", "build", "out")
+    pub publish_directory: Option<String>,
+    /// Enable PR preview deployments
+    pub preview_enabled: Option<bool>,
 }
 
 /// Request specifically for updating domains

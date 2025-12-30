@@ -52,7 +52,7 @@ import type {
   Volume,
 } from "@/types/api";
 
-const API_BASE = process.env.API_BASE || "http://localhost:9080";
+const API_BASE = process.env.API_BASE || "http://localhost:8080";
 
 async function apiRequest<T>(
   path: string,
@@ -99,7 +99,11 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ password }),
     }),
-  assignAppToProject: (token: string, appId: string, projectId: string | null) =>
+  assignAppToProject: (
+    token: string,
+    appId: string,
+    projectId: string | null
+  ) =>
     apiRequest<App>(`/apps/${appId}`, token, {
       method: "PUT",
       body: JSON.stringify({ project_id: projectId }),
@@ -138,7 +142,9 @@ export const api = {
   triggerDeploy: (token: string, appId: string) =>
     apiRequest<Deployment>(`/apps/${appId}/deploy`, token, { method: "POST" }),
   rollbackDeployment: (token: string, id: string) =>
-    apiRequest<Deployment>(`/deployments/${id}/rollback`, token, { method: "POST" }),
+    apiRequest<Deployment>(`/deployments/${id}/rollback`, token, {
+      method: "POST",
+    }),
 
   // Container Stats
   getAppStats: (token: string, appId: string) =>
@@ -181,21 +187,33 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateEnvVar: (token: string, appId: string, key: string, data: UpdateEnvVarRequest) =>
-    apiRequest<EnvVar>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, token, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+  updateEnvVar: (
+    token: string,
+    appId: string,
+    key: string,
+    data: UpdateEnvVarRequest
+  ) =>
+    apiRequest<EnvVar>(
+      `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
+      token,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    ),
   deleteEnvVar: (token: string, appId: string, key: string) =>
-    apiRequest<void>(`/apps/${appId}/env-vars/${encodeURIComponent(key)}`, token, {
-      method: "DELETE",
-    }),
+    apiRequest<void>(
+      `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
+      token,
+      {
+        method: "DELETE",
+      }
+    ),
 
   // System
   getSystemStats: (token: string) =>
     apiRequest<SystemStats>("/system/stats", token),
-  getDiskStats: (token: string) =>
-    apiRequest<DiskStats>("/system/disk", token),
+  getDiskStats: (token: string) => apiRequest<DiskStats>("/system/disk", token),
   getRecentEvents: (token: string) =>
     apiRequest<RecentEvent[]>("/events/recent", token),
   getSystemHealth: (token: string) =>
@@ -206,19 +224,32 @@ export const api = {
     apiRequest<NotificationChannel[]>("/notification-channels", token),
   getNotificationChannel: (token: string, id: string) =>
     apiRequest<NotificationChannel>(`/notification-channels/${id}`, token),
-  createNotificationChannel: (token: string, data: CreateNotificationChannelRequest) =>
+  createNotificationChannel: (
+    token: string,
+    data: CreateNotificationChannelRequest
+  ) =>
     apiRequest<NotificationChannel>("/notification-channels", token, {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateNotificationChannel: (token: string, id: string, data: UpdateNotificationChannelRequest) =>
+  updateNotificationChannel: (
+    token: string,
+    id: string,
+    data: UpdateNotificationChannelRequest
+  ) =>
     apiRequest<NotificationChannel>(`/notification-channels/${id}`, token, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
   deleteNotificationChannel: (token: string, id: string) =>
-    apiRequest<void>(`/notification-channels/${id}`, token, { method: "DELETE" }),
-  testNotificationChannel: (token: string, id: string, data?: TestNotificationRequest) =>
+    apiRequest<void>(`/notification-channels/${id}`, token, {
+      method: "DELETE",
+    }),
+  testNotificationChannel: (
+    token: string,
+    id: string,
+    data?: TestNotificationRequest
+  ) =>
     apiRequest<void>(`/notification-channels/${id}/test`, token, {
       method: "POST",
       body: JSON.stringify(data || {}),
@@ -244,10 +275,13 @@ export const api = {
       }
     ),
   deleteNotificationSubscription: (token: string, id: string) =>
-    apiRequest<void>(`/notification-subscriptions/${id}`, token, { method: "DELETE" }),
+    apiRequest<void>(`/notification-subscriptions/${id}`, token, {
+      method: "DELETE",
+    }),
 
   // Teams
-  getTeams: (token: string) => apiRequest<TeamWithMemberCount[]>("/teams", token),
+  getTeams: (token: string) =>
+    apiRequest<TeamWithMemberCount[]>("/teams", token),
   getTeam: (token: string, id: string) =>
     apiRequest<TeamDetail>(`/teams/${id}`, token),
   createTeam: (token: string, data: CreateTeamRequest) =>
@@ -264,7 +298,11 @@ export const api = {
     apiRequest<void>(`/teams/${id}`, token, { method: "DELETE" }),
   getTeamMembers: (token: string, teamId: string) =>
     apiRequest<TeamMemberWithUser[]>(`/teams/${teamId}/members`, token),
-  inviteTeamMember: (token: string, teamId: string, data: InviteMemberRequest) =>
+  inviteTeamMember: (
+    token: string,
+    teamId: string,
+    data: InviteMemberRequest
+  ) =>
     apiRequest<TeamMemberWithUser>(`/teams/${teamId}/members`, token, {
       method: "POST",
       body: JSON.stringify(data),
@@ -275,10 +313,14 @@ export const api = {
     userId: string,
     data: UpdateMemberRoleRequest
   ) =>
-    apiRequest<TeamMemberWithUser>(`/teams/${teamId}/members/${userId}`, token, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+    apiRequest<TeamMemberWithUser>(
+      `/teams/${teamId}/members/${userId}`,
+      token,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    ),
   removeTeamMember: (token: string, teamId: string, userId: string) =>
     apiRequest<void>(`/teams/${teamId}/members/${userId}`, token, {
       method: "DELETE",
@@ -319,9 +361,13 @@ export const api = {
   deleteDatabase: (token: string, id: string) =>
     apiRequest<void>(`/databases/${id}`, token, { method: "DELETE" }),
   startDatabase: (token: string, id: string) =>
-    apiRequest<ManagedDatabase>(`/databases/${id}/start`, token, { method: "POST" }),
+    apiRequest<ManagedDatabase>(`/databases/${id}/start`, token, {
+      method: "POST",
+    }),
   stopDatabase: (token: string, id: string) =>
-    apiRequest<ManagedDatabase>(`/databases/${id}/stop`, token, { method: "POST" }),
+    apiRequest<ManagedDatabase>(`/databases/${id}/stop`, token, {
+      method: "POST",
+    }),
 
   // Docker Compose Services
   getServices: (token: string) => apiRequest<Service[]>("/services", token),
@@ -363,7 +409,8 @@ export const api = {
   getAuditLogs: (query: AuditLogQuery = {}, token: string) => {
     const params = new URLSearchParams();
     if (query.action) params.append("action", query.action);
-    if (query.resource_type) params.append("resource_type", query.resource_type);
+    if (query.resource_type)
+      params.append("resource_type", query.resource_type);
     if (query.resource_id) params.append("resource_id", query.resource_id);
     if (query.user_id) params.append("user_id", query.user_id);
     if (query.start_date) params.append("start_date", query.start_date);
@@ -395,10 +442,17 @@ export async function login(email: string, password: string) {
     throw new Error(error || "Login failed");
   }
 
-  return response.json() as Promise<{ token: string; user: { id: string; email: string; name: string } }>;
+  return response.json() as Promise<{
+    token: string;
+    user: { id: string; email: string; name: string };
+  }>;
 }
 
-export async function setup(data: { name: string; email: string; password: string }) {
+export async function setup(data: {
+  name: string;
+  email: string;
+  password: string;
+}) {
   const response = await fetch(`${API_BASE}/api/auth/setup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -410,5 +464,8 @@ export async function setup(data: { name: string; email: string; password: strin
     throw new Error(error || "Setup failed");
   }
 
-  return response.json() as Promise<{ token: string; user: { id: string; email: string; name: string } }>;
+  return response.json() as Promise<{
+    token: string;
+    user: { id: string; email: string; name: string };
+  }>;
 }
