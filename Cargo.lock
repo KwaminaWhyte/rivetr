@@ -2487,6 +2487,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "sqlx",
+ "subtle",
  "tar",
  "tempfile",
  "thiserror 2.0.17",

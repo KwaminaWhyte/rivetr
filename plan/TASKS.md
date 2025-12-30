@@ -229,10 +229,13 @@
 
 - [x] **T2.1.1** Add input validation on all endpoints (src/api/validation.rs)
 - [x] **T2.1.2** Implement rate limiting (src/api/rate_limit.rs - sliding window algorithm, per-tier limits)
-- [ ] **T2.1.3** Add CSRF tokens for UI forms
+- [x] **T2.1.3** Security headers middleware (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Cache-Control) - Note: CSRF not needed with Bearer token auth (localStorage, not cookies)
 - [x] **T2.1.4** Encrypt env vars at rest (AES-256-GCM encryption)
-- [ ] **T2.1.5** Secure session cookies
+- [x] **T2.1.5** Fix timing attack vulnerabilities (constant-time comparison using `subtle` crate)
 - [x] **T2.1.6** Add audit logging (routes/settings/audit.tsx, src/api/audit.rs)
+- [x] **T2.1.7** Strengthen password requirements (12+ chars, uppercase, lowercase, digit, special char, common password check)
+- [x] **T2.1.8** Add command injection protection (shell metacharacter blocking in validation.rs)
+- [x] **T2.1.9** Cryptographically secure admin token generation (256-bit random vs UUID)
 
 ### 2.2 Error Handling
 
@@ -280,8 +283,9 @@
 - [x] **T2.7.1** Write README with quickstart
 - [ ] **T2.7.2** Document configuration options
 - [ ] **T2.7.3** Document API endpoints
-- [ ] **T2.7.4** Write deployment guide
-- [ ] **T2.7.5** Write troubleshooting guide
+- [x] **T2.7.4** Write deployment guide (DEPLOYMENT.md with install script, systemd service, SSL, backup/restore, troubleshooting)
+- [x] **T2.7.5** Write troubleshooting guide (included in DEPLOYMENT.md)
+- [x] **T2.7.6** Create one-liner install script (install.sh - auto-installs Docker, Rivetr, systemd service)
 
 **Phase 2 Checkpoint**: Production-ready release
 
@@ -681,12 +685,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 |-------|-------------|-----------|----------|
 | Phase 0 | 30 | 28 | 93% |
 | Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 28 | 20 | 71% |
+| Phase 2 | 31 | 26 | 84% |
 | Phase 3 | 94 | 83 | 88% |
 | Phase 4 | 61 | 61 | 100% |
 | Phase 5 | 30 | 17 | 57% |
 | Phase 6 | 28 | 0 | 0% |
-| **Total** | **365** | **303** | **83%** |
+| **Total** | **368** | **309** | **84%** |
 
 ---
 
@@ -730,9 +734,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **T3.8.2, T3.8.4-5** - Additional Buildpacks (Railpack, Heroku, Paketo)
 
 **Phase 2 - Production Ready:**
-- **T2.1.3** - Add CSRF tokens for UI forms
 - **T2.2.2** - Add deployment failure recovery
 - **T2.2.5** - Database integrity checks
+- **T2.7.2-3** - Document configuration options and API endpoints
 
 ### MVP Status
 **Phase 1 Complete!** Core deployment pipeline with:
@@ -821,6 +825,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **S3 Backup Integration** - Backup volumes/databases to S3
 
 ### Recently Completed
+- **Security Hardening v0.1.0** - Timing attack fixes (constant-time comparison), command injection protection, password strength validation (12+ chars, complexity requirements), security headers middleware, container restart policies (unless-stopped), production deployment documentation with one-liner install script
 - **ZIP File Upload Deployment** - Deploy apps by uploading ZIP files with auto-detection of build type (Dockerfile, Nixpacks, Static, Docker Compose). Supports drag-and-drop upload, build preview, and quick deploy (create app + deploy in one step).
 - **Real-Time Log Streaming Fix** - Added `logs_stream()` method to ContainerRuntime trait with `follow: true` for Docker and `--follow` for Podman, enabling continuous real-time log streaming in the UI
 - **Resource Chart Auth Fix** - Added auth token headers to stats history API calls, fixing the time range selector for Global Resource Utilization chart

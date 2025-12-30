@@ -76,6 +76,7 @@ sha2 = "0.10"
 hex = "0.4"
 hmac = "0.12"
 jsonwebtoken = "9"
+subtle = "2.6"  # Constant-time comparison for security-sensitive operations
 
 # Metrics
 metrics = "0.24"

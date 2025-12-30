@@ -582,6 +582,35 @@ const MAX_COMMAND_LENGTH: usize = 4096;
 /// Maximum number of domains per app
 const MAX_DOMAINS_PER_APP: usize = 100;
 
+/// Dangerous shell metacharacters that could enable command injection
+/// These are blocked to prevent arbitrary command execution in containers
+const DANGEROUS_SHELL_CHARS: &[&str] = &[
+    "$(", "`",     // Command substitution
+    "&&", "||",    // Command chaining
+    ";",           // Command separator
+    "|",           // Pipe to another command
+    ">", ">>",     // Output redirection
+    "<", "<<",     // Input redirection
+    "&",           // Background execution
+    "\n", "\r",    // Newlines (command separation)
+];
+
+/// Dangerous patterns in deployment commands
+const DANGEROUS_PATTERNS: &[&str] = &[
+    "rm -rf /",           // Dangerous recursive delete
+    "rm -rf /*",          // Dangerous recursive delete
+    ":(){:|:&};:",        // Fork bomb
+    "mkfs",               // Filesystem formatting
+    "dd if=",             // Raw disk access
+    "/dev/sda",           // Disk device access
+    "/dev/null",          // While harmless, may indicate redirection attempt
+    "chmod 777",          // Overly permissive permissions
+    "curl | sh",          // Remote code execution pattern
+    "curl | bash",        // Remote code execution pattern
+    "wget | sh",          // Remote code execution pattern
+    "wget | bash",        // Remote code execution pattern
+];
+
 /// Validate deployment commands (pre or post deploy)
 pub fn validate_deployment_commands(
     commands: &Option<Vec<String>>,
@@ -616,6 +645,34 @@ pub fn validate_deployment_commands(
                     field_name,
                     i + 1
                 ));
+            }
+
+            // Check for dangerous shell metacharacters that could enable injection
+            for dangerous in DANGEROUS_SHELL_CHARS {
+                if cmd.contains(dangerous) {
+                    return Err(format!(
+                        "{}: command {} contains dangerous shell character '{}'. \
+                        For security, shell metacharacters are not allowed in deployment commands. \
+                        Each command should be a simple executable with arguments.",
+                        field_name,
+                        i + 1,
+                        dangerous.escape_default()
+                    ));
+                }
+            }
+
+            // Check for dangerous command patterns
+            let cmd_lower = cmd.to_lowercase();
+            for pattern in DANGEROUS_PATTERNS {
+                if cmd_lower.contains(&pattern.to_lowercase()) {
+                    return Err(format!(
+                        "{}: command {} contains a potentially dangerous pattern '{}'. \
+                        This operation is not allowed for security reasons.",
+                        field_name,
+                        i + 1,
+                        pattern
+                    ));
+                }
             }
         }
     }

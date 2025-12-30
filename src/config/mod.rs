@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use rand::RngCore;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -102,8 +103,11 @@ impl Default for AuthConfig {
 }
 
 fn default_admin_token() -> String {
-    // Generate a random token if not provided
-    uuid::Uuid::new_v4().to_string()
+    // Generate a cryptographically secure random token (256 bits)
+    // This provides much better entropy than UUID (128 bits)
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -14,6 +14,7 @@ use axum::{
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 
 use crate::db::{LoginRequest, LoginResponse, Session, User, UserResponse};
 use crate::AppState;
@@ -64,6 +65,46 @@ fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// Validate password strength
+/// Returns None if valid, or Some(error_message) if invalid
+fn validate_password_strength(password: &str) -> Option<String> {
+    if password.len() < 12 {
+        return Some("Password must be at least 12 characters".to_string());
+    }
+
+    let has_uppercase = password.chars().any(|c| c.is_uppercase());
+    let has_lowercase = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
+
+    if !has_uppercase {
+        return Some("Password must contain at least one uppercase letter".to_string());
+    }
+    if !has_lowercase {
+        return Some("Password must contain at least one lowercase letter".to_string());
+    }
+    if !has_digit {
+        return Some("Password must contain at least one digit".to_string());
+    }
+    if !has_special {
+        return Some("Password must contain at least one special character".to_string());
+    }
+
+    // Check for common weak passwords
+    let common_passwords = [
+        "password123!", "Password123!", "Admin123!@#", "Welcome123!",
+        "Qwerty123!@#", "Changeme123!", "Letmein123!@", "123456789Ab!",
+    ];
+    let lower = password.to_lowercase();
+    for common in common_passwords {
+        if lower.contains(&common.to_lowercase()) {
+            return Some("Password is too common. Please choose a stronger password.".to_string());
+        }
+    }
+
+    None
 }
 
 /// Login endpoint
@@ -193,7 +234,14 @@ pub async fn auth_middleware(
     let token = token.as_str();
 
     // First check if it matches the admin token from config
-    if token == state.config.auth.admin_token {
+    // Use constant-time comparison to prevent timing attacks
+    let admin_token = state.config.auth.admin_token.as_bytes();
+    let provided_token = token.as_bytes();
+
+    // Only compare if lengths match (constant-time check)
+    if admin_token.len() == provided_token.len()
+        && admin_token.ct_eq(provided_token).into()
+    {
         return Ok(next.run(request).await);
     }
 
@@ -249,11 +297,8 @@ pub async fn setup(
     if request.email.is_empty() || !request.email.contains('@') {
         return Err((StatusCode::BAD_REQUEST, "Invalid email address".to_string()));
     }
-    if request.password.len() < 8 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Password must be at least 8 characters".to_string(),
-        ));
+    if let Some(error) = validate_password_strength(&request.password) {
+        return Err((StatusCode::BAD_REQUEST, error));
     }
     if request.name.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "Name is required".to_string()));

@@ -26,6 +26,8 @@ mod webhooks;
 mod ws;
 
 use axum::{
+    body::Body,
+    http::{Request, Response},
     middleware,
     routing::{delete, get, post, put},
     Router,
@@ -255,6 +257,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest("/webhooks", webhook_routes)
         // Fallback to static files for frontend SPA
         .fallback_service(serve_static)
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(metrics::metrics_middleware))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -262,4 +265,50 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+/// Security headers middleware
+/// Adds common security headers to all responses
+async fn security_headers(request: Request<Body>, next: axum::middleware::Next) -> Response<Body> {
+    let mut response = next.run(request).await;
+
+    // Check if cache-control already set (before borrowing headers mutably)
+    let needs_cache_control = !response.headers().contains_key(axum::http::header::CACHE_CONTROL);
+
+    let headers = response.headers_mut();
+
+    // Prevent MIME type sniffing
+    headers.insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        "nosniff".parse().unwrap(),
+    );
+
+    // Prevent clickjacking
+    headers.insert(
+        axum::http::header::X_FRAME_OPTIONS,
+        "DENY".parse().unwrap(),
+    );
+
+    // XSS protection for older browsers
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-xss-protection"),
+        "1; mode=block".parse().unwrap(),
+    );
+
+    // Control referrer information
+    headers.insert(
+        axum::http::header::REFERRER_POLICY,
+        "strict-origin-when-cross-origin".parse().unwrap(),
+    );
+
+    // Prevent caching of sensitive API responses
+    // Static files served separately can have their own caching policy
+    if needs_cache_control {
+        headers.insert(
+            axum::http::header::CACHE_CONTROL,
+            "no-store, max-age=0".parse().unwrap(),
+        );
+    }
+
+    response
 }

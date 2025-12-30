@@ -161,12 +161,19 @@ impl ContainerRuntime for DockerRuntime {
             Some(config.binds.clone())
         };
 
+        // Set restart policy to ensure containers restart after server reboot
+        let restart_policy = bollard::service::RestartPolicy {
+            name: Some(bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED),
+            maximum_retry_count: None,
+        };
+
         let host_config = bollard::service::HostConfig {
             port_bindings: Some(port_bindings),
             memory: config.memory_limit.as_ref().and_then(|m| parse_memory(m)),
             nano_cpus: config.cpu_limit.as_ref().and_then(|c| parse_cpu(c)),
             extra_hosts,
             binds,
+            restart_policy: Some(restart_policy),
             ..Default::default()
         };
 

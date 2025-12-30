@@ -101,6 +101,8 @@ impl ContainerRuntime for PodmanRuntime {
         let mut args = vec![
             "run".to_string(),
             "-d".to_string(),
+            "--restart".to_string(),
+            "unless-stopped".to_string(), // Ensure container restarts after server reboot
             "--name".to_string(),
             config.name.clone(),
         ];
