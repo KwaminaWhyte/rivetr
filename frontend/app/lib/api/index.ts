@@ -76,6 +76,7 @@ export const api = {
   deleteVolume: appsApi.deleteVolume,
   backupVolume: appsApi.backupVolume,
   getRuntimeLogsWsUrl: appsApi.getRuntimeLogsWsUrl,
+  getRuntimeLogsStreamUrl: appsApi.getRuntimeLogsStreamUrl,
   getTerminalWsUrl: appsApi.getTerminalWsUrl,
   // Upload deployments
   uploadDeploy: appsApi.uploadDeploy,

@@ -421,10 +421,15 @@ export const appsApi = {
   // WebSocket URLs
   // -------------------------------------------------------------------------
 
-  /** Get WebSocket URL for runtime logs streaming */
+  /** Get WebSocket URL for runtime logs streaming (deprecated, use SSE instead) */
   getRuntimeLogsWsUrl: (appId: string, token: string): string => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}/api/apps/${appId}/logs/stream?token=${encodeURIComponent(token)}`;
+  },
+
+  /** Get SSE URL for runtime logs streaming */
+  getRuntimeLogsStreamUrl: (appId: string): string => {
+    return `${window.location.origin}/api/apps/${appId}/logs/stream`;
   },
 
   /** Get WebSocket URL for terminal access */

@@ -59,7 +59,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // WebSocket routes (auth handled in handlers via query param)
     let ws_routes = Router::new()
         .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
-        .route("/apps/:id/logs/stream", get(ws::runtime_logs_ws))
         .route("/apps/:id/terminal", get(ws::terminal_ws));
 
     // Protected API routes
@@ -74,6 +73,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/start", post(apps::start_app))
         .route("/apps/:id/stop", post(apps::stop_app))
         .route("/apps/:id/restart", post(apps::restart_app))
+        .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
         // Deployments
         .route("/apps/:id/deploy", post(deployments::trigger_deploy))
         .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))
