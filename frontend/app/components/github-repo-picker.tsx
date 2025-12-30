@@ -177,7 +177,7 @@ export function GitHubRepoPicker({
       }
     } else {
       // Start the GitHub App creation flow
-      window.location.href = "/settings/github-apps?action=create";
+      window.location.href = "/settings/git-providers?tab=github&action=create";
     }
   };
 
@@ -382,7 +382,7 @@ export function GitHubRepoPicker({
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-3 w-3 text-muted-foreground" />
                       <span>{selectedBranch}</span>
-                      {branches.find(b => b.name === selectedBranch)?.is_protected && (
+                      {branches.find(b => b.name === selectedBranch)?.protected && (
                         <Shield className="h-3 w-3 text-amber-500" title="Protected branch" />
                       )}
                       {selectedBranch === selectedRepo.default_branch && (
@@ -421,7 +421,7 @@ export function GitHubRepoPicker({
                           <div className="flex items-center gap-2 flex-1">
                             <GitBranch className="h-3 w-3 text-muted-foreground" />
                             <span>{branch.name}</span>
-                            {branch.is_protected && (
+                            {branch.protected && (
                               <Shield className="h-3 w-3 text-amber-500" title="Protected" />
                             )}
                             {branch.name === selectedRepo.default_branch && (

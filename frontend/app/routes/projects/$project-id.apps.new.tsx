@@ -196,7 +196,7 @@ export default function NewAppPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">New Application</h1>
 
-      <Card className="max-w-2xl">
+      <Card>
         <CardHeader>
           <CardTitle>Application Details</CardTitle>
           <CardDescription>
@@ -213,17 +213,39 @@ export default function NewAppPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <input type="hidden" name="deployment_source" value={deploymentSource} />
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                name="name"
-                placeholder="my-app"
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                A unique name for your application
-              </p>
+            {/* Two column layout for basic info */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  placeholder="my-app"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  A unique name for your application
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="environment">Environment</Label>
+                <Select name="environment" defaultValue="development">
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ENVIRONMENT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  The deployment environment for this application
+                </p>
+              </div>
             </div>
 
             {/* Deployment Source Tabs */}
@@ -565,44 +587,41 @@ export default function NewAppPage() {
               </Tabs>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="environment">Environment</Label>
-              <Select name="environment" defaultValue="development">
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ENVIRONMENT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                The deployment environment for this application
-              </p>
+            {/* Project and Healthcheck row */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="project">Project</Label>
+                <Select name="project_id" defaultValue={projectId} disabled>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  This app will be added to the selected project
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="healthcheck">Healthcheck Path</Label>
+                <Input
+                  id="healthcheck"
+                  name="healthcheck"
+                  placeholder="/health"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional endpoint to check if the app is healthy
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="project">Project</Label>
-              <Select name="project_id" defaultValue={projectId} disabled>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                This app will be added to the selected project
-              </p>
-            </div>
-
+            {/* Port, Domain row */}
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="port">Port</Label>
@@ -625,21 +644,13 @@ export default function NewAppPage() {
                   name="domain"
                   placeholder="app.example.com"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Optional custom domain for your application
+                </p>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="healthcheck">Healthcheck Path</Label>
-              <Input
-                id="healthcheck"
-                name="healthcheck"
-                placeholder="/health"
-              />
-              <p className="text-xs text-muted-foreground">
-                Optional endpoint to check if the app is healthy
-              </p>
-            </div>
-
+            {/* Resource Limits row */}
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="cpu_limit">CPU Limit</Label>

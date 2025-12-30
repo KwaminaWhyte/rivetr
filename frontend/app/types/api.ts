@@ -118,7 +118,7 @@ export interface GitHubAppRepository {
 /** Git branch from a repository */
 export interface GitHubBranch {
   name: string;
-  is_protected: boolean;
+  protected: boolean;
   commit: {
     sha: string;
     url: string;
@@ -507,6 +507,8 @@ export interface AppStatus {
   container_id: string | null;
   running: boolean;
   status: "running" | "stopped" | "not_deployed" | "no_container" | "not_found";
+  /** The host port the container is accessible on (for "Open App" functionality) */
+  host_port: number | null;
 }
 
 // Recent event for dashboard feed

@@ -455,6 +455,7 @@ One-click database deployments with automatic configuration.
 - [x] **T4.1.8** Implement Redis one-click deployment
 - [x] **T4.1.9** Add connection string generation (internal URL) - src/db/models.rs
 - [x] **T4.1.10** Add public port exposure option (via host port binding)
+- [x] **T4.1.10a** Add public access toggle in database settings UI (switch, custom port, security warnings, confirmation dialog)
 - [x] **T4.1.11** Add database backup scheduling (src/engine/database_backups.rs, migrations/021)
 - [x] **T4.1.12** Create Databases management page in frontend (under projects with grid view)
 - [x] **T4.1.13** Add database credentials reveal/copy UI - frontend/app/routes/databases/$id/_index.tsx
@@ -808,8 +809,19 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **S3 Backup Integration** - Backup volumes/databases to S3
 
 ### Recently Completed
+- **Database Public Access Toggle** - Added `PUT /api/databases/:id` endpoint to toggle public access with custom external port (1024-65535), security warnings, confirmation dialog, auto-restart on change
+- **Frontend API Modularization** - Split monolithic `api.ts` into domain-specific modules (apps, databases, projects, services, teams, notifications, git, system, previews) with backward-compatible re-exports
+- **Open App Button with Dynamic Port** - Added `host_port` to `AppStatusResponse` API, UI shows "Open App :port" button when container is running with exposed port
+- **App Creation Form 2-Column Layout** - Changed app creation form to full-width with responsive 2-column grid layout for better UX
+- **GitHub App Repository Picker** - Branch selection dropdown that fetches branches via GitHub App API, auto-fills git_url and branch from selected repo
+- **GitHub App Connection in Settings** - Added `GitHubSourceCard` component to app settings showing connected repository info, installation details, and disconnect option
+- **Unified Git Integrations Page** - Merged GitHub Apps and Git Providers into single page with tabs for GitHub (Apps), GitLab (PAT), and Bitbucket (App Password). Added backend API for token-based providers.
 - **26 Service Templates** - Added 14 new templates: Redis, Adminer, Mailhog, Nextcloud, pgAdmin, Filebrowser, Dozzle, Watchtower, Heimdall, RabbitMQ, Metabase, Drone CI, NocoDB, Outline
 - **Real-Time Resource Charts** - Dashboard charts now display actual historical data from stats_history table (5-min intervals, 7-day retention)
 - **Service Stats in Dashboard** - Docker Compose service resource usage now included in dashboard totals (uses compose project label filtering)
 - **Breadcrumbs** - Dynamic breadcrumb navigation showing project context
 - **Time Range Selectors** - Global resource charts with 1h/6h/24h/7d/30d time range selection
+
+### Known Deployment Issues (User Repository Issues)
+- **kwamina-website** - Container crashes due to `cross-env: not found` - the Dockerfile doesn't install devDependencies at runtime, but `npm start` uses `cross-env`. Fix: Move `cross-env` to dependencies or change start script to `NODE_ENV=production react-router-serve ./build/server/index.js`
+- **pharmapro** - App responds but shows Laravel 500 error - likely needs database/env configuration (APP_KEY, database connection)

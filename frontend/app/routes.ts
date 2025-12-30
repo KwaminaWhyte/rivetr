@@ -71,7 +71,6 @@ export default [
       route("tokens", "routes/settings/tokens.tsx"),
       route("ssh-keys", "routes/settings/ssh-keys.tsx"),
       route("git-providers", "routes/settings/git-providers.tsx"),
-      route("github-apps", "routes/settings/github-apps.tsx"),
       route("notifications", "routes/settings/notifications.tsx"),
       route("teams", "routes/settings/teams.tsx"),
       route("teams/:id", "routes/settings/teams/$id.tsx"),

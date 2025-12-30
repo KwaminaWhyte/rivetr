@@ -22,6 +22,7 @@ import {
   RotateCw,
   ChevronDown,
   Rocket,
+  ExternalLink,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -336,14 +337,25 @@ export default function AppDetailLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {appStatus?.running && app.domain && (
-            <Button variant="outline" asChild>
+          {/* Open App button - show if running and has either domain or host_port */}
+          {appStatus?.running && (app.domain || appStatus.host_port) && (
+            <Button variant="outline" asChild className="gap-2">
               <a
-                href={`https://${app.domain}`}
+                href={
+                  app.domain
+                    ? `https://${app.domain}`
+                    : `http://localhost:${appStatus.host_port}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open Site
+                <ExternalLink className="h-4 w-4" />
+                Open App
+                {!app.domain && appStatus.host_port && (
+                  <span className="text-xs text-muted-foreground">
+                    :{appStatus.host_port}
+                  </span>
+                )}
               </a>
             </Button>
           )}

@@ -4,7 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
@@ -12,6 +12,25 @@ use crate::db::{
     OAuthAuthorizationResponse, OAuthCallbackRequest,
 };
 use crate::AppState;
+
+/// Request to add a provider via Personal Access Token
+#[derive(Debug, Deserialize)]
+pub struct AddTokenProviderRequest {
+    pub provider: String,
+    pub token: String,
+    /// For Bitbucket: username is required along with app password
+    pub username: Option<String>,
+}
+
+/// Response after adding a token-based provider
+#[derive(Debug, Serialize)]
+pub struct TokenProviderResponse {
+    pub id: String,
+    pub provider: String,
+    pub username: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
 
 /// URL-encode a string for use in query parameters
 fn url_encode(s: &str) -> String {
@@ -82,6 +101,299 @@ pub async fn delete_provider(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Add a Git provider via Personal Access Token (GitLab) or App Password (Bitbucket)
+pub async fn add_token_provider(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<AddTokenProviderRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let provider_type: GitProviderType = req.provider.parse()
+        .map_err(|e: String| (StatusCode::BAD_REQUEST, e))?;
+
+    // GitHub should use GitHub Apps, not PAT
+    if matches!(provider_type, GitProviderType::Github) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "GitHub integration uses GitHub Apps. Please use the GitHub Apps flow instead.".to_string()
+        ));
+    }
+
+    // Validate and get user info using the token
+    let user_info = match provider_type {
+        GitProviderType::Github => unreachable!(),
+        GitProviderType::Gitlab => validate_gitlab_token(&req.token).await?,
+        GitProviderType::Bitbucket => {
+            let username = req.username.ok_or((
+                StatusCode::BAD_REQUEST,
+                "Username is required for Bitbucket App Password".to_string()
+            ))?;
+            validate_bitbucket_app_password(&username, &req.token).await?
+        }
+    };
+
+    // Store the provider
+    let user_id = "admin"; // For now, we use a fixed user_id
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO git_providers (id, user_id, provider, provider_user_id, username, display_name, email, avatar_url, access_token, refresh_token, token_expires_at, scopes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, provider) DO UPDATE SET
+            provider_user_id = excluded.provider_user_id,
+            username = excluded.username,
+            display_name = excluded.display_name,
+            email = excluded.email,
+            avatar_url = excluded.avatar_url,
+            access_token = excluded.access_token,
+            refresh_token = excluded.refresh_token,
+            token_expires_at = excluded.token_expires_at,
+            scopes = excluded.scopes,
+            updated_at = excluded.updated_at
+        "#
+    )
+    .bind(&id)
+    .bind(user_id)
+    .bind(provider_type.to_string())
+    .bind(&user_info.provider_user_id)
+    .bind(&user_info.username)
+    .bind(&user_info.display_name)
+    .bind(&user_info.email)
+    .bind(&user_info.avatar_url)
+    .bind(&req.token)
+    .bind::<Option<String>>(None) // No refresh token for PATs
+    .bind::<Option<String>>(None) // No expiration for PATs (they're long-lived)
+    .bind(&user_info.scopes)
+    .bind(&now)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(TokenProviderResponse {
+        id,
+        provider: provider_type.to_string(),
+        username: user_info.username,
+        display_name: user_info.display_name,
+        avatar_url: user_info.avatar_url,
+    }))
+}
+
+/// Validate a GitLab Personal Access Token and get user info
+async fn validate_gitlab_token(token: &str) -> Result<ProviderUserInfo, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+
+    #[derive(Deserialize)]
+    struct GitLabUser {
+        id: i64,
+        username: String,
+        name: Option<String>,
+        email: Option<String>,
+        avatar_url: Option<String>,
+    }
+
+    let response = client
+        .get("https://gitlab.com/api/v4/user")
+        .header("PRIVATE-TOKEN", token)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to validate token: {}", e)))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid GitLab Personal Access Token".to_string()));
+    }
+
+    if !response.status().is_success() {
+        return Err((StatusCode::BAD_GATEWAY, format!("GitLab API error: {}", response.status())));
+    }
+
+    let user: GitLabUser = response.json().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+
+    Ok(ProviderUserInfo {
+        provider_user_id: user.id.to_string(),
+        username: user.username,
+        display_name: user.name,
+        email: user.email,
+        avatar_url: user.avatar_url,
+        scopes: Some("api read_repository".to_string()),
+    })
+}
+
+/// Validate a Bitbucket App Password and get user info
+async fn validate_bitbucket_app_password(username: &str, app_password: &str) -> Result<ProviderUserInfo, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+
+    #[derive(Deserialize)]
+    struct BitbucketUser {
+        uuid: String,
+        username: String,
+        display_name: Option<String>,
+        links: BitbucketUserLinks,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketUserLinks {
+        avatar: Option<BitbucketLink>,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketLink {
+        href: String,
+    }
+
+    let response = client
+        .get("https://api.bitbucket.org/2.0/user")
+        .basic_auth(username, Some(app_password))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to validate credentials: {}", e)))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid Bitbucket username or App Password".to_string()));
+    }
+
+    if !response.status().is_success() {
+        return Err((StatusCode::BAD_GATEWAY, format!("Bitbucket API error: {}", response.status())));
+    }
+
+    let user: BitbucketUser = response.json().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+
+    Ok(ProviderUserInfo {
+        provider_user_id: user.uuid,
+        username: user.username,
+        display_name: user.display_name,
+        email: None,
+        avatar_url: user.links.avatar.map(|a| a.href),
+        scopes: Some("repository account".to_string()),
+    })
+}
+
+/// Fetch GitLab repos using Personal Access Token
+pub async fn fetch_gitlab_repos_with_pat(access_token: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+
+    #[derive(Deserialize)]
+    struct GitLabProject {
+        id: i64,
+        name: String,
+        path_with_namespace: String,
+        description: Option<String>,
+        web_url: String,
+        http_url_to_repo: String,
+        ssh_url_to_repo: String,
+        default_branch: Option<String>,
+        visibility: String,
+        namespace: GitLabNamespace,
+    }
+
+    #[derive(Deserialize)]
+    struct GitLabNamespace {
+        name: String,
+    }
+
+    let response = client
+        .get(format!("https://gitlab.com/api/v4/projects?membership=true&page={}&per_page={}&order_by=updated_at", page, per_page))
+        .header("PRIVATE-TOKEN", access_token)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
+
+    let repos: Vec<GitLabProject> = response.json().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+
+    Ok(repos.into_iter().map(|r| GitRepository {
+        id: r.id.to_string(),
+        name: r.name,
+        full_name: r.path_with_namespace,
+        description: r.description,
+        html_url: r.web_url,
+        clone_url: r.http_url_to_repo,
+        ssh_url: r.ssh_url_to_repo,
+        default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
+        private: r.visibility != "public",
+        owner: r.namespace.name,
+    }).collect())
+}
+
+/// Fetch Bitbucket repos using App Password
+pub async fn fetch_bitbucket_repos_with_app_password(username: &str, app_password: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+
+    #[derive(Deserialize)]
+    struct BitbucketResponse {
+        values: Vec<BitbucketRepo>,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketRepo {
+        uuid: String,
+        name: String,
+        full_name: String,
+        description: Option<String>,
+        is_private: bool,
+        links: BitbucketRepoLinks,
+        mainbranch: Option<BitbucketBranch>,
+        owner: BitbucketOwner,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketRepoLinks {
+        html: BitbucketRepoLink,
+        clone: Vec<BitbucketCloneLink>,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketRepoLink {
+        href: String,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketCloneLink {
+        name: String,
+        href: String,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketBranch {
+        name: String,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketOwner {
+        username: String,
+    }
+
+    let response = client
+        .get(format!("https://api.bitbucket.org/2.0/repositories/{}?page={}&pagelen={}", username, page, per_page))
+        .basic_auth(username, Some(app_password))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
+
+    let repos: BitbucketResponse = response.json().await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+
+    Ok(repos.values.into_iter().map(|r| {
+        let https_url = r.links.clone.iter().find(|c| c.name == "https").map(|c| c.href.clone()).unwrap_or_default();
+        let ssh_url = r.links.clone.iter().find(|c| c.name == "ssh").map(|c| c.href.clone()).unwrap_or_default();
+
+        GitRepository {
+            id: r.uuid,
+            name: r.name,
+            full_name: r.full_name,
+            description: r.description,
+            html_url: r.links.html.href,
+            clone_url: https_url,
+            ssh_url,
+            default_branch: r.mainbranch.map(|b| b.name).unwrap_or_else(|| "main".to_string()),
+            private: r.is_private,
+            owner: r.owner.username,
+        }
+    }).collect())
 }
 
 /// Get OAuth authorization URL for a provider

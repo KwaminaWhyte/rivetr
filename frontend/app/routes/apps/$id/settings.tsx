@@ -27,6 +27,7 @@ import {
 import { Sparkles, FileCode, Package } from "lucide-react";
 import { BasicAuthCard } from "@/components/basic-auth-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
+import { GitHubSourceCard } from "@/components/github-source-card";
 import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { DomainManagementCard } from "@/components/domain-management-card";
@@ -229,6 +230,9 @@ export default function AppSettingsTab() {
 
         {/* General Tab */}
         <TabsContent value="general" className="space-y-6">
+          {/* GitHub App Connection (shown if connected) */}
+          <GitHubSourceCard app={app} />
+
           <Card>
             <CardHeader>
               <CardTitle>General Settings</CardTitle>

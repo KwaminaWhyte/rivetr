@@ -48,7 +48,7 @@ export const gitApi = {
     ),
 
   // -------------------------------------------------------------------------
-  // Git Providers (OAuth)
+  // Git Providers (PAT/Token-based)
   // -------------------------------------------------------------------------
 
   /** List all connected Git providers */
@@ -58,6 +58,20 @@ export const gitApi = {
   /** Get a single Git provider */
   getGitProvider: (id: string, token?: string) =>
     apiRequest<GitProvider>(`/git-providers/${id}`, {}, token),
+
+  /** Add a Git provider via Personal Access Token (GitLab) or App Password (Bitbucket) */
+  addGitProvider: (
+    data: { provider: "gitlab" | "bitbucket"; token: string; username?: string },
+    token?: string
+  ) =>
+    apiRequest<GitProvider>(
+      "/git-providers",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
 
   /** Delete a Git provider connection */
   deleteGitProvider: (id: string, token?: string) =>
@@ -72,17 +86,6 @@ export const gitApi = {
   ) =>
     apiRequest<GitRepository[]>(
       `/git-providers/${providerId}/repos?page=${page}&per_page=${perPage}`,
-      {},
-      token
-    ),
-
-  /** Get OAuth authorization URL for a provider */
-  getGitProviderAuthUrl: (
-    provider: "github" | "gitlab" | "bitbucket",
-    token?: string
-  ) =>
-    apiRequest<OAuthAuthorizationResponse>(
-      `/auth/oauth/${provider}/authorize`,
       {},
       token
     ),

@@ -98,6 +98,7 @@ export const api = {
   getGitHubAppInstallations: gitApi.getGitHubAppInstallations,
   getAllGitHubAppInstallations: gitApi.getAllGitHubAppInstallations,
   getGitHubAppRepositories: gitApi.getGitHubAppRepositories,
+  getGitHubAppRepoBranches: gitApi.getGitHubAppRepoBranches,
   getGitHubAppInstallUrl: gitApi.getGitHubAppInstallUrl,
 
   // Databases

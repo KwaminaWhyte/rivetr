@@ -753,6 +753,8 @@ pub struct AppStatusResponse {
     pub container_id: Option<String>,
     pub running: bool,
     pub status: String,
+    /// The host port the container is accessible on (for "Open App" functionality)
+    pub host_port: Option<u16>,
 }
 
 /// Get current running status of an app
@@ -780,18 +782,23 @@ pub async fn get_app_status(
     .fetch_optional(&state.db)
     .await?;
 
-    let (container_id, running, status) = if let Some((cid,)) = deployment {
+    let (container_id, running, status, host_port) = if let Some((cid,)) = deployment {
         if cid.is_empty() {
-            (None, false, "no_container".to_string())
+            (None, false, "no_container".to_string(), None)
         } else {
             // Check if container is running
             match state.runtime.inspect(&cid).await {
-                Ok(info) => (Some(cid), info.running, if info.running { "running" } else { "stopped" }.to_string()),
-                Err(_) => (Some(cid), false, "not_found".to_string()),
+                Ok(info) => (
+                    Some(cid),
+                    info.running,
+                    if info.running { "running" } else { "stopped" }.to_string(),
+                    info.host_port,
+                ),
+                Err(_) => (Some(cid), false, "not_found".to_string(), None),
             }
         }
     } else {
-        (None, false, "not_deployed".to_string())
+        (None, false, "not_deployed".to_string(), None)
     };
 
     Ok(Json(AppStatusResponse {
@@ -799,6 +806,7 @@ pub async fn get_app_status(
         container_id,
         running,
         status,
+        host_port,
     }))
 }
 
@@ -841,22 +849,27 @@ pub async fn start_app(
 
     tracing::info!(app = %app.name, container = %container_id, "App container started");
 
+    // Get container info for the port (used for both routing and response)
+    let host_port = state
+        .runtime
+        .inspect(&container_id)
+        .await
+        .ok()
+        .and_then(|info| info.host_port);
+
     // Re-register the route if app has a domain
     if let Some(domain) = &app.domain {
         if !domain.is_empty() {
-            // Get container info for the port
-            if let Ok(info) = state.runtime.inspect(&container_id).await {
-                if let Some(host_port) = info.host_port {
-                    let backend = crate::proxy::Backend::new(
-                        container_id.clone(),
-                        "127.0.0.1".to_string(),
-                        host_port,
-                    )
-                    .with_healthcheck(app.healthcheck.clone());
+            if let Some(port) = host_port {
+                let backend = crate::proxy::Backend::new(
+                    container_id.clone(),
+                    "127.0.0.1".to_string(),
+                    port,
+                )
+                .with_healthcheck(app.healthcheck.clone());
 
-                    state.routes.load().add_route(domain.clone(), backend);
-                    tracing::info!(domain = %domain, "Route re-registered after start");
-                }
+                state.routes.load().add_route(domain.clone(), backend);
+                tracing::info!(domain = %domain, "Route re-registered after start");
             }
         }
     }
@@ -880,6 +893,7 @@ pub async fn start_app(
         container_id: Some(container_id),
         running: true,
         status: "running".to_string(),
+        host_port,
     }))
 }
 
@@ -949,6 +963,7 @@ pub async fn stop_app(
         container_id: Some(container_id),
         running: false,
         status: "stopped".to_string(),
+        host_port: None, // Container is stopped, no port exposed
     }))
 }
 
@@ -999,22 +1014,27 @@ pub async fn restart_app(
 
     tracing::info!(app = %app.name, container = %container_id, "App container restarted");
 
+    // Get container info for the port (used for both routing and response)
+    let host_port = state
+        .runtime
+        .inspect(&container_id)
+        .await
+        .ok()
+        .and_then(|info| info.host_port);
+
     // Re-register the route if app has a domain
     if let Some(domain) = &app.domain {
         if !domain.is_empty() {
-            // Get container info for the port
-            if let Ok(info) = state.runtime.inspect(&container_id).await {
-                if let Some(host_port) = info.host_port {
-                    let backend = crate::proxy::Backend::new(
-                        container_id.clone(),
-                        "127.0.0.1".to_string(),
-                        host_port,
-                    )
-                    .with_healthcheck(app.healthcheck.clone());
+            if let Some(port) = host_port {
+                let backend = crate::proxy::Backend::new(
+                    container_id.clone(),
+                    "127.0.0.1".to_string(),
+                    port,
+                )
+                .with_healthcheck(app.healthcheck.clone());
 
-                    state.routes.load().add_route(domain.clone(), backend);
-                    tracing::info!(domain = %domain, port = host_port, "Route re-registered after restart");
-                }
+                state.routes.load().add_route(domain.clone(), backend);
+                tracing::info!(domain = %domain, port = port, "Route re-registered after restart");
             }
         }
     }
@@ -1038,5 +1058,6 @@ pub async fn restart_app(
         container_id: Some(container_id),
         running: true,
         status: "running".to_string(),
+        host_port,
     }))
 }
