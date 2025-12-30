@@ -251,8 +251,8 @@ async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_
         return;
     }
 
-    // Get log stream from runtime
-    let mut log_stream = match state.runtime.logs(&container_id).await {
+    // Get log stream from runtime (using logs_stream for real-time following)
+    let mut log_stream = match state.runtime.logs_stream(&container_id).await {
         Ok(stream) => stream,
         Err(e) => {
             let error_msg = serde_json::json!({

@@ -229,6 +229,47 @@ impl ContainerRuntime for PodmanRuntime {
         Ok(Box::pin(stream))
     }
 
+    async fn logs_stream(
+        &self,
+        container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+        // Follow logs with --follow flag, get last 100 lines first
+        let mut child = Command::new("podman")
+            .args(["logs", "--timestamps", "--tail", "100", "--follow", container_id])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn podman logs")?;
+
+        let stdout = child.stdout.take().unwrap();
+        let reader = BufReader::new(stdout);
+        let lines = reader.lines();
+
+        let stream = async_stream::stream! {
+            let mut lines = lines;
+            while let Ok(Some(line)) = lines.next_line().await {
+                // Parse timestamp from the beginning of the line
+                let (timestamp, message) = if line.len() > 30 && line.chars().nth(4) == Some('-') {
+                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        (parts[0].to_string(), parts[1].to_string())
+                    } else {
+                        (chrono::Utc::now().to_rfc3339(), line)
+                    }
+                } else {
+                    (chrono::Utc::now().to_rfc3339(), line)
+                };
+                yield LogLine {
+                    timestamp,
+                    message,
+                    stream: LogStream::Stdout,
+                };
+            }
+        };
+
+        Ok(Box::pin(stream))
+    }
+
     async fn inspect(&self, container_id: &str) -> Result<ContainerInfo> {
         let output = self
             .run_command(&[

@@ -1,15 +1,15 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::{HeaderMap, StatusCode},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
 use crate::db::{actions, resource_types, App, Deployment, DeploymentLog, User};
-use crate::engine::run_rollback;
+use crate::engine::{detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult};
 use crate::proxy::Backend;
 use crate::runtime::ContainerStats;
 use crate::AppState;
@@ -417,4 +417,272 @@ pub async fn get_app_stats(
         })?;
 
     Ok(Json(stats))
+}
+
+/// Maximum upload size (100MB)
+const MAX_UPLOAD_SIZE: usize = 100 * 1024 * 1024;
+
+/// Response from upload deploy endpoint
+#[derive(Debug, Serialize)]
+pub struct UploadDeployResponse {
+    pub deployment: Deployment,
+    pub detected_build_type: BuildDetectionResult,
+}
+
+/// Deploy an app from uploaded ZIP file
+/// POST /api/apps/:id/deploy/upload
+///
+/// Accepts a multipart form with a ZIP file containing the project source.
+/// Auto-detects build type (Dockerfile, Nixpacks, Static Site).
+pub async fn upload_deploy(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
+    Path(app_id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<UploadDeployResponse>), ApiError> {
+    // Validate app_id format
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Check if app exists
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Check if there's already a deployment in progress
+    let in_progress: Option<Deployment> = sqlx::query_as(
+        "SELECT * FROM deployments WHERE app_id = ? AND status IN ('pending', 'cloning', 'building', 'starting', 'checking')"
+    )
+    .bind(&app_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    if let Some(existing) = in_progress {
+        return Err(ApiError::conflict(format!(
+            "A deployment is already in progress (id: {})",
+            existing.id
+        )));
+    }
+
+    // Extract ZIP file from multipart
+    let mut zip_data: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("Failed to read multipart field: {}", e)))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+
+        if name == "file" || name == "zip" {
+            file_name = field.file_name().map(|s| s.to_string());
+
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?;
+
+            if data.len() > MAX_UPLOAD_SIZE {
+                return Err(ApiError::bad_request(format!(
+                    "File too large. Maximum size is {} MB",
+                    MAX_UPLOAD_SIZE / 1024 / 1024
+                )));
+            }
+
+            zip_data = Some(data.to_vec());
+        }
+    }
+
+    let zip_data = zip_data.ok_or_else(|| {
+        ApiError::bad_request("No ZIP file provided. Include a 'file' or 'zip' field in the multipart form")
+    })?;
+
+    tracing::info!(
+        app_id = %app_id,
+        file_name = ?file_name,
+        size = zip_data.len(),
+        "Processing ZIP upload for deployment"
+    );
+
+    // Create deployment ID and temp directory
+    let deployment_id = Uuid::new_v4().to_string();
+    let work_dir = std::env::temp_dir().join(format!("rivetr-upload-{}", deployment_id));
+
+    // Extract ZIP and find project root
+    let project_root = extract_zip_and_find_root(&zip_data, &work_dir)
+        .await
+        .map_err(|e| ApiError::bad_request(format!("Failed to extract ZIP: {}", e)))?;
+
+    // Auto-detect build type
+    let detection = detect_build_type(&project_root)
+        .await
+        .map_err(|e| ApiError::internal(format!("Build detection failed: {}", e)))?;
+
+    tracing::info!(
+        deployment_id = %deployment_id,
+        build_type = ?detection.build_type,
+        confidence = detection.confidence,
+        detected_from = %detection.detected_from,
+        "Build type detected for uploaded project"
+    );
+
+    // Create deployment record
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO deployments (id, app_id, status, started_at, commit_message)
+        VALUES (?, ?, 'pending', ?, ?)
+        "#,
+    )
+    .bind(&deployment_id)
+    .bind(&app_id)
+    .bind(&now)
+    .bind(format!("Upload deployment: {:?}", detection.build_type))
+    .execute(&state.db)
+    .await?;
+
+    // Store the upload source path for the deployment engine
+    // We'll use a special mechanism to pass the source directory
+    let source_path = project_root.to_string_lossy().to_string();
+
+    // Update app with detected build type if not already set
+    let build_type_str = match detection.build_type {
+        crate::engine::BuildType::Dockerfile => "dockerfile",
+        crate::engine::BuildType::Nixpacks => "nixpacks",
+        crate::engine::BuildType::StaticSite => "static",
+        crate::engine::BuildType::DockerCompose => "dockerfile", // Fallback for compose
+        crate::engine::BuildType::DockerImage => "dockerfile",   // Fallback for image
+    };
+
+    // Update app's build_type and publish_directory if detected
+    if let Some(ref publish_dir) = detection.publish_directory {
+        sqlx::query("UPDATE apps SET build_type = ?, publish_directory = ?, deployment_source = 'upload' WHERE id = ?")
+            .bind(build_type_str)
+            .bind(publish_dir)
+            .bind(&app_id)
+            .execute(&state.db)
+            .await?;
+    } else {
+        sqlx::query("UPDATE apps SET build_type = ?, deployment_source = 'upload' WHERE id = ?")
+            .bind(build_type_str)
+            .bind(&app_id)
+            .execute(&state.db)
+            .await?;
+    }
+
+    // Re-fetch app with updated fields
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Queue the deployment job with source path
+    // The engine will use this path instead of cloning from git
+    // Store source path in deployment metadata
+    sqlx::query("UPDATE deployments SET commit_sha = ? WHERE id = ?")
+        .bind(&source_path) // Using commit_sha to store source path temporarily
+        .bind(&deployment_id)
+        .execute(&state.db)
+        .await?;
+
+    // Queue the deployment
+    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+        // Cleanup on error
+        let _ = tokio::fs::remove_dir_all(&work_dir).await;
+        tracing::error!("Failed to queue deployment: {}", e);
+        return Err(ApiError::internal("Failed to queue deployment job"));
+    }
+
+    let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DEPLOYMENT_TRIGGER,
+        resource_types::APP,
+        Some(&app.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "deployment_id": deployment.id,
+            "source": "upload",
+            "build_type": build_type_str,
+            "file_name": file_name,
+        })),
+    )
+    .await;
+
+    Ok((StatusCode::ACCEPTED, Json(UploadDeployResponse {
+        deployment,
+        detected_build_type: detection,
+    })))
+}
+
+/// Preview build type detection from uploaded ZIP
+/// POST /api/build/detect
+///
+/// Upload a ZIP file to detect the build type without creating a deployment.
+/// Useful for previewing detection results before deployment.
+pub async fn detect_build_type_from_upload(
+    mut multipart: Multipart,
+) -> Result<Json<BuildDetectionResult>, ApiError> {
+    // Extract ZIP file from multipart
+    let mut zip_data: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("Failed to read multipart field: {}", e)))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+
+        if name == "file" || name == "zip" {
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?;
+
+            if data.len() > MAX_UPLOAD_SIZE {
+                return Err(ApiError::bad_request(format!(
+                    "File too large. Maximum size is {} MB",
+                    MAX_UPLOAD_SIZE / 1024 / 1024
+                )));
+            }
+
+            zip_data = Some(data.to_vec());
+        }
+    }
+
+    let zip_data = zip_data.ok_or_else(|| {
+        ApiError::bad_request("No ZIP file provided")
+    })?;
+
+    // Create temp directory
+    let temp_id = Uuid::new_v4().to_string();
+    let work_dir = std::env::temp_dir().join(format!("rivetr-detect-{}", temp_id));
+
+    // Extract ZIP and detect
+    let result = async {
+        let project_root = extract_zip_and_find_root(&zip_data, &work_dir).await?;
+        detect_build_type(&project_root).await
+    }
+    .await;
+
+    // Cleanup temp directory
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    let detection = result.map_err(|e| ApiError::bad_request(format!("Detection failed: {}", e)))?;
+
+    Ok(Json(detection))
 }

@@ -73,6 +73,10 @@ pub struct App {
     /// Enable PR preview deployments for this app
     #[serde(default)]
     pub preview_enabled: i32,
+    /// GitHub App installation ID for GitHub-based deployments
+    pub github_app_installation_id: Option<String>,
+    /// Deployment source: "git", "upload", or "registry"
+    pub deployment_source: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -125,6 +129,10 @@ pub struct AppResponse {
     pub publish_directory: Option<String>,
     // Preview deployments
     pub preview_enabled: bool,
+    /// GitHub App installation ID for GitHub-based deployments
+    pub github_app_installation_id: Option<String>,
+    /// Deployment source: "git", "upload", or "registry"
+    pub deployment_source: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -168,6 +176,8 @@ impl From<App> for AppResponse {
             nixpacks_config: app.nixpacks_config,
             publish_directory: app.publish_directory,
             preview_enabled: app.preview_enabled != 0,
+            github_app_installation_id: app.github_app_installation_id,
+            deployment_source: app.deployment_source,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -401,6 +411,8 @@ pub struct CreateAppRequest {
     /// Enable PR preview deployments
     #[serde(default)]
     pub preview_enabled: bool,
+    /// GitHub App installation ID for GitHub-based deployments
+    pub github_app_installation_id: Option<String>,
 }
 
 fn default_build_type() -> String {
@@ -479,6 +491,8 @@ pub struct UpdateAppRequest {
     pub publish_directory: Option<String>,
     /// Enable PR preview deployments
     pub preview_enabled: Option<bool>,
+    /// GitHub App installation ID for GitHub-based deployments
+    pub github_app_installation_id: Option<String>,
 }
 
 /// Request specifically for updating domains

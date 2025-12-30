@@ -1,3 +1,4 @@
+pub mod build_detect;
 mod cleanup;
 mod container_monitor;
 pub mod database_backups;
@@ -6,15 +7,20 @@ mod disk_monitor;
 pub mod nixpacks;
 mod pipeline;
 pub mod preview;
+pub mod static_builder;
 mod stats_collector;
+pub mod zip_extract;
 
+pub use build_detect::*;
 pub use cleanup::*;
 pub use container_monitor::*;
 pub use database_backups::*;
 pub use disk_monitor::*;
 pub use pipeline::*;
 pub use preview::*;
+pub use static_builder::*;
 pub use stats_collector::*;
+pub use zip_extract::*;
 
 use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};

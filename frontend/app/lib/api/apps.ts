@@ -20,7 +20,10 @@ import type {
   Volume,
   CreateVolumeRequest,
   UpdateVolumeRequest,
+  BuildDetectionResult,
+  UploadDeployResponse,
 } from "@/types/api";
+import { getStoredToken } from "./core";
 
 export const appsApi = {
   // -------------------------------------------------------------------------
@@ -121,6 +124,141 @@ export const appsApi = {
       { method: "POST" },
       token
     ),
+
+  // -------------------------------------------------------------------------
+  // Upload Deployments (ZIP file upload)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Deploy an app from an uploaded ZIP file.
+   * Auto-detects build type and triggers deployment.
+   */
+  uploadDeploy: async (
+    appId: string,
+    file: File,
+    token?: string
+  ): Promise<UploadDeployResponse> => {
+    const authToken = token || getStoredToken();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(`/api/apps/${appId}/deploy/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage: string;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorJson.message || errorText;
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Detect build type from an uploaded ZIP file without deploying.
+   * Useful for previewing detection results before deployment.
+   */
+  detectBuildType: async (
+    file: File,
+    token?: string
+  ): Promise<BuildDetectionResult> => {
+    const authToken = token || getStoredToken();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch("/api/build/detect", {
+      method: "POST",
+      headers,
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage: string;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorJson.message || errorText;
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Create an app and deploy from uploaded ZIP file in one step.
+   * This is the preferred way to deploy from a ZIP file.
+   */
+  uploadCreateApp: async (
+    projectId: string,
+    file: File,
+    config: {
+      name: string;
+      port?: number;
+      domain?: string;
+      healthcheck?: string;
+      cpu_limit?: string;
+      memory_limit?: string;
+      environment?: string;
+      build_type?: string;
+      publish_directory?: string;
+    },
+    token?: string
+  ): Promise<UploadDeployResponse> => {
+    const authToken = token || getStoredToken();
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("config", JSON.stringify(config));
+
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(`/api/projects/${projectId}/apps/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage: string;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorJson.message || errorText;
+      } catch {
+        errorMessage = errorText || `HTTP ${response.status}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
 
   // -------------------------------------------------------------------------
   // Container Stats

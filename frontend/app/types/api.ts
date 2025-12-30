@@ -5,7 +5,32 @@ export type AppEnvironment = "development" | "staging" | "production";
 // -------------------------------------------------------------------------
 
 /** Build type for applications */
-export type BuildType = "dockerfile" | "nixpacks" | "static";
+export type BuildType = "dockerfile" | "nixpacks" | "staticsite";
+
+/** Deployment source type */
+export type DeploymentSource = "git" | "upload" | "registry";
+
+/** Result from build type auto-detection */
+export interface BuildDetectionResult {
+  /** Detected build type */
+  build_type: BuildType | "dockercompose" | "dockerimage";
+  /** Confidence level (0.0-1.0) */
+  confidence: number;
+  /** How the build type was detected */
+  detected_from: string;
+  /** Suggested publish directory for static sites */
+  publish_directory?: string;
+  /** Detected framework (e.g., "vite", "next", "create-react-app") */
+  framework?: string;
+  /** Detected language (e.g., "javascript", "typescript", "python") */
+  language?: string;
+}
+
+/** Response from upload deploy endpoint */
+export interface UploadDeployResponse {
+  deployment: Deployment;
+  detected_build_type: BuildDetectionResult;
+}
 
 /** Nixpacks configuration for auto-build */
 export interface NixpacksConfig {
@@ -206,6 +231,8 @@ export interface App {
   preview_enabled: boolean;
   // GitHub App installation (for auto-deploy)
   github_app_installation_id: string | null;
+  // Deployment source
+  deployment_source?: DeploymentSource;
   created_at: string;
   updated_at: string;
 }

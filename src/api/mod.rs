@@ -76,11 +76,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/restart", post(apps::restart_app))
         // Deployments
         .route("/apps/:id/deploy", post(deployments::trigger_deploy))
+        .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))
         .route("/apps/:id/deployments", get(deployments::list_deployments))
         .route("/apps/:id/stats", get(deployments::get_app_stats))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
         .route("/deployments/:id/rollback", post(deployments::rollback_deployment))
+        // Build detection
+        .route("/build/detect", post(deployments::detect_build_type_from_upload))
         // SSH Keys
         .route("/ssh-keys", get(ssh_keys::list_ssh_keys))
         .route("/ssh-keys", post(ssh_keys::create_ssh_key))
@@ -125,6 +128,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id", get(projects::get_project))
         .route("/projects/:id", put(projects::update_project))
         .route("/projects/:id", delete(projects::delete_project))
+        .route("/projects/:id/apps/upload", post(apps::upload_create_app))
         .route("/apps/:id/project", put(projects::assign_app_project))
         // Teams
         .route("/teams", get(teams::list_teams))

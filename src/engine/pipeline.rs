@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::crypto;
 use crate::db::{App, SshKey};
 use crate::engine::nixpacks;
+use crate::engine::static_builder::{StaticSiteBuilder, StaticSiteConfig};
 use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RegistryAuth, RunConfig};
 use crate::DbPool;
 
@@ -156,6 +157,190 @@ async fn run_registry_deployment(
     Ok(image_ref)
 }
 
+/// Handle upload-based deployment (source already extracted)
+async fn run_upload_deployment(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    app: &App,
+    source_path: &str,
+    build_limits: &BuildLimits,
+) -> Result<String> {
+    let work_dir = PathBuf::from(source_path);
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        "Using uploaded source files...",
+    )
+    .await?;
+    update_deployment_status(db, deployment_id, "building", None).await?;
+
+    // Determine the actual build path (consider base_directory)
+    let build_path = if let Some(ref base_dir) = app.base_directory {
+        if !base_dir.is_empty() {
+            work_dir.join(base_dir)
+        } else {
+            work_dir.clone()
+        }
+    } else {
+        work_dir.clone()
+    };
+
+    let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
+    let build_type = app.get_build_type();
+
+    // Build based on build_type (same as git deployment)
+    match build_type {
+        "nixpacks" => {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building uploaded project with Nixpacks...",
+            )
+            .await?;
+
+            if !nixpacks::is_available().await {
+                anyhow::bail!(
+                    "Nixpacks is not installed. Please install it with: curl -sSL https://nixpacks.com/install.sh | bash"
+                );
+            }
+
+            if let Some(version) = nixpacks::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Nixpacks version: {}", version),
+                )
+                .await?;
+            }
+
+            let nixpacks_config = app.get_nixpacks_config();
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            nixpacks::build_image(
+                &build_path,
+                &image_tag,
+                nixpacks_config.as_ref(),
+                &env_vars,
+            )
+            .await
+            .context("Nixpacks build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Nixpacks build completed successfully")
+                .await?;
+        }
+        "staticsite" => {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building uploaded static site with NGINX...",
+            )
+            .await?;
+
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            let publish_dir = if let Some(ref dir) = app.publish_directory {
+                if !dir.is_empty() {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Using configured publish directory: {}", dir),
+                    )
+                    .await?;
+                    dir.clone()
+                } else {
+                    let detected = StaticSiteBuilder::detect_publish_dir(&build_path).await;
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Auto-detected publish directory: {}", detected),
+                    )
+                    .await?;
+                    detected
+                }
+            } else {
+                let detected = StaticSiteBuilder::detect_publish_dir(&build_path).await;
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Auto-detected publish directory: {}", detected),
+                )
+                .await?;
+                detected
+            };
+
+            let static_config = StaticSiteConfig {
+                source_dir: build_path.to_string_lossy().to_string(),
+                publish_dir,
+                env_vars,
+                spa_mode: true,
+                cpu_limit: build_limits.cpu_limit.clone(),
+                memory_limit: build_limits.memory_limit.clone(),
+                port: app.port as u16,
+                ..Default::default()
+            };
+
+            let static_builder = StaticSiteBuilder::new(runtime.clone());
+            static_builder
+                .build(&static_config, &image_tag)
+                .await
+                .context("Static site build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
+                .await?;
+        }
+        _ => {
+            add_deployment_log(db, deployment_id, "info", "Building uploaded project with Dockerfile...").await?;
+
+            let dockerfile = app
+                .dockerfile_path
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or_else(|| app.dockerfile.clone());
+
+            let build_ctx = BuildContext {
+                path: build_path.to_string_lossy().to_string(),
+                dockerfile,
+                tag: image_tag.clone(),
+                build_args: vec![],
+                build_target: app.build_target.clone(),
+                custom_options: app.custom_docker_options.clone(),
+                cpu_limit: build_limits.cpu_limit.clone(),
+                memory_limit: build_limits.memory_limit.clone(),
+            };
+
+            runtime.build(&build_ctx).await.context("Build failed")?;
+            add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
+        }
+    }
+
+    // Cleanup work directory after build
+    let _ = tokio::fs::remove_dir_all(&work_dir).await;
+
+    Ok(image_tag)
+}
+
 /// Handle git-based deployment (clone and build)
 async fn run_git_deployment(
     db: &DbPool,
@@ -263,53 +448,77 @@ async fn run_git_deployment(
             add_deployment_log(db, deployment_id, "info", "Nixpacks build completed successfully")
                 .await?;
         }
-        "static" => {
-            // Static site build - for now, we treat this similar to dockerfile
-            // In the future, this could use a lightweight static file server image
+        "staticsite" => {
+            // Static site build using NGINX-based container
             add_deployment_log(
                 db,
                 deployment_id,
                 "info",
-                "Building static site...",
+                "Building static site with NGINX...",
             )
             .await?;
 
-            // For static builds, we could use Nixpacks with a static provider
-            // or fall back to a simple nginx-based Dockerfile
-            if nixpacks::is_available().await {
-                let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
-                    "SELECT key, value FROM env_vars WHERE app_id = ?",
-                )
-                .bind(&app.id)
-                .fetch_all(db)
-                .await
-                .unwrap_or_default();
+            // Get env vars for the build
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
 
-                nixpacks::build_image(&build_path, &image_tag, None, &env_vars)
-                    .await
-                    .context("Static site build failed")?;
+            // Determine publish directory - use app setting or auto-detect
+            let publish_dir = if let Some(ref dir) = app.publish_directory {
+                if !dir.is_empty() {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Using configured publish directory: {}", dir),
+                    )
+                    .await?;
+                    dir.clone()
+                } else {
+                    let detected = StaticSiteBuilder::detect_publish_dir(&build_path).await;
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Auto-detected publish directory: {}", detected),
+                    )
+                    .await?;
+                    detected
+                }
             } else {
-                // Fall back to Dockerfile build
-                let dockerfile = app
-                    .dockerfile_path
-                    .as_ref()
-                    .filter(|p| !p.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| app.dockerfile.clone());
+                let detected = StaticSiteBuilder::detect_publish_dir(&build_path).await;
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Auto-detected publish directory: {}", detected),
+                )
+                .await?;
+                detected
+            };
 
-                let build_ctx = BuildContext {
-                    path: build_path.to_string_lossy().to_string(),
-                    dockerfile,
-                    tag: image_tag.clone(),
-                    build_args: vec![],
-                    build_target: app.build_target.clone(),
-                    custom_options: app.custom_docker_options.clone(),
-                    cpu_limit: build_limits.cpu_limit.clone(),
-                    memory_limit: build_limits.memory_limit.clone(),
-                };
+            // Create static site config
+            let static_config = StaticSiteConfig {
+                source_dir: build_path.to_string_lossy().to_string(),
+                publish_dir,
+                env_vars,
+                spa_mode: true, // Default to SPA mode for better client-side routing
+                cpu_limit: build_limits.cpu_limit.clone(),
+                memory_limit: build_limits.memory_limit.clone(),
+                port: app.port as u16,
+                ..Default::default()
+            };
 
-                runtime.build(&build_ctx).await.context("Build failed")?;
-            }
+            // Build with StaticSiteBuilder
+            let static_builder = StaticSiteBuilder::new(runtime.clone());
+            static_builder
+                .build(&static_config, &image_tag)
+                .await
+                .context("Static site build failed")?;
 
             add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
                 .await?;
@@ -406,10 +615,29 @@ pub async fn run_deployment(
     build_limits: &BuildLimits,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
+    // Check if this is an upload-based deployment by looking at the deployment record
+    // Upload deployments store the source path in commit_sha
+    let deployment: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT commit_sha FROM deployments WHERE id = ?"
+    )
+    .bind(deployment_id)
+    .fetch_optional(db)
+    .await?;
+
+    let upload_source_path = deployment
+        .and_then(|(commit_sha,)| commit_sha)
+        .filter(|path| {
+            // Check if this looks like an upload source path (contains rivetr-upload-)
+            path.contains("rivetr-upload-")
+        });
+
     // Determine the image to use based on deployment source
     let image_tag = if app.uses_registry_image() {
         // Registry-based deployment: pull pre-built image
         run_registry_deployment(db, runtime.clone(), deployment_id, app).await?
+    } else if let Some(source_path) = upload_source_path {
+        // Upload-based deployment: use pre-extracted source
+        run_upload_deployment(db, runtime.clone(), deployment_id, app, &source_path, build_limits).await?
     } else {
         // Git-based deployment: clone and build
         run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?

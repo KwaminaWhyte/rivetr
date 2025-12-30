@@ -39,7 +39,16 @@ const TIME_RANGES = [
 // Fetch stats history from API
 async function fetchStatsHistory(hours: number): Promise<DataPoint[]> {
   try {
-    const response = await fetch(`/api/system/stats/history?hours=${hours}`);
+    // Get auth token from localStorage
+    const token = localStorage.getItem("rivetr_token");
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/system/stats/history?hours=${hours}`, { headers });
     if (!response.ok) {
       throw new Error("Failed to fetch stats history");
     }

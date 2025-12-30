@@ -349,16 +349,16 @@
 - [x] **T3.7.4** Mount volumes at container start (binds in RunConfig, Docker/Podman support)
 - [x] **T3.7.5** Add volume backup/export (tar.gz backup endpoint)
 
-### 3.8 Build Improvements (Buildpacks - from Coolify/Dokploy research)
+### 3.8 Build Improvements (Buildpacks - from Coolify/Dokploy research) ✅ MOSTLY COMPLETE
 
-- [ ] **T3.8.1** Add Nixpacks builder support (auto-generate Dockerfile)
+- [x] **T3.8.1** Add Nixpacks builder support (auto-generate Dockerfile) - src/engine/nixpacks.rs with TOML config support
 - [ ] **T3.8.2** Add Railpack builder support (Nixpacks successor with optimizations)
-- [ ] **T3.8.3** Add Static site builder (NGINX-based, for Astro/Next/Vite static exports)
+- [x] **T3.8.3** Add Static site builder (NGINX-based, for Astro/Next/Vite static exports) - src/engine/static_builder.rs
 - [ ] **T3.8.4** Add Heroku Buildpacks support
 - [ ] **T3.8.5** Add Paketo Buildpacks support (cloud-native buildpacks)
-- [ ] **T3.8.6** Auto-detect build type from repo (package.json, requirements.txt, Cargo.toml, etc.)
-- [ ] **T3.8.7** Build type selector in UI (dropdown in app creation/settings)
-- [ ] **T3.8.8** Publish directory field for static builds (e.g., dist, build, out)
+- [x] **T3.8.6** Auto-detect build type from repo (package.json, requirements.txt, Cargo.toml, etc.) - src/engine/build_detect.rs
+- [x] **T3.8.7** Build type selector in UI (dropdown in app creation/settings) - frontend already implemented
+- [x] **T3.8.8** Publish directory field for static builds (e.g., dist, build, out) - frontend already implemented
 
 ### 3.9 Multi-User & Teams ✅ COMPLETE
 
@@ -522,19 +522,19 @@ Pre-configured templates for popular applications.
 
 ---
 
-## Phase 5: Advanced CI/CD Features (from Coolify/Dokploy research) - NOT STARTED
+## Phase 5: Advanced CI/CD Features (from Coolify/Dokploy research) - IN PROGRESS
 
-### 5.1 GitHub App Integration (Coolify-inspired)
+### 5.1 GitHub App Integration (Coolify-inspired) ✅ COMPLETE
 
 Full GitHub integration for automatic deployments without manual webhook setup.
 
-- [ ] **T5.1.1** Create GitHub App registration flow
-- [ ] **T5.1.2** Implement GitHub App OAuth for installation
-- [ ] **T5.1.3** Store GitHub App installation tokens
-- [ ] **T5.1.4** Auto-configure webhooks via GitHub App
-- [ ] **T5.1.5** Repository browser from GitHub App installations
-- [ ] **T5.1.6** System-wide GitHub App sharing across teams
-- [ ] **T5.1.7** GitHub App settings UI page
+- [x] **T5.1.1** Create GitHub App registration flow - src/api/github_apps.rs `create_manifest()`
+- [x] **T5.1.2** Implement GitHub App OAuth for installation - `manifest_callback()`, `installation_callback()`
+- [x] **T5.1.3** Store GitHub App installation tokens - github_app_installations table, token_manager.rs
+- [x] **T5.1.4** Auto-configure webhooks via GitHub App - webhook URL included in manifest
+- [x] **T5.1.5** Repository browser from GitHub App installations - github-repo-picker.tsx component
+- [x] **T5.1.6** System-wide GitHub App sharing across teams - is_system_wide field, list_all_installations()
+- [x] **T5.1.7** GitHub App settings UI page - routes/settings/git-providers.tsx GitHub tab
 
 ### 5.2 Advanced Rollback Features (Dokploy-inspired)
 
@@ -558,6 +558,21 @@ Auto-deploy PRs with unique preview URLs.
 - [ ] **T5.3.5** Comment preview URL on PR (GitHub API)
 - [ ] **T5.3.6** Support GitLab/Gitea PR/MR previews
 - [ ] **T5.3.7** Preview deployment resource limits (lower than production)
+
+### 5.4 ZIP File Upload Deployment ✅ COMPLETE
+
+Deploy applications by uploading a ZIP file with automatic build type detection.
+
+- [x] **T5.4.1** Add ZIP extraction utility (src/engine/zip_extract.rs with path traversal protection)
+- [x] **T5.4.2** Create multipart file upload endpoint (POST /api/apps/:id/deploy/upload)
+- [x] **T5.4.3** Create quick deploy endpoint (POST /api/projects/:id/apps/upload) - create app + deploy in one
+- [x] **T5.4.4** Add build type detection preview endpoint (POST /api/build/detect)
+- [x] **T5.4.5** Modify deployment pipeline for non-git sources (run_upload_deployment in pipeline.rs)
+- [x] **T5.4.6** Create ZipUploadZone component with drag-and-drop (frontend/app/components/zip-upload-zone.tsx)
+- [x] **T5.4.7** Add Upload tab to app creation form (frontend/app/routes/projects/$project-id.apps.new.tsx)
+- [x] **T5.4.8** Add upload API methods to frontend (uploadAndCreateApp, uploadAndDeploy, detectBuildType)
+- [x] **T5.4.9** Validate ZIP file size (max 100MB) and contents (no empty ZIPs)
+- [x] **T5.4.10** Clean up temp directories on error
 
 ---
 
@@ -667,11 +682,11 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 0 | 30 | 28 | 93% |
 | Phase 1 | 94 | 94 | 100% |
 | Phase 2 | 28 | 20 | 71% |
-| Phase 3 | 94 | 78 | 83% |
+| Phase 3 | 94 | 83 | 88% |
 | Phase 4 | 61 | 61 | 100% |
-| Phase 5 | 20 | 0 | 0% |
+| Phase 5 | 30 | 17 | 57% |
 | Phase 6 | 28 | 0 | 0% |
-| **Total** | **355** | **281** | **79%** |
+| **Total** | **365** | **303** | **83%** |
 
 ---
 
@@ -683,26 +698,24 @@ Research conducted to identify feature gaps and improvement opportunities.
 
 ## Next Priority Tasks
 
-1. **Build Improvements** (T3.8.1-8)
-   - Add Nixpacks builder for auto-detecting projects
-   - Add static site builder for frontend apps
-   - Build type selector in UI
-
-2. **Preview Deployments** (T5.3.1-7)
+1. **Preview Deployments** (T5.3.1-7)
    - Parse PR events from webhooks
    - Create preview deployment with unique subdomain
    - Auto-cleanup on PR close/merge
 
-3. **GitHub App Integration** (T5.1.1-7)
-   - Full GitHub integration without manual webhooks
-   - Repository browser for easy app creation
+2. **Advanced Rollbacks** (T5.2.1-6)
+   - Health-based auto-rollback
+   - Registry-based image storage for rollbacks
+
+3. **Additional Buildpack Support** (T3.8.2, T3.8.4-5)
+   - Add Railpack builder (Nixpacks successor)
+   - Add Heroku/Paketo Buildpacks support
 
 ---
 
 ## Backlog Priority Tasks
 
 **Phase 5 - Advanced CI/CD (NEW from competitor research):**
-- **T5.1.1-7** - GitHub App Integration (full GitHub integration without manual webhooks)
 - **T5.2.1-6** - Advanced Rollbacks (health-based auto-rollback, registry storage)
 - **T5.3.1-7** - Preview Deployments (PR auto-deploy with unique URLs)
 
@@ -714,7 +727,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **T6.5.1-6** - S3 Backup Integration
 
 **Phase 3 - Enhanced Features:**
-- **T3.8.1-8** - Build Improvements (Nixpacks, Railpack, Static, Buildpacks, auto-detect)
+- **T3.8.2, T3.8.4-5** - Additional Buildpacks (Railpack, Heroku, Paketo)
 
 **Phase 2 - Production Ready:**
 - **T2.1.3** - Add CSRF tokens for UI forms
@@ -791,9 +804,8 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Docker Compose Editor** - Edit compose YAML in service settings with save functionality
 
 ### Planned Features (from Coolify/Dokploy research)
-- **Nixpacks/Railpack Builders** - Auto-generate Dockerfiles from source code
-- **Static Site Builder** - Optimized NGINX-based deployments
-- **GitHub App Integration** - Full GitHub integration without manual webhooks
+- **Railpack Builder** - Nixpacks successor with optimizations
+- **Heroku/Paketo Buildpacks** - Additional buildpack support
 - **Advanced Rollbacks** - Health-based auto-rollback, registry image storage
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
 
@@ -809,6 +821,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **S3 Backup Integration** - Backup volumes/databases to S3
 
 ### Recently Completed
+- **ZIP File Upload Deployment** - Deploy apps by uploading ZIP files with auto-detection of build type (Dockerfile, Nixpacks, Static, Docker Compose). Supports drag-and-drop upload, build preview, and quick deploy (create app + deploy in one step).
+- **Real-Time Log Streaming Fix** - Added `logs_stream()` method to ContainerRuntime trait with `follow: true` for Docker and `--follow` for Podman, enabling continuous real-time log streaming in the UI
+- **Resource Chart Auth Fix** - Added auth token headers to stats history API calls, fixing the time range selector for Global Resource Utilization chart
 - **Database Public Access Toggle** - Added `PUT /api/databases/:id` endpoint to toggle public access with custom external port (1024-65535), security warnings, confirmation dialog, auto-restart on change
 - **Frontend API Modularization** - Split monolithic `api.ts` into domain-specific modules (apps, databases, projects, services, teams, notifications, git, system, previews) with backward-compatible re-exports
 - **Open App Button with Dynamic Port** - Added `host_port` to `AppStatusResponse` API, UI shows "Open App :port" button when container is running with exposed port
@@ -821,6 +836,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Service Stats in Dashboard** - Docker Compose service resource usage now included in dashboard totals (uses compose project label filtering)
 - **Breadcrumbs** - Dynamic breadcrumb navigation showing project context
 - **Time Range Selectors** - Global resource charts with 1h/6h/24h/7d/30d time range selection
+
+- **Build Improvements** - Added Nixpacks builder with TOML config support (src/engine/nixpacks.rs), Static site builder with NGINX-based multi-stage Docker builds (src/engine/static_builder.rs), Build type auto-detection for 15+ frameworks/languages (src/engine/build_detect.rs). Pipeline integration complete.
+- **GitHub App Integration** - Full GitHub App manifest registration, OAuth installation flow, installation tokens, auto-configured webhooks, repository browser with branch selection (github-repo-picker.tsx), system-wide sharing, settings UI in git-providers.tsx.
 
 ### Known Deployment Issues (User Repository Issues)
 - **kwamina-website** - Container crashes due to `cross-env: not found` - the Dockerfile doesn't install devDependencies at runtime, but `npm start` uses `cross-env`. Fix: Move `cross-env` to dependencies or change start script to `NODE_ENV=production react-router-serve ./build/server/index.js`

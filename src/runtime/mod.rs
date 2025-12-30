@@ -187,6 +187,8 @@ pub trait ContainerRuntime: Send + Sync {
     async fn stop(&self, container_id: &str) -> Result<()>;
     async fn remove(&self, container_id: &str) -> Result<()>;
     async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
+    /// Stream logs from a container in real-time (follow mode)
+    async fn logs_stream(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
     async fn inspect(&self, container_id: &str) -> Result<ContainerInfo>;
     async fn is_available(&self) -> bool;
     /// List running containers with names matching the given prefix
@@ -231,6 +233,9 @@ impl ContainerRuntime for NoopRuntime {
         anyhow::bail!("No container runtime available")
     }
     async fn logs(&self, _container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+        anyhow::bail!("No container runtime available")
+    }
+    async fn logs_stream(&self, _container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         anyhow::bail!("No container runtime available")
     }
     async fn inspect(&self, _container_id: &str) -> Result<ContainerInfo> {

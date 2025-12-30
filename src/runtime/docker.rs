@@ -293,6 +293,54 @@ impl ContainerRuntime for DockerRuntime {
         Ok(Box::pin(mapped))
     }
 
+    async fn logs_stream(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+        let options = LogsOptions::<String> {
+            stdout: true,
+            stderr: true,
+            follow: true, // Follow logs in real-time
+            timestamps: true,
+            tail: "100".to_string(), // Get last 100 lines then continue streaming
+            ..Default::default()
+        };
+
+        let stream = self.client.logs(container_id, Some(options));
+
+        let mapped = stream.filter_map(|result| async move {
+            match result {
+                Ok(output) => {
+                    let (stream_type, message) = match output {
+                        LogOutput::StdOut { message } => (LogStream::Stdout, message),
+                        LogOutput::StdErr { message } => (LogStream::Stderr, message),
+                        _ => return None,
+                    };
+                    let message_str = String::from_utf8_lossy(&message).to_string();
+                    // Parse Docker timestamp from the beginning of the message
+                    let (timestamp, msg) = if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
+                        let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
+                        if parts.len() == 2 {
+                            (parts[0].to_string(), parts[1].to_string())
+                        } else {
+                            (chrono::Utc::now().to_rfc3339(), message_str)
+                        }
+                    } else {
+                        (chrono::Utc::now().to_rfc3339(), message_str)
+                    };
+                    Some(LogLine {
+                        timestamp,
+                        message: msg.trim_end().to_string(),
+                        stream: stream_type,
+                    })
+                }
+                Err(e) => {
+                    tracing::warn!("Error reading container log: {}", e);
+                    None
+                }
+            }
+        });
+
+        Ok(Box::pin(mapped))
+    }
+
     async fn inspect(&self, container_id: &str) -> Result<ContainerInfo> {
         let info = self
             .client

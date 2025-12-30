@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2 } from "lucide-react";
+import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upload } from "lucide-react";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
+import { ZipUploadZone } from "@/components/zip-upload-zone";
 import { api } from "@/lib/api";
-import type { AppEnvironment, BuildType, NixpacksConfig, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
+import type { AppEnvironment, BuildType, BuildDetectionResult, NixpacksConfig, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "development", label: "Development" },
@@ -37,12 +38,17 @@ export default function NewAppPage() {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const queryClient = useQueryClient();
-  const [deploymentSource, setDeploymentSource] = useState<"git" | "registry">("git");
+  const [deploymentSource, setDeploymentSource] = useState<"git" | "registry" | "upload">("git");
   const [gitSourceType, setGitSourceType] = useState<"github" | "manual">("github");
   const [buildType, setBuildType] = useState<BuildType>("nixpacks");
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Upload state
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [detectionResult, setDetectionResult] = useState<BuildDetectionResult | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   // GitHub repo picker state
   const [selectedRepo, setSelectedRepo] = useState<SelectedRepo | null>(null);
@@ -83,6 +89,54 @@ export default function NewAppPage() {
     },
   });
 
+  // Mutation for creating app from upload
+  const uploadCreateMutation = useMutation({
+    mutationFn: async (data: {
+      file: File;
+      config: {
+        name: string;
+        port?: number;
+        domain?: string;
+        healthcheck?: string;
+        cpu_limit?: string;
+        memory_limit?: string;
+        environment?: string;
+        build_type?: string;
+        publish_directory?: string;
+      };
+    }) => {
+      return api.uploadCreateApp(projectId!, data.file, data.config);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["apps"] });
+      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      navigate(`/apps/${result.app.id}`);
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+    },
+  });
+
+  // Handle file selection for upload
+  const handleFileSelect = async (file: File) => {
+    setUploadFile(file);
+    setDetectionResult(null);
+    setIsDetecting(true);
+
+    try {
+      const result = await api.detectBuildType(file);
+      setDetectionResult(result);
+      // Auto-set build type based on detection
+      if (result.build_type === "dockerfile" || result.build_type === "nixpacks" || result.build_type === "staticsite") {
+        setBuildType(result.build_type as BuildType);
+      }
+    } catch (err) {
+      console.warn("Build detection failed:", err);
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -102,7 +156,30 @@ export default function NewAppPage() {
       return;
     }
 
-    if (deploymentSource === "registry") {
+    if (deploymentSource === "upload") {
+      // Upload-based deployment
+      if (!uploadFile) {
+        setError("Please select a ZIP file to upload");
+        return;
+      }
+
+      const publish_directory = (formData.get("publish_directory") as string) || detectionResult?.publish_directory || undefined;
+
+      uploadCreateMutation.mutate({
+        file: uploadFile,
+        config: {
+          name: name.trim(),
+          port,
+          domain,
+          healthcheck,
+          cpu_limit,
+          memory_limit,
+          environment,
+          build_type: buildType,
+          publish_directory,
+        },
+      });
+    } else if (deploymentSource === "registry") {
       // Registry-based deployment
       const docker_image = formData.get("docker_image") as string;
       const docker_image_tag = (formData.get("docker_image_tag") as string) || "latest";
@@ -183,14 +260,14 @@ export default function NewAppPage() {
         project_id: projectId,
         build_type: buildType,
         nixpacks_config: nixpacksConfigToSend,
-        publish_directory: buildType === "static" ? publish_directory : undefined,
+        publish_directory: buildType === "staticsite" ? publish_directory : undefined,
         preview_enabled: previewEnabled,
         github_app_installation_id: gitSourceType === "github" && selectedRepo ? selectedRepo.installationId : undefined,
       });
     }
   }
 
-  const isSubmitting = createAppMutation.isPending;
+  const isSubmitting = createAppMutation.isPending || uploadCreateMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -200,7 +277,7 @@ export default function NewAppPage() {
         <CardHeader>
           <CardTitle>Application Details</CardTitle>
           <CardDescription>
-            Create a new application by building from Git or deploying a pre-built Docker image.
+            Create a new application by building from Git, uploading a ZIP file, or deploying a pre-built Docker image.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,11 +328,15 @@ export default function NewAppPage() {
             {/* Deployment Source Tabs */}
             <div className="space-y-4">
               <Label>Deployment Source</Label>
-              <Tabs value={deploymentSource} onValueChange={(v) => setDeploymentSource(v as "git" | "registry")}>
-                <TabsList className="grid w-full grid-cols-2">
+              <Tabs value={deploymentSource} onValueChange={(v) => setDeploymentSource(v as "git" | "registry" | "upload")}>
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="git" className="flex items-center gap-2">
                     <GitBranch className="h-4 w-4" />
                     Build from Git
+                  </TabsTrigger>
+                  <TabsTrigger value="upload" className="flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Upload ZIP
                   </TabsTrigger>
                   <TabsTrigger value="registry" className="flex items-center gap-2">
                     <Package className="h-4 w-4" />
@@ -395,9 +476,9 @@ export default function NewAppPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setBuildType("static")}
+                        onClick={() => setBuildType("staticsite")}
                         className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                          buildType === "static"
+                          buildType === "staticsite"
                             ? "border-primary bg-primary/5"
                             : "border-border hover:border-muted-foreground/50"
                         }`}
@@ -467,7 +548,7 @@ export default function NewAppPage() {
                   )}
 
                   {/* Static options */}
-                  {buildType === "static" && (
+                  {buildType === "staticsite" && (
                     <div className="space-y-2">
                       <Label htmlFor="publish_directory">Publish Directory</Label>
                       <Input
@@ -496,6 +577,88 @@ export default function NewAppPage() {
                       onCheckedChange={setPreviewEnabled}
                     />
                   </div>
+                </TabsContent>
+
+                {/* Upload Source Tab */}
+                <TabsContent value="upload" className="space-y-4 pt-4">
+                  <ZipUploadZone
+                    onFileSelect={handleFileSelect}
+                    isUploading={isDetecting || uploadCreateMutation.isPending}
+                    detectionResult={detectionResult}
+                    disabled={isDetecting || uploadCreateMutation.isPending}
+                  />
+
+                  {/* Build Type Selection (for override) */}
+                  {uploadFile && (
+                    <>
+                      <div className="space-y-3">
+                        <Label>Build Type {detectionResult && "(Auto-detected, can override)"}</Label>
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setBuildType("nixpacks")}
+                            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                              buildType === "nixpacks"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <Sparkles className="h-6 w-6" />
+                            <span className="text-sm font-medium">Nixpacks</span>
+                            <span className="text-xs text-muted-foreground text-center">
+                              Auto-detect
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBuildType("dockerfile")}
+                            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                              buildType === "dockerfile"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <FileCode className="h-6 w-6" />
+                            <span className="text-sm font-medium">Dockerfile</span>
+                            <span className="text-xs text-muted-foreground text-center">
+                              Custom build
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBuildType("staticsite")}
+                            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                              buildType === "staticsite"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <Package className="h-6 w-6" />
+                            <span className="text-sm font-medium">Static</span>
+                            <span className="text-xs text-muted-foreground text-center">
+                              HTML/CSS/JS
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Static options */}
+                      {buildType === "staticsite" && (
+                        <div className="space-y-2">
+                          <Label htmlFor="publish_directory_upload">Publish Directory</Label>
+                          <Input
+                            id="publish_directory_upload"
+                            name="publish_directory"
+                            placeholder="dist, build, public"
+                            defaultValue={detectionResult?.publish_directory || "dist"}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Directory containing your built static files
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </TabsContent>
 
                 {/* Registry Source Tab */}

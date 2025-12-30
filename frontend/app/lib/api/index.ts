@@ -77,6 +77,10 @@ export const api = {
   backupVolume: appsApi.backupVolume,
   getRuntimeLogsWsUrl: appsApi.getRuntimeLogsWsUrl,
   getTerminalWsUrl: appsApi.getTerminalWsUrl,
+  // Upload deployments
+  uploadDeploy: appsApi.uploadDeploy,
+  detectBuildType: appsApi.detectBuildType,
+  uploadCreateApp: appsApi.uploadCreateApp,
 
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,

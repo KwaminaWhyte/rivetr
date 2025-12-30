@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.7", features = ["ws", "macros", "multipart"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
@@ -67,6 +67,7 @@ async-stream = "0.3"
 futures = "0.3"
 bytes = "1"
 async-trait = "0.1"
+zip = "2.2"
 
 # Auth
 argon2 = "0.5"

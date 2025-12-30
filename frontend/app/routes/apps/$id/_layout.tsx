@@ -23,13 +23,25 @@ import {
   ChevronDown,
   Rocket,
   ExternalLink,
+  Upload,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ZipUploadZone } from "@/components/zip-upload-zone";
+import type { BuildDetectionResult } from "@/types/api";
 
 // Running status badge component
 function RunningStatusBadge({ status }: { status?: AppStatus }) {
@@ -93,6 +105,12 @@ export default function AppDetailLayout() {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { setItems } = useBreadcrumb();
+
+  // Upload deploy state
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [detectionResult, setDetectionResult] = useState<BuildDetectionResult | null>(null);
 
   // Use React Query for app data
   const {
@@ -166,6 +184,40 @@ export default function AppDetailLayout() {
       toast.error(error instanceof Error ? error.message : "Deployment failed");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Handle file selection for upload deploy
+  const handleFileSelect = async (file: File) => {
+    setUploadFile(file);
+    setDetectionResult(null);
+
+    // Auto-detect build type
+    try {
+      const result = await api.detectBuildType(file);
+      setDetectionResult(result);
+    } catch (error) {
+      // Detection is optional, don't show error
+      console.warn("Build detection failed:", error);
+    }
+  };
+
+  // Handle upload deploy
+  const handleUploadDeploy = async () => {
+    if (!id || !uploadFile) return;
+    setIsUploading(true);
+    try {
+      const result = await api.uploadDeploy(id, uploadFile);
+      toast.success("Upload deployment started");
+      setShowUploadDialog(false);
+      setUploadFile(null);
+      setDetectionResult(null);
+      queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload deployment failed");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -326,7 +378,7 @@ export default function AppDetailLayout() {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem onClick={handleDeploy}>
                 <Rocket className="h-4 w-4 mr-2" />
-                Redeploy
+                Redeploy from Git
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleDeploy}
@@ -334,6 +386,11 @@ export default function AppDetailLayout() {
               >
                 <RotateCw className="h-4 w-4 mr-2" />
                 Redeploy (clear cache)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowUploadDialog(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Deploy from ZIP file
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -375,6 +432,55 @@ export default function AppDetailLayout() {
 
       {/* Tab Content via Outlet */}
       <Outlet context={{ app, deployments }} />
+
+      {/* Upload Deploy Dialog */}
+      <Dialog
+        open={showUploadDialog}
+        onOpenChange={(open) => {
+          setShowUploadDialog(open);
+          if (!open) {
+            setUploadFile(null);
+            setDetectionResult(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Deploy from ZIP File</DialogTitle>
+            <DialogDescription>
+              Upload a ZIP file containing your project files. The build type will
+              be auto-detected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ZipUploadZone
+            onFileSelect={handleFileSelect}
+            isUploading={isUploading}
+            detectionResult={detectionResult}
+            disabled={isUploading}
+          />
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUploadDialog(false);
+                setUploadFile(null);
+                setDetectionResult(null);
+              }}
+              disabled={isUploading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUploadDeploy}
+              disabled={!uploadFile || isUploading}
+            >
+              {isUploading ? "Deploying..." : "Deploy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
