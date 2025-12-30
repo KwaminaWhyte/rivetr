@@ -10,7 +10,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Rocket } from "lucide-react";
-import { validateAuth, checkSetupStatus } from "@/lib/auth";
+import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 
 export function meta() {
   return [
@@ -75,7 +75,9 @@ export default function LoginPage() {
         throw new Error(errorText || "Invalid email or password");
       }
 
-      // Successful login - navigate to dashboard
+      // Store token and navigate to dashboard
+      const data = await response.json();
+      setAuthToken(data.token);
       navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

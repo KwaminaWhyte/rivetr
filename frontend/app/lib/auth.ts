@@ -1,8 +1,10 @@
 // Client-side authentication utilities for SPA mode
-// Validates auth state by checking the session cookie against the API
+// Validates auth state by checking the token against the API
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+
+const TOKEN_KEY = "rivetr_auth_token";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -11,13 +13,39 @@ interface AuthState {
 }
 
 /**
+ * Store auth token after successful login
+ */
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+/**
+ * Get stored auth token
+ */
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Clear auth token on logout
+ */
+export function clearAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
  * Validates the current session by calling the backend API
  * Returns true if authenticated, false otherwise
  */
 export async function validateAuth(): Promise<boolean> {
   try {
+    const token = getAuthToken();
+    if (!token) return false;
+
     const response = await fetch("/api/auth/validate", {
-      credentials: "include",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
     });
     return response.ok;
   } catch {

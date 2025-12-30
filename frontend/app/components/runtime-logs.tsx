@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 
 interface LogMessage {
   type: "log" | "connected" | "end" | "error";
@@ -15,10 +16,12 @@ interface LogMessage {
 interface RuntimeLogsProps {
   appId: string;
   appName?: string;
-  token: string;
+  token?: string;
 }
 
-export function RuntimeLogs({ appId, token }: RuntimeLogsProps) {
+export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
+  // Get token from props or localStorage
+  const token = propToken || getAuthToken() || "";
   const [logs, setLogs] = useState<LogMessage[]>([]);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);

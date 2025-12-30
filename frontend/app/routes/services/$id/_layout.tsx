@@ -198,17 +198,17 @@ export default function ServiceDetailLayout() {
               <Square className="h-4 w-4" />
               Stop
             </Button>
-          ) : service.status === "stopped" || service.status === "failed" ? (
+          ) : (
             <Button
               variant="outline"
-              disabled={isSubmitting || isTransitioning}
+              disabled={isSubmitting}
               className="gap-2"
               onClick={handleStart}
             >
               <Play className="h-4 w-4" />
               Start
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
 

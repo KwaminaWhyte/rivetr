@@ -59,6 +59,11 @@ import type {
   Volume,
 } from "@/types/api";
 
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("rivetr_auth_token");
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -69,15 +74,15 @@ async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  // Add Authorization header if token is provided
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  // Add Authorization header - use provided token or get from localStorage
+  const authToken = token || getStoredToken();
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
   const response = await fetch(`/api${path}`, {
     ...options,
     headers,
-    credentials: "include", // Send cookies for session-based auth
   });
 
   if (!response.ok) {

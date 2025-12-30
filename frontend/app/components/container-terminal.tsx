@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 
 interface TerminalMessage {
   type: "data" | "connected" | "end" | "error";
@@ -11,10 +12,12 @@ interface TerminalMessage {
 
 interface ContainerTerminalProps {
   appId: string;
-  token: string;
+  token?: string;
 }
 
-export function ContainerTerminal({ appId, token }: ContainerTerminalProps) {
+export function ContainerTerminal({ appId, token: propToken }: ContainerTerminalProps) {
+  // Get token from props or localStorage
+  const token = propToken || getAuthToken() || "";
   const terminalRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const terminalInstance = useRef<any>(null);
