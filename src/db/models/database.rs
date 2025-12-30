@@ -350,6 +350,9 @@ fn default_db_version() -> String {
 pub struct UpdateManagedDatabaseRequest {
     /// Enable/disable public access
     pub public_access: Option<bool>,
+    /// Custom external port (0 = auto-assign, 1024-65535 = specific port)
+    /// Only used when public_access is true
+    pub external_port: Option<i32>,
     /// Memory limit
     pub memory_limit: Option<String>,
     /// CPU limit

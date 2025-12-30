@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useOutletContext, useNavigate } from "react-router";
-import { useMutation } from "@tanstack/react-query";
-import type { ManagedDatabase } from "@/types/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ManagedDatabase, UpdateManagedDatabaseRequest } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +21,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { AlertTriangle, Trash2, Settings2, Cpu, HardDrive } from "lucide-react";
+import {
+  AlertTriangle,
+  Trash2,
+  Settings2,
+  Cpu,
+  HardDrive,
+  Globe,
+  Lock,
+  Shield,
+  ShieldAlert,
+  RefreshCw,
+  Info,
+} from "lucide-react";
 
 interface OutletContext {
   database: ManagedDatabase;
@@ -29,8 +42,18 @@ interface OutletContext {
 export default function DatabaseSettingsTab() {
   const { database } = useOutletContext<OutletContext>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPublicAccessDialog, setShowPublicAccessDialog] = useState(false);
+
+  // Form state for network settings
+  const [publicAccess, setPublicAccess] = useState(database.public_access);
+  const [externalPort, setExternalPort] = useState<string>(
+    database.external_port > 0 ? String(database.external_port) : ""
+  );
+  const [useCustomPort, setUseCustomPort] = useState(database.external_port > 0);
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteDatabase(database.id),
@@ -43,15 +66,285 @@ export default function DatabaseSettingsTab() {
     },
   });
 
-  const isSubmitting = deleteMutation.isPending;
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateManagedDatabaseRequest) =>
+      api.updateDatabase(database.id, data),
+    onSuccess: () => {
+      toast.success("Database settings updated");
+      queryClient.invalidateQueries({ queryKey: ["database", database.id] });
+      setShowPublicAccessDialog(false);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update database");
+    },
+  });
+
+  const isSubmitting = deleteMutation.isPending || updateMutation.isPending;
   const canDelete = deleteConfirmName === database.name;
+  const hasNetworkChanges =
+    publicAccess !== database.public_access ||
+    (useCustomPort ? parseInt(externalPort) || 0 : 0) !== database.external_port;
 
   const handleDelete = () => {
     deleteMutation.mutate();
   };
 
+  const handleNetworkUpdate = () => {
+    const updateData: UpdateManagedDatabaseRequest = {
+      public_access: publicAccess,
+      external_port: useCustomPort && publicAccess ? parseInt(externalPort) || 0 : 0,
+    };
+    updateMutation.mutate(updateData);
+  };
+
+  const validatePort = (value: string): boolean => {
+    if (!value) return true; // Empty is valid (auto-assign)
+    const port = parseInt(value);
+    return !isNaN(port) && port >= 1024 && port <= 65535;
+  };
+
+  const isPortValid = !useCustomPort || !externalPort || validatePort(externalPort);
+
   return (
     <div className="space-y-6">
+      {/* Network Settings Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5" />
+            Network Access
+          </CardTitle>
+          <CardDescription>
+            Configure how this database can be accessed
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Public Access Toggle */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                {publicAccess ? (
+                  <Globe className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <Lock className="h-4 w-4 text-green-500" />
+                )}
+                <Label className="text-base">Public Access</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {publicAccess
+                  ? "Database is accessible from external networks (internet)"
+                  : "Database is only accessible within the Docker network"}
+              </p>
+            </div>
+            <Switch
+              checked={publicAccess}
+              onCheckedChange={setPublicAccess}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          {/* Security Warning for Public Access */}
+          {publicAccess && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <h4 className="font-medium text-amber-800 dark:text-amber-200">
+                    Security Warning
+                  </h4>
+                  <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                    <li className="flex items-start gap-2">
+                      <span className="mt-1.5">•</span>
+                      <span>
+                        Exposing your database to the internet increases security risks.
+                        Ensure you have strong passwords.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-1.5">•</span>
+                      <span>
+                        Consider using a VPN or SSH tunnel for remote access instead.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-1.5">•</span>
+                      <span>
+                        Enable SSL/TLS if your database supports it (configure in the
+                        database itself).
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="mt-1.5">•</span>
+                      <span>
+                        Use firewall rules to restrict access to specific IP addresses
+                        when possible.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Custom External Port */}
+          {publicAccess && (
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Custom External Port</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Specify a custom port or let the system auto-assign one
+                  </p>
+                </div>
+                <Switch
+                  checked={useCustomPort}
+                  onCheckedChange={setUseCustomPort}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              {useCustomPort && (
+                <div className="space-y-2">
+                  <Label htmlFor="external_port">External Port</Label>
+                  <Input
+                    id="external_port"
+                    type="number"
+                    placeholder="e.g., 5433"
+                    value={externalPort}
+                    onChange={(e) => setExternalPort(e.target.value)}
+                    className={`font-mono ${!isPortValid ? "border-destructive" : ""}`}
+                    min={1024}
+                    max={65535}
+                    disabled={isSubmitting}
+                  />
+                  {!isPortValid ? (
+                    <p className="text-xs text-destructive">
+                      Port must be between 1024 and 65535
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Must be between 1024-65535. Make sure this port is not already in use.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Private Access Benefits */}
+          {!publicAccess && (
+            <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 p-4">
+              <div className="flex items-start gap-3">
+                <Shield className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <h4 className="font-medium text-green-800 dark:text-green-200">
+                    Secure by Default
+                  </h4>
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    Your database is only accessible within the Rivetr network. Other apps
+                    deployed in Rivetr can connect using the internal hostname{" "}
+                    <code className="bg-green-100 dark:bg-green-900 px-1 rounded">
+                      rivetr-db-{database.name}
+                    </code>
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Save Changes Button */}
+          {hasNetworkChanges && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Info className="h-4 w-4" />
+                <span>
+                  {database.status === "running"
+                    ? "Database will restart to apply changes"
+                    : "Changes will apply on next start"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPublicAccess(database.public_access);
+                    setExternalPort(
+                      database.external_port > 0 ? String(database.external_port) : ""
+                    );
+                    setUseCustomPort(database.external_port > 0);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                {publicAccess && !database.public_access ? (
+                  <AlertDialog
+                    open={showPublicAccessDialog}
+                    onOpenChange={setShowPublicAccessDialog}
+                  >
+                    <AlertDialogTrigger asChild>
+                      <Button disabled={isSubmitting || !isPortValid}>
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          "Enable Public Access"
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                          <ShieldAlert className="h-5 w-5" />
+                          Enable Public Access?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-3">
+                          <p>
+                            This will expose your database to the internet. Anyone with the
+                            connection details can attempt to connect.
+                          </p>
+                          <p className="font-medium">Before proceeding, ensure:</p>
+                          <ul className="list-disc list-inside space-y-1">
+                            <li>Your database password is strong and unique</li>
+                            <li>You understand the security implications</li>
+                            <li>You have considered using a VPN instead</li>
+                          </ul>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleNetworkUpdate}
+                          className="bg-amber-600 hover:bg-amber-700"
+                        >
+                          Enable Public Access
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : (
+                  <Button
+                    onClick={handleNetworkUpdate}
+                    disabled={isSubmitting || !isPortValid}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      "Save Changes"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Resource Limits Card */}
       <Card>
         <CardHeader>
@@ -92,45 +385,8 @@ export default function DatabaseSettingsTab() {
           </div>
           <div className="rounded-md bg-muted p-3">
             <p className="text-sm text-muted-foreground">
-              Resource limits can only be changed by recreating the database.
-              This feature will be available in a future update.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Public Access Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5" />
-            Network Settings
-          </CardTitle>
-          <CardDescription>
-            Configure network access settings
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label className="text-base">Public Access</Label>
-              <p className="text-sm text-muted-foreground">
-                Allow external connections to this database
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={database.public_access ? "default" : "secondary"}
-                className={database.public_access ? "bg-green-500" : ""}
-              >
-                {database.public_access ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-          </div>
-          <div className="rounded-md bg-muted p-3">
-            <p className="text-sm text-muted-foreground">
-              Changing public access requires recreating the database container.
-              This feature will be available in a future update.
+              Resource limits are set at creation time. To change limits, delete and
+              recreate the database with new values.
             </p>
           </div>
         </CardContent>

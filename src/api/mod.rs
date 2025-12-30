@@ -196,6 +196,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/github-apps/installations", get(github_apps::list_all_installations))
         // Get repos by installation ID (simpler pattern for frontend)
         .route("/github-apps/installations/:installation_id/repos", get(github_apps::list_repos_by_installation))
+        // Get branches for a repo
+        .route("/github-apps/installations/:installation_id/repos/:owner/:repo/branches", get(github_apps::list_repo_branches))
         .route("/github-apps/:id", get(github_apps::get_app))
         .route("/github-apps/:id/install", get(github_apps::get_install_url))
         .route("/github-apps/:id/installations", get(github_apps::list_installations))

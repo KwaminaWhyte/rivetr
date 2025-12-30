@@ -549,7 +549,13 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
     let mut port_mappings = Vec::new();
 
     if database.is_public() {
-        port_mappings.push(PortMapping::new(0, config.port)); // 0 = auto-assign host port
+        // Use custom external port if specified (non-zero), otherwise auto-assign
+        let host_port = if database.external_port > 0 {
+            database.external_port as u16
+        } else {
+            0 // auto-assign
+        };
+        port_mappings.push(PortMapping::new(host_port, config.port));
     }
 
     // Volume bind mount
@@ -579,8 +585,14 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
 
     // Get the assigned host port if public access is enabled
     let external_port = if database.is_public() {
-        let info = state.runtime.inspect(&container_id).await?;
-        info.host_port.unwrap_or(0) as i32
+        if database.external_port > 0 {
+            // Custom port was specified, use it
+            database.external_port
+        } else {
+            // Auto-assigned port, get from container info
+            let info = state.runtime.inspect(&container_id).await?;
+            info.host_port.unwrap_or(0) as i32
+        }
     } else {
         0
     };
@@ -603,6 +615,184 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
     );
 
     Ok(())
+}
+
+/// Update a managed database configuration
+pub async fn update_database(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<crate::db::UpdateManagedDatabaseRequest>,
+) -> Result<Json<ManagedDatabaseResponse>, (StatusCode, Json<serde_json::Value>)> {
+    // Get the database record
+    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get database: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get database"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Database not found"})),
+            )
+        })?;
+
+    // Check if public_access is changing
+    let public_access_changed = req.public_access.is_some()
+        && req.public_access.unwrap() != database.is_public();
+
+    // Validate external port if provided
+    if let Some(port) = req.external_port {
+        if port != 0 && (port < 1024 || port > 65535) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Invalid external port",
+                    "message": "External port must be 0 (auto-assign) or between 1024 and 65535"
+                })),
+            ));
+        }
+    }
+
+    // Build the update query dynamically
+    let mut updates = Vec::new();
+    let mut values: Vec<Box<dyn std::any::Any + Send + Sync>> = Vec::new();
+
+    if let Some(public_access) = req.public_access {
+        updates.push("public_access = ?");
+        values.push(Box::new(if public_access { 1i32 } else { 0i32 }));
+    }
+
+    if let Some(ref memory_limit) = req.memory_limit {
+        updates.push("memory_limit = ?");
+        values.push(Box::new(memory_limit.clone()));
+    }
+
+    if let Some(ref cpu_limit) = req.cpu_limit {
+        updates.push("cpu_limit = ?");
+        values.push(Box::new(cpu_limit.clone()));
+    }
+
+    if let Some(external_port) = req.external_port {
+        updates.push("external_port = ?");
+        values.push(Box::new(external_port));
+    }
+
+    if updates.is_empty() {
+        // No changes
+        let host = Some(state.config.server.host.as_str());
+        return Ok(Json(database.to_response(false, host)));
+    }
+
+    updates.push("updated_at = datetime('now')");
+
+    // Execute the update using direct bindings
+    let update_sql = format!(
+        "UPDATE databases SET {} WHERE id = ?",
+        updates.join(", ")
+    );
+
+    // Build and execute the query manually since we have dynamic bindings
+    let mut query = sqlx::query(&update_sql);
+
+    if let Some(public_access) = req.public_access {
+        query = query.bind(if public_access { 1i32 } else { 0i32 });
+    }
+    if let Some(ref memory_limit) = req.memory_limit {
+        query = query.bind(memory_limit);
+    }
+    if let Some(ref cpu_limit) = req.cpu_limit {
+        query = query.bind(cpu_limit);
+    }
+    if let Some(external_port) = req.external_port {
+        query = query.bind(external_port);
+    }
+    query = query.bind(&id);
+
+    query.execute(&state.db).await.map_err(|e| {
+        tracing::error!("Failed to update database: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to update database"})),
+        )
+    })?;
+
+    // If public_access changed and database is running, we need to restart it
+    let needs_restart = public_access_changed && database.get_status() == DatabaseStatus::Running;
+
+    if needs_restart {
+        tracing::info!(
+            "Public access changed for database {}, restarting container",
+            database.name
+        );
+
+        // Stop the existing container
+        if let Some(ref container_id) = database.container_id {
+            if let Err(e) = state.runtime.stop(container_id).await {
+                tracing::warn!("Failed to stop container during restart: {}", e);
+            }
+            if let Err(e) = state.runtime.remove(container_id).await {
+                tracing::warn!("Failed to remove container during restart: {}", e);
+            }
+        }
+
+        // Start with new configuration
+        let state_clone = state.clone();
+        let id_clone = id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = start_database_container(&state_clone, &id_clone).await {
+                tracing::error!("Failed to restart database container: {}", e);
+                let _ = sqlx::query(
+                    "UPDATE databases SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
+                )
+                .bind(DatabaseStatus::Failed.to_string())
+                .bind(e.to_string())
+                .bind(&id_clone)
+                .execute(&state_clone.db)
+                .await;
+            }
+        });
+    }
+
+    // Fetch the updated database record
+    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get updated database: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get updated database"})),
+            )
+        })?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DATABASE_UPDATE,
+        resource_types::DATABASE,
+        Some(&database.id),
+        Some(&database.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "public_access_changed": public_access_changed,
+            "needs_restart": needs_restart,
+        })),
+    )
+    .await;
+
+    let host = Some(state.config.server.host.as_str());
+    Ok(Json(database.to_response(false, host)))
 }
 
 /// Get container stats for a database

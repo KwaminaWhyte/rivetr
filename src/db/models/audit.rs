@@ -76,6 +76,7 @@ pub mod actions {
 
     // Database actions
     pub const DATABASE_CREATE: &str = "database.create";
+    pub const DATABASE_UPDATE: &str = "database.update";
     pub const DATABASE_DELETE: &str = "database.delete";
     pub const DATABASE_START: &str = "database.start";
     pub const DATABASE_STOP: &str = "database.stop";

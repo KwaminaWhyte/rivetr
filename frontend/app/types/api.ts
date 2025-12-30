@@ -115,6 +115,16 @@ export interface GitHubAppRepository {
   installation_id: string;
 }
 
+/** Git branch from a repository */
+export interface GitHubBranch {
+  name: string;
+  is_protected: boolean;
+  commit: {
+    sha: string;
+    url: string;
+  };
+}
+
 /** GitHub App manifest request */
 export interface CreateGitHubAppManifestRequest {
   name: string;

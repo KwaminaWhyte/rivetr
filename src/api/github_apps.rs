@@ -447,6 +447,51 @@ pub async fn list_all_installations(
     Ok(Json(responses))
 }
 
+/// GET /api/github-apps/installations/:installation_id/repos/:owner/:repo/branches - List branches
+///
+/// Fetches branches for a specific repository using the installation token.
+pub async fn list_repo_branches(
+    State(state): State<Arc<AppState>>,
+    Path((installation_id, owner, repo)): Path<(String, String, String)>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Get the installation
+    let installation: GitHubAppInstallation = sqlx::query_as(
+        "SELECT * FROM github_app_installations WHERE id = ?",
+    )
+    .bind(&installation_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
+
+    // Get the associated GitHub App
+    let app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
+        .bind(&installation.github_app_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
+
+    // Decrypt the private key
+    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
+    let private_key = crypto::decrypt_if_encrypted(&app.private_key, encryption_key.as_ref())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Get an installation access token
+    let token_response = get_installation_token(app.app_id, &private_key, installation.installation_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get installation token: {}", e)))?;
+
+    // List branches
+    let client = GitHubClient::new(token_response.token);
+    let branches = client
+        .list_branches(&owner, &repo)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to list branches: {}", e)))?;
+
+    Ok(Json(branches))
+}
+
 /// GET /api/github-apps/installations/:installation_id/repos - List repos by installation ID
 ///
 /// A simpler endpoint that fetches repositories using just the installation's internal ID.
