@@ -72,18 +72,82 @@ pub async fn trigger_deploy(
         )));
     }
 
+    // Check if this is an upload-based app that needs special handling
+    let is_upload_app = app.deployment_source.as_deref() == Some("upload");
+
+    // For upload-based apps, we need to find a way to redeploy:
+    // 1. If source directory still exists, rebuild from source
+    // 2. If not but image exists, restart from existing image
+    // 3. If neither, require new ZIP upload
+    let (upload_source_path, existing_image_tag): (Option<String>, Option<String>) = if is_upload_app {
+        // First, check if source directory from last deployment still exists
+        let last_deployment: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT commit_sha, image_tag FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') ORDER BY started_at DESC LIMIT 1"
+        )
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+        match last_deployment {
+            Some((Some(path), image_tag)) if path.contains("rivetr-upload-") => {
+                // Check if the source directory still exists
+                let source_path = std::path::Path::new(&path);
+                if source_path.exists() {
+                    // Rebuild from source
+                    (Some(path), None)
+                } else if let Some(ref tag) = image_tag {
+                    // Source cleaned up, but we have an image - restart from image
+                    tracing::info!(
+                        app_id = %app_id,
+                        image_tag = %tag,
+                        "Source directory cleaned up, will restart from existing image"
+                    );
+                    (None, image_tag)
+                } else {
+                    // No source and no image
+                    return Err(ApiError::bad_request(
+                        "This app was deployed from a ZIP file, but the source files have been cleaned up and no image exists. \
+                        Please upload a new ZIP file using the 'Deploy from ZIP file' option."
+                    ));
+                }
+            }
+            Some((_, Some(image_tag))) => {
+                // No source path but have an image
+                tracing::info!(
+                    app_id = %app_id,
+                    image_tag = %image_tag,
+                    "No source path found, will restart from existing image"
+                );
+                (None, Some(image_tag))
+            }
+            _ => {
+                // No previous deployment found
+                return Err(ApiError::bad_request(
+                    "This app was configured for ZIP upload deployment but has no previous successful deployment. \
+                    Please upload a ZIP file using the 'Deploy from ZIP file' option."
+                ));
+            }
+        }
+    } else {
+        (None, None)
+    };
+
     let deployment_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // For upload apps with existing image, store the image tag to reuse
+    // commit_sha stores source path for rebuild, image_tag stores image for restart
     sqlx::query(
         r#"
-        INSERT INTO deployments (id, app_id, status, started_at)
-        VALUES (?, ?, 'pending', ?)
+        INSERT INTO deployments (id, app_id, status, started_at, commit_sha, image_tag)
+        VALUES (?, ?, 'pending', ?, ?, ?)
         "#,
     )
     .bind(&deployment_id)
     .bind(&app_id)
     .bind(&now)
+    .bind(&upload_source_path)
+    .bind(&existing_image_tag)
     .execute(&state.db)
     .await?;
 

@@ -616,25 +616,31 @@ pub async fn run_deployment(
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
     // Check if this is an upload-based deployment by looking at the deployment record
-    // Upload deployments store the source path in commit_sha
-    let deployment: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT commit_sha FROM deployments WHERE id = ?"
+    // Upload deployments store the source path in commit_sha, or existing image_tag for restart
+    let deployment: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT commit_sha, image_tag FROM deployments WHERE id = ?"
     )
     .bind(deployment_id)
     .fetch_optional(db)
     .await?;
 
-    let upload_source_path = deployment
-        .and_then(|(commit_sha,)| commit_sha)
-        .filter(|path| {
-            // Check if this looks like an upload source path (contains rivetr-upload-)
-            path.contains("rivetr-upload-")
-        });
+    let (upload_source_path, existing_image_tag) = deployment
+        .map(|(commit_sha, image_tag)| {
+            let source_path = commit_sha.filter(|path| path.contains("rivetr-upload-"));
+            (source_path, image_tag)
+        })
+        .unwrap_or((None, None));
 
     // Determine the image to use based on deployment source
     let image_tag = if app.uses_registry_image() {
         // Registry-based deployment: pull pre-built image
         run_registry_deployment(db, runtime.clone(), deployment_id, app).await?
+    } else if let Some(ref existing_tag) = existing_image_tag {
+        // Restart from existing image (for upload apps without source)
+        add_deployment_log(db, deployment_id, "info", &format!("Restarting from existing image: {}", existing_tag)).await?;
+        update_deployment_status(db, deployment_id, "building", None).await?;
+        add_deployment_log(db, deployment_id, "info", "Skipping build - using existing image").await?;
+        existing_tag.clone()
     } else if let Some(source_path) = upload_source_path {
         // Upload-based deployment: use pre-extracted source
         run_upload_deployment(db, runtime.clone(), deployment_id, app, &source_path, build_limits).await?
