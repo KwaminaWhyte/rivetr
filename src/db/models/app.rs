@@ -77,6 +77,15 @@ pub struct App {
     pub github_app_installation_id: Option<String>,
     /// Deployment source: "git", "upload", or "registry"
     pub deployment_source: Option<String>,
+    /// Enable automatic rollback on health check failure
+    #[serde(default)]
+    pub auto_rollback_enabled: i32,
+    /// Enable pushing images to registry for rollback support
+    #[serde(default)]
+    pub registry_push_enabled: i32,
+    /// Maximum number of deployment versions to keep for rollback (default: 5)
+    #[serde(default)]
+    pub max_rollback_versions: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -133,6 +142,12 @@ pub struct AppResponse {
     pub github_app_installation_id: Option<String>,
     /// Deployment source: "git", "upload", or "registry"
     pub deployment_source: Option<String>,
+    /// Enable automatic rollback on health check failure
+    pub auto_rollback_enabled: bool,
+    /// Enable pushing images to registry for rollback support
+    pub registry_push_enabled: bool,
+    /// Maximum number of deployment versions to keep for rollback
+    pub max_rollback_versions: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -178,6 +193,9 @@ impl From<App> for AppResponse {
             preview_enabled: app.preview_enabled != 0,
             github_app_installation_id: app.github_app_installation_id,
             deployment_source: app.deployment_source,
+            auto_rollback_enabled: app.auto_rollback_enabled != 0,
+            registry_push_enabled: app.registry_push_enabled != 0,
+            max_rollback_versions: app.max_rollback_versions,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -347,6 +365,28 @@ impl App {
             .as_ref()
             .and_then(|s| NixpacksConfig::from_json(s).ok())
     }
+
+    /// Check if automatic rollback is enabled for this app
+    pub fn is_auto_rollback_enabled(&self) -> bool {
+        self.auto_rollback_enabled != 0
+    }
+
+    /// Check if registry push is enabled for this app
+    pub fn is_registry_push_enabled(&self) -> bool {
+        self.registry_push_enabled != 0
+    }
+
+    /// Check if this app can push to registry (has registry configured and push enabled)
+    pub fn can_push_to_registry(&self) -> bool {
+        self.is_registry_push_enabled()
+            && self.registry_url.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+    }
+
+    /// Get the registry URL for pushing images (for rollback support)
+    /// Uses the same registry configured for Docker image pulls
+    pub fn get_rollback_registry_url(&self) -> Option<&str> {
+        self.registry_url.as_deref().filter(|s| !s.is_empty())
+    }
 }
 
 // DTOs for API
@@ -493,6 +533,13 @@ pub struct UpdateAppRequest {
     pub preview_enabled: Option<bool>,
     /// GitHub App installation ID for GitHub-based deployments
     pub github_app_installation_id: Option<String>,
+    // Rollback settings
+    /// Enable automatic rollback on health check failure
+    pub auto_rollback_enabled: Option<bool>,
+    /// Enable pushing images to registry for rollback support
+    pub registry_push_enabled: Option<bool>,
+    /// Maximum number of deployment versions to keep for rollback
+    pub max_rollback_versions: Option<i32>,
 }
 
 /// Request specifically for updating domains

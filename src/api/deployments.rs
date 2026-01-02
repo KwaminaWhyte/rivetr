@@ -314,15 +314,15 @@ pub async fn rollback_deployment(
                 return Err(ApiError::validation_field("target_deployment_id", e));
             }
 
-            // Fetch the specified target deployment
+            // Fetch the specified target deployment (allow running, stopped, or replaced statuses)
             sqlx::query_as::<_, Deployment>(
-                "SELECT * FROM deployments WHERE id = ? AND app_id = ? AND status = 'running'"
+                "SELECT * FROM deployments WHERE id = ? AND app_id = ? AND status IN ('running', 'stopped', 'replaced') AND image_tag IS NOT NULL"
             )
             .bind(target_id)
             .bind(&current_deployment.app_id)
             .fetch_optional(&state.db)
             .await?
-            .ok_or_else(|| ApiError::not_found("Target deployment not found or was not successful"))?
+            .ok_or_else(|| ApiError::not_found("Target deployment not found or has no image tag for rollback"))?
         } else {
             // Find the previous successful deployment
             find_previous_successful_deployment(&state, &current_deployment).await?
@@ -415,12 +415,13 @@ async fn find_previous_successful_deployment(
     state: &Arc<AppState>,
     current: &Deployment,
 ) -> Result<Deployment, ApiError> {
-    // Find the most recent successful deployment before the current one
+    // Find the most recent deployment with an image_tag that we can roll back to
+    // Allow running, stopped, or replaced statuses (these all indicate a deployment that completed successfully)
     sqlx::query_as::<_, Deployment>(
         r#"
         SELECT * FROM deployments
         WHERE app_id = ?
-          AND status = 'running'
+          AND status IN ('running', 'stopped', 'replaced')
           AND id != ?
           AND image_tag IS NOT NULL
         ORDER BY started_at DESC

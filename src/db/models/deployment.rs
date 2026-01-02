@@ -55,10 +55,15 @@ pub struct Deployment {
     pub commit_message: Option<String>,
     pub status: String,
     pub container_id: Option<String>,
-    pub image_tag: Option<String>,
     pub error_message: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+    pub image_tag: Option<String>,
+    /// ID of the deployment that triggered this auto-rollback (if any)
+    pub rollback_from_deployment_id: Option<String>,
+    /// Whether this deployment was an automatic rollback triggered by health check failure
+    #[serde(default)]
+    pub is_auto_rollback: i32,
 }
 
 impl Deployment {

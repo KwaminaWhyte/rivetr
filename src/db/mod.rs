@@ -326,6 +326,26 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/028_github_apps.sql")).await?;
     }
 
+    // Migration 029: Add deployment_source field to apps
+    let has_deployment_source: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'deployment_source'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_deployment_source.is_none() {
+        execute_sql(pool, include_str!("../../migrations/029_deployment_source.sql")).await?;
+    }
+
+    // Migration 030: Add automatic rollback settings to apps
+    let has_auto_rollback_enabled: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'auto_rollback_enabled'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_auto_rollback_enabled.is_none() {
+        execute_sql(pool, include_str!("../../migrations/030_auto_rollback.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

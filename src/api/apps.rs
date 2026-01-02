@@ -552,6 +552,11 @@ pub async fn update_app(
     let publish_directory = merge_optional_string(&req.publish_directory, &existing.publish_directory);
     let preview_enabled = req.preview_enabled.unwrap_or(existing.preview_enabled != 0);
 
+    // Rollback settings
+    let auto_rollback_enabled = req.auto_rollback_enabled.unwrap_or(existing.auto_rollback_enabled != 0);
+    let registry_push_enabled = req.registry_push_enabled.unwrap_or(existing.registry_push_enabled != 0);
+    let max_rollback_versions = req.max_rollback_versions.unwrap_or(existing.max_rollback_versions);
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -588,6 +593,9 @@ pub async fn update_app(
             nixpacks_config = ?,
             publish_directory = ?,
             preview_enabled = ?,
+            auto_rollback_enabled = ?,
+            registry_push_enabled = ?,
+            max_rollback_versions = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -625,6 +633,9 @@ pub async fn update_app(
     .bind(&nixpacks_config)
     .bind(&publish_directory)
     .bind(preview_enabled)
+    .bind(auto_rollback_enabled)
+    .bind(registry_push_enabled)
+    .bind(max_rollback_versions)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

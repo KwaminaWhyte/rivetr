@@ -223,24 +223,123 @@ impl DeploymentEngine {
                         }
                     }
                     Err(e) => {
-                        // Record failed deployment metric
-                        record_deployment_failed();
+                        // Check if this is an auto-rollback triggered error
+                        if let Some(auto_rollback) = e.downcast_ref::<AutoRollbackTriggered>() {
+                            tracing::info!(
+                                "Deployment {} failed but auto-rollback was triggered to {}",
+                                deployment_id,
+                                auto_rollback.target_deployment_id
+                            );
 
-                        tracing::error!("Deployment {} failed: {}", deployment_id, e);
-                        let _ = update_deployment_status(&db, &deployment_id, "failed", Some(&e.to_string())).await;
+                            // Mark the original deployment as failed
+                            let _ = update_deployment_status(
+                                &db,
+                                &deployment_id,
+                                "failed",
+                                Some(&format!("Health check failed. Auto-rollback triggered to {}", auto_rollback.target_deployment_id))
+                            ).await;
 
-                        // Send deployment_failed notification
-                        let failed_payload = NotificationPayload::deployment_event(
-                            NotificationEventType::DeploymentFailed,
-                            app.id.clone(),
-                            app.name.clone(),
-                            deployment_id.clone(),
-                            "failed".to_string(),
-                            format!("Deployment failed for {}", app.name),
-                            Some(e.to_string()),
-                        );
-                        if let Err(notify_err) = notification_service.send(&failed_payload).await {
-                            tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
+                            // Get the rollback deployment info to update routes
+                            if let Ok(Some(rollback_deployment)) = sqlx::query_as::<_, crate::db::Deployment>(
+                                "SELECT * FROM deployments WHERE id = ?"
+                            )
+                            .bind(&auto_rollback.rollback_deployment_id)
+                            .fetch_optional(&db)
+                            .await
+                            {
+                                if let Some(ref container_id) = rollback_deployment.container_id {
+                                    // Get container port and update routes
+                                    if let Ok(info) = runtime.inspect(container_id).await {
+                                        if let Some(port) = info.port {
+                                            let all_domains = app.get_all_domain_names();
+                                            let route_table = routes.load();
+
+                                            let create_backend = || {
+                                                let mut backend = Backend::new(
+                                                    container_id.clone(),
+                                                    "127.0.0.1".to_string(),
+                                                    port,
+                                                )
+                                                .with_healthcheck(app.healthcheck.clone());
+
+                                                if app.basic_auth_enabled != 0 {
+                                                    if let (Some(username), Some(password_hash)) =
+                                                        (&app.basic_auth_username, &app.basic_auth_password_hash)
+                                                    {
+                                                        backend.set_basic_auth(BasicAuthConfig::new(
+                                                            username.clone(),
+                                                            password_hash.clone(),
+                                                        ));
+                                                    }
+                                                }
+                                                backend
+                                            };
+
+                                            for domain in &all_domains {
+                                                route_table.add_route(domain.clone(), create_backend());
+                                            }
+
+                                            tracing::info!(
+                                                domains = ?all_domains,
+                                                port = port,
+                                                "Proxy routes updated after auto-rollback for app {}",
+                                                app.name
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Mark previous running deployments as replaced (except the rollback)
+                            let _ = sqlx::query(
+                                "UPDATE deployments SET status = 'replaced', finished_at = ?
+                                 WHERE app_id = ? AND status = 'running' AND id != ?"
+                            )
+                            .bind(chrono::Utc::now().to_rfc3339())
+                            .bind(&app.id)
+                            .bind(&auto_rollback.rollback_deployment_id)
+                            .execute(&db)
+                            .await;
+
+                            // Send auto-rollback notification
+                            let rollback_payload = NotificationPayload::deployment_event(
+                                NotificationEventType::DeploymentFailed,
+                                app.id.clone(),
+                                app.name.clone(),
+                                deployment_id.clone(),
+                                "auto_rollback".to_string(),
+                                format!(
+                                    "Deployment failed for {}. Auto-rollback to previous version completed.",
+                                    app.name
+                                ),
+                                Some(format!(
+                                    "Health check failed. Rolled back to deployment {}",
+                                    auto_rollback.target_deployment_id
+                                )),
+                            );
+                            if let Err(notify_err) = notification_service.send(&rollback_payload).await {
+                                tracing::warn!(error = %notify_err, "Failed to send auto-rollback notification");
+                            }
+                        } else {
+                            // Regular failure - no auto-rollback
+                            record_deployment_failed();
+
+                            tracing::error!("Deployment {} failed: {}", deployment_id, e);
+                            let _ = update_deployment_status(&db, &deployment_id, "failed", Some(&e.to_string())).await;
+
+                            // Send deployment_failed notification
+                            let failed_payload = NotificationPayload::deployment_event(
+                                NotificationEventType::DeploymentFailed,
+                                app.id.clone(),
+                                app.name.clone(),
+                                deployment_id.clone(),
+                                "failed".to_string(),
+                                format!("Deployment failed for {}", app.name),
+                                Some(e.to_string()),
+                            );
+                            if let Err(notify_err) = notification_service.send(&failed_payload).await {
+                                tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
+                            }
                         }
                     }
                 }

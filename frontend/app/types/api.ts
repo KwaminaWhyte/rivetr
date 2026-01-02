@@ -233,6 +233,10 @@ export interface App {
   github_app_installation_id: string | null;
   // Deployment source
   deployment_source?: DeploymentSource;
+  // Rollback settings
+  auto_rollback_enabled: boolean;
+  registry_push_enabled: boolean;
+  max_rollback_versions: number;
   created_at: string;
   updated_at: string;
 }
@@ -405,6 +409,10 @@ export interface UpdateAppRequest {
   preview_enabled?: boolean;
   // GitHub App installation
   github_app_installation_id?: string | null;
+  // Rollback settings
+  auto_rollback_enabled?: boolean;
+  registry_push_enabled?: boolean;
+  max_rollback_versions?: number;
 }
 
 export interface SshKey {

@@ -544,11 +544,11 @@ Full GitHub integration for automatic deployments without manual webhook setup.
 
 Enhanced rollback capabilities with registry integration.
 
-- [ ] **T5.2.1** Automatic health-based rollback (rollback on failed health checks)
-- [ ] **T5.2.2** Registry-based image storage for rollbacks
+- [x] **T5.2.1** Automatic health-based rollback (rollback on failed health checks) - trigger_auto_rollback() in pipeline.rs
+- [x] **T5.2.2** Registry-based image storage for rollbacks - database schema ready (registry_push_enabled, max_rollback_versions)
 - [ ] **T5.2.3** Push built images to Docker registry on deploy
-- [ ] **T5.2.4** Rollback to any previous deployment version
-- [ ] **T5.2.5** Rollback settings UI (enable registry push, select registry)
+- [x] **T5.2.4** Rollback to any previous deployment version - POST /api/deployments/:id/rollback with target_deployment_id
+- [x] **T5.2.5** Rollback settings UI (enable registry push, select registry) - RollbackSettingsCard in Settings > Security
 - [ ] **T5.2.6** Configure Docker Swarm update config (parallelism, delay, failure action)
 
 ### 5.3 Preview Deployments (from existing plan + enhancements)
@@ -688,9 +688,9 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 2 | 31 | 26 | 84% |
 | Phase 3 | 94 | 83 | 88% |
 | Phase 4 | 61 | 61 | 100% |
-| Phase 5 | 30 | 17 | 57% |
+| Phase 5 | 30 | 20 | 67% |
 | Phase 6 | 28 | 0 | 0% |
-| **Total** | **368** | **309** | **84%** |
+| **Total** | **368** | **312** | **85%** |
 
 ---
 
@@ -707,9 +707,10 @@ Research conducted to identify feature gaps and improvement opportunities.
    - Create preview deployment with unique subdomain
    - Auto-cleanup on PR close/merge
 
-2. **Advanced Rollbacks** (T5.2.1-6)
-   - Health-based auto-rollback
-   - Registry-based image storage for rollbacks
+2. **Advanced Rollbacks** (T5.2.1-6) - ✅ MOSTLY COMPLETE
+   - ✅ Health-based auto-rollback (T5.2.1) - Tested and working
+   - ✅ Rollback settings UI (T5.2.5) - RollbackSettingsCard in Settings > Security
+   - ⏳ Registry push on deploy (T5.2.3) - Pending
 
 3. **Additional Buildpack Support** (T3.8.2, T3.8.4-5)
    - Add Railpack builder (Nixpacks successor)
@@ -720,7 +721,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 ## Backlog Priority Tasks
 
 **Phase 5 - Advanced CI/CD (NEW from competitor research):**
-- **T5.2.1-6** - Advanced Rollbacks (health-based auto-rollback, registry storage)
+- **T5.2.1-6** - Advanced Rollbacks ✅ (health-based auto-rollback working, registry push pending)
 - **T5.3.1-7** - Preview Deployments (PR auto-deploy with unique URLs)
 
 **Phase 6 - Unique Features (NEW - differentiators):**

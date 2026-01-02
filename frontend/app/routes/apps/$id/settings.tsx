@@ -34,6 +34,7 @@ import { DomainManagementCard } from "@/components/domain-management-card";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { NetworkConfigCard } from "@/components/network-config-card";
 import { VolumesCard } from "@/components/volumes-card";
+import { RollbackSettingsCard } from "@/components/rollback-settings-card";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, BuildType, NixpacksConfig, UpdateAppRequest } from "@/types/api";
 
@@ -588,6 +589,9 @@ export default function AppSettingsTab() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
+          {/* Rollback Settings */}
+          <RollbackSettingsCard app={app} />
+
           {/* HTTP Basic Auth */}
           <BasicAuthCard appId={app.id} />
 

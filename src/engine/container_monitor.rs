@@ -124,7 +124,8 @@ impl ContainerMonitor {
         let running_deployments: Vec<Deployment> = match sqlx::query_as(
             r#"
             SELECT id, app_id, commit_sha, commit_message, status, container_id,
-                   image_tag, error_message, started_at, finished_at
+                   error_message, started_at, finished_at, image_tag,
+                   rollback_from_deployment_id, is_auto_rollback
             FROM deployments
             WHERE status = 'running' AND container_id IS NOT NULL
             "#,
@@ -829,7 +830,8 @@ async fn reconcile_deployments(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>)
     let running_deployments: Vec<Deployment> = match sqlx::query_as(
         r#"
         SELECT id, app_id, commit_sha, commit_message, status, container_id,
-               image_tag, error_message, started_at, finished_at
+               error_message, started_at, finished_at, image_tag,
+               rollback_from_deployment_id, is_auto_rollback
         FROM deployments
         WHERE status = 'running' AND container_id IS NOT NULL
         "#,

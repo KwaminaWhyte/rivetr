@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   FolderKanban,
   Settings,
-  Activity,
   BarChart3,
   Bell,
 } from "lucide-react";
@@ -29,11 +28,6 @@ const navMain: NavMainItem[] = [
     title: "Projects",
     url: "/projects",
     icon: FolderKanban,
-  },
-  {
-    title: "Deployments",
-    url: "/deployments",
-    icon: Activity,
   },
   {
     title: "Monitoring",

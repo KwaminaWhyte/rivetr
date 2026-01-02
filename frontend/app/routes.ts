@@ -55,9 +55,6 @@ export default [
     // Service Templates (browse templates for reference)
     route("templates", "routes/templates.tsx"),
 
-    // Deployments
-    route("deployments", "routes/deployments.tsx"),
-
     // Monitoring
     route("monitoring", "routes/monitoring.tsx"),
 

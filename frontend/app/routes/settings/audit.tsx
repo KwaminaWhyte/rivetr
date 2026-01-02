@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,11 +65,18 @@ function formatResourceType(resourceType: string): string {
 }
 
 export default function SettingsAuditPage() {
-  const [query, setQuery] = useState<AuditLogQuery>({
-    page: 1,
-    per_page: 50,
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
+
+  // Read query params from URL
+  const query: AuditLogQuery = {
+    page: parseInt(searchParams.get("page") || "1"),
+    per_page: parseInt(searchParams.get("per_page") || "50"),
+    action: searchParams.get("action") || undefined,
+    resource_type: searchParams.get("resource_type") || undefined,
+    start_date: searchParams.get("start_date") || undefined,
+    end_date: searchParams.get("end_date") || undefined,
+  };
 
   const { data: auditLogs, refetch, isLoading } = useQuery<AuditLogListResponse>({
     queryKey: ["auditLogs", query],
@@ -85,20 +93,34 @@ export default function SettingsAuditPage() {
     queryFn: () => api.getAuditResourceTypes(),
   });
 
+  // Update URL with new query params
+  const updateSearchParams = (updates: Partial<AuditLogQuery>) => {
+    const newParams = new URLSearchParams(searchParams);
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        newParams.set(key, String(value));
+      } else {
+        newParams.delete(key);
+      }
+    });
+
+    setSearchParams(newParams);
+  };
+
   const handleFilterChange = (key: keyof AuditLogQuery, value: string) => {
-    setQuery((prev) => ({
-      ...prev,
+    updateSearchParams({
       [key]: value || undefined,
       page: 1, // Reset to first page when filtering
-    }));
+    });
   };
 
   const clearFilters = () => {
-    setQuery({ page: 1, per_page: 50 });
+    setSearchParams(new URLSearchParams({ page: "1", per_page: "50" }));
   };
 
   const goToPage = (page: number) => {
-    setQuery((prev) => ({ ...prev, page }));
+    updateSearchParams({ page });
   };
 
   const hasFilters = query.action || query.resource_type || query.start_date || query.end_date;
