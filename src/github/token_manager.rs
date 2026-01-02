@@ -138,21 +138,10 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_jwt_with_valid_key() {
-        // Generate a test RSA key pair for testing
-        // This is a minimal test key - DO NOT use in production
-        let test_key = r#"-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MvfN4gLGHQu/d8xz
-7GnxJYfvgQwbwL5rpbpFR6M9VPJx4FXNP/T6Hc2bNwDN1WF6z5pT6g8LwN1t1E5y
-5b2E5rT5C0P4fVwH4dFwvQKBgQDRq5C4M4EpDnIhAkHH9yP4k3F5z9QBNP4mQ5t5
-V4x5h3dMgEMWMl3F5p9b5D8eBqTpEEz4G5s3Y5Q9YmxB5v3e3DlMwb3b3F5p9b5D
-8eBqTpEEz4G5s3Y5Q9YmxB5v3e3DlMwb3b3F5p9b5D8eBqTpEEz4G5s3Y5Q9YmxB
-5v3e3DlMwQKBgQC3Z5Y5Q9YmxB5v3e3DlMwb3b3F5p9b5D8eBqTpEEz4G5s3Y5Q9
------END RSA PRIVATE KEY-----"#;
-
-        // This will fail because the key is not valid, but tests the parsing path
-        let result = generate_app_jwt(12345, test_key);
-        // We expect this to fail since it's not a real key
+    fn test_generate_jwt_with_malformed_pem() {
+        // Test that malformed PEM structures are rejected
+        let malformed_pem = "-----BEGIN RSA PRIVATE KEY-----\ninvalid-base64-content\n-----END RSA PRIVATE KEY-----";
+        let result = generate_app_jwt(12345, malformed_pem);
         assert!(result.is_err());
     }
 }
