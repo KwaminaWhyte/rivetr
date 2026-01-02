@@ -5,7 +5,7 @@ export type AppEnvironment = "development" | "staging" | "production";
 // -------------------------------------------------------------------------
 
 /** Build type for applications */
-export type BuildType = "dockerfile" | "nixpacks" | "staticsite";
+export type BuildType = "dockerfile" | "nixpacks" | "railpack" | "cnb" | "staticsite";
 
 /** Deployment source type */
 export type DeploymentSource = "git" | "upload" | "registry";

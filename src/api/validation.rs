@@ -251,7 +251,7 @@ pub fn validate_uuid(id: &str, field_name: &str) -> Result<(), String> {
 const VALID_ENVIRONMENTS: [&str; 3] = ["development", "staging", "production"];
 
 /// Valid build type values
-const VALID_BUILD_TYPES: [&str; 3] = ["dockerfile", "nixpacks", "static"];
+const VALID_BUILD_TYPES: [&str; 6] = ["dockerfile", "nixpacks", "railpack", "cnb", "static", "staticsite"];
 
 /// Validate an environment value
 pub fn validate_environment(environment: &str) -> Result<(), String> {

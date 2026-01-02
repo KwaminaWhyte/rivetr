@@ -298,9 +298,6 @@
 - [x] **T3.1.1** Add `environment` field to apps (staging/production/development) - migration 006, model, validation
 - [x] **T3.1.2** Add environment badge to UI (EnvironmentBadge.tsx - color-coded: gray/yellow/green)
 - [x] **T3.1.3** Add environment filter on apps list (dropdown filter in Apps.tsx)
-- [ ] **T3.1.4** Add tags/labels to apps (database table + API)
-- [ ] **T3.1.5** Add tags UI management
-- [ ] **T3.1.6** Filter apps by tags
 
 ### 3.2 Environment Variables UI ✅ COMPLETE
 
@@ -309,7 +306,7 @@
 - [x] **T3.2.3** Create Env Vars settings tab in app detail (EnvVarsTab.tsx component)
 - [x] **T3.2.4** Add env var editor with key-value pairs (table with add/edit/delete dialogs)
 - [x] **T3.2.5** Support multiline values (textarea in edit dialog)
-- [x] **T3.2.6** Mask secret values in UI (********  with reveal button)
+- [x] **T3.2.6** Mask secret values in UI (**\*\*\*\*** with reveal button)
 - [x] **T3.2.7** Pass env vars to container at runtime (already in engine pipeline)
 
 ### 3.3 Resource Monitoring
@@ -353,13 +350,13 @@
 - [x] **T3.7.4** Mount volumes at container start (binds in RunConfig, Docker/Podman support)
 - [x] **T3.7.5** Add volume backup/export (tar.gz backup endpoint)
 
-### 3.8 Build Improvements (Buildpacks - from Coolify/Dokploy research) ✅ MOSTLY COMPLETE
+### 3.8 Build Improvements (Buildpacks - from Coolify/Dokploy research) ✅ COMPLETE
 
 - [x] **T3.8.1** Add Nixpacks builder support (auto-generate Dockerfile) - src/engine/nixpacks.rs with TOML config support
-- [ ] **T3.8.2** Add Railpack builder support (Nixpacks successor with optimizations)
+- [x] **T3.8.2** Add Railpack builder support (Nixpacks successor with optimizations) - src/engine/railpack.rs with BuildKit integration
 - [x] **T3.8.3** Add Static site builder (NGINX-based, for Astro/Next/Vite static exports) - src/engine/static_builder.rs
-- [ ] **T3.8.4** Add Heroku Buildpacks support
-- [ ] **T3.8.5** Add Paketo Buildpacks support (cloud-native buildpacks)
+- [x] **T3.8.4** Add Heroku Buildpacks support - src/engine/pack_builder.rs (heroku/builder:24, heroku/builder:22)
+- [x] **T3.8.5** Add Paketo Buildpacks support (cloud-native buildpacks) - src/engine/pack_builder.rs (paketobuildpacks/builder-jammy-*)
 - [x] **T3.8.6** Auto-detect build type from repo (package.json, requirements.txt, Cargo.toml, etc.) - src/engine/build_detect.rs
 - [x] **T3.8.7** Build type selector in UI (dropdown in app creation/settings) - frontend already implemented
 - [x] **T3.8.8** Publish directory field for static builds (e.g., dist, build, out) - frontend already implemented
@@ -462,7 +459,7 @@ One-click database deployments with automatic configuration.
 - [x] **T4.1.10a** Add public access toggle in database settings UI (switch, custom port, security warnings, confirmation dialog)
 - [x] **T4.1.11** Add database backup scheduling (src/engine/database_backups.rs, migrations/021)
 - [x] **T4.1.12** Create Databases management page in frontend (under projects with grid view)
-- [x] **T4.1.13** Add database credentials reveal/copy UI - frontend/app/routes/databases/$id/_index.tsx
+- [x] **T4.1.13** Add database credentials reveal/copy UI - frontend/app/routes/databases/$id/\_index.tsx
 - [x] **T4.1.14** Add backup file download functionality (API endpoint + frontend button)
 - [x] **T4.1.15** Add database stats to dashboard (container stats aggregated with apps)
 
@@ -637,6 +634,7 @@ Features that differentiate Rivetr from Coolify/Dokploy.
 Research conducted to identify feature gaps and improvement opportunities.
 
 ### Features Rivetr Already Has
+
 - [x] Git provider OAuth integration (GitHub, GitLab, Bitbucket)
 - [x] Push-to-deploy via webhooks
 - [x] Dark/Light theme switching
@@ -650,6 +648,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 ### Priority Features to Add (from Coolify/Dokploy)
 
 **High Priority:**
+
 - [x] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml ✅ IMPLEMENTED (Phase 4.2)
 - [x] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.) ✅ IMPLEMENTED (Phase 4.3 - 26 templates)
 - [ ] **Pull request preview deployments** - Auto-deploy PRs with unique URLs
@@ -657,6 +656,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [ ] **Repository browser** - Select repos from connected Git providers in app creation
 
 **Medium Priority:**
+
 - [x] **Build cache control** - Support `--no-cache` in custom docker options to force fresh builds
 - [x] **Resource limits UI** - Set CPU/memory limits per app from dashboard (ResourceLimitsCard.tsx)
 - [ ] **Deployment scheduling** - Schedule deployments for specific times
@@ -664,12 +664,14 @@ Research conducted to identify feature gaps and improvement opportunities.
 - [x] **Custom domains per app** - Multiple domains pointing to one app ✅ IMPLEMENTED (Phase 3.14)
 
 **Lower Priority:**
+
 - [ ] **Multi-server support** - Deploy to multiple servers from one dashboard
 - [ ] **Service dependencies** - Define app startup order and dependencies
 - [x] **Build from Dockerfile path** - Specify custom Dockerfile location ✅ IMPLEMENTED (Phase 3.10.1)
 - [ ] **Auto-scaling** - Scale containers based on load
 
 ### UI/UX Improvements (from Dokploy)
+
 - [x] **Simplified app creation flow** - Project-centric flow, create apps within projects
 - [ ] **Quick actions menu** - Fast access to common operations
 - [x] **Deployment timeline view** - Visual history of deployments (DeploymentTimeline.tsx with toggle)
@@ -681,66 +683,71 @@ Research conducted to identify feature gaps and improvement opportunities.
 
 ## Progress Summary
 
-| Phase | Total Tasks | Completed | Progress |
-|-------|-------------|-----------|----------|
-| Phase 0 | 30 | 28 | 93% |
-| Phase 1 | 94 | 94 | 100% |
-| Phase 2 | 31 | 26 | 84% |
-| Phase 3 | 94 | 83 | 88% |
-| Phase 4 | 61 | 61 | 100% |
-| Phase 5 | 30 | 20 | 67% |
-| Phase 6 | 28 | 0 | 0% |
-| **Total** | **368** | **312** | **85%** |
+| Phase     | Total Tasks | Completed | Progress |
+| --------- | ----------- | --------- | -------- |
+| Phase 0   | 30          | 28        | 93%      |
+| Phase 1   | 94          | 94        | 100%     |
+| Phase 2   | 31          | 26        | 84%      |
+| Phase 3   | 94          | 86        | 91%      |
+| Phase 4   | 61          | 61        | 100%     |
+| Phase 5   | 30          | 20        | 67%      |
+| Phase 6   | 28          | 0         | 0%       |
+| **Total** | **368**     | **315**   | **86%**  |
 
 ---
 
 ## Known Issues (Active Bugs)
 
-*No active bugs - all recently identified issues have been fixed.*
+_No active bugs - all recently identified issues have been fixed._
 
 ---
 
 ## Next Priority Tasks
 
 1. **Preview Deployments** (T5.3.1-7)
+
    - Parse PR events from webhooks
    - Create preview deployment with unique subdomain
    - Auto-cleanup on PR close/merge
 
 2. **Advanced Rollbacks** (T5.2.1-6) - ✅ MOSTLY COMPLETE
+
    - ✅ Health-based auto-rollback (T5.2.1) - Tested and working
    - ✅ Rollback settings UI (T5.2.5) - RollbackSettingsCard in Settings > Security
    - ⏳ Registry push on deploy (T5.2.3) - Pending
 
-3. **Additional Buildpack Support** (T3.8.2, T3.8.4-5)
-   - Add Railpack builder (Nixpacks successor)
-   - Add Heroku/Paketo Buildpacks support
+3. **Buildpack Support** (T3.8.1-8) - ✅ COMPLETE
+   - ✅ Nixpacks builder
+   - ✅ Railpack builder (src/engine/railpack.rs with BuildKit)
+   - ✅ Heroku/Paketo CNB (src/engine/pack_builder.rs)
 
 ---
 
 ## Backlog Priority Tasks
 
 **Phase 5 - Advanced CI/CD (NEW from competitor research):**
+
 - **T5.2.1-6** - Advanced Rollbacks ✅ (health-based auto-rollback working, registry push pending)
 - **T5.3.1-7** - Preview Deployments (PR auto-deploy with unique URLs)
 
 **Phase 6 - Unique Features (NEW - differentiators):**
+
 - **T6.1.1-6** - Resource Alerts & Cost Estimation
 - **T6.2.1-5** - Deployment Enhancements (scheduled, approval workflow, freeze periods)
 - **T6.3.1-6** - Bulk Operations & App Management (cloning, snapshots, maintenance mode)
 - **T6.4.1-6** - Advanced Monitoring (log search, uptime tracking)
 - **T6.5.1-6** - S3 Backup Integration
 
-**Phase 3 - Enhanced Features:**
-- **T3.8.2, T3.8.4-5** - Additional Buildpacks (Railpack, Heroku, Paketo)
-
 **Phase 2 - Production Ready:**
+
 - **T2.2.2** - Add deployment failure recovery
 - **T2.2.5** - Database integrity checks
 - **T2.7.2-3** - Document configuration options and API endpoints
 
 ### MVP Status
+
 **Phase 1 Complete!** Core deployment pipeline with:
+
 - Full deployment lifecycle (clone → build → deploy → health check → switch)
 - Rollback functionality
 - Input validation
@@ -757,6 +764,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Build logs viewer** for all historical deployments
 
 ### Recent Additions (Phase 2-3)
+
 - **System Overview Dashboard** - Stats cards, resource utilization chart, recent events feed
 - **Projects feature** - Group related apps, project cards with service counts
 - **Environment field** - Development/Staging/Production with color-coded badges
@@ -799,6 +807,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Apps & Databases Grid View** - Card-based grid layout for apps and databases under projects
 
 ### Recent Additions (Phase 4)
+
 - **Docker Compose Services** - Deploy multi-container apps from docker-compose.yml
 - **One-Click Templates** - 12 pre-configured templates (Portainer, Grafana, Uptime Kuma, Gitea, n8n, MinIO, etc.)
 - **Service Detail Page** - Tabs for General, Network, Logs, Settings with exposed ports display
@@ -809,12 +818,14 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Docker Compose Editor** - Edit compose YAML in service settings with save functionality
 
 ### Planned Features (from Coolify/Dokploy research)
-- **Railpack Builder** - Nixpacks successor with optimizations
-- **Heroku/Paketo Buildpacks** - Additional buildpack support
-- **Advanced Rollbacks** - Health-based auto-rollback, registry image storage
+
+- ✅ **Railpack Builder** - Nixpacks successor with optimizations (src/engine/railpack.rs)
+- ✅ **Heroku/Paketo Buildpacks** - Cloud Native Buildpacks via pack CLI (src/engine/pack_builder.rs)
+- **Advanced Rollbacks** - Health-based auto-rollback ✅, registry image storage (pending)
 - **Preview Deployments** - Auto-deploy PRs with unique URLs
 
 ### Unique Rivetr Features (differentiators)
+
 - **Resource Alerts** - Notifications when CPU/memory exceeds thresholds
 - **Cost Estimation** - Estimate hosting costs based on resource usage
 - **Deployment Approval Workflow** - Require approval before production deploys
@@ -826,6 +837,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **S3 Backup Integration** - Backup volumes/databases to S3
 
 ### Recently Completed
+
 - **API Pagination for Deployments** - Added paginated deployments API (`GET /api/apps/:id/deployments?page=1&per_page=20`) with `DeploymentListResponse` containing items, total, page, per_page, total_pages. Frontend updated to use URL query params with Previous/Next pagination controls.
 - **Security Hardening v0.1.0** - Timing attack fixes (constant-time comparison), command injection protection, password strength validation (12+ chars, complexity requirements), security headers middleware, container restart policies (unless-stopped), production deployment documentation with one-liner install script
 - **ZIP File Upload Deployment** - Deploy apps by uploading ZIP files with auto-detection of build type (Dockerfile, Nixpacks, Static, Docker Compose). Supports drag-and-drop upload, build preview, and quick deploy (create app + deploy in one step).
@@ -845,8 +857,11 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **Time Range Selectors** - Global resource charts with 1h/6h/24h/7d/30d time range selection
 
 - **Build Improvements** - Added Nixpacks builder with TOML config support (src/engine/nixpacks.rs), Static site builder with NGINX-based multi-stage Docker builds (src/engine/static_builder.rs), Build type auto-detection for 15+ frameworks/languages (src/engine/build_detect.rs). Pipeline integration complete.
+- **Railpack Builder** - Railway's Nixpacks successor with BuildKit integration (src/engine/railpack.rs). Supports custom install/build/start commands, provider selection, and real-time build output streaming.
+- **Cloud Native Buildpacks** - Unified pack CLI builder for Heroku and Paketo buildpacks (src/engine/pack_builder.rs). Supports 5 builder images (paketobuildpacks/builder-jammy-base/full/tiny, heroku/builder:24/22) with auto-detection via `suggest_builder()`.
 - **GitHub App Integration** - Full GitHub App manifest registration, OAuth installation flow, installation tokens, auto-configured webhooks, repository browser with branch selection (github-repo-picker.tsx), system-wide sharing, settings UI in git-providers.tsx.
 
 ### Known Deployment Issues (User Repository Issues)
+
 - **kwamina-website** - Container crashes due to `cross-env: not found` - the Dockerfile doesn't install devDependencies at runtime, but `npm start` uses `cross-env`. Fix: Move `cross-env` to dependencies or change start script to `NODE_ENV=production react-router-serve ./build/server/index.js`
 - **pharmapro** - App responds but shows Laravel 500 error - likely needs database/env configuration (APP_KEY, database connection)

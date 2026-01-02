@@ -24,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Sparkles, FileCode, Package } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud } from "lucide-react";
 import { BasicAuthCard } from "@/components/basic-auth-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
 import { GitHubSourceCard } from "@/components/github-source-card";
@@ -157,7 +157,7 @@ export default function AppSettingsTab() {
         custom_docker_options: buildType === "dockerfile" ? buildForm.custom_docker_options : undefined,
         build_type: buildType,
         nixpacks_config: nixpacksConfigToSend,
-        publish_directory: buildType === "static" ? publishDirectory : undefined,
+        publish_directory: buildType === "staticsite" ? publishDirectory : undefined,
         preview_enabled: previewEnabled,
       };
       await api.updateApp(app.id, updates);
@@ -337,7 +337,7 @@ export default function AppSettingsTab() {
                 {/* Build Type Selection */}
                 <div className="space-y-3">
                   <Label>Build Type</Label>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
                     <button
                       type="button"
                       onClick={() => setBuildType("nixpacks")}
@@ -351,6 +351,36 @@ export default function AppSettingsTab() {
                       <span className="text-sm font-medium">Nixpacks</span>
                       <span className="text-xs text-muted-foreground text-center">
                         Auto-detect
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBuildType("railpack")}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                        buildType === "railpack"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`}
+                    >
+                      <Zap className="h-6 w-6" />
+                      <span className="text-sm font-medium">Railpack</span>
+                      <span className="text-xs text-muted-foreground text-center">
+                        Fast builds
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBuildType("cnb")}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                        buildType === "cnb"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground/50"
+                      }`}
+                    >
+                      <Cloud className="h-6 w-6" />
+                      <span className="text-sm font-medium">Buildpacks</span>
+                      <span className="text-xs text-muted-foreground text-center">
+                        Paketo/Heroku
                       </span>
                     </button>
                     <button
@@ -370,9 +400,9 @@ export default function AppSettingsTab() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setBuildType("static")}
+                      onClick={() => setBuildType("staticsite")}
                       className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                        buildType === "static"
+                        buildType === "staticsite"
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-muted-foreground/50"
                       }`}
@@ -425,8 +455,34 @@ export default function AppSettingsTab() {
                   </div>
                 )}
 
+                {/* Railpack options */}
+                {buildType === "railpack" && (
+                  <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Railpack (Railway's Nixpacks successor) offers faster builds with better caching.
+                      38% faster for Node.js, 77% faster for Python compared to Nixpacks.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Note:</strong> Requires Railpack CLI and BuildKit. Linux/macOS only (Windows not supported).
+                    </p>
+                  </div>
+                )}
+
+                {/* Cloud Native Buildpacks options */}
+                {buildType === "cnb" && (
+                  <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      Cloud Native Buildpacks (Paketo/Heroku) create production-ready, security-focused container images
+                      without requiring a Dockerfile. Auto-selects the best builder for your project.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Note:</strong> Requires Pack CLI installed. Supports Java, Node.js, Python, Go, Ruby, .NET, and more.
+                    </p>
+                  </div>
+                )}
+
                 {/* Static options */}
-                {buildType === "static" && (
+                {buildType === "staticsite" && (
                   <div className="space-y-2">
                     <Label htmlFor="publish_directory">Publish Directory</Label>
                     <Input

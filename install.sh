@@ -136,6 +136,208 @@ install_docker() {
 }
 
 # =============================================================================
+# Build Tools Installation (Nixpacks, Railpack, Pack CLI)
+# =============================================================================
+install_git() {
+    if command_exists git; then
+        success "Git is already installed"
+        return
+    fi
+
+    info "Installing Git..."
+    case "$OS" in
+        ubuntu|debian)
+            apt-get install -y -qq git
+            ;;
+        fedora)
+            dnf install -y git
+            ;;
+        centos|rhel|rocky|almalinux)
+            yum install -y git
+            ;;
+    esac
+    success "Git installed"
+}
+
+install_nixpacks() {
+    if command_exists nixpacks; then
+        success "Nixpacks is already installed: $(nixpacks --version)"
+        return
+    fi
+
+    info "Installing Nixpacks..."
+
+    # Try the official installer first
+    if curl -sSL https://nixpacks.com/install.sh | bash 2>/dev/null; then
+        # Move to /usr/local/bin if installed elsewhere
+        if [ -f "$HOME/.nixpacks/bin/nixpacks" ]; then
+            mv "$HOME/.nixpacks/bin/nixpacks" /usr/local/bin/
+            chmod +x /usr/local/bin/nixpacks
+        fi
+        if command_exists nixpacks; then
+            success "Nixpacks installed: $(nixpacks --version 2>/dev/null || echo 'installed')"
+            return
+        fi
+    fi
+
+    # Fallback: Download binary directly from GitHub
+    info "Trying direct binary download..."
+    local NIXPACKS_VERSION="1.29.1"
+    local NIXPACKS_URL="https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/nixpacks-v${NIXPACKS_VERSION}-${ARCH}-unknown-linux-musl.tar.gz"
+
+    local TEMP_DIR=$(mktemp -d)
+    if curl -fsSL -o "$TEMP_DIR/nixpacks.tar.gz" "$NIXPACKS_URL" 2>/dev/null; then
+        tar -xzf "$TEMP_DIR/nixpacks.tar.gz" -C "$TEMP_DIR"
+        if [ -f "$TEMP_DIR/nixpacks" ]; then
+            mv "$TEMP_DIR/nixpacks" /usr/local/bin/
+            chmod +x /usr/local/bin/nixpacks
+            success "Nixpacks installed from GitHub releases"
+        fi
+    fi
+    rm -rf "$TEMP_DIR"
+
+    if ! command_exists nixpacks; then
+        error "Failed to install Nixpacks. Please check your internet connection."
+    fi
+}
+
+install_railpack() {
+    if command_exists railpack; then
+        success "Railpack is already installed: $(railpack --version)"
+        return
+    fi
+
+    info "Installing Railpack..."
+
+    # Try downloading binary directly from GitHub releases
+    local RAILPACK_ARCH="$ARCH"
+    if [ "$ARCH" = "amd64" ]; then
+        RAILPACK_ARCH="x86_64"
+    elif [ "$ARCH" = "arm64" ]; then
+        RAILPACK_ARCH="aarch64"
+    fi
+
+    # Try latest release binary
+    local RAILPACK_URL="https://github.com/railwayapp/railpack/releases/latest/download/railpack-${RAILPACK_ARCH}-unknown-linux-gnu.tar.gz"
+    local TEMP_DIR=$(mktemp -d)
+
+    if curl -fsSL -o "$TEMP_DIR/railpack.tar.gz" "$RAILPACK_URL" 2>/dev/null; then
+        if tar -xzf "$TEMP_DIR/railpack.tar.gz" -C "$TEMP_DIR" 2>/dev/null; then
+            if [ -f "$TEMP_DIR/railpack" ]; then
+                mv "$TEMP_DIR/railpack" /usr/local/bin/
+                chmod +x /usr/local/bin/railpack
+                rm -rf "$TEMP_DIR"
+                success "Railpack installed from GitHub releases"
+                return
+            fi
+        fi
+    fi
+    rm -rf "$TEMP_DIR"
+
+    # Try alternative URL format (plain binary)
+    RAILPACK_URL="https://github.com/railwayapp/railpack/releases/latest/download/railpack-linux-$ARCH"
+    if curl -fsSL -o /usr/local/bin/railpack "$RAILPACK_URL" 2>/dev/null; then
+        chmod +x /usr/local/bin/railpack
+        if /usr/local/bin/railpack --version >/dev/null 2>&1; then
+            success "Railpack installed from GitHub releases"
+            return
+        else
+            rm -f /usr/local/bin/railpack
+        fi
+    fi
+
+    # Try mise if available
+    if command_exists mise; then
+        if mise install ubi:railwayapp/railpack@latest 2>/dev/null; then
+            success "Railpack installed via mise"
+            return
+        fi
+    fi
+
+    # Try cargo install as last resort
+    if command_exists cargo; then
+        info "Attempting to build Railpack from source (this may take a while)..."
+        if cargo install railpack 2>/dev/null; then
+            # Move to /usr/local/bin
+            if [ -f "$HOME/.cargo/bin/railpack" ]; then
+                mv "$HOME/.cargo/bin/railpack" /usr/local/bin/
+            fi
+            success "Railpack installed via cargo"
+            return
+        fi
+    fi
+
+    warn "Railpack installation failed. Railpack builds will not be available."
+    warn "This is optional - Nixpacks and Dockerfile builds will still work."
+}
+
+install_pack_cli() {
+    if command_exists pack; then
+        success "Pack CLI is already installed: $(pack version)"
+        return
+    fi
+
+    info "Installing Pack CLI (Cloud Native Buildpacks)..."
+
+    local TEMP_DIR=$(mktemp -d)
+    local INSTALLED=false
+
+    # Try version 0.36.1 first (latest as of 2025)
+    for PACK_VERSION in "0.36.1" "0.35.1" "0.34.2"; do
+        local PACK_URL="https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux"
+
+        if [ "$ARCH" = "amd64" ]; then
+            PACK_URL="${PACK_URL}.tgz"
+        else
+            PACK_URL="${PACK_URL}-arm64.tgz"
+        fi
+
+        if curl -fsSL -o "$TEMP_DIR/pack.tgz" "$PACK_URL" 2>/dev/null; then
+            if tar -xzf "$TEMP_DIR/pack.tgz" -C "$TEMP_DIR" 2>/dev/null; then
+                if [ -f "$TEMP_DIR/pack" ]; then
+                    mv "$TEMP_DIR/pack" /usr/local/bin/
+                    chmod +x /usr/local/bin/pack
+                    INSTALLED=true
+                    success "Pack CLI v${PACK_VERSION} installed"
+                    break
+                fi
+            fi
+        fi
+    done
+
+    rm -rf "$TEMP_DIR"
+
+    if [ "$INSTALLED" = false ]; then
+        # Try brew as fallback on systems with Homebrew
+        if command_exists brew; then
+            if brew install buildpacks/tap/pack 2>/dev/null; then
+                success "Pack CLI installed via Homebrew"
+                return
+            fi
+        fi
+
+        warn "Pack CLI installation failed. CNB/Buildpacks builds will not be available."
+        warn "This is optional - Nixpacks, Railpack, and Dockerfile builds will still work."
+    fi
+}
+
+install_build_tools() {
+    info "Installing build tools..."
+
+    install_git
+    install_nixpacks
+    install_railpack
+    install_pack_cli
+
+    echo ""
+    info "Build tools installation summary:"
+    command_exists git && success "  Git: $(git --version)" || warn "  Git: Not installed"
+    command_exists nixpacks && success "  Nixpacks: $(nixpacks --version 2>/dev/null)" || warn "  Nixpacks: Not installed"
+    command_exists railpack && success "  Railpack: $(railpack --version 2>/dev/null)" || warn "  Railpack: Not installed"
+    command_exists pack && success "  Pack CLI: $(pack version 2>/dev/null)" || warn "  Pack CLI: Not installed"
+}
+
+# =============================================================================
 # Rivetr Installation
 # =============================================================================
 create_user() {
@@ -472,32 +674,36 @@ main() {
 
     # Installation steps
     echo ""
-    info "Step 1/7: Installing Docker..."
+    info "Step 1/8: Installing Docker..."
     install_docker
 
     echo ""
-    info "Step 2/7: Creating service user..."
+    info "Step 2/8: Installing build tools (Nixpacks, Railpack, Pack CLI)..."
+    install_build_tools
+
+    echo ""
+    info "Step 3/8: Creating service user..."
     create_user
 
     echo ""
-    info "Step 3/7: Creating directories..."
+    info "Step 4/8: Creating directories..."
     create_directories
 
     echo ""
-    info "Step 4/7: Downloading/building Rivetr..."
+    info "Step 5/8: Downloading/building Rivetr..."
     download_binary
 
     echo ""
-    info "Step 5/7: Creating configuration..."
+    info "Step 6/8: Creating configuration..."
     create_config
 
     echo ""
-    info "Step 6/7: Setting up systemd service..."
+    info "Step 7/8: Setting up systemd service..."
     create_systemd_service
     configure_docker_restart
 
     echo ""
-    info "Step 7/7: Configuring firewall..."
+    info "Step 8/8: Configuring firewall..."
     configure_firewall
 
     # Start the service

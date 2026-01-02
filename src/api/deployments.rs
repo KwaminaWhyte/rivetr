@@ -680,6 +680,8 @@ pub async fn upload_deploy(
     let build_type_str = match detection.build_type {
         crate::engine::BuildType::Dockerfile => "dockerfile",
         crate::engine::BuildType::Nixpacks => "nixpacks",
+        crate::engine::BuildType::Railpack => "railpack",
+        crate::engine::BuildType::Cnb => "cnb",
         crate::engine::BuildType::StaticSite => "static",
         crate::engine::BuildType::DockerCompose => "dockerfile", // Fallback for compose
         crate::engine::BuildType::DockerImage => "dockerfile",   // Fallback for image

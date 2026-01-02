@@ -1,0 +1,58 @@
+# Rivetr Test Configuration
+
+[server]
+host = "0.0.0.0"
+api_port = 3000
+proxy_port = 3080
+proxy_https_port = 3443
+data_dir = "./data"
+
+[auth]
+admin_token = "change-me-in-production"
+
+[runtime]
+runtime_type = "auto"
+docker_socket = "/var/run/docker.sock"
+build_cpu_limit = "2"
+build_memory_limit = "2g"
+
+[proxy]
+acme_enabled = false
+acme_staging = true
+acme_cache_dir = "./data/acme"
+health_check_interval = 30
+health_check_timeout = 5
+health_check_threshold = 3
+auto_subdomain_enabled = false
+sslip_enabled = true
+
+[logging]
+level = "info"
+
+[rate_limit]
+enabled = true
+api_requests_per_window = 100
+webhook_requests_per_window = 500
+auth_requests_per_window = 20
+window_seconds = 60
+cleanup_interval = 300
+
+[cleanup]
+enabled = true
+max_deployments_per_app = 10
+cleanup_interval_seconds = 3600
+prune_images = true
+
+[disk_monitor]
+enabled = true
+check_interval_seconds = 300
+warning_threshold = 80
+critical_threshold = 90
+
+[container_monitor]
+enabled = true
+check_interval_secs = 30
+max_restart_attempts = 5
+initial_backoff_secs = 5
+max_backoff_secs = 300
+stable_duration_secs = 120

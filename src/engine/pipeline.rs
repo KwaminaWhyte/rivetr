@@ -5,6 +5,8 @@ use std::sync::Arc;
 use crate::crypto;
 use crate::db::{App, SshKey};
 use crate::engine::nixpacks;
+use crate::engine::pack_builder;
+use crate::engine::railpack;
 use crate::engine::static_builder::{StaticSiteBuilder, StaticSiteConfig};
 use crate::runtime::{BuildContext, ContainerRuntime, PortMapping, RegistryAuth, RunConfig};
 use crate::DbPool;
@@ -331,6 +333,101 @@ async fn run_upload_deployment(
             add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
                 .await?;
         }
+        "railpack" => {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building uploaded project with Railpack...",
+            )
+            .await?;
+
+            if !railpack::is_available().await {
+                anyhow::bail!(
+                    "Railpack is not installed or not supported on this platform. Note: Windows is not supported."
+                );
+            }
+
+            if let Some(version) = railpack::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Railpack version: {}", version),
+                )
+                .await?;
+            }
+
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            railpack::build_image(&build_path, &image_tag, None, &env_vars)
+                .await
+                .context("Railpack build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Railpack build completed successfully")
+                .await?;
+        }
+        "cnb" | "paketo" | "heroku-cnb" => {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building uploaded project with Cloud Native Buildpacks...",
+            )
+            .await?;
+
+            if !pack_builder::is_available().await {
+                anyhow::bail!(
+                    "Pack CLI is not installed. Install from: https://buildpacks.io/docs/tools/pack/"
+                );
+            }
+
+            if let Some(version) = pack_builder::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Pack CLI version: {}", version),
+                )
+                .await?;
+            }
+
+            let suggested_builder = pack_builder::suggest_builder(&build_path).await;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                &format!("Using CNB builder: {}", suggested_builder.image()),
+            )
+            .await?;
+
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            let pack_config = pack_builder::PackConfig {
+                builder: suggested_builder,
+                trust_builder: true,
+                ..Default::default()
+            };
+
+            pack_builder::build_image(&build_path, &image_tag, Some(&pack_config), &env_vars)
+                .await
+                .context("Pack CLI build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Cloud Native Buildpacks build completed successfully")
+                .await?;
+        }
         _ => {
             add_deployment_log(db, deployment_id, "info", "Building uploaded project with Dockerfile...").await?;
 
@@ -543,6 +640,112 @@ async fn run_git_deployment(
                 .context("Static site build failed")?;
 
             add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
+                .await?;
+        }
+        "railpack" => {
+            // Railpack build (Railway's Nixpacks successor)
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building with Railpack (Railway's Nixpacks successor)...",
+            )
+            .await?;
+
+            // Check if Railpack is available
+            if !railpack::is_available().await {
+                anyhow::bail!(
+                    "Railpack is not installed or not supported on this platform. Note: Windows is not supported. Install with: mise install ubi:railwayapp/railpack@latest"
+                );
+            }
+
+            // Log Railpack version
+            if let Some(version) = railpack::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Railpack version: {}", version),
+                )
+                .await?;
+            }
+
+            // Get env vars for the build
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            // Build with Railpack
+            railpack::build_image(&build_path, &image_tag, None, &env_vars)
+                .await
+                .context("Railpack build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Railpack build completed successfully")
+                .await?;
+        }
+        "cnb" | "paketo" | "heroku-cnb" => {
+            // Cloud Native Buildpacks build (Paketo/Heroku via pack CLI)
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building with Cloud Native Buildpacks (pack CLI)...",
+            )
+            .await?;
+
+            // Check if Pack CLI is available
+            if !pack_builder::is_available().await {
+                anyhow::bail!(
+                    "Pack CLI is not installed. Install from: https://buildpacks.io/docs/tools/pack/"
+                );
+            }
+
+            // Log Pack CLI version
+            if let Some(version) = pack_builder::get_version().await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!("Using Pack CLI version: {}", version),
+                )
+                .await?;
+            }
+
+            // Suggest best builder based on project files
+            let suggested_builder = pack_builder::suggest_builder(&build_path).await;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                &format!("Using CNB builder: {}", suggested_builder.image()),
+            )
+            .await?;
+
+            // Get env vars for the build
+            let env_vars: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+                "SELECT key, value FROM env_vars WHERE app_id = ?",
+            )
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+            // Build with Pack CLI
+            let pack_config = pack_builder::PackConfig {
+                builder: suggested_builder,
+                trust_builder: true,
+                ..Default::default()
+            };
+
+            pack_builder::build_image(&build_path, &image_tag, Some(&pack_config), &env_vars)
+                .await
+                .context("Pack CLI build failed")?;
+
+            add_deployment_log(db, deployment_id, "info", "Cloud Native Buildpacks build completed successfully")
                 .await?;
         }
         _ => {

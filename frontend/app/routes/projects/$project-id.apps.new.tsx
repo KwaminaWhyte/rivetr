@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upload } from "lucide-react";
+import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upload, Zap, Cloud } from "lucide-react";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import { ZipUploadZone } from "@/components/zip-upload-zone";
@@ -443,7 +443,7 @@ export default function NewAppPage() {
                   {/* Build Type Selection */}
                   <div className="space-y-3">
                     <Label>Build Type</Label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-5 gap-3">
                       <button
                         type="button"
                         onClick={() => setBuildType("nixpacks")}
@@ -457,6 +457,36 @@ export default function NewAppPage() {
                         <span className="text-sm font-medium">Nixpacks</span>
                         <span className="text-xs text-muted-foreground text-center">
                           Auto-detect
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuildType("railpack")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                          buildType === "railpack"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Zap className="h-6 w-6" />
+                        <span className="text-sm font-medium">Railpack</span>
+                        <span className="text-xs text-muted-foreground text-center">
+                          Fast builds
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuildType("cnb")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                          buildType === "cnb"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <Cloud className="h-6 w-6" />
+                        <span className="text-sm font-medium">Buildpacks</span>
+                        <span className="text-xs text-muted-foreground text-center">
+                          CNB
                         </span>
                       </button>
                       <button
@@ -547,6 +577,59 @@ export default function NewAppPage() {
                     </div>
                   )}
 
+                  {/* Railpack options */}
+                  {buildType === "railpack" && (
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Railpack is Railway's next-generation builder with faster builds and better caching.
+                        Requires Docker BuildKit. Not available on Windows.
+                      </p>
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="railpack_install_cmd">Install Command</Label>
+                          <Input
+                            id="railpack_install_cmd"
+                            placeholder="npm install"
+                            value={nixpacksConfig.install_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, install_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="railpack_build_cmd">Build Command</Label>
+                          <Input
+                            id="railpack_build_cmd"
+                            placeholder="npm run build"
+                            value={nixpacksConfig.build_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, build_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="railpack_start_cmd">Start Command</Label>
+                          <Input
+                            id="railpack_start_cmd"
+                            placeholder="npm start"
+                            value={nixpacksConfig.start_cmd || ""}
+                            onChange={(e) => setNixpacksConfig({ ...nixpacksConfig, start_cmd: e.target.value || undefined })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CNB/Buildpacks options */}
+                  {buildType === "cnb" && (
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        Cloud Native Buildpacks (CNB) automatically detect and build your application
+                        using Paketo or Heroku buildpacks. No Dockerfile required.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Supports: Node.js, Python, Go, Java, Ruby, PHP, .NET, and more.
+                        Uses the pack CLI with optimized builder images.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Static options */}
                   {buildType === "staticsite" && (
                     <div className="space-y-2">
@@ -593,7 +676,7 @@ export default function NewAppPage() {
                     <>
                       <div className="space-y-3">
                         <Label>Build Type {detectionResult && "(Auto-detected, can override)"}</Label>
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-5 gap-3">
                           <button
                             type="button"
                             onClick={() => setBuildType("nixpacks")}
@@ -607,6 +690,36 @@ export default function NewAppPage() {
                             <span className="text-sm font-medium">Nixpacks</span>
                             <span className="text-xs text-muted-foreground text-center">
                               Auto-detect
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBuildType("railpack")}
+                            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                              buildType === "railpack"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <Zap className="h-6 w-6" />
+                            <span className="text-sm font-medium">Railpack</span>
+                            <span className="text-xs text-muted-foreground text-center">
+                              Fast builds
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBuildType("cnb")}
+                            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                              buildType === "cnb"
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <Cloud className="h-6 w-6" />
+                            <span className="text-sm font-medium">Buildpacks</span>
+                            <span className="text-xs text-muted-foreground text-center">
+                              CNB
                             </span>
                           </button>
                           <button

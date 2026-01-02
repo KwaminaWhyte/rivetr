@@ -77,8 +77,51 @@ fi
 
 echo ""
 
+# Check and install build tools
+echo -e "${YELLOW}[2/7] Checking build tools...${NC}"
+
+# Check for Nixpacks
+if command_exists nixpacks; then
+    echo -e "  ${GREEN}✓ Nixpacks is installed: $(nixpacks --version 2>/dev/null)${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Nixpacks not found - attempting installation...${NC}"
+    if curl -sSL https://nixpacks.com/install.sh | bash 2>/dev/null; then
+        # Add to PATH if installed in home directory
+        if [ -f "$HOME/.nixpacks/bin/nixpacks" ]; then
+            export PATH="$HOME/.nixpacks/bin:$PATH"
+        fi
+        if command_exists nixpacks; then
+            echo -e "  ${GREEN}✓ Nixpacks installed successfully${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Nixpacks installed but may need PATH update. Add to your shell profile:${NC}"
+            echo -e "      export PATH=\"\$HOME/.nixpacks/bin:\$PATH\""
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Could not install Nixpacks automatically${NC}"
+        echo -e "      Nixpacks builds will not work until installed"
+    fi
+fi
+
+# Check for Railpack
+if command_exists railpack; then
+    echo -e "  ${GREEN}✓ Railpack is installed: $(railpack --version 2>/dev/null)${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Railpack not found (optional - Railway's next-gen builder)${NC}"
+    echo -e "      Install with: cargo install railpack"
+fi
+
+# Check for Pack CLI (Cloud Native Buildpacks)
+if command_exists pack; then
+    echo -e "  ${GREEN}✓ Pack CLI is installed: $(pack version 2>/dev/null)${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Pack CLI not found (optional - for CNB/Heroku buildpacks)${NC}"
+    echo -e "      Install from: https://buildpacks.io/docs/tools/pack/"
+fi
+
+echo ""
+
 # Create data directory
-echo -e "${YELLOW}[2/5] Creating data directory...${NC}"
+echo -e "${YELLOW}[3/7] Creating data directory...${NC}"
 DATA_DIR="$PROJECT_ROOT/data"
 if [ ! -d "$DATA_DIR" ]; then
     mkdir -p "$DATA_DIR"
@@ -90,7 +133,7 @@ fi
 echo ""
 
 # Create config file if not exists
-echo -e "${YELLOW}[3/5] Setting up configuration...${NC}"
+echo -e "${YELLOW}[4/7] Setting up configuration...${NC}"
 CONFIG_FILE="$PROJECT_ROOT/rivetr.toml"
 EXAMPLE_CONFIG="$PROJECT_ROOT/rivetr.example.toml"
 
@@ -109,8 +152,8 @@ fi
 
 echo ""
 
-# Build the project
-echo -e "${YELLOW}[4/5] Building Rivetr...${NC}"
+# Build the backend
+echo -e "${YELLOW}[5/7] Building Rivetr backend...${NC}"
 cd "$PROJECT_ROOT"
 
 echo -e "  ${CYAN}Building in release mode (this may take a few minutes)...${NC}"
@@ -123,8 +166,48 @@ fi
 
 echo ""
 
+# Build the frontend
+echo -e "${YELLOW}[6/7] Building frontend...${NC}"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
+
+if [ -d "$FRONTEND_DIR" ]; then
+    cd "$FRONTEND_DIR"
+
+    # Check for Node.js
+    if command_exists node; then
+        echo -e "  ${GREEN}✓ Node.js is installed: $(node --version)${NC}"
+
+        # Install dependencies if needed
+        if [ ! -d "node_modules" ]; then
+            echo -e "  ${CYAN}Installing frontend dependencies...${NC}"
+            if command_exists npm; then
+                npm install
+            elif command_exists pnpm; then
+                pnpm install
+            fi
+        fi
+
+        # Build frontend
+        echo -e "  ${CYAN}Building frontend assets...${NC}"
+        if npm run build 2>/dev/null || pnpm run build 2>/dev/null; then
+            echo -e "  ${GREEN}✓ Frontend built successfully${NC}"
+        else
+            echo -e "  ${YELLOW}⚠ Frontend build failed - web UI may not work${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ Node.js not found - skipping frontend build${NC}"
+        echo -e "      Install Node.js from: https://nodejs.org/"
+    fi
+
+    cd "$PROJECT_ROOT"
+else
+    echo -e "  ${YELLOW}⚠ Frontend directory not found - skipping${NC}"
+fi
+
+echo ""
+
 # Print success message
-echo -e "${YELLOW}[5/5] Setup complete!${NC}"
+echo -e "${YELLOW}[7/7] Setup complete!${NC}"
 echo ""
 echo -e "${CYAN}========================================"
 echo "  Rivetr is ready to use!"

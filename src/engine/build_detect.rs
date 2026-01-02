@@ -17,6 +17,10 @@ pub enum BuildType {
     Dockerfile,
     /// Build using Nixpacks (auto-detect language/framework)
     Nixpacks,
+    /// Build using Railpack (Railway's Nixpacks successor)
+    Railpack,
+    /// Build using Cloud Native Buildpacks (Paketo/Heroku via pack CLI)
+    Cnb,
     /// Static site (HTML/CSS/JS served by nginx)
     StaticSite,
     /// Docker Compose multi-container deployment
@@ -31,6 +35,8 @@ impl BuildType {
         match self {
             BuildType::Dockerfile => "dockerfile",
             BuildType::Nixpacks => "nixpacks",
+            BuildType::Railpack => "railpack",
+            BuildType::Cnb => "cnb",
             BuildType::StaticSite => "static",
             BuildType::DockerCompose => "docker-compose",
             BuildType::DockerImage => "docker-image",
@@ -42,6 +48,8 @@ impl BuildType {
         match s.to_lowercase().as_str() {
             "dockerfile" => Some(BuildType::Dockerfile),
             "nixpacks" => Some(BuildType::Nixpacks),
+            "railpack" => Some(BuildType::Railpack),
+            "cnb" | "buildpack" | "buildpacks" | "paketo" | "heroku-cnb" => Some(BuildType::Cnb),
             "static" | "staticsite" | "static-site" => Some(BuildType::StaticSite),
             "docker-compose" | "dockercompose" | "compose" => Some(BuildType::DockerCompose),
             "docker-image" | "dockerimage" | "image" => Some(BuildType::DockerImage),
@@ -103,8 +111,11 @@ impl BuildDetectionResult {
 /// Detection priority:
 /// 1. Dockerfile/Containerfile - highest priority, explicit container definition
 /// 2. docker-compose.yml - multi-container deployment
-/// 3. Static site indicators - framework-specific detection
-/// 4. Language files (package.json, requirements.txt, etc.) - use Nixpacks
+/// 3. railpack.toml - Railpack configuration (Railway's Nixpacks successor)
+/// 4. project.toml - Cloud Native Buildpacks configuration
+/// 5. nixpacks.toml - Nixpacks configuration
+/// 6. Static site indicators - framework-specific detection
+/// 7. Language files (package.json, requirements.txt, etc.) - use Nixpacks
 pub async fn detect_build_type(source_dir: &Path) -> Result<BuildDetectionResult> {
     info!("Detecting build type for: {:?}", source_dir);
 
@@ -120,19 +131,37 @@ pub async fn detect_build_type(source_dir: &Path) -> Result<BuildDetectionResult
         return Ok(result);
     }
 
-    // 3. Check for static site frameworks
+    // 3. Check for railpack.toml (Railway's Nixpacks successor)
+    if let Some(result) = detect_railpack_config(source_dir).await? {
+        info!("Detected: {}", result.detected_from);
+        return Ok(result);
+    }
+
+    // 4. Check for project.toml (Cloud Native Buildpacks)
+    if let Some(result) = detect_cnb_config(source_dir).await? {
+        info!("Detected: {}", result.detected_from);
+        return Ok(result);
+    }
+
+    // 5. Check for nixpacks.toml
+    if let Some(result) = detect_nixpacks_config(source_dir).await? {
+        info!("Detected: {}", result.detected_from);
+        return Ok(result);
+    }
+
+    // 6. Check for static site frameworks
     if let Some(result) = detect_static_site(source_dir).await? {
         info!("Detected: {}", result.detected_from);
         return Ok(result);
     }
 
-    // 4. Check for language files that Nixpacks can handle
+    // 7. Check for language files that Nixpacks can handle
     if let Some(result) = detect_nixpacks_compatible(source_dir).await? {
         info!("Detected: {}", result.detected_from);
         return Ok(result);
     }
 
-    // 5. Default to Nixpacks with lower confidence - it can often auto-detect
+    // 8. Default to Nixpacks with lower confidence - it can often auto-detect
     info!("No specific build type detected, defaulting to Nixpacks");
     Ok(BuildDetectionResult::new(
         BuildType::Nixpacks,
@@ -140,6 +169,45 @@ pub async fn detect_build_type(source_dir: &Path) -> Result<BuildDetectionResult
     )
     .with_confidence(0.5)
     .with_notes("Nixpacks will attempt to auto-detect the project type"))
+}
+
+/// Check for railpack.toml configuration file
+async fn detect_railpack_config(source_dir: &Path) -> Result<Option<BuildDetectionResult>> {
+    let config_path = source_dir.join("railpack.toml");
+    if config_path.exists() {
+        debug!("Found railpack.toml at {:?}", config_path);
+        return Ok(Some(
+            BuildDetectionResult::new(BuildType::Railpack, "railpack.toml found")
+                .with_notes("Railpack (Railway's Nixpacks successor) will be used for building"),
+        ));
+    }
+    Ok(None)
+}
+
+/// Check for project.toml (Cloud Native Buildpacks configuration)
+async fn detect_cnb_config(source_dir: &Path) -> Result<Option<BuildDetectionResult>> {
+    let config_path = source_dir.join("project.toml");
+    if config_path.exists() {
+        debug!("Found project.toml (CNB config) at {:?}", config_path);
+        return Ok(Some(
+            BuildDetectionResult::new(BuildType::Cnb, "project.toml found (Cloud Native Buildpacks)")
+                .with_notes("Pack CLI with Paketo/Heroku buildpacks will be used"),
+        ));
+    }
+    Ok(None)
+}
+
+/// Check for nixpacks.toml configuration file
+async fn detect_nixpacks_config(source_dir: &Path) -> Result<Option<BuildDetectionResult>> {
+    let config_path = source_dir.join("nixpacks.toml");
+    if config_path.exists() {
+        debug!("Found nixpacks.toml at {:?}", config_path);
+        return Ok(Some(
+            BuildDetectionResult::new(BuildType::Nixpacks, "nixpacks.toml found")
+                .with_notes("Nixpacks will use the configuration from nixpacks.toml"),
+        ));
+    }
+    Ok(None)
 }
 
 /// Check for Dockerfile or Containerfile
@@ -649,6 +717,10 @@ mod tests {
             Some(BuildType::Dockerfile)
         );
         assert_eq!(BuildType::from_str("nixpacks"), Some(BuildType::Nixpacks));
+        assert_eq!(BuildType::from_str("railpack"), Some(BuildType::Railpack));
+        assert_eq!(BuildType::from_str("cnb"), Some(BuildType::Cnb));
+        assert_eq!(BuildType::from_str("paketo"), Some(BuildType::Cnb));
+        assert_eq!(BuildType::from_str("buildpacks"), Some(BuildType::Cnb));
         assert_eq!(BuildType::from_str("static"), Some(BuildType::StaticSite));
         assert_eq!(
             BuildType::from_str("docker-compose"),
@@ -665,9 +737,72 @@ mod tests {
     fn test_build_type_display() {
         assert_eq!(BuildType::Dockerfile.to_string(), "dockerfile");
         assert_eq!(BuildType::Nixpacks.to_string(), "nixpacks");
+        assert_eq!(BuildType::Railpack.to_string(), "railpack");
+        assert_eq!(BuildType::Cnb.to_string(), "cnb");
         assert_eq!(BuildType::StaticSite.to_string(), "static");
         assert_eq!(BuildType::DockerCompose.to_string(), "docker-compose");
         assert_eq!(BuildType::DockerImage.to_string(), "docker-image");
+    }
+
+    #[tokio::test]
+    async fn test_detect_railpack_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a railpack.toml
+        std::fs::write(
+            temp_path.join("railpack.toml"),
+            r#"
+install_cmd = "npm install"
+build_cmd = "npm run build"
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Railpack);
+        assert!(result.detected_from.contains("railpack.toml"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_cnb_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a project.toml (CNB config)
+        std::fs::write(
+            temp_path.join("project.toml"),
+            r#"
+[project]
+name = "my-app"
+version = "1.0.0"
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Cnb);
+        assert!(result.detected_from.contains("project.toml"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_nixpacks_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create a nixpacks.toml
+        std::fs::write(
+            temp_path.join("nixpacks.toml"),
+            r#"
+install_cmd = "yarn install"
+build_cmd = "yarn build"
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+        assert!(result.detected_from.contains("nixpacks.toml"));
     }
 
     #[tokio::test]
