@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
-import type { App, AppStatus, Deployment, DeploymentStatus, Project } from "@/types/api";
+import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project } from "@/types/api";
 import {
   Play,
   Square,
@@ -145,20 +145,22 @@ export default function AppDetailLayout() {
     }
   }, [app, project, setItems]);
 
-  const { data: deployments = [] } = useQuery<Deployment[]>({
+  const { data: deploymentsData } = useQuery<DeploymentListResponse>({
     queryKey: ["deployments", id],
-    queryFn: () => api.getDeployments(id!),
+    queryFn: () => api.getDeployments(id!, { per_page: 20 }),
     enabled: !!id,
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (!data || data.length === 0) return 5000;
-      const hasActive = data.some((d: Deployment) =>
+      if (!data || data.items.length === 0) return 5000;
+      const hasActive = data.items.some((d: Deployment) =>
         isActiveDeployment(d.status)
       );
       return hasActive ? 2000 : 30000;
     },
     refetchIntervalInBackground: false,
   });
+
+  const deployments = deploymentsData?.items ?? [];
 
   // Query for app status (running/stopped)
   const { data: appStatus, refetch: refetchStatus } = useQuery<AppStatus>({
@@ -431,7 +433,7 @@ export default function AppDetailLayout() {
       </Tabs>
 
       {/* Tab Content via Outlet */}
-      <Outlet context={{ app, deployments }} />
+      <Outlet context={{ app, deployments, deploymentsData }} />
 
       {/* Upload Deploy Dialog */}
       <Dialog

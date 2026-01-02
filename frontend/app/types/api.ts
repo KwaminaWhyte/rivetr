@@ -290,6 +290,21 @@ export interface Deployment {
   commit_message: string | null;
 }
 
+/** Paginated response for deployment list */
+export interface DeploymentListResponse {
+  items: Deployment[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+/** Query parameters for fetching deployments */
+export interface DeploymentQuery {
+  page?: number;
+  per_page?: number;
+}
+
 export type DeploymentStatus =
   | "pending"
   | "cloning"

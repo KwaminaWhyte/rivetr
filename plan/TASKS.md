@@ -826,6 +826,7 @@ Research conducted to identify feature gaps and improvement opportunities.
 - **S3 Backup Integration** - Backup volumes/databases to S3
 
 ### Recently Completed
+- **API Pagination for Deployments** - Added paginated deployments API (`GET /api/apps/:id/deployments?page=1&per_page=20`) with `DeploymentListResponse` containing items, total, page, per_page, total_pages. Frontend updated to use URL query params with Previous/Next pagination controls.
 - **Security Hardening v0.1.0** - Timing attack fixes (constant-time comparison), command injection protection, password strength validation (12+ chars, complexity requirements), security headers middleware, container restart policies (unless-stopped), production deployment documentation with one-liner install script
 - **ZIP File Upload Deployment** - Deploy apps by uploading ZIP files with auto-detection of build type (Dockerfile, Nixpacks, Static, Docker Compose). Supports drag-and-drop upload, build preview, and quick deploy (create app + deploy in one step).
 - **Real-Time Log Streaming Fix** - Added `logs_stream()` method to ContainerRuntime trait with `follow: true` for Docker and `--follow` for Podman, enabling continuous real-time log streaming in the UI

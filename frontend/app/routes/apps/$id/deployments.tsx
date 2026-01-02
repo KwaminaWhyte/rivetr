@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
-import { useOutletContext } from "react-router";
+import { useOutletContext, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +15,8 @@ import {
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus, DeploymentLog } from "@/types/api";
+import type { App, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -26,15 +27,39 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
 interface OutletContext {
   app: App;
   deployments: Deployment[];
+  deploymentsData?: DeploymentListResponse;
 }
 
 export default function AppDeploymentsTab() {
-  const { app, deployments } = useOutletContext<OutletContext>();
+  const { app, deploymentsData: parentDeploymentsData } = useOutletContext<OutletContext>();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+
+  // Read pagination params from URL
+  const page = parseInt(searchParams.get("page") || "1");
+  const perPage = parseInt(searchParams.get("per_page") || "20");
+
+  // Fetch deployments with pagination - only if page > 1, otherwise use parent data
+  const { data: deploymentsData, isLoading } = useQuery<DeploymentListResponse>({
+    queryKey: ["deployments", app.id, page, perPage],
+    queryFn: () => api.getDeployments(app.id, { page, per_page: perPage }),
+    enabled: page > 1, // Only fetch when on page 2+
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.items.length === 0) return 5000;
+      const hasActive = data.items.some((d: Deployment) => isActiveDeployment(d.status));
+      return hasActive ? 2000 : 30000;
+    },
+    refetchIntervalInBackground: false,
+  });
+
+  // Use parent data for page 1, otherwise use fetched data
+  const data = page === 1 ? parentDeploymentsData : deploymentsData;
+  const deployments = data?.items ?? [];
 
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
@@ -55,6 +80,17 @@ export default function AppDeploymentsTab() {
     return deployment.status === "stopped" && deployment.container_id !== null;
   };
 
+  // Update URL with new page
+  const goToPage = (newPage: number) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (newPage > 1) {
+      newParams.set("page", String(newPage));
+    } else {
+      newParams.delete("page");
+    }
+    setSearchParams(newParams);
+  };
+
   // Handle rollback action
   const handleRollback = async () => {
     if (!selectedDeploymentId) return;
@@ -72,6 +108,11 @@ export default function AppDeploymentsTab() {
     }
   };
 
+  // Pagination info
+  const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 1;
+  const currentPage = data?.page ?? page;
+
   return (
     <div className="space-y-6">
       <Card>
@@ -88,21 +129,65 @@ export default function AppDeploymentsTab() {
               </span>
             )}
           </CardTitle>
+          {total > 0 && (
+            <CardDescription>
+              Showing {deployments.length} of {total} deployments
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent>
-          <DeploymentTimeline
-            deployments={deployments}
-            branch={app.branch}
-            onViewLogs={(deploymentId) => {
-              setSelectedDeploymentId(deploymentId);
-              setShowBuildLogsDialog(true);
-            }}
-            onRollback={(deploymentId) => {
-              setSelectedDeploymentId(deploymentId);
-              setShowRollbackDialog(true);
-            }}
-            canRollback={canRollback}
-          />
+          {isLoading && page > 1 ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 bg-muted rounded animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <>
+              <DeploymentTimeline
+                deployments={deployments}
+                branch={app.branch}
+                onViewLogs={(deploymentId) => {
+                  setSelectedDeploymentId(deploymentId);
+                  setShowBuildLogsDialog(true);
+                }}
+                onRollback={(deploymentId) => {
+                  setSelectedDeploymentId(deploymentId);
+                  setShowRollbackDialog(true);
+                }}
+                canRollback={canRollback}
+              />
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage >= totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

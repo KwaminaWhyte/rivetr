@@ -104,9 +104,9 @@ export default function ProjectsPage() {
             } else if (status.status === "stopped") {
               statuses[app.id] = "stopped";
             } else {
-              const deployments = await api.getDeployments(app.id).catch(() => []);
-              if (deployments.length > 0) {
-                statuses[app.id] = deployments[0].status as DeploymentStatus;
+              const deploymentsData = await api.getDeployments(app.id, { per_page: 1 }).catch(() => null);
+              if (deploymentsData && deploymentsData.items.length > 0) {
+                statuses[app.id] = deploymentsData.items[0].status as DeploymentStatus;
               } else {
                 statuses[app.id] = "stopped";
               }

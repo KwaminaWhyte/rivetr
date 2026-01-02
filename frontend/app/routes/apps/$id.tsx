@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { api } from "@/lib/api";
-import type { App, AppEnvironment, Deployment, DeploymentStatus, DeploymentLog, UpdateAppRequest } from "@/types/api";
+import type { App, AppEnvironment, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse, UpdateAppRequest } from "@/types/api";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
@@ -92,18 +92,20 @@ export default function AppDetailPage() {
     enabled: !!id,
   });
 
-  const { data: deployments = [] } = useQuery<Deployment[]>({
+  const { data: deploymentsData } = useQuery<DeploymentListResponse>({
     queryKey: ["deployments", id],
-    queryFn: () => api.getDeployments(id!),
+    queryFn: () => api.getDeployments(id!, { per_page: 20 }),
     enabled: !!id,
     refetchInterval: (query) => {
       const data = query.state.data;
-      if (!data || data.length === 0) return 5000;
-      const hasActive = data.some((d: Deployment) => isActiveDeployment(d.status));
+      if (!data || data.items.length === 0) return 5000;
+      const hasActive = data.items.some((d: Deployment) => isActiveDeployment(d.status));
       return hasActive ? 2000 : 30000;
     },
     refetchIntervalInBackground: false,
   });
+
+  const deployments = deploymentsData?.items ?? [];
 
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({

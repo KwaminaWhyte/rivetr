@@ -10,6 +10,8 @@ import type {
   CreateAppRequest,
   UpdateAppRequest,
   Deployment,
+  DeploymentListResponse,
+  DeploymentQuery,
   DeploymentLog,
   ContainerStats,
   EnvVar,
@@ -105,9 +107,17 @@ export const appsApi = {
   // Deployments
   // -------------------------------------------------------------------------
 
-  /** Get all deployments for an app */
-  getDeployments: (appId: string, token?: string) =>
-    apiRequest<Deployment[]>(`/apps/${appId}/deployments`, {}, token),
+  /** Get all deployments for an app with pagination */
+  getDeployments: (appId: string, query: DeploymentQuery = {}, token?: string) => {
+    const params = new URLSearchParams();
+    if (query.page) params.append("page", String(query.page));
+    if (query.per_page) params.append("per_page", String(query.per_page));
+    const queryString = params.toString();
+    const url = queryString
+      ? `/apps/${appId}/deployments?${queryString}`
+      : `/apps/${appId}/deployments`;
+    return apiRequest<DeploymentListResponse>(url, {}, token);
+  },
 
   /** Get logs for a specific deployment */
   getDeploymentLogs: (id: string, token?: string) =>

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json,
 };
@@ -29,6 +29,40 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
         .encryption_key
         .as_ref()
         .map(|secret| crypto::derive_key(secret))
+}
+
+/// Query parameters for listing deployments with pagination
+#[derive(Debug, Deserialize)]
+pub struct DeploymentListQuery {
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "default_page")]
+    pub page: i64,
+    /// Items per page (default: 20, max: 100)
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
+}
+
+fn default_page() -> i64 {
+    1
+}
+
+fn default_per_page() -> i64 {
+    20
+}
+
+/// Paginated response for deployment list
+#[derive(Debug, Serialize)]
+pub struct DeploymentListResponse {
+    /// List of deployments
+    pub items: Vec<Deployment>,
+    /// Total number of deployments
+    pub total: i64,
+    /// Current page number
+    pub page: i64,
+    /// Items per page
+    pub per_page: i64,
+    /// Total number of pages
+    pub total_pages: i64,
 }
 
 /// Request body for rollback endpoint
@@ -184,7 +218,8 @@ pub async fn trigger_deploy(
 pub async fn list_deployments(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
-) -> Result<Json<Vec<Deployment>>, ApiError> {
+    Query(query): Query<DeploymentListQuery>,
+) -> Result<Json<DeploymentListResponse>, ApiError> {
     // Validate app_id format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
@@ -200,14 +235,39 @@ pub async fn list_deployments(
         return Err(ApiError::not_found("App not found"));
     }
 
-    let deployments = sqlx::query_as::<_, Deployment>(
-        "SELECT * FROM deployments WHERE app_id = ? ORDER BY started_at DESC LIMIT 50",
+    // Normalize pagination parameters
+    let page = query.page.max(1);
+    let per_page = query.per_page.clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    // Get total count
+    let (total,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM deployments WHERE app_id = ?",
     )
     .bind(&app_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    // Calculate total pages
+    let total_pages = (total + per_page - 1) / per_page;
+
+    // Fetch paginated deployments
+    let deployments = sqlx::query_as::<_, Deployment>(
+        "SELECT * FROM deployments WHERE app_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?",
+    )
+    .bind(&app_id)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(&state.db)
     .await?;
 
-    Ok(Json(deployments))
+    Ok(Json(DeploymentListResponse {
+        items: deployments,
+        total,
+        page,
+        per_page,
+        total_pages,
+    }))
 }
 
 pub async fn get_deployment(
