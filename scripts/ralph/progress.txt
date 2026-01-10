@@ -16,6 +16,9 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
 - 2 pre-existing test failures in pack_builder and preview modules are unrelated to new work
 - Frontend has no "lint" script - use "npm run build" for quality checks
 - To auto-open dialogs from URL, use useSearchParams with ?create=true pattern
+- System email config is in EmailConfig (src/config/mod.rs), use SystemEmailService (src/notifications/email.rs)
+- Email sending is non-blocking: log errors but don't fail requests if email fails
+- Use server.external_url from config for building callback URLs (supports ngrok/tunnels)
 
 ---
 
@@ -255,4 +258,40 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - SQLite unique partial indexes (WHERE clause) work for preventing duplicate pending invitations
   - Public endpoints go in auth_routes, protected in api_routes
   - rand::rng() and random_range() for secure random generation
+---
+
+## 01/10/2026 - US-008
+- Added EmailConfig to main config (src/config/mod.rs)
+  - enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_tls, from_address, from_name
+  - is_configured() helper method to check if email is properly set up
+  - Default: email disabled, port 587, TLS enabled
+- Created SystemEmailService (src/notifications/email.rs)
+  - send_invitation_email() for team invitations
+  - HTML template with professional styling (gradient header, detail cards, CTA button)
+  - Plain text fallback for email clients that don't support HTML
+  - Uses lettre crate for SMTP (already a dependency)
+  - HTML escaping for user input to prevent XSS
+- Integrated email sending into invitation creation (src/api/teams.rs)
+  - Email sent after invitation created in database
+  - Non-blocking: logs errors but doesn't fail the request
+  - Accept URL uses server.external_url config or localhost:8080
+- Added resend_invitation endpoint
+  - POST /api/teams/:id/invitations/:inv_id/resend
+  - Validates invitation is pending and not expired
+  - Requires admin+ role
+  - Returns 400 if email not configured
+- Updated rivetr.example.toml with email configuration documentation
+- Files changed:
+  - src/config/mod.rs (added EmailConfig)
+  - src/notifications/mod.rs (added email module export)
+  - src/notifications/email.rs (new - SystemEmailService)
+  - src/api/teams.rs (email sending in create_invitation, resend_invitation endpoint)
+  - src/api/mod.rs (added resend route)
+  - rivetr.example.toml (email config docs)
+- **Learnings for future iterations:**
+  - Email config goes in main config, not notification_channels (those are user-configured)
+  - Use server.external_url for building accept URLs (supports ngrok/tunnels)
+  - Email templates should have both HTML and plain text versions
+  - Don't fail requests if email fails - just log the error
+  - lettre crate already available in project for SMTP
 ---
