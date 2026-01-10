@@ -58,6 +58,9 @@ export default [
     // Monitoring
     route("monitoring", "routes/monitoring.tsx"),
 
+    // Costs
+    route("costs", "routes/costs.tsx"),
+
     // Notifications
     route("notifications", "routes/notifications.tsx"),
 
@@ -72,6 +75,7 @@ export default [
       route("teams", "routes/settings/teams.tsx"),
       route("teams/:id", "routes/settings/teams/$id.tsx"),
       route("audit", "routes/settings/audit.tsx"),
+      route("alert-defaults", "routes/settings/alert-defaults.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;
