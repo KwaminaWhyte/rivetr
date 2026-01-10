@@ -448,3 +448,40 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Audit log failures should be logged as warnings, not errors (non-critical)
   - All TeamAuditAction and TeamAuditResourceType variants already defined in src/db/models/team.rs
 ---
+
+## 01/10/2026 - US-013
+- Added TeamAuditLog types to frontend/app/types/api.ts
+  - TeamAuditAction: 23 action type values
+  - TeamAuditResourceType: 8 resource types
+  - TeamAuditLog: full log entry with user details
+  - TeamAuditLogPage: paginated response
+  - TeamAuditLogQuery: query parameters for filtering
+- Added getTeamAuditLogs API function to frontend/app/lib/api/teams.ts
+  - Builds query string from optional filters
+  - Supports action, resource_type, start_date, end_date, page, per_page
+- Added Activity tab to team settings page (frontend/app/routes/settings/teams/$id.tsx)
+  - Tab only visible to admin+ users (same as Invitations tab)
+  - Filter controls:
+    - Action type dropdown (23 options from AUDIT_ACTION_OPTIONS)
+    - Resource type dropdown (8 options from AUDIT_RESOURCE_TYPE_OPTIONS)
+    - Date range with start/end date inputs
+    - Clear filters button when any filter is active
+  - Audit log table with columns: Timestamp, User, Action (badge), Resource, Details
+  - Action badges color-coded: destructive for deletions, default for creations, secondary for updates
+  - Pagination controls with Previous/Next buttons and page info
+  - Query only fetches when Activity tab is active (enabled: activeTab === "activity")
+- Helper functions added:
+  - formatActionLabel: converts snake_case to Title Case
+  - getActionBadgeVariant: determines badge color based on action type
+- Files changed:
+  - frontend/app/types/api.ts
+  - frontend/app/lib/api/teams.ts
+  - frontend/app/lib/api/index.ts
+  - frontend/app/routes/settings/teams/$id.tsx
+- **Learnings for future iterations:**
+  - Frontend audit log types mirror backend TeamAuditLogResponse struct
+  - useQuery with enabled flag prevents unnecessary API calls when tab not active
+  - Query key includes filter object so React Query refetches on filter change
+  - Date inputs need conversion to ISO 8601 for API (new Date(date).toISOString())
+  - Audit log details are shown as key-value pairs, filtering out IDs for cleaner display
+---

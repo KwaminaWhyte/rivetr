@@ -225,8 +225,8 @@
         "npm run build passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added Activity tab (admin+ only) with paginated audit log table showing timestamp, user, action badge, resource type, and details. Filters: action type dropdown (23 options), resource type dropdown (8 options), date range (start/end). Pagination with Previous/Next buttons. All data from GET /api/teams/{id}/audit-logs endpoint."
     },
     {
       "id": "US-014",
