@@ -15,7 +15,7 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-RIVETR_VERSION="${RIVETR_VERSION:-v0.2.5}"
+RIVETR_VERSION="${RIVETR_VERSION:-v0.2.6}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/rivetr}"
 DATA_DIR="${DATA_DIR:-/var/lib/rivetr}"
 CONFIG_FILE="$INSTALL_DIR/rivetr.toml"
@@ -341,9 +341,19 @@ create_user() {
         success "User $SERVICE_USER already exists"
     else
         info "Creating service user: $SERVICE_USER"
-        useradd --system --no-create-home --shell /bin/false "$SERVICE_USER"
+        useradd --system --shell /bin/false "$SERVICE_USER"
         usermod -aG docker "$SERVICE_USER"
         success "Created user $SERVICE_USER with docker access"
+    fi
+
+    # Ensure home directory exists with proper permissions for Docker
+    # Docker CLI looks for ~/.docker/config.json
+    if [ ! -d "/home/$SERVICE_USER" ]; then
+        mkdir -p "/home/$SERVICE_USER/.docker"
+        chown -R "$SERVICE_USER:$SERVICE_USER" "/home/$SERVICE_USER"
+        chmod 700 "/home/$SERVICE_USER"
+        chmod 700 "/home/$SERVICE_USER/.docker"
+        success "Created home directory for $SERVICE_USER"
     fi
 }
 
