@@ -178,6 +178,9 @@ Started: Resource Alerts & Cost Estimation
   - Retention: 365 days default for cost snapshots (vs 24h for resource metrics)
   - Use chrono::{Datelike, Timelike} traits for weekday() and hour() methods
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+- Frontend alerts API: frontend/app/lib/api/apps.ts has getAlerts, createAlert, updateAlert, deleteAlert, getAlertEvents
+- Alert types: frontend/app/types/api.ts has AlertConfigResponse, AlertEventResponse, AlertMetricType
+
 ---
 
 ## 2026-01-10 - US-009
@@ -192,6 +195,25 @@ Started: Resource Alerts & Cost Estimation
   - CostResponse includes: summary (with projected_monthly_cost), optional breakdown, period info
   - axum::Query extracts query parameters with Deserialize trait
   - Empty cost data returns zeroed CostSummary rather than error (no snapshots = no costs yet)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-010
+- What was implemented: Alerts management UI in frontend app settings
+- Files changed:
+  - frontend/app/components/alerts-card.tsx (new AlertsCard component)
+  - frontend/app/routes/apps/$id/settings.tsx (added Alerts tab)
+  - frontend/app/lib/api/apps.ts (added alert API methods)
+  - frontend/app/lib/api/index.ts (registered alert API methods)
+  - frontend/app/types/api.ts (added alert types)
+  - src/api/alerts.rs (added list_alert_events endpoint)
+  - src/api/mod.rs (registered alert-events route)
+- **Learnings for future iterations:**
+  - Settings page tabs use shadcn/ui Tabs component with TabsList, TabsTrigger, TabsContent
+  - Tab grid requires updating grid-cols-N when adding new tabs (e.g., grid-cols-5 -> grid-cols-6)
+  - AlertsCard uses useQuery for fetching alerts and alertEvents, useMutation for create/update/delete
+  - Alert events endpoint needed to be added to backend: GET /api/apps/:id/alert-events
+  - Frontend has pre-existing TypeScript errors (unrelated), but build passes
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
