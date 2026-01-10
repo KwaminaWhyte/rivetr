@@ -18,7 +18,7 @@ import type { App, UpdateAppRequest } from "@/types/api";
 
 interface DockerRegistryCardProps {
   app: App;
-  token: string;
+  token?: string;
 }
 
 export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
@@ -28,11 +28,11 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
   const [useRegistry, setUseRegistry] = useState(!!app.docker_image);
   const [dockerImage, setDockerImage] = useState(app.docker_image || "");
   const [dockerImageTag, setDockerImageTag] = useState(
-    app.docker_image_tag || "latest"
+    app.docker_image_tag || "latest",
   );
   const [registryUrl, setRegistryUrl] = useState(app.registry_url || "");
   const [registryUsername, setRegistryUsername] = useState(
-    app.registry_username || ""
+    app.registry_username || "",
   );
   const [registryPassword, setRegistryPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -127,7 +127,10 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
         {/* Mode toggle */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="use-registry" className="text-base flex items-center gap-2">
+            <Label
+              htmlFor="use-registry"
+              className="text-base flex items-center gap-2"
+            >
               {useRegistry ? (
                 <>
                   <Package className="h-4 w-4" />

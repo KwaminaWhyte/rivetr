@@ -2,7 +2,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -35,9 +41,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Eye, EyeOff, Pencil, Trash2, Plus, Lock, Code, List, Loader2, AlertTriangle } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Pencil,
+  Trash2,
+  Plus,
+  Lock,
+  Code,
+  List,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
 import { api } from "@/lib/api";
-import type { EnvVar, CreateEnvVarRequest, UpdateEnvVarRequest } from "@/types/api";
+import type {
+  EnvVar,
+  CreateEnvVarRequest,
+  UpdateEnvVarRequest,
+} from "@/types/api";
 
 // Parse .env file content into key-value pairs
 function parseEnvContent(content: string): { key: string; value: string }[] {
@@ -57,8 +78,10 @@ function parseEnvContent(content: string): { key: string; value: string }[] {
     let value = trimmed.substring(eqIndex + 1);
 
     // Handle quoted values
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
 
@@ -72,13 +95,19 @@ function parseEnvContent(content: string): { key: string; value: string }[] {
 }
 
 // Convert env vars to .env file format
-function envVarsToString(envVars: EnvVar[], revealed: Map<string, string>): string {
+function envVarsToString(
+  envVars: EnvVar[],
+  revealed: Map<string, string>,
+): string {
   return envVars
     .map((env) => {
       const value = revealed.get(env.key) ?? env.value;
       // Quote values that contain special characters
-      const needsQuotes = value.includes(" ") || value.includes("#") || value.includes("\n");
-      const quotedValue = needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value;
+      const needsQuotes =
+        value.includes(" ") || value.includes("#") || value.includes("\n");
+      const quotedValue = needsQuotes
+        ? `"${value.replace(/"/g, '\\"')}"`
+        : value;
       return `${env.key}=${quotedValue}`;
     })
     .join("\n");
@@ -86,7 +115,7 @@ function envVarsToString(envVars: EnvVar[], revealed: Map<string, string>): stri
 
 interface EnvVarsTabProps {
   appId: string;
-  token: string;
+  token?: string;
 }
 
 export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
@@ -125,7 +154,8 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: (data: CreateEnvVarRequest) => api.createEnvVar(appId, data, token),
+    mutationFn: (data: CreateEnvVarRequest) =>
+      api.createEnvVar(appId, data, token),
     onSuccess: () => {
       toast.success("Environment variable created");
       queryClient.invalidateQueries({ queryKey: ["env-vars", appId] });
@@ -136,7 +166,9 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
       if (error.message.includes("409") || error.message.includes("CONFLICT")) {
         toast.error("A variable with this key already exists");
       } else if (error.message.includes("400")) {
-        toast.error("Invalid key format. Use only letters, numbers, and underscores.");
+        toast.error(
+          "Invalid key format. Use only letters, numbers, and underscores.",
+        );
       } else {
         toast.error(`Failed to create: ${error.message}`);
       }
@@ -189,7 +221,9 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
       // Update the query cache with the revealed value
       queryClient.setQueryData<EnvVar[]>(["env-vars", appId], (old) => {
         if (!old) return [data];
-        return old.map((v) => (v.key === data.key ? { ...v, value: data.value } : v));
+        return old.map((v) =>
+          v.key === data.key ? { ...v, value: data.value } : v,
+        );
       });
     },
     onError: (error: Error) => {
@@ -213,7 +247,9 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
     setSelectedEnvVar(envVar);
     setFormKey(envVar.key);
     // If secret and not revealed, start with empty value
-    setFormValue(envVar.is_secret && !revealedKeys.has(envVar.key) ? "" : envVar.value);
+    setFormValue(
+      envVar.is_secret && !revealedKeys.has(envVar.key) ? "" : envVar.value,
+    );
     setFormIsSecret(envVar.is_secret);
     setShowEditDialog(true);
   };
@@ -273,7 +309,8 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
     updateMutation.mutate({ key: selectedEnvVar.key, data: updates });
   };
 
-  const isMultiline = (value: string) => value.includes("\n") || value.length > 50;
+  const isMultiline = (value: string) =>
+    value.includes("\n") || value.length > 50;
 
   // Prepare bulk changes for review
   const prepareBulkChanges = () => {
@@ -332,13 +369,15 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
       }
 
       toast.success(
-        `Environment variables updated: ${toAdd.length} added, ${toUpdate.length} updated, ${toDelete.length} deleted`
+        `Environment variables updated: ${toAdd.length} added, ${toUpdate.length} updated, ${toDelete.length} deleted`,
       );
       queryClient.invalidateQueries({ queryKey: ["env-vars", appId] });
       setShowBulkConfirm(false);
       setPendingBulkChanges(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save changes");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save changes",
+      );
     } finally {
       setIsSavingBulk(false);
     }
@@ -363,7 +402,11 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
   // Show preview of changes
   const handlePreviewChanges = () => {
     const changes = prepareBulkChanges();
-    if (changes.toAdd.length === 0 && changes.toUpdate.length === 0 && changes.toDelete.length === 0) {
+    if (
+      changes.toAdd.length === 0 &&
+      changes.toUpdate.length === 0 &&
+      changes.toDelete.length === 0
+    ) {
       toast.info("No changes detected");
       return;
     }
@@ -456,7 +499,9 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                 <TableBody>
                   {envVars.map((envVar) => (
                     <TableRow key={envVar.id}>
-                      <TableCell className="font-mono text-sm">{envVar.key}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {envVar.key}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span
@@ -466,7 +511,9 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                                 : ""
                             } ${revealedKeys.has(envVar.key) && isMultiline(envVar.value) ? "whitespace-pre-wrap" : "truncate max-w-[300px]"}`}
                           >
-                            {revealedKeys.has(envVar.key) ? envVar.value : "••••••••"}
+                            {revealedKeys.has(envVar.key)
+                              ? envVar.value
+                              : "••••••••"}
                           </span>
                           <Button
                             variant="ghost"
@@ -474,7 +521,11 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                             onClick={() => handleToggleReveal(envVar)}
                             disabled={revealMutation.isPending}
                             className="h-6 w-6 p-0"
-                            title={revealedKeys.has(envVar.key) ? "Hide value" : "Reveal value"}
+                            title={
+                              revealedKeys.has(envVar.key)
+                                ? "Hide value"
+                                : "Reveal value"
+                            }
                           >
                             {revealedKeys.has(envVar.key) ? (
                               <EyeOff className="h-3 w-3" />
@@ -524,9 +575,12 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
           // Developer View - Textarea for .env format
           <div className="space-y-4">
             <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
-              <p>Paste your <code className="bg-muted px-1 rounded">.env</code> file contents below. Format:</p>
+              <p>
+                Paste your <code className="bg-muted px-1 rounded">.env</code>{" "}
+                file contents below. Format:
+              </p>
               <pre className="mt-2 text-xs">
-{`DATABASE_URL=postgres://...
+                {`DATABASE_URL=postgres://...
 API_KEY="your-api-key"
 # Comments are ignored
 DEBUG=true`}
@@ -563,7 +617,8 @@ DEBUG=true`}
           <DialogHeader>
             <DialogTitle>Add Environment Variable</DialogTitle>
             <DialogDescription>
-              Add a new environment variable. Keys will be converted to uppercase.
+              Add a new environment variable. Keys will be converted to
+              uppercase.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -598,7 +653,10 @@ DEBUG=true`}
                 onChange={(e) => setFormIsSecret(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300"
               />
-              <Label htmlFor="add-secret" className="text-sm font-normal cursor-pointer">
+              <Label
+                htmlFor="add-secret"
+                className="text-sm font-normal cursor-pointer"
+              >
                 Mark as secret (value will be masked in the UI)
               </Label>
             </div>
@@ -607,7 +665,10 @@ DEBUG=true`}
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitAdd} disabled={createMutation.isPending}>
+            <Button
+              onClick={handleSubmitAdd}
+              disabled={createMutation.isPending}
+            >
               {createMutation.isPending ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
@@ -633,7 +694,8 @@ DEBUG=true`}
               <Textarea
                 id="edit-value"
                 placeholder={
-                  selectedEnvVar?.is_secret && !revealedKeys.has(selectedEnvVar?.key || "")
+                  selectedEnvVar?.is_secret &&
+                  !revealedKeys.has(selectedEnvVar?.key || "")
                     ? "Enter new value to replace existing..."
                     : "Enter value..."
                 }
@@ -641,11 +703,13 @@ DEBUG=true`}
                 onChange={(e) => setFormValue(e.target.value)}
                 className="font-mono min-h-[80px]"
               />
-              {selectedEnvVar?.is_secret && !revealedKeys.has(selectedEnvVar?.key || "") && (
-                <p className="text-xs text-muted-foreground">
-                  Current value is hidden. Enter a new value to replace it, or leave empty to keep current.
-                </p>
-              )}
+              {selectedEnvVar?.is_secret &&
+                !revealedKeys.has(selectedEnvVar?.key || "") && (
+                  <p className="text-xs text-muted-foreground">
+                    Current value is hidden. Enter a new value to replace it, or
+                    leave empty to keep current.
+                  </p>
+                )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -655,7 +719,10 @@ DEBUG=true`}
                 onChange={(e) => setFormIsSecret(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300"
               />
-              <Label htmlFor="edit-secret" className="text-sm font-normal cursor-pointer">
+              <Label
+                htmlFor="edit-secret"
+                className="text-sm font-normal cursor-pointer"
+              >
                 Mark as secret
               </Label>
             </div>
@@ -664,7 +731,10 @@ DEBUG=true`}
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitEdit} disabled={updateMutation.isPending}>
+            <Button
+              onClick={handleSubmitEdit}
+              disabled={updateMutation.isPending}
+            >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
@@ -677,14 +747,17 @@ DEBUG=true`}
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Environment Variable</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <strong>{selectedEnvVar?.key}</strong>?
-              This action cannot be undone.
+              Are you sure you want to delete{" "}
+              <strong>{selectedEnvVar?.key}</strong>? This action cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedEnvVar && deleteMutation.mutate(selectedEnvVar.key)}
+              onClick={() =>
+                selectedEnvVar && deleteMutation.mutate(selectedEnvVar.key)
+              }
               className="bg-red-500 hover:bg-red-600"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
@@ -699,7 +772,8 @@ DEBUG=true`}
           <DialogHeader>
             <DialogTitle>Review Changes</DialogTitle>
             <DialogDescription>
-              The following changes will be applied to your environment variables.
+              The following changes will be applied to your environment
+              variables.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4 max-h-[400px] overflow-y-auto">
@@ -711,9 +785,17 @@ DEBUG=true`}
                 </h4>
                 <div className="space-y-1">
                   {pendingBulkChanges.toAdd.map(({ key, value }) => (
-                    <div key={key} className="text-xs font-mono bg-green-50 dark:bg-green-950/30 p-2 rounded">
-                      <span className="text-green-700 dark:text-green-400">{key}</span>=
-                      <span className="text-muted-foreground truncate">{value.length > 50 ? value.slice(0, 50) + "..." : value}</span>
+                    <div
+                      key={key}
+                      className="text-xs font-mono bg-green-50 dark:bg-green-950/30 p-2 rounded"
+                    >
+                      <span className="text-green-700 dark:text-green-400">
+                        {key}
+                      </span>
+                      =
+                      <span className="text-muted-foreground truncate">
+                        {value.length > 50 ? value.slice(0, 50) + "..." : value}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -728,9 +810,17 @@ DEBUG=true`}
                 </h4>
                 <div className="space-y-1">
                   {pendingBulkChanges.toUpdate.map(({ key, value }) => (
-                    <div key={key} className="text-xs font-mono bg-blue-50 dark:bg-blue-950/30 p-2 rounded">
-                      <span className="text-blue-700 dark:text-blue-400">{key}</span>=
-                      <span className="text-muted-foreground truncate">{value.length > 50 ? value.slice(0, 50) + "..." : value}</span>
+                    <div
+                      key={key}
+                      className="text-xs font-mono bg-blue-50 dark:bg-blue-950/30 p-2 rounded"
+                    >
+                      <span className="text-blue-700 dark:text-blue-400">
+                        {key}
+                      </span>
+                      =
+                      <span className="text-muted-foreground truncate">
+                        {value.length > 50 ? value.slice(0, 50) + "..." : value}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -745,8 +835,13 @@ DEBUG=true`}
                 </h4>
                 <div className="space-y-1">
                   {pendingBulkChanges.toDelete.map((key) => (
-                    <div key={key} className="text-xs font-mono bg-red-50 dark:bg-red-950/30 p-2 rounded">
-                      <span className="text-red-700 dark:text-red-400">{key}</span>
+                    <div
+                      key={key}
+                      className="text-xs font-mono bg-red-50 dark:bg-red-950/30 p-2 rounded"
+                    >
+                      <span className="text-red-700 dark:text-red-400">
+                        {key}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -757,7 +852,8 @@ DEBUG=true`}
               <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg">
                 <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
                 <p className="text-xs text-yellow-700 dark:text-yellow-400">
-                  {pendingBulkChanges.toDelete.length} variable(s) will be deleted. This cannot be undone.
+                  {pendingBulkChanges.toDelete.length} variable(s) will be
+                  deleted. This cannot be undone.
                 </p>
               </div>
             ) : null}

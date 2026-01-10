@@ -14,7 +14,7 @@ interface LogEntry {
 interface DeploymentLogsProps {
   deploymentId: string;
   isActive: boolean;
-  token: string;
+  token?: string;
 }
 
 const levelColors: Record<string, string> = {
@@ -24,7 +24,11 @@ const levelColors: Record<string, string> = {
   debug: "bg-gray-500",
 };
 
-export function DeploymentLogs({ deploymentId, isActive, token }: DeploymentLogsProps) {
+export function DeploymentLogs({
+  deploymentId,
+  isActive,
+  token = "",
+}: DeploymentLogsProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const [ended, setEnded] = useState(false);

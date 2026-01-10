@@ -92,9 +92,9 @@ export const api = {
   // Git Providers
   getGitProviders: gitApi.getGitProviders,
   getGitProvider: gitApi.getGitProvider,
+  addGitProvider: gitApi.addGitProvider,
   deleteGitProvider: gitApi.deleteGitProvider,
   getGitProviderRepos: gitApi.getGitProviderRepos,
-  getGitProviderAuthUrl: gitApi.getGitProviderAuthUrl,
 
   // GitHub Apps
   getGitHubApps: gitApi.getGitHubApps,
@@ -162,8 +162,10 @@ export const api = {
   deleteNotificationChannel: notificationsApi.deleteNotificationChannel,
   testNotificationChannel: notificationsApi.testNotificationChannel,
   getNotificationSubscriptions: notificationsApi.getNotificationSubscriptions,
-  createNotificationSubscription: notificationsApi.createNotificationSubscription,
-  deleteNotificationSubscription: notificationsApi.deleteNotificationSubscription,
+  createNotificationSubscription:
+    notificationsApi.createNotificationSubscription,
+  deleteNotificationSubscription:
+    notificationsApi.deleteNotificationSubscription,
 
   // System
   getSystemStats: systemApi.getSystemStats,

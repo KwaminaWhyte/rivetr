@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -45,13 +51,15 @@ const MEMORY_OPTIONS = [
 
 interface ResourceLimitsCardProps {
   app: App;
-  token: string;
+  token?: string;
 }
 
 export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
   const queryClient = useQueryClient();
   const [cpuLimit, setCpuLimit] = useState<string>(app.cpu_limit || "1");
-  const [memoryLimit, setMemoryLimit] = useState<string>(app.memory_limit || "512m");
+  const [memoryLimit, setMemoryLimit] = useState<string>(
+    app.memory_limit || "512m",
+  );
   const [hasChanges, setHasChanges] = useState(false);
 
   // Reset values when app changes

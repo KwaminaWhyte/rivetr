@@ -2,7 +2,13 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,13 +40,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, Plus, Download, HardDrive, FolderOpen } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Plus,
+  Download,
+  HardDrive,
+  FolderOpen,
+} from "lucide-react";
 import { api } from "@/lib/api";
-import type { Volume, CreateVolumeRequest, UpdateVolumeRequest } from "@/types/api";
+import type {
+  Volume,
+  CreateVolumeRequest,
+  UpdateVolumeRequest,
+} from "@/types/api";
 
 interface VolumesCardProps {
   appId: string;
-  token: string;
+  token?: string;
 }
 
 export function VolumesCard({ appId, token }: VolumesCardProps) {
@@ -69,7 +86,8 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: (data: CreateVolumeRequest) => api.createVolume(appId, data, token),
+    mutationFn: (data: CreateVolumeRequest) =>
+      api.createVolume(appId, data, token),
     onSuccess: () => {
       toast.success("Volume created");
       queryClient.invalidateQueries({ queryKey: ["volumes", appId] });
@@ -80,7 +98,9 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
       if (error.message.includes("409") || error.message.includes("CONFLICT")) {
         toast.error("A volume with this name or container path already exists");
       } else if (error.message.includes("400")) {
-        toast.error("Invalid input. Container path must be absolute (start with /).");
+        toast.error(
+          "Invalid input. Container path must be absolute (start with /).",
+        );
       } else {
         toast.error(`Failed to create: ${error.message}`);
       }
@@ -179,7 +199,9 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
 
       toast.success("Backup downloaded");
     } catch (error) {
-      toast.error(`Backup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(
+        `Backup failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     } finally {
       setIsBackingUp(null);
     }
@@ -287,7 +309,8 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
             Volumes
           </CardTitle>
           <CardDescription>
-            Mount host directories into your container for persistent storage. Changes take effect on next deployment.
+            Mount host directories into your container for persistent storage.
+            Changes take effect on next deployment.
           </CardDescription>
         </div>
         <Button onClick={handleAdd} size="sm">
@@ -320,13 +343,19 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
                   <TableCell>
                     <div className="flex items-center gap-1 text-sm text-muted-foreground font-mono">
                       <FolderOpen className="h-3 w-3" />
-                      <span className="truncate max-w-[200px]" title={volume.host_path}>
+                      <span
+                        className="truncate max-w-[200px]"
+                        title={volume.host_path}
+                      >
                         {volume.host_path}
                       </span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="font-mono text-sm truncate max-w-[200px]" title={volume.container_path}>
+                    <span
+                      className="font-mono text-sm truncate max-w-[200px]"
+                      title={volume.container_path}
+                    >
                       {volume.container_path}
                     </span>
                   </TableCell>
@@ -380,7 +409,8 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
           <DialogHeader>
             <DialogTitle>Add Volume</DialogTitle>
             <DialogDescription>
-              Mount a host directory into your container. The host path will be created if it doesn't exist.
+              Mount a host directory into your container. The host path will be
+              created if it doesn't exist.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -428,7 +458,10 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
                 checked={formReadOnly}
                 onCheckedChange={setFormReadOnly}
               />
-              <Label htmlFor="add-read-only" className="text-sm font-normal cursor-pointer">
+              <Label
+                htmlFor="add-read-only"
+                className="text-sm font-normal cursor-pointer"
+              >
                 Mount as read-only
               </Label>
             </div>
@@ -437,7 +470,10 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitAdd} disabled={createMutation.isPending}>
+            <Button
+              onClick={handleSubmitAdd}
+              disabled={createMutation.isPending}
+            >
               {createMutation.isPending ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
@@ -450,7 +486,8 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
           <DialogHeader>
             <DialogTitle>Edit Volume</DialogTitle>
             <DialogDescription>
-              Update the volume configuration. Changes take effect on next deployment.
+              Update the volume configuration. Changes take effect on next
+              deployment.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -486,7 +523,10 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
                 checked={formReadOnly}
                 onCheckedChange={setFormReadOnly}
               />
-              <Label htmlFor="edit-read-only" className="text-sm font-normal cursor-pointer">
+              <Label
+                htmlFor="edit-read-only"
+                className="text-sm font-normal cursor-pointer"
+              >
                 Mount as read-only
               </Label>
             </div>
@@ -495,7 +535,10 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitEdit} disabled={updateMutation.isPending}>
+            <Button
+              onClick={handleSubmitEdit}
+              disabled={updateMutation.isPending}
+            >
               {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
@@ -508,14 +551,18 @@ export function VolumesCard({ appId, token }: VolumesCardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Volume</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the volume <strong>{selectedVolume?.name}</strong>?
-              This will unmount the directory from future containers. The data on the host will not be deleted.
+              Are you sure you want to delete the volume{" "}
+              <strong>{selectedVolume?.name}</strong>? This will unmount the
+              directory from future containers. The data on the host will not be
+              deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedVolume && deleteMutation.mutate(selectedVolume.id)}
+              onClick={() =>
+                selectedVolume && deleteMutation.mutate(selectedVolume.id)
+              }
               className="bg-red-500 hover:bg-red-600"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
