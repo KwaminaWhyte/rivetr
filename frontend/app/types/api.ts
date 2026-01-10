@@ -818,6 +818,8 @@ export interface TeamDetail {
   created_at: string;
   updated_at: string;
   members: TeamMemberWithUser[];
+  /** Current user's role in this team */
+  user_role: TeamRole | null;
 }
 
 /** Request to create a new team */

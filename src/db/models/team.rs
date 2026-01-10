@@ -186,6 +186,8 @@ pub struct TeamDetail {
     pub created_at: String,
     pub updated_at: String,
     pub members: Vec<TeamMemberWithUser>,
+    /// Current user's role in this team
+    pub user_role: Option<String>,
 }
 
 /// Request to create a new team

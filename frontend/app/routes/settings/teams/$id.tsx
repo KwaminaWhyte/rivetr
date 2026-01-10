@@ -246,10 +246,15 @@ export default function TeamDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
   const [showRevokeInvitationDialog, setShowRevokeInvitationDialog] = useState(false);
+  const [showRoleChangeDialog, setShowRoleChangeDialog] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<TeamMemberWithUser | null>(null);
   const [selectedInvitation, setSelectedInvitation] =
     useState<TeamInvitation | null>(null);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    member: TeamMemberWithUser;
+    newRole: TeamRole;
+  } | null>(null);
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
   const [inviteEmail, setInviteEmail] = useState("");
 
@@ -393,11 +398,8 @@ export default function TeamDetailPage() {
     },
   });
 
-  // Find current user's role in this team
-  // For now, we'll get it from the members list by checking the current session
-  // In a real app, you'd have this from the user context
-  const currentUserRole: TeamRole | null =
-    team?.members.find((m) => m.role === "owner")?.role || "viewer";
+  // Get current user's role in this team from the API response
+  const currentUserRole: TeamRole | null = team?.user_role ?? null;
 
   const canManage = canManageMembers(currentUserRole);
   const canDelete = canDeleteTeam(currentUserRole);
@@ -452,8 +454,31 @@ export default function TeamDetailPage() {
     });
   };
 
-  const handleRoleChange = (userId: string, newRole: TeamRole) => {
-    updateRoleMutation.mutate({ userId, role: newRole });
+  const handleRoleChange = (member: TeamMemberWithUser, newRole: TeamRole) => {
+    // Don't show dialog if role hasn't changed
+    if (member.role === newRole) return;
+
+    // Show confirmation dialog
+    setPendingRoleChange({ member, newRole });
+    setShowRoleChangeDialog(true);
+  };
+
+  const confirmRoleChange = () => {
+    if (pendingRoleChange) {
+      updateRoleMutation.mutate(
+        { userId: pendingRoleChange.member.user_id, role: pendingRoleChange.newRole },
+        {
+          onSuccess: () => {
+            setShowRoleChangeDialog(false);
+            setPendingRoleChange(null);
+          },
+          onError: () => {
+            setShowRoleChangeDialog(false);
+            setPendingRoleChange(null);
+          },
+        }
+      );
+    }
   };
 
   const handleTabChange = (value: string) => {
@@ -620,12 +645,14 @@ export default function TeamDetailPage() {
                       {canManage && (
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {/* Role change dropdown */}
-                            {member.role !== "owner" && (
+                            {/* Role change dropdown - only for members current user can manage */}
+                            {/* Owners can change any role; Admins can only change developer/viewer */}
+                            {(currentUserRole === "owner" && member.role !== "owner") ||
+                             (currentUserRole === "admin" && (member.role === "developer" || member.role === "viewer")) ? (
                               <Select
-                                defaultValue={member.role}
+                                value={member.role}
                                 onValueChange={(value) =>
-                                  handleRoleChange(member.user_id, value as TeamRole)
+                                  handleRoleChange(member, value as TeamRole)
                                 }
                                 disabled={updateRoleMutation.isPending}
                               >
@@ -636,7 +663,7 @@ export default function TeamDetailPage() {
                                   {ROLE_OPTIONS.filter((r) =>
                                     currentUserRole === "owner"
                                       ? true
-                                      : r.value !== "owner"
+                                      : r.value !== "owner" && r.value !== "admin"
                                   ).map((role) => (
                                     <SelectItem key={role.value} value={role.value}>
                                       {role.label}
@@ -644,7 +671,7 @@ export default function TeamDetailPage() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                            )}
+                            ) : null}
                             {/* Remove button */}
                             {member.role !== "owner" && (
                               <Button
@@ -1157,6 +1184,54 @@ export default function TeamDetailPage() {
                 }
               >
                 {removeMemberMutation.isPending ? "Removing..." : "Remove Member"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Role Change Confirmation */}
+      <AlertDialog
+        open={showRoleChangeDialog}
+        onOpenChange={(open) => {
+          setShowRoleChangeDialog(open);
+          if (!open) setPendingRoleChange(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Member Role</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to change {pendingRoleChange?.member.user_name}'s
+              role from <span className="font-medium capitalize">{pendingRoleChange?.member.role}</span> to{" "}
+              <span className="font-medium capitalize">{pendingRoleChange?.newRole}</span>?
+              {pendingRoleChange?.newRole === "owner" && (
+                <span className="block mt-2 text-yellow-600">
+                  Warning: This will give them full control over the team, including the ability to remove other owners.
+                </span>
+              )}
+              {pendingRoleChange?.member.role === "admin" && pendingRoleChange?.newRole !== "owner" && pendingRoleChange?.newRole !== "admin" && (
+                <span className="block mt-2">
+                  They will lose the ability to manage team members and settings.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowRoleChangeDialog(false);
+                setPendingRoleChange(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                disabled={updateRoleMutation.isPending}
+                onClick={confirmRoleChange}
+              >
+                {updateRoleMutation.isPending ? "Updating..." : "Change Role"}
               </Button>
             </AlertDialogAction>
           </AlertDialogFooter>

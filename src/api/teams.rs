@@ -275,8 +275,8 @@ pub async fn get_team(
         return Err(ApiError::validation_field("team_id", e));
     }
 
-    // Check user is a member of the team
-    let _membership = require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
+    // Check user is a member of the team and get their role
+    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
 
     let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
         .bind(&id)
@@ -313,6 +313,7 @@ pub async fn get_team(
         created_at: team.created_at,
         updated_at: team.updated_at,
         members,
+        user_role: Some(membership.role),
     }))
 }
 
