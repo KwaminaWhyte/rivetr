@@ -295,8 +295,8 @@
         "Take screenshots of the cost widget for documentation"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E tests performed with Playwright MCP. Fixed missing route registrations for /costs and /settings/alert-defaults in routes.ts. Screenshots saved to .playwright-mcp/e2e-screenshots/."
     },
     {
       "id": "US-018",

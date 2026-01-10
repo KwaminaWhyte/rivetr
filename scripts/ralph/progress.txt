@@ -35,6 +35,7 @@ Started: Resource Alerts & Cost Estimation
 - Sparkline pattern: SVG path with createPath() similar to ResourceChart, used in CostSummaryCard
 - E2E testing: Use Playwright MCP with browser_navigate, browser_snapshot, browser_click, browser_type
 - Migrations MUST be added to src/db/mod.rs run_migrations() or tables won't be created
+- Frontend routes: Files in frontend/app/routes/ MUST be registered in frontend/app/routes.ts
 
 ---
 
@@ -340,6 +341,34 @@ Started: Resource Alerts & Cost Estimation
   - Actions column has two buttons: test notification (paper plane icon) and delete (trash icon)
   - No direct edit button - editing is done by toggling enabled status
   - Test notification for Slack shows 404 error when using fake webhook URL (expected behavior)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-017
+- What was implemented: E2E tests for Cost dashboard widget using Playwright MCP
+- Files changed:
+  - frontend/app/routes.ts (added missing /costs and /settings/alert-defaults route registrations)
+  - scripts/ralph/prd.json (marked US-017 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to main dashboard at http://localhost:8080/
+  - Verified Cost Summary card visible with dollar icon and "Cost Overview" title
+  - Verified total monthly cost displayed ($0.00 - empty state)
+  - Verified cost breakdown by resource type (CPU, Memory, Disk all $0.00)
+  - Verified empty state message "No cost data available yet"
+  - Clicked "View Details" link and verified navigation to /costs page
+  - Verified Cost Analysis page loads with proper structure:
+    - Period selector (Last 30 days)
+    - Total Cost, Projected Monthly, Avg. Resources, Days Tracked cards
+    - Cost Breakdown by Resource Type chart (empty state)
+    - Cost by Organization table with team drill-down
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us017-*
+- **Learnings for future iterations:**
+  - Route files created in routes/ must also be registered in routes.ts
+  - Missing route registrations cause 404 errors even when the route file exists
+  - Frontend rebuild required after routes.ts changes (npm run build)
+  - Cost widget shows sparkline only when trend data exists
+  - Top 5 apps breakdown only shown when topApps.length > 0
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
