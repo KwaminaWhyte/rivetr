@@ -62,40 +62,115 @@ pub struct RecentEvent {
     pub timestamp: String,
 }
 
+/// Query parameters for system stats
+#[derive(Debug, Clone, Deserialize)]
+pub struct SystemStatsQuery {
+    /// Optional team ID to filter stats by team
+    pub team_id: Option<String>,
+}
+
 /// Get system-wide statistics
 /// GET /api/system/stats
+///
+/// Query parameters:
+/// - team_id: Optional team ID to filter stats by team scope
 pub async fn get_system_stats(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<SystemStatsQuery>,
 ) -> Result<Json<SystemStats>, ApiError> {
-    // Get total apps count
-    let apps: Vec<App> = sqlx::query_as("SELECT * FROM apps")
-        .fetch_all(&state.db)
-        .await?;
+    // Get apps - optionally filtered by team
+    let apps: Vec<App> = match &query.team_id {
+        Some(team_id) if !team_id.is_empty() => {
+            sqlx::query_as("SELECT * FROM apps WHERE team_id = ?")
+                .bind(team_id)
+                .fetch_all(&state.db)
+                .await?
+        }
+        _ => {
+            sqlx::query_as("SELECT * FROM apps")
+                .fetch_all(&state.db)
+                .await?
+        }
+    };
 
     let total_apps_count = apps.len() as u32;
+    let app_ids: Vec<&str> = apps.iter().map(|a| a.id.as_str()).collect();
 
     // Get running deployments (one per app, most recent with status = 'running')
-    let running_deployments: Vec<Deployment> = sqlx::query_as(
-        r#"
-        SELECT d.* FROM deployments d
-        INNER JOIN (
-            SELECT app_id, MAX(started_at) as max_started
-            FROM deployments
-            WHERE status = 'running'
-            GROUP BY app_id
-        ) latest ON d.app_id = latest.app_id AND d.started_at = latest.max_started
-        WHERE d.status = 'running'
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await?;
+    // Filter by app_ids when team scoping is active
+    let running_deployments: Vec<Deployment> = if app_ids.is_empty() && query.team_id.is_some() {
+        // No apps in this team, so no running deployments
+        vec![]
+    } else if let Some(team_id) = &query.team_id {
+        if team_id.is_empty() {
+            // System-wide stats
+            sqlx::query_as(
+                r#"
+                SELECT d.* FROM deployments d
+                INNER JOIN (
+                    SELECT app_id, MAX(started_at) as max_started
+                    FROM deployments
+                    WHERE status = 'running'
+                    GROUP BY app_id
+                ) latest ON d.app_id = latest.app_id AND d.started_at = latest.max_started
+                WHERE d.status = 'running'
+                "#,
+            )
+            .fetch_all(&state.db)
+            .await?
+        } else {
+            // Team-scoped stats - get deployments for team's apps
+            sqlx::query_as(
+                r#"
+                SELECT d.* FROM deployments d
+                INNER JOIN apps a ON d.app_id = a.id
+                INNER JOIN (
+                    SELECT app_id, MAX(started_at) as max_started
+                    FROM deployments
+                    WHERE status = 'running'
+                    GROUP BY app_id
+                ) latest ON d.app_id = latest.app_id AND d.started_at = latest.max_started
+                WHERE d.status = 'running' AND a.team_id = ?
+                "#,
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+    } else {
+        // No team filter - system-wide stats
+        sqlx::query_as(
+            r#"
+            SELECT d.* FROM deployments d
+            INNER JOIN (
+                SELECT app_id, MAX(started_at) as max_started
+                FROM deployments
+                WHERE status = 'running'
+                GROUP BY app_id
+            ) latest ON d.app_id = latest.app_id AND d.started_at = latest.max_started
+            WHERE d.status = 'running'
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await?
+    };
 
     let running_apps_count = running_deployments.len() as u32;
 
-    // Get databases count
-    let databases: Vec<ManagedDatabase> = sqlx::query_as("SELECT * FROM databases")
-        .fetch_all(&state.db)
-        .await?;
+    // Get databases count - optionally filtered by team
+    let databases: Vec<ManagedDatabase> = match &query.team_id {
+        Some(team_id) if !team_id.is_empty() => {
+            sqlx::query_as("SELECT * FROM databases WHERE team_id = ?")
+                .bind(team_id)
+                .fetch_all(&state.db)
+                .await?
+        }
+        _ => {
+            sqlx::query_as("SELECT * FROM databases")
+                .fetch_all(&state.db)
+                .await?
+        }
+    };
 
     let total_databases_count = databases.len() as u32;
     let running_databases: Vec<&ManagedDatabase> = databases
@@ -104,10 +179,20 @@ pub async fn get_system_stats(
         .collect();
     let running_databases_count = running_databases.len() as u32;
 
-    // Get services count
-    let services: Vec<Service> = sqlx::query_as("SELECT * FROM services")
-        .fetch_all(&state.db)
-        .await?;
+    // Get services count - optionally filtered by team
+    let services: Vec<Service> = match &query.team_id {
+        Some(team_id) if !team_id.is_empty() => {
+            sqlx::query_as("SELECT * FROM services WHERE team_id = ?")
+                .bind(team_id)
+                .fetch_all(&state.db)
+                .await?
+        }
+        _ => {
+            sqlx::query_as("SELECT * FROM services")
+                .fetch_all(&state.db)
+                .await?
+        }
+    };
 
     let total_services_count = services.len() as u32;
 

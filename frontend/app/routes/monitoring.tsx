@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { ResourceChart } from "@/components/resource-chart";
 import type { SystemHealthStatus, DiskStats, CheckResult, SystemStats } from "@/types/api";
 
@@ -76,11 +77,14 @@ function DiskUsageBar({ used, total }: { used: number; total: number }) {
 }
 
 export default function MonitoringPage() {
-  // Query for system stats
+  const { currentTeamId } = useTeamContext();
+
+  // Query for system stats, scoped to current team
   const { data: stats } = useQuery<SystemStats | null>({
-    queryKey: ["system-stats"],
-    queryFn: () => api.getSystemStats(),
+    queryKey: ["system-stats", currentTeamId],
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
     refetchInterval: 10000, // Refresh every 10 seconds
+    enabled: currentTeamId !== null,
   });
 
   // Query for health status with polling

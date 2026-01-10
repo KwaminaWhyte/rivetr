@@ -13,14 +13,30 @@ import type {
   AuditLogQuery,
 } from "@/types/api";
 
+/** Options for getting system stats */
+export interface GetSystemStatsOptions {
+  /** Team ID to filter stats by team scope */
+  teamId?: string | null;
+}
+
 export const systemApi = {
   // -------------------------------------------------------------------------
   // System Stats & Health
   // -------------------------------------------------------------------------
 
-  /** Get system-wide statistics */
-  getSystemStats: (token?: string) =>
-    apiRequest<SystemStats>("/system/stats", {}, token),
+  /** Get system-wide statistics, optionally scoped to a team */
+  getSystemStats: (options: GetSystemStatsOptions = {}, token?: string) => {
+    const params = new URLSearchParams();
+    if (options.teamId) {
+      params.append("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    return apiRequest<SystemStats>(
+      `/system/stats${queryString ? `?${queryString}` : ""}`,
+      {},
+      token
+    );
+  },
 
   /** Get disk usage statistics */
   getDiskStats: (token?: string) =>
