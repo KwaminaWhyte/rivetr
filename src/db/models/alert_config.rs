@@ -239,6 +239,19 @@ impl AlertConfig {
         Ok(result.rows_affected())
     }
 
+    /// Get count of apps with custom alert configurations
+    pub async fn count_apps_with_custom_configs(db: &SqlitePool) -> Result<i64, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            SELECT COUNT(DISTINCT app_id) FROM alert_configs WHERE app_id IS NOT NULL
+            "#,
+        )
+        .fetch_one(db)
+        .await?;
+
+        Ok(count)
+    }
+
     /// Get effective threshold for an app and metric type
     /// Returns per-app config if exists, otherwise returns global default
     pub async fn get_effective_threshold(

@@ -8,7 +8,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
@@ -17,6 +17,17 @@ use crate::db::{
     UpdateGlobalAlertDefaultsRequest,
 };
 use crate::AppState;
+
+/// Response containing alert statistics
+#[derive(Debug, Clone, Serialize)]
+pub struct AlertStatsResponse {
+    /// Total number of apps in the system
+    pub total_apps: i64,
+    /// Number of apps with custom alert configurations
+    pub apps_with_custom_configs: i64,
+    /// Number of apps using global defaults (no custom config)
+    pub apps_using_defaults: i64,
+}
 
 /// Query parameters for alert events
 #[derive(Debug, Deserialize)]
@@ -350,4 +361,36 @@ pub async fn list_alert_events(
     let responses: Vec<AlertEventResponse> = events.into_iter().map(|e| e.into()).collect();
 
     Ok(Json(responses))
+}
+
+/// Get alert configuration statistics
+///
+/// GET /api/settings/alert-stats
+pub async fn get_alert_stats(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<AlertStatsResponse>, StatusCode> {
+    // Get total apps count
+    let total_apps: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM apps")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to count apps: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Get count of apps with custom configs
+    let apps_with_custom_configs = AlertConfig::count_apps_with_custom_configs(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to count apps with custom configs: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let apps_using_defaults = total_apps - apps_with_custom_configs;
+
+    Ok(Json(AlertStatsResponse {
+        total_apps,
+        apps_with_custom_configs,
+        apps_using_defaults,
+    }))
 }

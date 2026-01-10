@@ -195,6 +195,11 @@ export const api = {
   getAuditActionTypes: systemApi.getAuditActionTypes,
   getAuditResourceTypes: systemApi.getAuditResourceTypes,
 
+  // Alert Defaults (Settings)
+  getAlertDefaults: systemApi.getAlertDefaults,
+  updateAlertDefaults: systemApi.updateAlertDefaults,
+  getAlertStats: systemApi.getAlertStats,
+
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,
   getPreview: previewsApi.getPreview,

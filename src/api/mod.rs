@@ -310,6 +310,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/settings/alert-defaults",
             put(alerts::update_alert_defaults),
         )
+        .route("/settings/alert-stats", get(alerts::get_alert_stats))
         .route("/settings/cost-rates", get(cost_rates::get_cost_rates))
         .route("/settings/cost-rates", put(cost_rates::update_cost_rates))
         // System stats and events

@@ -1267,6 +1267,26 @@ export interface GlobalAlertDefaultsResponse {
   disk: GlobalAlertDefaultResponse | null;
 }
 
+/** Request to update global alert defaults */
+export interface UpdateGlobalAlertDefaultsRequest {
+  cpu?: GlobalAlertDefaultUpdate;
+  memory?: GlobalAlertDefaultUpdate;
+  disk?: GlobalAlertDefaultUpdate;
+}
+
+/** Update for a single metric type's global default */
+export interface GlobalAlertDefaultUpdate {
+  threshold_percent?: number;
+  enabled?: boolean;
+}
+
+/** Alert configuration statistics */
+export interface AlertStatsResponse {
+  total_apps: number;
+  apps_with_custom_configs: number;
+  apps_using_defaults: number;
+}
+
 // -------------------------------------------------------------------------
 // Cost Estimation types
 // -------------------------------------------------------------------------

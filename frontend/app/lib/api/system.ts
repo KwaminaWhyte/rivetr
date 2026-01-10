@@ -1,6 +1,6 @@
 /**
  * System API module.
- * Handles system stats, health, events, audit logs, and costs.
+ * Handles system stats, health, events, audit logs, costs, and settings.
  */
 
 import { apiRequest } from "./core";
@@ -13,6 +13,9 @@ import type {
   AuditLogQuery,
   DashboardCostResponse,
   CostResponse,
+  GlobalAlertDefaultsResponse,
+  UpdateGlobalAlertDefaultsRequest,
+  AlertStatsResponse,
 } from "@/types/api";
 
 export const systemApi = {
@@ -90,4 +93,23 @@ export const systemApi = {
   /** Get cost data for a specific app */
   getAppCosts: (appId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
     apiRequest<CostResponse>(`/apps/${appId}/costs?period=${period}`, {}, token),
+
+  // -------------------------------------------------------------------------
+  // Alert Defaults (Settings)
+  // -------------------------------------------------------------------------
+
+  /** Get global alert defaults */
+  getAlertDefaults: (token?: string) =>
+    apiRequest<GlobalAlertDefaultsResponse>("/settings/alert-defaults", {}, token),
+
+  /** Update global alert defaults */
+  updateAlertDefaults: (request: UpdateGlobalAlertDefaultsRequest, token?: string) =>
+    apiRequest<GlobalAlertDefaultsResponse>("/settings/alert-defaults", {
+      method: "PUT",
+      body: JSON.stringify(request),
+    }, token),
+
+  /** Get alert configuration statistics */
+  getAlertStats: (token?: string) =>
+    apiRequest<AlertStatsResponse>("/settings/alert-stats", {}, token),
 };
