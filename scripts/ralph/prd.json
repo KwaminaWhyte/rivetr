@@ -277,8 +277,8 @@
         "npm run build passes"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added user_role to TeamDetail backend response and frontend types. Fixed currentUserRole logic to use team.user_role. Role dropdown only shows for members current user can manage (owners can change any non-owner, admins can only change developer/viewer). Added confirmation dialog with contextual warnings (promoting to owner, demoting from admin). Backend already has last owner protection."
     },
     {
       "id": "US-017",

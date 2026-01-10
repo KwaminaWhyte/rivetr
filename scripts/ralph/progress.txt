@@ -22,6 +22,7 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
 - Team audit logs use log_team_audit() helper in src/api/teams.rs
 - TeamAuditAction/TeamAuditResourceType enums defined in src/db/models/team.rs
 - Pagination pattern: page (1-indexed), per_page with clamp(1, 100), offset = (page-1)*per_page
+- TeamDetail includes user_role for current user's role in the team (added in US-016)
 
 ---
 
@@ -552,4 +553,35 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Use Share2 icon for shared items to visually distinguish from owned
   - Hide modification actions (deploy, delete) for shared apps
   - Only show sharing card for app owner (check app.team_id === currentTeamId)
+---
+
+## 01/10/2026 - US-016
+- Added user_role field to TeamDetail in backend (src/db/models/team.rs)
+  - Added user_role: Option<String> field
+- Updated get_team endpoint to include user's role (src/api/teams.rs)
+  - Changed _membership to membership to use the role
+  - Added user_role: Some(membership.role) to response
+- Added user_role to TeamDetail interface in frontend (frontend/app/types/api.ts)
+  - user_role: TeamRole | null
+- Fixed currentUserRole logic in team settings page (frontend/app/routes/settings/teams/$id.tsx)
+  - Changed from broken logic (finding any owner) to team?.user_role
+- Added role change confirmation dialog
+  - New state: showRoleChangeDialog, pendingRoleChange
+  - AlertDialog with contextual warnings (promoting to owner, demoting from admin)
+  - confirmRoleChange function handles mutation with success/error cleanup
+- Improved role dropdown logic
+  - Only shows for members current user can manage
+  - Owners can change any non-owner role
+  - Admins can only change developer/viewer roles
+  - Changed dropdown options: admins can't see owner or admin options
+- Files changed:
+  - src/db/models/team.rs
+  - src/api/teams.rs
+  - frontend/app/types/api.ts
+  - frontend/app/routes/settings/teams/$id.tsx
+- **Learnings for future iterations:**
+  - TeamDetail didn't include user_role - needed to add it to get current user's role
+  - Backend already had last owner protection in update_member_role
+  - Use controlled Select (value={} instead of defaultValue) for confirmation dialog flow
+  - Role management logic: show dropdown only for members user can manage, not just non-owners
 ---
