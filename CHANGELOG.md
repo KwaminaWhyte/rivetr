@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Preview deployments for pull requests
 - S3 backup integration
+- **Self-Update System** - In-app updates with version checking:
+  - Version check against GitHub releases on startup
+  - Subtle update notification badge in sidebar
+  - One-click update button to download and install new version
+  - Auto-update option in Settings (configurable interval)
+  - Pre-update backup of database and configuration
 
 ---
 

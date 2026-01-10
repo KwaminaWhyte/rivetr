@@ -98,14 +98,14 @@ Command-line interface for common operations.
 
 ## Planned (v0.4.x+)
 
-### Resource Alerts & Cost Estimation
+### Resource Alerts & Cost Estimation ✅ COMPLETE
 Proactive monitoring and cost visibility.
 
-- [ ] CPU/memory threshold alerts
-- [ ] Alert channels (email, Slack, Discord)
-- [ ] Cost estimation based on resource usage
-- [ ] Monthly cost projections per app
-- [ ] Cost dashboard widget
+- [x] CPU/memory threshold alerts
+- [x] Alert channels (email, Slack, Discord, webhooks)
+- [x] Cost estimation based on resource usage
+- [x] Daily cost snapshots per app
+- [x] Team costs API for aggregate reporting
 
 ### Deployment Enhancements
 Advanced deployment workflows.
@@ -144,6 +144,20 @@ Cloud backup for volumes and databases.
 - [ ] Database backup to S3
 - [ ] Scheduled S3 backups
 - [ ] One-click restore from S3
+
+### Self-Update & Version Management
+In-app update system for keeping Rivetr current.
+
+- [ ] Version check on startup (compare with GitHub releases)
+- [ ] Subtle update notification badge in sidebar when new version available
+- [ ] "Update Available" indicator showing current vs latest version
+- [ ] One-click update button in sidebar (downloads and replaces binary)
+- [ ] Update confirmation dialog with changelog preview
+- [ ] Auto-update setting in Settings (off by default)
+- [ ] Configurable update check interval (daily, weekly, manual)
+- [ ] Update history log (track previous versions)
+- [ ] Rollback to previous version if update fails
+- [ ] Pre-update backup of database and configuration
 
 ---
 
