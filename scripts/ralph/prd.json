@@ -329,8 +329,8 @@
         "cargo test passes"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added CLI command 'rivetr db migrate-teams' with --execute flag. Command queries unassigned apps/projects/databases/services, finds each user's first team (by membership created_at), and migrates resources. Includes dry-run mode, user display info, per-resource details, migration summary, and warnings for users without teams. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-020",

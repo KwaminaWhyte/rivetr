@@ -635,3 +635,27 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Query key pattern includes currentTeamId for proper cache invalidation
 ---
 
+## 01/10/2026 - US-019
+- Added CLI command `rivetr db migrate-teams` for migrating unassigned resources (src/cli/mod.rs)
+  - DbCommands enum with MigrateTeams subcommand
+  - --execute flag for actual migration (without it, shows dry-run)
+- cmd_migrate_teams function implementation:
+  - Connects directly to SQLite database using config
+  - Queries unassigned apps, projects, databases, services (WHERE team_id IS NULL)
+  - For each user with unassigned resources, finds their first team (by membership created_at)
+  - Migrates resources by UPDATE ... SET team_id = ?
+  - Displays user info (name, email), target team, and resource details
+  - Tracks and displays migration statistics (apps/projects/databases/services count)
+  - Warns about users without team membership (resources remain unassigned)
+  - Provides instructions for running with --execute flag
+- Files changed:
+  - src/cli/mod.rs (DbCommands enum, cmd_migrate_teams function)
+- **Learnings for future iterations:**
+  - CLI commands can connect directly to database without running full server
+  - Use dry-run mode by default for destructive operations
+  - User's first team determined by team_members.created_at ASC
+  - sqlx::query_as with tuple types (String, String, String) works for simple queries
+  - HashSet for collecting unique user IDs efficiently
+  - Format user display as "name (email)" for clear identification
+---
+
