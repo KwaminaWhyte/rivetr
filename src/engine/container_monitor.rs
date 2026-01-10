@@ -303,7 +303,7 @@ impl ContainerMonitor {
         // Get all services that should be running
         let running_services: Vec<Service> = match sqlx::query_as(
             r#"
-            SELECT id, name, project_id, compose_content, status, error_message, created_at, updated_at
+            SELECT id, name, project_id, team_id, compose_content, status, error_message, created_at, updated_at
             FROM services
             WHERE status = 'running'
             "#,
@@ -967,7 +967,7 @@ async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -
 async fn reconcile_services(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -> usize {
     let running_services: Vec<Service> = match sqlx::query_as(
         r#"
-        SELECT id, name, project_id, compose_content, status, error_message, created_at, updated_at
+        SELECT id, name, project_id, team_id, compose_content, status, error_message, created_at, updated_at
         FROM services
         WHERE status = 'running'
         "#,
