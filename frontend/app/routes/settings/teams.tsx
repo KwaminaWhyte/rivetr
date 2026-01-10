@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -49,10 +49,20 @@ function formatRole(role: TeamRole | null): string {
 
 export default function SettingsTeamsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedTeamName, setSelectedTeamName] = useState<string>("");
+
+  // Auto-open create dialog if ?create=true is in URL
+  useEffect(() => {
+    if (searchParams.get("create") === "true") {
+      setShowCreateDialog(true);
+      // Clear the query param to prevent re-opening on navigation
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: teams = [], isLoading } = useQuery<TeamWithMemberCount[]>({
     queryKey: ["teams"],
