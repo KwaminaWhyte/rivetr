@@ -13,10 +13,15 @@ Rivetr is a **single-binary PaaS** that lets you deploy applications from Git wi
 
 - **Single Binary** - No external databases, no Redis, no separate proxy
 - **Git Webhooks** - Deploy on push from GitHub, GitLab, or Gitea
+- **Multiple Build Types** - Dockerfile, Nixpacks, Railpack, Heroku/Paketo buildpacks, static sites
 - **Embedded Proxy** - Automatic HTTPS with Let's Encrypt
 - **Hybrid Runtime** - Works with Docker or Podman
-- **Web Dashboard** - Simple UI for managing deployments
-- **Real-time Logs** - Stream build and runtime logs
+- **Managed Databases** - One-click PostgreSQL, MySQL, MongoDB, Redis
+- **Docker Compose** - Deploy multi-container apps from compose files
+- **26 Service Templates** - Grafana, Portainer, Uptime Kuma, Gitea, n8n, and more
+- **Web Dashboard** - Modern React SSR dashboard with real-time updates
+- **Real-time Logs** - Stream build and runtime logs via WebSocket
+- **Team Management** - RBAC with owner/admin/developer/viewer roles
 
 ### Resource Comparison
 
@@ -127,16 +132,19 @@ memory = "256mb"
 rivetr/
 ├── src/
 │   ├── main.rs          # Entry point
-│   ├── api/             # REST API routes
-│   ├── config/          # Configuration
-│   ├── db/              # SQLite database
-│   ├── engine/          # Deployment pipeline
-│   ├── proxy/           # Reverse proxy
+│   ├── api/             # REST API routes (Axum)
+│   ├── config/          # Configuration (TOML)
+│   ├── db/              # SQLite database + models
+│   ├── engine/          # Deployment pipeline + builders
+│   ├── proxy/           # Reverse proxy + TLS/ACME
 │   ├── runtime/         # Container abstraction (Docker/Podman)
-│   └── ui/              # Email templates (reserved)
-├── frontend/            # React + Vite + shadcn/ui dashboard
+│   └── startup/         # Self-checks and initialization
+├── frontend/            # React Router v7 + Vite + shadcn/ui
+├── .claude/
+│   ├── agents/          # Claude Code sub-agents
+│   └── skills/          # Claude Code skills
 ├── scripts/             # Setup scripts (setup.sh, setup.ps1)
-├── migrations/          # Database migrations
+├── migrations/          # SQLite migrations
 └── plan/                # Development roadmap
 ```
 
@@ -163,6 +171,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 Inspired by [Coolify](https://coolify.io/), built for developers who want simplicity and efficiency.
+
 
 To create a release:
 git tag v0.1.0

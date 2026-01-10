@@ -102,10 +102,11 @@ Custom sub-agents are available in `.claude/agents/` for specialized tasks:
 
 | Agent | Purpose | When to Use |
 |-------|---------|-------------|
-| `code-reviewer` | Rust code review | After writing/modifying Rust code |
-| `frontend-reviewer` | React/TypeScript review | After writing/modifying frontend code |
-| `debugger` | Debug errors and failures | When encountering compilation errors, panics, or test failures |
-| `test-runner` | Run and fix tests | After code changes to verify tests pass |
+| `code-reviewer` | Rust code review specialist | After writing/modifying Rust code for quality, safety, and patterns |
+| `frontend-reviewer` | React/TypeScript review | After writing/modifying frontend code (SSR, accessibility, best practices) |
+| `debugger` | Debug errors and failures | When encountering compilation errors, panics, test failures, or deployment issues |
+| `test-runner` | Run and fix tests | After code changes to verify tests pass (backend and frontend) |
+| `security-reviewer` | Security audit specialist | After writing code handling auth, user input, secrets, or external data |
 
 ### Invoking Agents
 
@@ -114,6 +115,7 @@ Agents are automatically invoked based on context, or explicitly:
 Use the code-reviewer agent to review my changes
 Have the debugger agent investigate this error
 Ask the test-runner agent to fix failing tests
+Run security-reviewer to audit authentication changes
 ```
 
 ## Skills
@@ -122,18 +124,24 @@ Skills in `.claude/skills/` provide domain-specific knowledge:
 
 | Skill | Purpose |
 |-------|---------|
-| `rust-patterns` | Rust idioms and patterns used in Rivetr (error handling, async, traits) |
-| `api-testing` | curl commands and patterns for testing REST API endpoints |
-| `docker-testing` | Container runtime testing, Docker/Podman debugging |
+| `rust-review` | Rust idioms and patterns used in Rivetr (error handling, async, traits, Axum patterns) |
+| `api-testing` | curl commands and patterns for testing all REST API endpoints (apps, deployments, databases, services) |
+| `docker-testing` | Container runtime testing, Docker/Podman debugging, Nixpacks, Railpack, and buildpack support |
+| `database-operations` | SQLite database patterns and SQLx usage (queries, migrations, models, debugging) |
+| `deployment-pipeline` | Debug and understand the deployment pipeline (stages, build types, rollbacks, health checks) |
 
 Skills are automatically activated when relevant to the current task.
 
 ## Development Status
 
 See `plan/TASKS.md` for detailed task tracking. Current status:
-- **Phase 0 (Foundation)**: Complete (83%)
-- **Phase 1 (MVP)**: In progress (54%) - proxy and UI remaining
-- **Phase 2 (Production Ready)**: Not started
+- **Phase 0 (Foundation)**: Complete (93%)
+- **Phase 1 (MVP)**: Complete (100%)
+- **Phase 2 (Production Ready)**: In progress (84%)
+- **Phase 3 (Enhanced Features)**: In progress (91%)
+- **Phase 4 (Platform Services)**: Complete (100%)
+- **Phase 5 (Advanced CI/CD)**: In progress (67%)
+- **Overall Progress**: 86% complete (315/368 tasks)
 
 ## Configuration
 
