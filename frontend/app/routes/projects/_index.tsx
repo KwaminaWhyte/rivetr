@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,6 +63,7 @@ function getProjectHealth(
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [name, setName] = useState("");
@@ -70,7 +72,7 @@ export default function ProjectsPage() {
 
   // Use React Query for data fetching
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectWithApps[]>({
-    queryKey: ["projects-with-apps"],
+    queryKey: ["projects-with-apps", currentTeamId],
     queryFn: async () => {
       const projectList = await api.getProjects();
       const projectsWithApps = await Promise.all(
@@ -78,16 +80,19 @@ export default function ProjectsPage() {
       );
       return projectsWithApps;
     },
+    enabled: currentTeamId !== null,
   });
 
   const { data: apps = [] } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryKey: ["apps", currentTeamId],
+    queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   const { data: databases = [] } = useQuery<ManagedDatabase[]>({
-    queryKey: ["databases"],
+    queryKey: ["databases", currentTeamId],
     queryFn: () => api.getDatabases(),
+    enabled: currentTeamId !== null,
   });
 
   // Fetch app statuses

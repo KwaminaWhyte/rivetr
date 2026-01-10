@@ -82,7 +82,10 @@ async function apiRequest<T>(
 
 export const api = {
   // Apps
-  getApps: (token: string) => apiRequest<App[]>("/apps", token),
+  getApps: (token: string, teamId?: string) => {
+    const params = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+    return apiRequest<App[]>(`/apps${params}`, token);
+  },
   getApp: (token: string, id: string) => apiRequest<App>(`/apps/${id}`, token),
   createApp: (token: string, data: CreateAppRequest) =>
     apiRequest<App>("/apps", token, {

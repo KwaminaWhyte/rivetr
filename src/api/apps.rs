@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::sse::{Event, Sse},
     Json,
@@ -15,7 +15,9 @@ use uuid::Uuid;
 
 use crate::engine::{detect_build_type, extract_zip_and_find_root, BuildDetectionResult};
 
-use crate::db::{actions, resource_types, App, CreateAppRequest, Deployment, UpdateAppRequest, User};
+use crate::db::{
+    actions, resource_types, App, CreateAppRequest, Deployment, UpdateAppRequest, User,
+};
 use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
@@ -53,10 +55,7 @@ fn validate_create_request(req: &CreateAppRequest) -> Result<(), ApiError> {
             "Cannot specify both git_url and docker_image. Choose one deployment source.",
         );
     } else if !has_git_url && !has_docker_image {
-        errors.add(
-            "git_url",
-            "Either git_url or docker_image must be provided",
-        );
+        errors.add("git_url", "Either git_url or docker_image must be provided");
     }
 
     // Only validate git-related fields if using git source
@@ -284,12 +283,43 @@ fn validate_update_request(req: &UpdateAppRequest) -> Result<(), ApiError> {
     errors.finish()
 }
 
+/// Query parameters for listing apps
+#[derive(Debug, serde::Deserialize)]
+pub struct ListAppsQuery {
+    /// Filter by team ID. If provided, returns only apps belonging to this team.
+    /// If not provided, returns all apps the user has access to.
+    pub team_id: Option<String>,
+}
+
 pub async fn list_apps(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ListAppsQuery>,
 ) -> Result<Json<Vec<App>>, ApiError> {
-    let apps = sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY created_at DESC")
-        .fetch_all(&state.db)
-        .await?;
+    let apps = if let Some(team_id) = &query.team_id {
+        // Filter by team ID - returns apps belonging to the specified team
+        // Also include apps with NULL team_id if team_id is empty (for backward compatibility)
+        if team_id.is_empty() {
+            // Return apps without a team (legacy/unassigned apps)
+            sqlx::query_as::<_, App>(
+                "SELECT * FROM apps WHERE team_id IS NULL ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await?
+        } else {
+            // Return apps belonging to the specified team
+            sqlx::query_as::<_, App>(
+                "SELECT * FROM apps WHERE team_id = ? ORDER BY created_at DESC",
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+    } else {
+        // No team filter - return all apps (for backward compatibility)
+        sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await?
+    };
 
     Ok(Json(apps))
 }
@@ -364,8 +394,8 @@ pub async fn create_app(
 
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -381,6 +411,7 @@ pub async fn create_app(
     .bind(&req.ssh_key_id)
     .bind(req.environment.to_string())
     .bind(&req.project_id)
+    .bind(&req.team_id)
     .bind(&req.dockerfile_path)
     .bind(&req.base_directory)
     .bind(&req.build_target)
@@ -464,9 +495,9 @@ fn merge_optional_json<T: serde::Serialize>(
     existing: &Option<String>,
 ) -> Option<String> {
     match new_val {
-        Some(v) if v.is_empty() => None, // Explicit clear
+        Some(v) if v.is_empty() => None,          // Explicit clear
         Some(v) => serde_json::to_string(v).ok(), // New value
-        None => existing.clone(), // Keep existing
+        None => existing.clone(),                 // Keep existing
     }
 }
 
@@ -498,7 +529,10 @@ pub async fn update_app(
     let name = req.name.clone().unwrap_or(existing.name.clone());
     let git_url = req.git_url.clone().unwrap_or(existing.git_url.clone());
     let branch = req.branch.clone().unwrap_or(existing.branch.clone());
-    let dockerfile = req.dockerfile.clone().unwrap_or(existing.dockerfile.clone());
+    let dockerfile = req
+        .dockerfile
+        .clone()
+        .unwrap_or(existing.dockerfile.clone());
     let port = req.port.unwrap_or(existing.port);
     let environment = req
         .environment
@@ -549,13 +583,20 @@ pub async fn update_app(
     // Build type and Nixpacks fields
     let build_type = merge_optional_string(&req.build_type, &existing.build_type);
     let nixpacks_config = merge_optional_string(&req.nixpacks_config, &existing.nixpacks_config);
-    let publish_directory = merge_optional_string(&req.publish_directory, &existing.publish_directory);
+    let publish_directory =
+        merge_optional_string(&req.publish_directory, &existing.publish_directory);
     let preview_enabled = req.preview_enabled.unwrap_or(existing.preview_enabled != 0);
 
     // Rollback settings
-    let auto_rollback_enabled = req.auto_rollback_enabled.unwrap_or(existing.auto_rollback_enabled != 0);
-    let registry_push_enabled = req.registry_push_enabled.unwrap_or(existing.registry_push_enabled != 0);
-    let max_rollback_versions = req.max_rollback_versions.unwrap_or(existing.max_rollback_versions);
+    let auto_rollback_enabled = req
+        .auto_rollback_enabled
+        .unwrap_or(existing.auto_rollback_enabled != 0);
+    let registry_push_enabled = req
+        .registry_push_enabled
+        .unwrap_or(existing.registry_push_enabled != 0);
+    let max_rollback_versions = req
+        .max_rollback_versions
+        .unwrap_or(existing.max_rollback_versions);
 
     sqlx::query(
         r#"
@@ -692,7 +733,10 @@ pub async fn delete_app(
 
     // Verify password
     if req.password.is_empty() {
-        return Err(ApiError::validation_field("password", "Password is required".to_string()));
+        return Err(ApiError::validation_field(
+            "password",
+            "Password is required".to_string(),
+        ));
     }
 
     // For system user (API token auth), skip password verification
@@ -859,7 +903,9 @@ pub async fn start_app(
 
     let container_id = deployment
         .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
-        .ok_or_else(|| ApiError::bad_request("No deployment with container found. Deploy the app first."))?;
+        .ok_or_else(|| {
+            ApiError::bad_request("No deployment with container found. Deploy the app first.")
+        })?;
 
     // Start the container
     state.runtime.start(&container_id).await.map_err(|e| {
@@ -881,12 +927,9 @@ pub async fn start_app(
     if let Some(domain) = &app.domain {
         if !domain.is_empty() {
             if let Some(port) = host_port {
-                let backend = crate::proxy::Backend::new(
-                    container_id.clone(),
-                    "127.0.0.1".to_string(),
-                    port,
-                )
-                .with_healthcheck(app.healthcheck.clone());
+                let backend =
+                    crate::proxy::Backend::new(container_id.clone(), "127.0.0.1".to_string(), port)
+                        .with_healthcheck(app.healthcheck.clone());
 
                 state.routes.load().add_route(domain.clone(), backend);
                 tracing::info!(domain = %domain, "Route re-registered after start");
@@ -1018,7 +1061,9 @@ pub async fn restart_app(
 
     let container_id = deployment
         .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
-        .ok_or_else(|| ApiError::bad_request("No deployment with container found. Deploy the app first."))?;
+        .ok_or_else(|| {
+            ApiError::bad_request("No deployment with container found. Deploy the app first.")
+        })?;
 
     // First stop the container (ignore errors if already stopped)
     let _ = state.runtime.stop(&container_id).await;
@@ -1046,12 +1091,9 @@ pub async fn restart_app(
     if let Some(domain) = &app.domain {
         if !domain.is_empty() {
             if let Some(port) = host_port {
-                let backend = crate::proxy::Backend::new(
-                    container_id.clone(),
-                    "127.0.0.1".to_string(),
-                    port,
-                )
-                .with_healthcheck(app.healthcheck.clone());
+                let backend =
+                    crate::proxy::Backend::new(container_id.clone(), "127.0.0.1".to_string(), port)
+                        .with_healthcheck(app.healthcheck.clone());
 
                 state.routes.load().add_route(domain.clone(), backend);
                 tracing::info!(domain = %domain, port = port, "Route re-registered after restart");
@@ -1178,9 +1220,10 @@ pub async fn upload_create_app(
                 .text()
                 .await
                 .map_err(|e| ApiError::bad_request(&format!("Failed to read config: {}", e)))?;
-            config = Some(serde_json::from_str(&text).map_err(|e| {
-                ApiError::bad_request(&format!("Invalid config JSON: {}", e))
-            })?);
+            config = Some(
+                serde_json::from_str(&text)
+                    .map_err(|e| ApiError::bad_request(&format!("Invalid config JSON: {}", e)))?,
+            );
         }
     }
 
@@ -1206,14 +1249,12 @@ pub async fn upload_create_app(
     // Extract ZIP and find project root
     let project_root = extract_zip_and_find_root(&file_data, &work_dir)
         .await
-        .map_err(|e| {
-            ApiError::bad_request(&format!("Failed to extract ZIP: {}", e))
-        })?;
+        .map_err(|e| ApiError::bad_request(&format!("Failed to extract ZIP: {}", e)))?;
 
     // Auto-detect build type
-    let detected = detect_build_type(&project_root).await.map_err(|e| {
-        ApiError::internal(&format!("Failed to detect build type: {}", e))
-    })?;
+    let detected = detect_build_type(&project_root)
+        .await
+        .map_err(|e| ApiError::internal(&format!("Failed to detect build type: {}", e)))?;
     tracing::info!(
         build_type = %detected.build_type,
         confidence = %detected.confidence,
@@ -1222,8 +1263,14 @@ pub async fn upload_create_app(
     );
 
     // Determine final build type (use override or detected)
-    let build_type = config.build_type.clone().unwrap_or_else(|| detected.build_type.to_string());
-    let publish_directory = config.publish_directory.clone().or_else(|| detected.publish_directory.clone());
+    let build_type = config
+        .build_type
+        .clone()
+        .unwrap_or_else(|| detected.build_type.to_string());
+    let publish_directory = config
+        .publish_directory
+        .clone()
+        .or_else(|| detected.publish_directory.clone());
 
     // Clone detected for audit log before moving
     let detected_from_log = detected.detected_from.clone();
@@ -1239,7 +1286,7 @@ pub async fn upload_create_app(
             memory_limit, cpu_limit, environment, project_id, build_type,
             publish_directory, deployment_source, created_at, updated_at
         ) VALUES (?, ?, '', 'main', 'Dockerfile', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?)
-        "#
+        "#,
     )
     .bind(&app_id)
     .bind(&config.name)
@@ -1270,7 +1317,7 @@ pub async fn upload_create_app(
         r#"
         INSERT INTO deployments (id, app_id, status, started_at, commit_sha)
         VALUES (?, ?, 'pending', ?, ?)
-        "#
+        "#,
     )
     .bind(&deployment_id)
     .bind(&app_id)
@@ -1286,7 +1333,11 @@ pub async fn upload_create_app(
         .await?;
 
     // Queue the deployment
-    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+    if let Err(e) = state
+        .deploy_tx
+        .send((deployment_id.clone(), app.clone()))
+        .await
+    {
         tracing::error!("Failed to queue deployment: {}", e);
         return Err(ApiError::internal("Failed to queue deployment"));
     }

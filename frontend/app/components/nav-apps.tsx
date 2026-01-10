@@ -27,14 +27,17 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import type { App } from "@/types/api";
 
 export function NavApps() {
   const { isMobile } = useSidebar();
+  const { currentTeamId } = useTeamContext();
 
   const { data: apps = [], isLoading } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryKey: ["apps", currentTeamId],
+    queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   // Show only 5 most recent apps

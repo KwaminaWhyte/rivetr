@@ -5,7 +5,12 @@ export type AppEnvironment = "development" | "staging" | "production";
 // -------------------------------------------------------------------------
 
 /** Build type for applications */
-export type BuildType = "dockerfile" | "nixpacks" | "railpack" | "cnb" | "staticsite";
+export type BuildType =
+  | "dockerfile"
+  | "nixpacks"
+  | "railpack"
+  | "cnb"
+  | "staticsite";
 
 /** Deployment source type */
 export type DeploymentSource = "git" | "upload" | "registry";
@@ -29,6 +34,13 @@ export interface BuildDetectionResult {
 /** Response from upload deploy endpoint */
 export interface UploadDeployResponse {
   deployment: Deployment;
+  detected_build_type: BuildDetectionResult;
+}
+
+/** Response from upload create app endpoint */
+export interface UploadAppResponse {
+  app: App;
+  deployment_id: string;
   detected_build_type: BuildDetectionResult;
 }
 
@@ -197,6 +209,8 @@ export interface App {
   cpu_limit: string | null;
   environment: AppEnvironment;
   project_id: string | null;
+  /** Team ID for multi-tenant scoping (null for legacy/unassigned apps) */
+  team_id: string | null;
   // Advanced build options
   dockerfile_path: string | null;
   base_directory: string | null;
@@ -337,6 +351,8 @@ export interface CreateAppRequest {
   memory_limit?: string;
   environment?: AppEnvironment;
   project_id?: string;
+  /** Team ID for multi-tenant scoping */
+  team_id?: string;
   // Advanced build options
   dockerfile_path?: string;
   base_directory?: string;
@@ -797,7 +813,10 @@ export interface UpdateMemberRoleRequest {
 }
 
 /** Helper: Check if user has at least the required role */
-export function hasRoleAtLeast(userRole: TeamRole | null, requiredRole: TeamRole): boolean {
+export function hasRoleAtLeast(
+  userRole: TeamRole | null,
+  requiredRole: TeamRole,
+): boolean {
   if (!userRole) return false;
   const roleOrder: TeamRole[] = ["viewer", "developer", "admin", "owner"];
   return roleOrder.indexOf(userRole) >= roleOrder.indexOf(requiredRole);
@@ -1106,13 +1125,48 @@ export interface TemplateCategoryInfo {
 
 /** Available template categories */
 export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
-  { id: "monitoring", name: "Monitoring", description: "Observability and alerting tools", icon: "activity" },
-  { id: "database", name: "Databases", description: "Database management systems", icon: "database" },
-  { id: "storage", name: "Storage", description: "File storage and object stores", icon: "hard-drive" },
-  { id: "development", name: "Development", description: "Developer tools and utilities", icon: "code" },
-  { id: "analytics", name: "Analytics", description: "Data analytics and visualization", icon: "bar-chart" },
-  { id: "networking", name: "Networking", description: "Network tools and proxies", icon: "network" },
-  { id: "security", name: "Security", description: "Security and authentication", icon: "shield" },
+  {
+    id: "monitoring",
+    name: "Monitoring",
+    description: "Observability and alerting tools",
+    icon: "activity",
+  },
+  {
+    id: "database",
+    name: "Databases",
+    description: "Database management systems",
+    icon: "database",
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    description: "File storage and object stores",
+    icon: "hard-drive",
+  },
+  {
+    id: "development",
+    name: "Development",
+    description: "Developer tools and utilities",
+    icon: "code",
+  },
+  {
+    id: "analytics",
+    name: "Analytics",
+    description: "Data analytics and visualization",
+    icon: "bar-chart",
+  },
+  {
+    id: "networking",
+    name: "Networking",
+    description: "Network tools and proxies",
+    icon: "network",
+  },
+  {
+    id: "security",
+    name: "Security",
+    description: "Security and authentication",
+    icon: "shield",
+  },
 ];
 
 // -------------------------------------------------------------------------

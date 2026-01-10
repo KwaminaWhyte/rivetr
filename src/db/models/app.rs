@@ -21,6 +21,8 @@ pub struct App {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping (nullable for legacy apps)
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
@@ -106,6 +108,8 @@ pub struct AppResponse {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
@@ -168,6 +172,7 @@ impl From<App> for AppResponse {
             ssh_key_id: app.ssh_key_id,
             environment: app.environment,
             project_id: app.project_id,
+            team_id: app.team_id,
             dockerfile_path: app.dockerfile_path,
             base_directory: app.base_directory,
             build_target: app.build_target,
@@ -379,7 +384,11 @@ impl App {
     /// Check if this app can push to registry (has registry configured and push enabled)
     pub fn can_push_to_registry(&self) -> bool {
         self.is_registry_push_enabled()
-            && self.registry_url.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+            && self
+                .registry_url
+                .as_ref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
     }
 
     /// Get the registry URL for pushing images (for rollback support)
@@ -411,6 +420,8 @@ pub struct CreateAppRequest {
     #[serde(default)]
     pub environment: Environment,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
