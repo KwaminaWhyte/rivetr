@@ -588,7 +588,7 @@ RestartSec=10
 # Security hardening
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=$DATA_DIR
+ReadWritePaths=$DATA_DIR /home/$SERVICE_USER
 PrivateTmp=true
 
 # Allow binding to privileged ports (80, 443)
