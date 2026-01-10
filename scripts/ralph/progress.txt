@@ -320,3 +320,26 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-016
+- What was implemented: E2E tests for Team notification channels UI using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-016 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Created new team "E2E Test Team" via the Teams settings page
+  - Navigated to team settings page and verified Notification Channels section visible
+  - Added email notification channel with SMTP config and recipient list
+  - Added Slack webhook channel with placeholder URL
+  - Tested "Test" button - correctly attempted to send to webhook URL (404 expected with fake URL)
+  - Edited channel configuration by toggling enabled/disabled status
+  - Deleted email notification channel and verified it was removed from table
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us016-*
+- **Learnings for future iterations:**
+  - Team notification channels support 4 types: slack, discord, email, webhook
+  - Channel types use combobox dropdown (select option by clicking)
+  - Actions column has two buttons: test notification (paper plane icon) and delete (trash icon)
+  - No direct edit button - editing is done by toggling enabled status
+  - Test notification for Slack shows 404 error when using fake webhook URL (expected behavior)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
