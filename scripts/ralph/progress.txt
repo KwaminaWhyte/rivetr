@@ -217,3 +217,23 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-011
+- What was implemented: Team notification channels management UI
+- Files changed:
+  - src/api/notifications.rs (added test_team_channel endpoint)
+  - src/api/mod.rs (registered test_team_channel route)
+  - frontend/app/lib/api/notifications.ts (added team notification channel API methods)
+  - frontend/app/lib/api/index.ts (registered team notification channel methods)
+  - frontend/app/types/api.ts (added TeamNotificationChannel types, WebhookConfig)
+  - frontend/app/components/team-notification-channels-card.tsx (new component)
+  - frontend/app/routes/settings/teams/$id.tsx (integrated TeamNotificationChannelsCard)
+- **Learnings for future iterations:**
+  - Team notification channels support 4 types: slack, discord, email, webhook
+  - Webhook channels have payload_template field: "json", "slack", "discord", "custom"
+  - Test endpoint follows same pattern as global: POST /api/teams/:id/notification-channels/:channel_id/test
+  - TeamNotificationChannelsCard uses same patterns as AlertsCard and notifications settings page
+  - Component is conditionally rendered based on canManage (admin+ role)
+  - Frontend has "typecheck" script instead of "lint" for TypeScript checking
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
