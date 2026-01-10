@@ -1,5 +1,5 @@
 # Ralph Progress Log
-Started: Initial setup
+Started: Resource Alerts & Cost Estimation
 ---
 
 ## Codebase Patterns
@@ -11,3 +11,4 @@ Started: Initial setup
 - State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
 
 ---
+

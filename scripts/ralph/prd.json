@@ -1,0 +1,249 @@
+{
+  "project": "Rivetr",
+  "branchName": "ralph/resource-alerts-cost-estimation",
+  "description": "Resource Alerts & Cost Estimation - Proactive monitoring with threshold alerts and cost visibility for apps, projects, and teams",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add resource metrics collection infrastructure",
+      "description": "As a platform operator, I want Rivetr to collect CPU, memory, and disk metrics from containers so that I can monitor resource usage.",
+      "acceptanceCriteria": [
+        "Create resource_metrics table with columns: id, app_id, timestamp, cpu_percent, memory_bytes, memory_limit_bytes, disk_bytes, disk_limit_bytes",
+        "Add migration file for resource_metrics table",
+        "Implement periodic metrics collection (every 60 seconds) from container runtime",
+        "Store metrics with 24-hour retention by default",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add alert configuration models and API",
+      "description": "As a developer, I want to configure resource alert thresholds for my applications so that I get notified before resources are exhausted.",
+      "acceptanceCriteria": [
+        "Create alert_configs table with columns: id, app_id (nullable for global), metric_type (cpu/memory/disk), threshold_percent, enabled, created_at, updated_at",
+        "Create global_alert_defaults table for system-wide default thresholds",
+        "Add API endpoints: GET/POST/PUT/DELETE /api/apps/{id}/alerts",
+        "Add API endpoint: GET/PUT /api/settings/alert-defaults",
+        "Per-app configs override global defaults when present",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Implement alert evaluation engine",
+      "description": "As a platform operator, I want alerts to be automatically evaluated against thresholds so that notifications are triggered when limits are breached.",
+      "acceptanceCriteria": [
+        "Create alert evaluation service that runs on metrics collection",
+        "Compare current metrics against configured thresholds (per-app or global default)",
+        "Implement hysteresis (alert only triggers after threshold exceeded for 2 consecutive checks)",
+        "Create alert_events table to track triggered alerts with status (firing/resolved)",
+        "Prevent duplicate alerts for same condition within 15-minute window",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add notification channel configuration",
+      "description": "As a team admin, I want to configure where alerts are sent so that my team receives notifications in their preferred channels.",
+      "acceptanceCriteria": [
+        "Create notification_channels table with columns: id, team_id, channel_type (email/webhook), config_json, enabled",
+        "Add API endpoints: GET/POST/PUT/DELETE /api/teams/{id}/notification-channels",
+        "Support email channel with recipient list configuration",
+        "Support webhook channel with URL, headers, and payload template",
+        "Validate webhook URLs are HTTPS",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Implement email notification sender",
+      "description": "As a developer, I want to receive email alerts when my app exceeds resource thresholds so that I can take action.",
+      "acceptanceCriteria": [
+        "Create email notification service using existing SMTP configuration",
+        "Design alert email template with: app name, metric type, current value, threshold, timestamp",
+        "Include direct link to app dashboard in email",
+        "Queue emails to prevent blocking alert evaluation",
+        "Log email delivery status",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement webhook notification sender",
+      "description": "As a team admin, I want alerts sent to webhooks so that I can integrate with Slack, Discord, or custom systems.",
+      "acceptanceCriteria": [
+        "Create webhook notification service with configurable payload templates",
+        "Support JSON payload with variables: app_name, metric_type, value, threshold, timestamp, severity",
+        "Include default templates for Slack and Discord webhook formats",
+        "Implement retry logic (3 attempts with exponential backoff)",
+        "Log webhook delivery status and response codes",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add cost configuration and default rates",
+      "description": "As a platform operator, I want to configure cost rates so that users can see estimated infrastructure costs.",
+      "acceptanceCriteria": [
+        "Create cost_rates table with columns: id, resource_type (cpu/memory/disk), rate_per_unit, unit_description, is_default, created_at",
+        "Add API endpoint: GET/PUT /api/settings/cost-rates",
+        "Seed default rates (e.g., $0.05/GB RAM/month, $0.02/CPU core/month, $0.10/GB disk/month)",
+        "Allow admin to customize rates",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Implement cost calculation service",
+      "description": "As a developer, I want to see estimated costs for my applications based on resource usage so that I can optimize spending.",
+      "acceptanceCriteria": [
+        "Create cost calculation service that computes costs from resource metrics",
+        "Calculate daily average resource usage from metrics table",
+        "Apply configured rates (custom if set, otherwise defaults)",
+        "Store daily cost snapshots in cost_snapshots table",
+        "Support cost calculation for: per-app, per-project, per-team aggregation",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Add cost estimation API endpoints",
+      "description": "As a developer, I want API access to cost data so that I can integrate costs into my workflows.",
+      "acceptanceCriteria": [
+        "Add GET /api/apps/{id}/costs?period=7d|30d|90d endpoint",
+        "Add GET /api/projects/{id}/costs?period=7d|30d|90d endpoint",
+        "Add GET /api/teams/{id}/costs?period=7d|30d|90d endpoint",
+        "Return breakdown by resource type (cpu, memory, disk)",
+        "Include projected monthly cost based on current usage",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Add alerts management UI",
+      "description": "As a developer, I want to configure alerts in the dashboard so that I can set thresholds without using the API.",
+      "acceptanceCriteria": [
+        "Add Alerts tab to app settings page",
+        "Show current alert configurations with enable/disable toggles",
+        "Form to add/edit threshold for each metric type (CPU, memory, disk)",
+        "Show alert history with status (firing/resolved) and timestamps",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Add notification channels UI",
+      "description": "As a team admin, I want to manage notification channels in the dashboard so that I can configure where alerts are sent.",
+      "acceptanceCriteria": [
+        "Add Notifications section to team settings page",
+        "List configured channels with type, status, and test button",
+        "Form to add email channel with recipient list",
+        "Form to add webhook with URL and template selection (Slack/Discord/Custom)",
+        "Test button sends sample notification to verify configuration",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Add cost dashboard widget",
+      "description": "As a developer, I want to see cost information on the dashboard so that I have visibility into spending.",
+      "acceptanceCriteria": [
+        "Add cost summary card to main dashboard showing total monthly cost",
+        "Show cost breakdown by top 5 apps",
+        "Add cost trend sparkline (last 30 days)",
+        "Link to detailed cost page",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Add detailed cost page",
+      "description": "As a team admin, I want a detailed cost page so that I can analyze spending across apps, projects, and teams.",
+      "acceptanceCriteria": [
+        "Create /costs page with period selector (7d, 30d, 90d)",
+        "Show costs at team level with drill-down to projects and apps",
+        "Display cost breakdown chart by resource type",
+        "Show projected monthly cost with trend indicator",
+        "Export costs as CSV",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Add global alert defaults UI",
+      "description": "As a platform admin, I want to configure global alert defaults so that all apps have baseline monitoring.",
+      "acceptanceCriteria": [
+        "Add Alert Defaults section to admin settings",
+        "Configure default thresholds for CPU, memory, disk (e.g., 80%, 85%, 90%)",
+        "Toggle to enable/disable global alerts",
+        "Show count of apps using defaults vs custom configs",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
