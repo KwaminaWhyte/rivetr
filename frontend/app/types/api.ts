@@ -1267,6 +1267,56 @@ export interface GlobalAlertDefaultsResponse {
   disk: GlobalAlertDefaultResponse | null;
 }
 
+// -------------------------------------------------------------------------
+// Cost Estimation types
+// -------------------------------------------------------------------------
+
+/** Cost summary with totals and projections */
+export interface CostSummary {
+  cpu_cost: number;
+  memory_cost: number;
+  disk_cost: number;
+  total_cost: number;
+  avg_cpu_cores: number;
+  avg_memory_gb: number;
+  avg_disk_gb: number;
+  days_in_period: number;
+  projected_monthly_cost: number;
+}
+
+/** Cost breakdown for a single app */
+export interface AppCostBreakdown {
+  app_id: string;
+  app_name: string;
+  cpu_cost: number;
+  memory_cost: number;
+  disk_cost: number;
+  total_cost: number;
+}
+
+/** Daily cost data point for trend display */
+export interface DailyCostPoint {
+  date: string;
+  total_cost: number;
+}
+
+/** Dashboard cost response with summary, top apps, and trend data */
+export interface DashboardCostResponse {
+  summary: CostSummary;
+  top_apps: AppCostBreakdown[];
+  trend: DailyCostPoint[];
+  period: string;
+  period_days: number;
+}
+
+/** Cost response for app/project/team endpoints */
+export interface CostResponse {
+  summary: CostSummary;
+  breakdown?: AppCostBreakdown[];
+  period: string;
+  period_days: number;
+}
+
 export const DATABASE_TYPES: DatabaseTypeInfo[] = [
   {
     type: "postgres",

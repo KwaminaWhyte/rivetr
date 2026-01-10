@@ -1,6 +1,6 @@
 /**
  * System API module.
- * Handles system stats, health, events, and audit logs.
+ * Handles system stats, health, events, audit logs, and costs.
  */
 
 import { apiRequest } from "./core";
@@ -11,6 +11,7 @@ import type {
   SystemHealthStatus,
   AuditLogListResponse,
   AuditLogQuery,
+  DashboardCostResponse,
 } from "@/types/api";
 
 export const systemApi = {
@@ -68,4 +69,12 @@ export const systemApi = {
   /** Get available audit resource types */
   getAuditResourceTypes: (token?: string) =>
     apiRequest<string[]>("/audit/resource-types", {}, token),
+
+  // -------------------------------------------------------------------------
+  // Costs
+  // -------------------------------------------------------------------------
+
+  /** Get dashboard cost summary with top apps and trend data */
+  getDashboardCosts: (period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<DashboardCostResponse>(`/system/costs?period=${period}`, {}, token),
 };

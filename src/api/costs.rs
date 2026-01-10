@@ -216,3 +216,160 @@ pub async fn get_team_costs(
         period_days: days,
     }))
 }
+
+/// Daily cost data point for trend display
+#[derive(Debug, Serialize)]
+pub struct DailyCostPoint {
+    pub date: String,
+    pub total_cost: f64,
+}
+
+/// Dashboard cost response with summary, top apps, and trend data
+#[derive(Debug, Serialize)]
+pub struct DashboardCostResponse {
+    /// Total cost summary across all apps
+    pub summary: CostSummary,
+    /// Top 5 apps by cost
+    pub top_apps: Vec<AppCostBreakdown>,
+    /// Daily cost trend (last 30 days)
+    pub trend: Vec<DailyCostPoint>,
+    /// Period used for the query
+    pub period: String,
+    /// Number of days in the period
+    pub period_days: i64,
+}
+
+/// Get dashboard cost summary (system-wide)
+///
+/// GET /api/system/costs?period=7d|30d|90d
+///
+/// Returns total cost across all apps, top 5 apps by cost, and daily trend.
+pub async fn get_dashboard_costs(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CostQueryParams>,
+) -> Result<Json<DashboardCostResponse>, StatusCode> {
+    let days = parse_period(&params.period)?;
+
+    // Aggregate costs across all apps
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
+    let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+
+    // Get aggregated summary
+    let result: Option<(f64, f64, f64, f64, f64, f64, f64, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(cpu_cost), 0),
+            COALESCE(SUM(memory_cost), 0),
+            COALESCE(SUM(disk_cost), 0),
+            COALESCE(SUM(total_cost), 0),
+            COALESCE(AVG(avg_cpu_cores), 0),
+            COALESCE(AVG(avg_memory_gb), 0),
+            COALESCE(AVG(avg_disk_gb), 0),
+            COUNT(DISTINCT snapshot_date)
+        FROM cost_snapshots
+        WHERE snapshot_date >= ?
+        "#,
+    )
+    .bind(&cutoff_str)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get cost summary: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let summary = result
+        .map(
+            |(cpu_cost, memory_cost, disk_cost, total_cost, avg_cpu, avg_mem, avg_disk, count)| {
+                let daily_avg = if count > 0 {
+                    total_cost / count as f64
+                } else {
+                    0.0
+                };
+                let projected_monthly = daily_avg * 30.0;
+
+                CostSummary {
+                    cpu_cost,
+                    memory_cost,
+                    disk_cost,
+                    total_cost,
+                    avg_cpu_cores: avg_cpu,
+                    avg_memory_gb: avg_mem,
+                    avg_disk_gb: avg_disk,
+                    days_in_period: count,
+                    projected_monthly_cost: projected_monthly,
+                }
+            },
+        )
+        .unwrap_or_else(|| CostSummary {
+            cpu_cost: 0.0,
+            memory_cost: 0.0,
+            disk_cost: 0.0,
+            total_cost: 0.0,
+            avg_cpu_cores: 0.0,
+            avg_memory_gb: 0.0,
+            avg_disk_gb: 0.0,
+            days_in_period: 0,
+            projected_monthly_cost: 0.0,
+        });
+
+    // Get top 5 apps by cost
+    let top_apps: Vec<AppCostBreakdown> = sqlx::query_as(
+        r#"
+        SELECT
+            a.id as app_id,
+            a.name as app_name,
+            COALESCE(SUM(cs.cpu_cost), 0) as cpu_cost,
+            COALESCE(SUM(cs.memory_cost), 0) as memory_cost,
+            COALESCE(SUM(cs.disk_cost), 0) as disk_cost,
+            COALESCE(SUM(cs.total_cost), 0) as total_cost
+        FROM apps a
+        LEFT JOIN cost_snapshots cs ON cs.app_id = a.id AND cs.snapshot_date >= ?
+        GROUP BY a.id, a.name
+        HAVING total_cost > 0
+        ORDER BY total_cost DESC
+        LIMIT 5
+        "#,
+    )
+    .bind(&cutoff_str)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get top apps by cost: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Get daily trend for last 30 days
+    let trend_cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+    let trend_cutoff_str = trend_cutoff.format("%Y-%m-%d").to_string();
+
+    let trend: Vec<DailyCostPoint> = sqlx::query_as::<_, (String, f64)>(
+        r#"
+        SELECT
+            snapshot_date as date,
+            COALESCE(SUM(total_cost), 0) as total_cost
+        FROM cost_snapshots
+        WHERE snapshot_date >= ?
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date ASC
+        "#,
+    )
+    .bind(&trend_cutoff_str)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get cost trend: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .into_iter()
+    .map(|(date, total_cost)| DailyCostPoint { date, total_cost })
+    .collect();
+
+    Ok(Json(DashboardCostResponse {
+        summary,
+        top_apps,
+        trend,
+        period: params.period,
+        period_days: days,
+    }))
+}

@@ -318,6 +318,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/stats/summary", get(system::get_stats_summary))
         .route("/system/disk", get(system::get_disk_stats))
         .route("/system/health", get(system::get_detailed_health))
+        .route("/system/costs", get(costs::get_dashboard_costs))
         .route("/events/recent", get(system::get_recent_events))
         // Audit logs
         .route("/audit", get(audit::list_logs))

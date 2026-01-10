@@ -185,6 +185,7 @@ export const api = {
   getDiskStats: systemApi.getDiskStats,
   getSystemHealth: systemApi.getSystemHealth,
   getRecentEvents: systemApi.getRecentEvents,
+  getDashboardCosts: systemApi.getDashboardCosts,
 
   // Audit Logs
   getAuditLogs: systemApi.getAuditLogs,
