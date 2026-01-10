@@ -160,6 +160,8 @@ export const api = {
   resendTeamInvitation: teamsApi.resendTeamInvitation,
   validateInvitation: teamsApi.validateInvitation,
   acceptInvitation: teamsApi.acceptInvitation,
+  // Team Audit Logs
+  getTeamAuditLogs: teamsApi.getTeamAuditLogs,
 
   // Notifications
   getNotificationChannels: notificationsApi.getNotificationChannels,

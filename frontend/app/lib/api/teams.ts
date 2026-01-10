@@ -15,6 +15,8 @@ import type {
   InviteMemberRequest,
   UpdateMemberRoleRequest,
   CreateInvitationRequest,
+  TeamAuditLogPage,
+  TeamAuditLogQuery,
 } from "@/types/api";
 
 export const teamsApi = {
@@ -167,4 +169,27 @@ export const teamsApi = {
       },
       token
     ),
+
+  // -------------------------------------------------------------------------
+  // Team Audit Logs
+  // -------------------------------------------------------------------------
+
+  /** Get paginated audit logs for a team */
+  getTeamAuditLogs: (
+    teamId: string,
+    query?: TeamAuditLogQuery,
+    token?: string
+  ) => {
+    const params = new URLSearchParams();
+    if (query?.action) params.set("action", query.action);
+    if (query?.resource_type) params.set("resource_type", query.resource_type);
+    if (query?.start_date) params.set("start_date", query.start_date);
+    if (query?.end_date) params.set("end_date", query.end_date);
+    if (query?.page) params.set("page", query.page.toString());
+    if (query?.per_page) params.set("per_page", query.per_page.toString());
+
+    const queryString = params.toString();
+    const url = `/teams/${teamId}/audit-logs${queryString ? `?${queryString}` : ""}`;
+    return apiRequest<TeamAuditLogPage>(url, {}, token);
+  },
 };
