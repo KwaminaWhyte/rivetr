@@ -383,6 +383,42 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 032: Add team_id to databases table
+    let has_databases_team_id: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('databases') WHERE name = 'team_id'")
+            .fetch_optional(pool)
+            .await?;
+    if has_databases_team_id.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/032_databases_team.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 033: Add team_id to services table
+    let has_services_team_id: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('services') WHERE name = 'team_id'")
+            .fetch_optional(pool)
+            .await?;
+    if has_services_team_id.is_none() {
+        execute_sql(pool, include_str!("../../migrations/033_services_team.sql")).await?;
+    }
+
+    // Migration 034: Add team_invitations table for email-based invitations
+    let has_team_invitations_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_invitations'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_invitations_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/034_team_invitations.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

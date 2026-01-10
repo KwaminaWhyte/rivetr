@@ -217,3 +217,76 @@ pub struct InviteMemberRequest {
 pub struct UpdateMemberRoleRequest {
     pub role: String,
 }
+
+/// Team invitation entity for email-based invitations
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TeamInvitation {
+    pub id: String,
+    pub team_id: String,
+    pub email: String,
+    pub role: String,
+    pub token: String,
+    pub expires_at: String,
+    pub accepted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+}
+
+impl TeamInvitation {
+    /// Check if the invitation has expired
+    pub fn is_expired(&self) -> bool {
+        if let Ok(expires) = chrono::DateTime::parse_from_rfc3339(&self.expires_at) {
+            expires < chrono::Utc::now()
+        } else {
+            true // Treat parse errors as expired
+        }
+    }
+
+    /// Check if the invitation has been accepted
+    pub fn is_accepted(&self) -> bool {
+        self.accepted_at.is_some()
+    }
+}
+
+/// Team invitation response for API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamInvitationResponse {
+    pub id: String,
+    pub team_id: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: String,
+    pub accepted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+    /// Team name (for display purposes)
+    pub team_name: Option<String>,
+    /// Inviter name (for display purposes)
+    pub inviter_name: Option<String>,
+}
+
+impl From<TeamInvitation> for TeamInvitationResponse {
+    fn from(inv: TeamInvitation) -> Self {
+        Self {
+            id: inv.id,
+            team_id: inv.team_id,
+            email: inv.email,
+            role: inv.role,
+            expires_at: inv.expires_at,
+            accepted_at: inv.accepted_at,
+            created_by: inv.created_by,
+            created_at: inv.created_at,
+            team_name: None,
+            inviter_name: None,
+        }
+    }
+}
+
+/// Request to create a team invitation
+#[derive(Debug, Deserialize)]
+pub struct CreateInvitationRequest {
+    /// Email address to invite
+    pub email: String,
+    /// Role to assign (owner, admin, developer, viewer)
+    pub role: String,
+}

@@ -61,6 +61,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/installation/callback",
             get(github_apps::installation_callback),
         )
+        // Team invitation validation (public - validate before login)
+        .route("/invitations/:token", get(teams::validate_invitation))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -163,6 +165,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(teams::update_member_role),
         )
         .route("/teams/:id/members/:user_id", delete(teams::remove_member))
+        // Team Invitations
+        .route("/teams/:id/invitations", get(teams::list_invitations))
+        .route("/teams/:id/invitations", post(teams::create_invitation))
+        .route(
+            "/teams/:id/invitations/:inv_id",
+            delete(teams::delete_invitation),
+        )
+        // Invitation accept (requires auth)
+        .route("/invitations/:token/accept", post(teams::accept_invitation))
         // Notification Channels
         .route("/notification-channels", get(notifications::list_channels))
         .route(
