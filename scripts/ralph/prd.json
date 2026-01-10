@@ -345,8 +345,8 @@
         "Verify /api/system/health returns healthy status"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Backend built with cargo build --release. Frontend built with npm run build (copies to static/dist/client). Server started on port 8080. Health endpoint verified: healthy=true, database_healthy=true, runtime_healthy=true, disk_healthy=true. Frontend served at root. Server is running in background for E2E tests."
     },
     {
       "id": "US-021",

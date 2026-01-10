@@ -659,3 +659,28 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Format user display as "name (email)" for clear identification
 ---
 
+## 01/10/2026 - US-020
+- Built backend with cargo build --release (with 9 warnings, all non-blocking)
+- Built frontend with npm run build --prefix frontend
+  - Includes postbuild step that copies to static/dist/client
+- Verified port 8080 was free using netstat
+- Started server in background with ./target/release/rivetr.exe --config rivetr.toml
+- Server started successfully:
+  - Rivetr v0.2.3 running
+  - Database initialized (36 tables)
+  - All 6 startup checks passed
+  - API server listening on http://0.0.0.0:8080
+  - Proxy server listening on http://0.0.0.0:80
+- Verified health endpoint: GET /api/system/health returns healthy=true
+  - database_healthy: true
+  - runtime_healthy: true (Podman detected)
+  - disk_healthy: true (56GB free)
+- Verified frontend serving at root (HTTP 200)
+- No code changes - this story is about building and running existing code
+- **Learnings for future iterations:**
+  - Health endpoint requires auth token (use admin token from config)
+  - Server runs in background for E2E tests (task ID b508190)
+  - Podman warnings are expected on Windows without running Podman VM
+  - npm run build --prefix frontend works from project root
+---
+
