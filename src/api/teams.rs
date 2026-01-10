@@ -73,9 +73,7 @@ fn validate_team_slug(slug: &str) -> Result<(), String> {
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
-        return Err(
-            "Team slug must be lowercase alphanumeric with dashes only".to_string(),
-        );
+        return Err("Team slug must be lowercase alphanumeric with dashes only".to_string());
     }
 
     // Cannot start or end with dash
@@ -139,13 +137,11 @@ async fn get_user_team_membership(
     team_id: &str,
     user_id: &str,
 ) -> Result<Option<TeamMember>, sqlx::Error> {
-    sqlx::query_as::<_, TeamMember>(
-        "SELECT * FROM team_members WHERE team_id = ? AND user_id = ?",
-    )
-    .bind(team_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
+    sqlx::query_as::<_, TeamMember>("SELECT * FROM team_members WHERE team_id = ? AND user_id = ?")
+        .bind(team_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
 }
 
 /// Require that the current user has at least the specified role in the team
@@ -191,11 +187,10 @@ pub async fn list_teams(
     // Get member counts and user roles for each team
     let mut results = Vec::new();
     for team in teams {
-        let count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM team_members WHERE team_id = ?")
-                .bind(&team.id)
-                .fetch_one(&state.db)
-                .await?;
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM team_members WHERE team_id = ?")
+            .bind(&team.id)
+            .fetch_one(&state.db)
+            .await?;
 
         let membership = get_user_team_membership(&state.db, &team.id, &user.id).await?;
 
@@ -473,8 +468,8 @@ pub async fn invite_member(
     }
 
     // Validate role
-    let target_role = validate_team_role(&req.role)
-        .map_err(|e| ApiError::validation_field("role", e))?;
+    let target_role =
+        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
 
     // Check user has permission to manage members
     let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
@@ -500,8 +495,7 @@ pub async fn invite_member(
             .await?
     };
 
-    let target_user =
-        target_user.ok_or_else(|| ApiError::not_found("User not found"))?;
+    let target_user = target_user.ok_or_else(|| ApiError::not_found("User not found"))?;
 
     // Check if user is already a member
     let existing = get_user_team_membership(&state.db, &id, &target_user.id).await?;
@@ -541,11 +535,7 @@ pub async fn invite_member(
         user_email: target_user.email,
     };
 
-    tracing::info!(
-        "Added {} to team as {}",
-        member.user_email,
-        member.role
-    );
+    tracing::info!("Added {} to team as {}", member.user_email, member.role);
 
     Ok((StatusCode::CREATED, Json(member)))
 }
@@ -566,8 +556,8 @@ pub async fn update_member_role(
     }
 
     // Validate role
-    let new_role = validate_team_role(&req.role)
-        .map_err(|e| ApiError::validation_field("role", e))?;
+    let new_role =
+        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
 
     // Check user has permission to manage members
     let membership = require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;

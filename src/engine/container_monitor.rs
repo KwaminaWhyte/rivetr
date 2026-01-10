@@ -9,9 +9,7 @@
 //! - Managed databases (from `databases` table)
 //! - Docker Compose services (from `services` table)
 
-use crate::api::metrics::{
-    increment_container_restarts, set_container_restart_backoff_seconds,
-};
+use crate::api::metrics::{increment_container_restarts, set_container_restart_backoff_seconds};
 use crate::config::ContainerMonitorConfig;
 use crate::db::{Deployment, ManagedDatabase, Service};
 use crate::runtime::ContainerRuntime;
@@ -149,14 +147,12 @@ impl ContainerMonitor {
             };
 
             // Get app name for logging and metrics
-            let app_name: Option<(String,)> = sqlx::query_as(
-                "SELECT name FROM apps WHERE id = ?"
-            )
-            .bind(&deployment.app_id)
-            .fetch_optional(&self.db)
-            .await
-            .ok()
-            .flatten();
+            let app_name: Option<(String,)> = sqlx::query_as("SELECT name FROM apps WHERE id = ?")
+                .bind(&deployment.app_id)
+                .fetch_optional(&self.db)
+                .await
+                .ok()
+                .flatten();
 
             let app_name = app_name
                 .map(|(name,)| name)
@@ -193,7 +189,10 @@ impl ContainerMonitor {
                         "Failed to inspect container"
                     );
                     // This might mean the container was removed - mark deployment as failed
-                    if let Err(e) = self.mark_deployment_failed(&deployment.id, "Container not found").await {
+                    if let Err(e) = self
+                        .mark_deployment_failed(&deployment.id, "Container not found")
+                        .await
+                    {
                         tracing::warn!(
                             deployment = %deployment.id,
                             error = %e,
@@ -284,7 +283,10 @@ impl ContainerMonitor {
                     result.databases_stopped += 1;
 
                     // Mark database as stopped (container not found)
-                    if let Err(e) = self.mark_database_failed(&database.id, "Container not found").await {
+                    if let Err(e) = self
+                        .mark_database_failed(&database.id, "Container not found")
+                        .await
+                    {
                         tracing::warn!(
                             database = %database.id,
                             error = %e,
@@ -323,7 +325,9 @@ impl ContainerMonitor {
 
             // Check if any containers are running for this compose project
             // We use docker compose ps to check the status
-            let is_running = self.check_compose_service_running(&project_name, &service.name).await;
+            let is_running = self
+                .check_compose_service_running(&project_name, &service.name)
+                .await;
 
             if is_running {
                 result.services_running += 1;
@@ -368,7 +372,9 @@ impl ContainerMonitor {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     // Check if any containers are running
                     // JSON format contains "State":"running" for running containers
-                    if stdout.contains("\"State\":\"running\"") || stdout.contains("\"Status\":\"running\"") {
+                    if stdout.contains("\"State\":\"running\"")
+                        || stdout.contains("\"Status\":\"running\"")
+                    {
                         return true;
                     }
                     // Also check for older format
@@ -378,17 +384,23 @@ impl ContainerMonitor {
                     false
                 } else {
                     // Try legacy docker-compose
-                    self.check_compose_service_running_legacy(project_name, service_name).await
+                    self.check_compose_service_running_legacy(project_name, service_name)
+                        .await
                 }
             }
             Err(_) => {
-                self.check_compose_service_running_legacy(project_name, service_name).await
+                self.check_compose_service_running_legacy(project_name, service_name)
+                    .await
             }
         }
     }
 
     /// Check if a Docker Compose service is running using legacy docker-compose command
-    async fn check_compose_service_running_legacy(&self, project_name: &str, _service_name: &str) -> bool {
+    async fn check_compose_service_running_legacy(
+        &self,
+        project_name: &str,
+        _service_name: &str,
+    ) -> bool {
         use tokio::process::Command;
 
         let output = Command::new("docker-compose")
@@ -493,10 +505,13 @@ impl ContainerMonitor {
                 );
 
                 // Update deployment status to failed
-                if let Err(e) = self.mark_deployment_failed(
-                    &deployment.id,
-                    &format!("Exceeded maximum restart attempts ({})", max_attempts),
-                ).await {
+                if let Err(e) = self
+                    .mark_deployment_failed(
+                        &deployment.id,
+                        &format!("Exceeded maximum restart attempts ({})", max_attempts),
+                    )
+                    .await
+                {
                     tracing::warn!(
                         deployment = %deployment.id,
                         error = %e,
@@ -554,10 +569,10 @@ impl ContainerMonitor {
             "WARN",
             &format!(
                 "Container crashed, attempting restart (attempt {}/{})",
-                current_attempt,
-                max_attempts
+                current_attempt, max_attempts
             ),
-        ).await;
+        )
+        .await;
 
         let restart_result = self.runtime.start(container_id).await;
 
@@ -591,11 +606,10 @@ impl ContainerMonitor {
                     "INFO",
                     &format!(
                         "Container restarted successfully (attempt {}/{}). Next backoff: {}s",
-                        restart_count,
-                        max_attempts,
-                        new_backoff
+                        restart_count, max_attempts, new_backoff
                     ),
-                ).await;
+                )
+                .await;
             }
             Err(e) => {
                 state.record_restart(max_backoff);
@@ -613,7 +627,8 @@ impl ContainerMonitor {
                     &deployment.id,
                     "ERROR",
                     &format!("Failed to restart container: {}", e),
-                ).await;
+                )
+                .await;
             }
         }
     }
@@ -637,7 +652,7 @@ impl ContainerMonitor {
     /// Add a log entry for a deployment
     async fn add_deployment_log(&self, deployment_id: &str, level: &str, message: &str) {
         if let Err(e) = sqlx::query(
-            "INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)"
+            "INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)",
         )
         .bind(deployment_id)
         .bind(level)
@@ -664,7 +679,7 @@ impl ContainerMonitor {
     /// Mark a database as stopped in the database
     async fn mark_database_stopped(&self, database_id: &str) -> Result<()> {
         sqlx::query(
-            "UPDATE databases SET status = 'stopped', updated_at = datetime('now') WHERE id = ?"
+            "UPDATE databases SET status = 'stopped', updated_at = datetime('now') WHERE id = ?",
         )
         .bind(database_id)
         .execute(&self.db)
@@ -689,7 +704,7 @@ impl ContainerMonitor {
     /// Mark a service as stopped in the database
     async fn mark_service_stopped(&self, service_id: &str) -> Result<()> {
         sqlx::query(
-            "UPDATE services SET status = 'stopped', updated_at = datetime('now') WHERE id = ?"
+            "UPDATE services SET status = 'stopped', updated_at = datetime('now') WHERE id = ?",
         )
         .bind(service_id)
         .execute(&self.db)
@@ -802,10 +817,7 @@ pub fn spawn_container_monitor_task(
 /// This function checks all "running" status records in the database
 /// and updates them if the corresponding containers are not actually running.
 /// Should be called during server startup.
-pub async fn reconcile_container_status(
-    db: &DbPool,
-    runtime: &Arc<dyn ContainerRuntime>,
-) {
+pub async fn reconcile_container_status(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) {
     tracing::info!("Reconciling container status on startup...");
 
     // Reconcile deployment containers
@@ -981,7 +993,7 @@ async fn reconcile_services(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) ->
         if !is_running {
             // Update service status
             if let Err(e) = sqlx::query(
-                "UPDATE services SET status = 'stopped', updated_at = datetime('now') WHERE id = ?"
+                "UPDATE services SET status = 'stopped', updated_at = datetime('now') WHERE id = ?",
             )
             .bind(&service.id)
             .execute(db)
@@ -1025,7 +1037,9 @@ async fn check_compose_running(project_name: &str, runtime: &Arc<dyn ContainerRu
         Ok(output) => {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.contains("\"State\":\"running\"") || stdout.contains("\"Status\":\"running\"") {
+                if stdout.contains("\"State\":\"running\"")
+                    || stdout.contains("\"Status\":\"running\"")
+                {
                     return true;
                 }
                 if stdout.contains("running") && !stdout.trim().is_empty() {
@@ -1042,7 +1056,10 @@ async fn check_compose_running(project_name: &str, runtime: &Arc<dyn ContainerRu
 }
 
 /// Check if a Docker Compose project has running containers using legacy command
-async fn check_compose_running_legacy(project_name: &str, runtime: &Arc<dyn ContainerRuntime>) -> bool {
+async fn check_compose_running_legacy(
+    project_name: &str,
+    runtime: &Arc<dyn ContainerRuntime>,
+) -> bool {
     use tokio::process::Command;
 
     let output = Command::new("docker-compose")

@@ -11,6 +11,9 @@ import type {
   UpdateNotificationChannelRequest,
   CreateNotificationSubscriptionRequest,
   TestNotificationRequest,
+  TeamNotificationChannel,
+  CreateTeamNotificationChannelRequest,
+  UpdateTeamNotificationChannelRequest,
 } from "@/types/api";
 
 export const notificationsApi = {
@@ -113,6 +116,91 @@ export const notificationsApi = {
       `/notification-subscriptions/${id}`,
       {
         method: "DELETE",
+      },
+      token
+    ),
+
+  // -------------------------------------------------------------------------
+  // Team Notification Channels
+  // -------------------------------------------------------------------------
+
+  /** List all notification channels for a team */
+  getTeamNotificationChannels: (teamId: string, token?: string) =>
+    apiRequest<TeamNotificationChannel[]>(
+      `/teams/${teamId}/notification-channels`,
+      {},
+      token
+    ),
+
+  /** Get a single team notification channel */
+  getTeamNotificationChannel: (
+    teamId: string,
+    channelId: string,
+    token?: string
+  ) =>
+    apiRequest<TeamNotificationChannel>(
+      `/teams/${teamId}/notification-channels/${channelId}`,
+      {},
+      token
+    ),
+
+  /** Create a new team notification channel */
+  createTeamNotificationChannel: (
+    teamId: string,
+    data: CreateTeamNotificationChannelRequest,
+    token?: string
+  ) =>
+    apiRequest<TeamNotificationChannel>(
+      `/teams/${teamId}/notification-channels`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Update a team notification channel */
+  updateTeamNotificationChannel: (
+    teamId: string,
+    channelId: string,
+    data: UpdateTeamNotificationChannelRequest,
+    token?: string
+  ) =>
+    apiRequest<TeamNotificationChannel>(
+      `/teams/${teamId}/notification-channels/${channelId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Delete a team notification channel */
+  deleteTeamNotificationChannel: (
+    teamId: string,
+    channelId: string,
+    token?: string
+  ) =>
+    apiRequest<void>(
+      `/teams/${teamId}/notification-channels/${channelId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  /** Test a team notification channel by sending a test message */
+  testTeamNotificationChannel: (
+    teamId: string,
+    channelId: string,
+    data?: TestNotificationRequest,
+    token?: string
+  ) =>
+    apiRequest<void>(
+      `/teams/${teamId}/notification-channels/${channelId}/test`,
+      {
+        method: "POST",
+        body: JSON.stringify(data || {}),
       },
       token
     ),

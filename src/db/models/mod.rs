@@ -2,10 +2,14 @@
 //!
 //! This module re-exports all types for backwards compatibility.
 
+pub mod alert_config;
+pub mod alert_event;
 pub mod app;
 pub mod audit;
 pub mod backup;
 pub mod common;
+pub mod cost_rate;
+pub mod cost_snapshot;
 pub mod database;
 pub mod deployment;
 pub mod env_var;
@@ -14,6 +18,7 @@ pub mod github_app;
 pub mod notification;
 pub mod preview_deployment;
 pub mod project;
+pub mod resource_metric;
 pub mod service;
 pub mod service_template;
 pub mod ssh_key;
@@ -23,10 +28,14 @@ pub mod user;
 pub mod volume;
 
 // Re-export all types for backwards compatibility
+pub use alert_config::*;
+pub use alert_event::*;
 pub use app::*;
 pub use audit::*;
 pub use backup::*;
 pub use common::*;
+pub use cost_rate::*;
+pub use cost_snapshot::*;
 pub use database::*;
 pub use deployment::*;
 pub use env_var::*;
@@ -35,6 +44,7 @@ pub use github_app::*;
 pub use notification::*;
 pub use preview_deployment::*;
 pub use project::*;
+pub use resource_metric::*;
 pub use service::*;
 pub use service_template::*;
 pub use ssh_key::*;

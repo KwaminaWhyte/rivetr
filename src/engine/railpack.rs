@@ -29,7 +29,9 @@ use tracing::{debug, error, info, warn};
 /// Errors specific to Railpack operations
 #[derive(Error, Debug)]
 pub enum RailpackError {
-    #[error("Railpack CLI is not installed. Install with: mise install ubi:railwayapp/railpack@latest")]
+    #[error(
+        "Railpack CLI is not installed. Install with: mise install ubi:railwayapp/railpack@latest"
+    )]
     NotInstalled,
 
     #[error("BuildKit is not available. Start with: docker run --rm --privileged -d --name buildkit moby/buildkit")]
@@ -368,11 +370,12 @@ pub async fn build_image(
     // Set up for streaming output
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    debug!("Executing Railpack command: railpack build {:?}", source_path);
+    debug!(
+        "Executing Railpack command: railpack build {:?}",
+        source_path
+    );
 
-    let mut child = cmd
-        .spawn()
-        .context("Failed to spawn railpack process")?;
+    let mut child = cmd.spawn().context("Failed to spawn railpack process")?;
 
     // Stream stdout
     let stdout = child.stdout.take().expect("stdout was piped");

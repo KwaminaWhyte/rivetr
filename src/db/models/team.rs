@@ -49,12 +49,18 @@ impl TeamRole {
 
     /// Check if the role can deploy apps
     pub fn can_deploy(&self) -> bool {
-        matches!(self, TeamRole::Owner | TeamRole::Admin | TeamRole::Developer)
+        matches!(
+            self,
+            TeamRole::Owner | TeamRole::Admin | TeamRole::Developer
+        )
     }
 
     /// Check if the role can create/edit apps
     pub fn can_manage_apps(&self) -> bool {
-        matches!(self, TeamRole::Owner | TeamRole::Admin | TeamRole::Developer)
+        matches!(
+            self,
+            TeamRole::Owner | TeamRole::Admin | TeamRole::Developer
+        )
     }
 
     /// Check if the role can delete apps
@@ -64,7 +70,10 @@ impl TeamRole {
 
     /// Check if the role can manage projects
     pub fn can_manage_projects(&self) -> bool {
-        matches!(self, TeamRole::Owner | TeamRole::Admin | TeamRole::Developer)
+        matches!(
+            self,
+            TeamRole::Owner | TeamRole::Admin | TeamRole::Developer
+        )
     }
 
     /// Check if the role can delete projects

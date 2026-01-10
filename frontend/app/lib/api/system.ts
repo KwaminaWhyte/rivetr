@@ -1,6 +1,6 @@
 /**
  * System API module.
- * Handles system stats, health, events, and audit logs.
+ * Handles system stats, health, events, audit logs, costs, and settings.
  */
 
 import { apiRequest } from "./core";
@@ -11,6 +11,11 @@ import type {
   SystemHealthStatus,
   AuditLogListResponse,
   AuditLogQuery,
+  DashboardCostResponse,
+  CostResponse,
+  GlobalAlertDefaultsResponse,
+  UpdateGlobalAlertDefaultsRequest,
+  AlertStatsResponse,
 } from "@/types/api";
 
 export const systemApi = {
@@ -68,4 +73,43 @@ export const systemApi = {
   /** Get available audit resource types */
   getAuditResourceTypes: (token?: string) =>
     apiRequest<string[]>("/audit/resource-types", {}, token),
+
+  // -------------------------------------------------------------------------
+  // Costs
+  // -------------------------------------------------------------------------
+
+  /** Get dashboard cost summary with top apps and trend data */
+  getDashboardCosts: (period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<DashboardCostResponse>(`/system/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific team */
+  getTeamCosts: (teamId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/teams/${teamId}/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific project */
+  getProjectCosts: (projectId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/projects/${projectId}/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific app */
+  getAppCosts: (appId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/apps/${appId}/costs?period=${period}`, {}, token),
+
+  // -------------------------------------------------------------------------
+  // Alert Defaults (Settings)
+  // -------------------------------------------------------------------------
+
+  /** Get global alert defaults */
+  getAlertDefaults: (token?: string) =>
+    apiRequest<GlobalAlertDefaultsResponse>("/settings/alert-defaults", {}, token),
+
+  /** Update global alert defaults */
+  updateAlertDefaults: (request: UpdateGlobalAlertDefaultsRequest, token?: string) =>
+    apiRequest<GlobalAlertDefaultsResponse>("/settings/alert-defaults", {
+      method: "PUT",
+      body: JSON.stringify(request),
+    }, token),
+
+  /** Get alert configuration statistics */
+  getAlertStats: (token?: string) =>
+    apiRequest<AlertStatsResponse>("/settings/alert-stats", {}, token),
 };

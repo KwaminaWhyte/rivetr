@@ -83,6 +83,14 @@ export const api = {
   detectBuildType: appsApi.detectBuildType,
   uploadCreateApp: appsApi.uploadCreateApp,
 
+  // Alert Configurations
+  getAlerts: appsApi.getAlerts,
+  getAlert: appsApi.getAlert,
+  createAlert: appsApi.createAlert,
+  updateAlert: appsApi.updateAlert,
+  deleteAlert: appsApi.deleteAlert,
+  getAlertEvents: appsApi.getAlertEvents,
+
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
   createSshKey: gitApi.createSshKey,
@@ -164,16 +172,33 @@ export const api = {
   createNotificationSubscription: notificationsApi.createNotificationSubscription,
   deleteNotificationSubscription: notificationsApi.deleteNotificationSubscription,
 
+  // Team Notification Channels
+  getTeamNotificationChannels: notificationsApi.getTeamNotificationChannels,
+  getTeamNotificationChannel: notificationsApi.getTeamNotificationChannel,
+  createTeamNotificationChannel: notificationsApi.createTeamNotificationChannel,
+  updateTeamNotificationChannel: notificationsApi.updateTeamNotificationChannel,
+  deleteTeamNotificationChannel: notificationsApi.deleteTeamNotificationChannel,
+  testTeamNotificationChannel: notificationsApi.testTeamNotificationChannel,
+
   // System
   getSystemStats: systemApi.getSystemStats,
   getDiskStats: systemApi.getDiskStats,
   getSystemHealth: systemApi.getSystemHealth,
   getRecentEvents: systemApi.getRecentEvents,
+  getDashboardCosts: systemApi.getDashboardCosts,
+  getTeamCosts: systemApi.getTeamCosts,
+  getProjectCosts: systemApi.getProjectCosts,
+  getAppCosts: systemApi.getAppCosts,
 
   // Audit Logs
   getAuditLogs: systemApi.getAuditLogs,
   getAuditActionTypes: systemApi.getAuditActionTypes,
   getAuditResourceTypes: systemApi.getAuditResourceTypes,
+
+  // Alert Defaults (Settings)
+  getAlertDefaults: systemApi.getAlertDefaults,
+  updateAlertDefaults: systemApi.updateAlertDefaults,
+  getAlertStats: systemApi.getAlertStats,
 
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,

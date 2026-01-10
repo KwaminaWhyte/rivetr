@@ -178,14 +178,17 @@ impl ApiError {
     /// Validation error (400) with field-level details
     pub fn validation(errors: HashMap<String, Vec<String>>) -> Self {
         let message = if errors.len() == 1 {
-            errors.values().next().and_then(|v| v.first()).cloned()
+            errors
+                .values()
+                .next()
+                .and_then(|v| v.first())
+                .cloned()
                 .unwrap_or_else(|| "Validation failed".to_string())
         } else {
             format!("Validation failed for {} fields", errors.len())
         };
 
-        Self::new(ErrorCode::ValidationError, message)
-            .with_validation_errors(errors)
+        Self::new(ErrorCode::ValidationError, message).with_validation_errors(errors)
     }
 
     /// Single field validation error
@@ -248,9 +251,7 @@ impl From<sqlx::Error> for ApiError {
 
         // Check for specific SQLx errors
         match &err {
-            sqlx::Error::RowNotFound => {
-                ApiError::not_found("Resource not found")
-            }
+            sqlx::Error::RowNotFound => ApiError::not_found("Resource not found"),
             sqlx::Error::Database(db_err) => {
                 // Check for constraint violations
                 let msg = db_err.message();
@@ -322,11 +323,20 @@ mod tests {
     #[test]
     fn test_error_code_status_codes() {
         assert_eq!(ErrorCode::BadRequest.status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(ErrorCode::Unauthorized.status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            ErrorCode::Unauthorized.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(ErrorCode::NotFound.status_code(), StatusCode::NOT_FOUND);
         assert_eq!(ErrorCode::Conflict.status_code(), StatusCode::CONFLICT);
-        assert_eq!(ErrorCode::InternalError.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(ErrorCode::TooManyRequests.status_code(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            ErrorCode::InternalError.status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            ErrorCode::TooManyRequests.status_code(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
     }
 
     #[test]
@@ -348,7 +358,10 @@ mod tests {
     fn test_validation_error_multiple_fields() {
         let mut errors = HashMap::new();
         errors.insert("name".to_string(), vec!["Name is required".to_string()]);
-        errors.insert("email".to_string(), vec!["Invalid email format".to_string()]);
+        errors.insert(
+            "email".to_string(),
+            vec!["Invalid email format".to_string()],
+        );
 
         let err = ApiError::validation(errors);
         assert_eq!(err.code, ErrorCode::ValidationError);

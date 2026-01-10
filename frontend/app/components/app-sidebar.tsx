@@ -45,6 +45,7 @@ const navMain: NavMainItem[] = [
     icon: Settings,
     items: [
       { title: "General", url: "/settings" },
+      { title: "Alert Defaults", url: "/settings/alert-defaults" },
       { title: "Teams", url: "/settings/teams" },
       { title: "Notifications", url: "/settings/notifications" },
       { title: "Git Integrations", url: "/settings/git-providers" },

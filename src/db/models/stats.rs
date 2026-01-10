@@ -142,10 +142,7 @@ impl StatsHistory {
 
 impl StatsHourly {
     /// Get hourly aggregated stats for a time range
-    pub async fn get_history(
-        db: &SqlitePool,
-        hours: i64,
-    ) -> Result<Vec<StatsHourly>, sqlx::Error> {
+    pub async fn get_history(db: &SqlitePool, hours: i64) -> Result<Vec<StatsHourly>, sqlx::Error> {
         let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
         let cutoff_str = cutoff.format("%Y-%m-%d %H:00:00").to_string();
 
@@ -513,20 +510,22 @@ impl SystemStatsSummary {
         .fetch_optional(db)
         .await?;
 
-        Ok(stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
-            if count > 0 {
-                Some(PeriodStats {
-                    avg_cpu_percent: avg_cpu,
-                    max_cpu_percent: max_cpu,
-                    avg_memory_used_bytes: avg_mem,
-                    max_memory_used_bytes: max_mem,
-                    avg_memory_total_bytes: avg_total,
-                    sample_count: count,
-                })
-            } else {
-                None
-            }
-        }))
+        Ok(
+            stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
+                if count > 0 {
+                    Some(PeriodStats {
+                        avg_cpu_percent: avg_cpu,
+                        max_cpu_percent: max_cpu,
+                        avg_memory_used_bytes: avg_mem,
+                        max_memory_used_bytes: max_mem,
+                        avg_memory_total_bytes: avg_total,
+                        sample_count: count,
+                    })
+                } else {
+                    None
+                }
+            }),
+        )
     }
 
     async fn get_period_stats_hourly(
@@ -553,20 +552,22 @@ impl SystemStatsSummary {
         .fetch_optional(db)
         .await?;
 
-        Ok(stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
-            if count > 0 {
-                Some(PeriodStats {
-                    avg_cpu_percent: avg_cpu,
-                    max_cpu_percent: max_cpu,
-                    avg_memory_used_bytes: avg_mem,
-                    max_memory_used_bytes: max_mem,
-                    avg_memory_total_bytes: avg_total,
-                    sample_count: count,
-                })
-            } else {
-                None
-            }
-        }))
+        Ok(
+            stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
+                if count > 0 {
+                    Some(PeriodStats {
+                        avg_cpu_percent: avg_cpu,
+                        max_cpu_percent: max_cpu,
+                        avg_memory_used_bytes: avg_mem,
+                        max_memory_used_bytes: max_mem,
+                        avg_memory_total_bytes: avg_total,
+                        sample_count: count,
+                    })
+                } else {
+                    None
+                }
+            }),
+        )
     }
 
     async fn get_period_stats_daily(
@@ -593,20 +594,22 @@ impl SystemStatsSummary {
         .fetch_optional(db)
         .await?;
 
-        Ok(stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
-            if count > 0 {
-                Some(PeriodStats {
-                    avg_cpu_percent: avg_cpu,
-                    max_cpu_percent: max_cpu,
-                    avg_memory_used_bytes: avg_mem,
-                    max_memory_used_bytes: max_mem,
-                    avg_memory_total_bytes: avg_total,
-                    sample_count: count,
-                })
-            } else {
-                None
-            }
-        }))
+        Ok(
+            stats.and_then(|(avg_cpu, max_cpu, avg_mem, max_mem, avg_total, count)| {
+                if count > 0 {
+                    Some(PeriodStats {
+                        avg_cpu_percent: avg_cpu,
+                        max_cpu_percent: max_cpu,
+                        avg_memory_used_bytes: avg_mem,
+                        max_memory_used_bytes: max_mem,
+                        avg_memory_total_bytes: avg_total,
+                        sample_count: count,
+                    })
+                } else {
+                    None
+                }
+            }),
+        )
     }
 }
 

@@ -67,6 +67,7 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import { TeamNotificationChannelsCard } from "@/components/team-notification-channels-card";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
@@ -435,6 +436,9 @@ export default function TeamDetailPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Notification Channels - Only visible to admins */}
+      {canManage && <TeamNotificationChannelsCard teamId={id!} />}
 
       {/* Role Legend */}
       <Card>

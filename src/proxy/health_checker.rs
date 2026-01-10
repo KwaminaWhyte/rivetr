@@ -223,7 +223,10 @@ mod tests {
 
         let backend_with_path = Backend::new("container-123".into(), "127.0.0.1".into(), 3000)
             .with_healthcheck(Some("/health".to_string()));
-        assert_eq!(backend_with_path.health_url(), "http://127.0.0.1:3000/health");
+        assert_eq!(
+            backend_with_path.health_url(),
+            "http://127.0.0.1:3000/health"
+        );
     }
 
     #[test]

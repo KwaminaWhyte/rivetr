@@ -18,22 +18,25 @@ use crate::AppState;
 /// Namespace container names in compose content to prevent global conflicts
 /// Prefixes all container_name values with "rivetr-{service_name}-"
 fn namespace_container_names(content: &str, service_name: &str) -> Result<String, String> {
-    let mut yaml: serde_yaml::Value = serde_yaml::from_str(content)
-        .map_err(|e| format!("Invalid YAML: {}", e))?;
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
 
     let prefix = format!("rivetr-{}-", service_name);
 
     if let Some(mapping) = yaml.as_mapping_mut() {
-        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string())) {
+        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string()))
+        {
             if let Some(services_map) = services.as_mapping_mut() {
                 for (_service_key, service_config) in services_map.iter_mut() {
                     if let Some(config_map) = service_config.as_mapping_mut() {
-                        let container_name_key = serde_yaml::Value::String("container_name".to_string());
+                        let container_name_key =
+                            serde_yaml::Value::String("container_name".to_string());
                         if let Some(container_name_val) = config_map.get_mut(&container_name_key) {
                             if let Some(name) = container_name_val.as_str() {
                                 // Only add prefix if not already prefixed
                                 if !name.starts_with(&prefix) && !name.starts_with("rivetr-") {
-                                    *container_name_val = serde_yaml::Value::String(format!("{}{}", prefix, name));
+                                    *container_name_val =
+                                        serde_yaml::Value::String(format!("{}{}", prefix, name));
                                 }
                             }
                         }
@@ -43,8 +46,7 @@ fn namespace_container_names(content: &str, service_name: &str) -> Result<String
         }
     }
 
-    serde_yaml::to_string(&yaml)
-        .map_err(|e| format!("Failed to serialize YAML: {}", e))
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,7 +202,14 @@ pub async fn deploy_template(
     let service_id_clone = service_id.clone();
     let service_name = req.name.clone();
     tokio::spawn(async move {
-        if let Err(e) = start_compose_service(&state_clone, &service_id_clone, &service_name, &compose_content).await {
+        if let Err(e) = start_compose_service(
+            &state_clone,
+            &service_id_clone,
+            &service_name,
+            &compose_content,
+        )
+        .await
+        {
             tracing::error!("Failed to start service {}: {}", service_name, e);
             // Update status to failed
             let _ = sqlx::query(
@@ -227,7 +236,10 @@ pub async fn deploy_template(
             name: req.name,
             template_id: id,
             status: ServiceStatus::Pending.to_string(),
-            message: format!("Service deployment started from template '{}'", template.name),
+            message: format!(
+                "Service deployment started from template '{}'",
+                template.name
+            ),
         }),
     ))
 }
@@ -247,11 +259,13 @@ async fn start_compose_service(
     std::fs::create_dir_all(&compose_dir)?;
 
     // Namespace container names to prevent global conflicts
-    let namespaced_content = namespace_container_names(compose_content, name)
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to namespace container names: {}. Using original content.", e);
-            compose_content.to_string()
-        });
+    let namespaced_content = namespace_container_names(compose_content, name).unwrap_or_else(|e| {
+        tracing::warn!(
+            "Failed to namespace container names: {}. Using original content.",
+            e
+        );
+        compose_content.to_string()
+    });
 
     // Write compose file
     let compose_path = compose_dir.join("docker-compose.yml");
@@ -265,7 +279,10 @@ async fn start_compose_service(
 
     // Clean up any orphaned containers from previous failed deployments
     // This prevents "container name already in use" errors
-    tracing::debug!("Cleaning up orphaned containers for project: {}", project_name);
+    tracing::debug!(
+        "Cleaning up orphaned containers for project: {}",
+        project_name
+    );
     let _ = Command::new("docker")
         .args([
             "compose",

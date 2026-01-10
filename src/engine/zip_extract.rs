@@ -72,7 +72,9 @@ pub fn validate_zip(zip_data: &[u8]) -> Result<ZipValidation, ZipError> {
     let mut root_files = Vec::new();
 
     for i in 0..archive.len() {
-        let file = archive.by_index(i).map_err(|e| ZipError::InvalidZip(e.to_string()))?;
+        let file = archive
+            .by_index(i)
+            .map_err(|e| ZipError::InvalidZip(e.to_string()))?;
         let name = file.name();
 
         // Check for path traversal
@@ -158,7 +160,9 @@ pub async fn extract_zip(
         let mut archive = ZipArchive::new(cursor).context("Failed to open ZIP archive")?;
 
         for i in 0..archive.len() {
-            let mut file = archive.by_index(i).context("Failed to read file from archive")?;
+            let mut file = archive
+                .by_index(i)
+                .context("Failed to read file from archive")?;
             let name = file.name().to_string();
 
             // Re-validate path (defense in depth)
@@ -207,10 +211,7 @@ pub async fn extract_zip(
     .await
     .context("ZIP extraction task failed")??;
 
-    info!(
-        files = validation.file_count,
-        "ZIP extraction completed"
-    );
+    info!(files = validation.file_count, "ZIP extraction completed");
 
     Ok(validation)
 }
@@ -277,10 +278,8 @@ mod tests {
 
     #[test]
     fn test_validate_valid_zip() {
-        let zip_data = create_test_zip(&[
-            ("index.html", b"<html></html>"),
-            ("style.css", b"body {}"),
-        ]);
+        let zip_data =
+            create_test_zip(&[("index.html", b"<html></html>"), ("style.css", b"body {}")]);
 
         let result = validate_zip(&zip_data).unwrap();
         assert_eq!(result.file_count, 2);
@@ -301,10 +300,7 @@ mod tests {
 
     #[test]
     fn test_validate_zip_with_package_json() {
-        let zip_data = create_test_zip(&[
-            ("package.json", b"{}"),
-            ("index.js", b""),
-        ]);
+        let zip_data = create_test_zip(&[("package.json", b"{}"), ("index.js", b"")]);
 
         let result = validate_zip(&zip_data).unwrap();
         assert!(result.has_package_json);

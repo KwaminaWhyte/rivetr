@@ -342,10 +342,7 @@ CMD ["nginx", "-g", "daemon off;"]
     }
 
     /// Generate the Dockerfile for building the static site
-    fn generate_dockerfile(
-        package_manager: PackageManager,
-        config: &StaticSiteConfig,
-    ) -> String {
+    fn generate_dockerfile(package_manager: PackageManager, config: &StaticSiteConfig) -> String {
         let node_version = config.node_version.as_deref().unwrap_or("20");
         let base_image = if package_manager == PackageManager::Bun {
             package_manager.base_image().to_string()
@@ -549,9 +546,18 @@ mod tests {
     #[test]
     fn test_package_manager_commands() {
         assert_eq!(PackageManager::Npm.install_command(), "npm ci");
-        assert_eq!(PackageManager::Yarn.install_command(), "yarn install --frozen-lockfile");
-        assert_eq!(PackageManager::Pnpm.install_command(), "pnpm install --frozen-lockfile");
-        assert_eq!(PackageManager::Bun.install_command(), "bun install --frozen-lockfile");
+        assert_eq!(
+            PackageManager::Yarn.install_command(),
+            "yarn install --frozen-lockfile"
+        );
+        assert_eq!(
+            PackageManager::Pnpm.install_command(),
+            "pnpm install --frozen-lockfile"
+        );
+        assert_eq!(
+            PackageManager::Bun.install_command(),
+            "bun install --frozen-lockfile"
+        );
 
         assert_eq!(PackageManager::Npm.build_command(), "npm run build");
         assert_eq!(PackageManager::Yarn.build_command(), "yarn build");

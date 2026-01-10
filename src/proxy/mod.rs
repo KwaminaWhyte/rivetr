@@ -16,7 +16,9 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
-pub use acme::{AcmeChallenges, AcmeClient, AcmeConfig, CertificateRenewalManager, CertificateResult};
+pub use acme::{
+    AcmeChallenges, AcmeClient, AcmeConfig, CertificateRenewalManager, CertificateResult,
+};
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
@@ -283,7 +285,9 @@ impl HttpsProxyServer {
                         // Perform TLS handshake
                         match acceptor.accept(stream).await {
                             Ok(tls_stream) => {
-                                if let Err(e) = handler.handle_tls_connection(tls_stream, remote_addr).await {
+                                if let Err(e) =
+                                    handler.handle_tls_connection(tls_stream, remote_addr).await
+                                {
                                     error!(error = %e, "Error handling HTTPS proxy connection");
                                 }
                             }

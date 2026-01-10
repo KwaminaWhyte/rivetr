@@ -305,7 +305,8 @@ impl ManagedDatabase {
             memory_limit: self.memory_limit.clone(),
             cpu_limit: self.cpu_limit.clone(),
             internal_connection_string: self.internal_connection_string(),
-            external_connection_string: external_host.and_then(|h| self.external_connection_string(h)),
+            external_connection_string: external_host
+                .and_then(|h| self.external_connection_string(h)),
             error_message: self.error_message.clone(),
             project_id: self.project_id.clone(),
             created_at: self.created_at.clone(),

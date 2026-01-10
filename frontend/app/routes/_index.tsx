@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResourceChart } from "@/components/resource-chart";
 import { RecentEvents } from "@/components/recent-events";
+import { CostSummaryCard } from "@/components/cost-summary-card";
 import type { SystemStats, DiskStats } from "@/types/api";
 import { Activity, Cpu, HardDrive, Database, Clock, Plus } from "lucide-react";
 
@@ -186,7 +187,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Chart and Events */}
+      {/* Chart, Events, and Cost */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <ResourceChart
@@ -194,7 +195,8 @@ export default function DashboardPage() {
             memoryPercent={memoryPercent}
           />
         </div>
-        <div>
+        <div className="space-y-6">
+          <CostSummaryCard />
           <RecentEvents initialEvents={events} />
         </div>
       </div>

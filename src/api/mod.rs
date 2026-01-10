@@ -1,7 +1,10 @@
+mod alerts;
 mod apps;
 mod audit;
 pub mod auth;
 mod basic_auth;
+mod cost_rates;
+mod costs;
 mod database_backups;
 mod databases;
 mod deployments;
@@ -47,11 +50,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup))
         // OAuth routes
-        .route("/oauth/:provider/authorize", get(git_providers::get_auth_url))
-        .route("/oauth/:provider/callback", get(git_providers::oauth_callback))
+        .route(
+            "/oauth/:provider/authorize",
+            get(git_providers::get_auth_url),
+        )
+        .route(
+            "/oauth/:provider/callback",
+            get(git_providers::oauth_callback),
+        )
         // GitHub App callbacks (public - GitHub redirects here)
         .route("/github-apps/callback", get(github_apps::manifest_callback))
-        .route("/github-apps/installation/callback", get(github_apps::installation_callback))
+        .route(
+            "/github-apps/installation/callback",
+            get(github_apps::installation_callback),
+        )
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -83,9 +95,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/stats", get(deployments::get_app_stats))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
-        .route("/deployments/:id/rollback", post(deployments::rollback_deployment))
+        .route(
+            "/deployments/:id/rollback",
+            post(deployments::rollback_deployment),
+        )
         // Build detection
-        .route("/build/detect", post(deployments::detect_build_type_from_upload))
+        .route(
+            "/build/detect",
+            post(deployments::detect_build_type_from_upload),
+        )
         // SSH Keys
         .route("/ssh-keys", get(ssh_keys::list_ssh_keys))
         .route("/ssh-keys", post(ssh_keys::create_ssh_key))
@@ -99,10 +117,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
         .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
         .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
+        // Alert Configurations
+        .route("/apps/:id/alerts", get(alerts::list_alerts))
+        .route("/apps/:id/alerts", post(alerts::create_alert))
+        .route("/apps/:id/alerts/:alert_id", get(alerts::get_alert))
+        .route("/apps/:id/alerts/:alert_id", put(alerts::update_alert))
+        .route("/apps/:id/alerts/:alert_id", delete(alerts::delete_alert))
+        .route("/apps/:id/alert-events", get(alerts::list_alert_events))
+        // App Costs
+        .route("/apps/:id/costs", get(costs::get_app_costs))
         // HTTP Basic Auth
         .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
-        .route("/apps/:id/basic-auth", delete(basic_auth::delete_basic_auth))
+        .route(
+            "/apps/:id/basic-auth",
+            delete(basic_auth::delete_basic_auth),
+        )
         // Volumes
         .route("/apps/:id/volumes", get(volumes::list_volumes))
         .route("/apps/:id/volumes", post(volumes::create_volume))
@@ -131,6 +161,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id", put(projects::update_project))
         .route("/projects/:id", delete(projects::delete_project))
         .route("/projects/:id/apps/upload", post(apps::upload_create_app))
+        .route("/projects/:id/costs", get(costs::get_project_costs))
         .route("/apps/:id/project", put(projects::assign_app_project))
         // Teams
         .route("/teams", get(teams::list_teams))
@@ -140,18 +171,72 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/teams/:id", delete(teams::delete_team))
         .route("/teams/:id/members", get(teams::list_members))
         .route("/teams/:id/members", post(teams::invite_member))
-        .route("/teams/:id/members/:user_id", put(teams::update_member_role))
+        .route(
+            "/teams/:id/members/:user_id",
+            put(teams::update_member_role),
+        )
         .route("/teams/:id/members/:user_id", delete(teams::remove_member))
-        // Notification Channels
+        // Team Costs
+        .route("/teams/:id/costs", get(costs::get_team_costs))
+        // Team Notification Channels
+        .route(
+            "/teams/:id/notification-channels",
+            get(notifications::list_team_channels),
+        )
+        .route(
+            "/teams/:id/notification-channels",
+            post(notifications::create_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            get(notifications::get_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            put(notifications::update_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            delete(notifications::delete_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id/test",
+            post(notifications::test_team_channel),
+        )
+        // Notification Channels (Global)
         .route("/notification-channels", get(notifications::list_channels))
-        .route("/notification-channels", post(notifications::create_channel))
-        .route("/notification-channels/:id", get(notifications::get_channel))
-        .route("/notification-channels/:id", put(notifications::update_channel))
-        .route("/notification-channels/:id", delete(notifications::delete_channel))
-        .route("/notification-channels/:id/test", post(notifications::test_channel))
-        .route("/notification-channels/:id/subscriptions", get(notifications::list_subscriptions))
-        .route("/notification-channels/:id/subscriptions", post(notifications::create_subscription))
-        .route("/notification-subscriptions/:id", delete(notifications::delete_subscription))
+        .route(
+            "/notification-channels",
+            post(notifications::create_channel),
+        )
+        .route(
+            "/notification-channels/:id",
+            get(notifications::get_channel),
+        )
+        .route(
+            "/notification-channels/:id",
+            put(notifications::update_channel),
+        )
+        .route(
+            "/notification-channels/:id",
+            delete(notifications::delete_channel),
+        )
+        .route(
+            "/notification-channels/:id/test",
+            post(notifications::test_channel),
+        )
+        .route(
+            "/notification-channels/:id/subscriptions",
+            get(notifications::list_subscriptions),
+        )
+        .route(
+            "/notification-channels/:id/subscriptions",
+            post(notifications::create_subscription),
+        )
+        .route(
+            "/notification-subscriptions/:id",
+            delete(notifications::delete_subscription),
+        )
         // Managed Databases
         .route("/databases", get(databases::list_databases))
         .route("/databases", post(databases::create_database))
@@ -163,14 +248,38 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/logs", get(databases::get_database_logs))
         .route("/databases/:id/stats", get(databases::get_database_stats))
         // Database Backups
-        .route("/databases/:id/backups", get(database_backups::list_backups))
-        .route("/databases/:id/backups", post(database_backups::create_backup))
-        .route("/databases/:id/backups/:backup_id", get(database_backups::get_backup))
-        .route("/databases/:id/backups/:backup_id", delete(database_backups::delete_backup))
-        .route("/databases/:id/backups/:backup_id/download", get(database_backups::download_backup))
-        .route("/databases/:id/backups/schedule", get(database_backups::get_schedule))
-        .route("/databases/:id/backups/schedule", post(database_backups::upsert_schedule))
-        .route("/databases/:id/backups/schedule", delete(database_backups::delete_schedule))
+        .route(
+            "/databases/:id/backups",
+            get(database_backups::list_backups),
+        )
+        .route(
+            "/databases/:id/backups",
+            post(database_backups::create_backup),
+        )
+        .route(
+            "/databases/:id/backups/:backup_id",
+            get(database_backups::get_backup),
+        )
+        .route(
+            "/databases/:id/backups/:backup_id",
+            delete(database_backups::delete_backup),
+        )
+        .route(
+            "/databases/:id/backups/:backup_id/download",
+            get(database_backups::download_backup),
+        )
+        .route(
+            "/databases/:id/backups/schedule",
+            get(database_backups::get_schedule),
+        )
+        .route(
+            "/databases/:id/backups/schedule",
+            post(database_backups::upsert_schedule),
+        )
+        .route(
+            "/databases/:id/backups/schedule",
+            delete(database_backups::delete_schedule),
+        )
         // Docker Compose Services
         .route("/services", get(services::list_services))
         .route("/services", post(services::create_service))
@@ -180,18 +289,37 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/:id/start", post(services::start_service))
         .route("/services/:id/stop", post(services::stop_service))
         .route("/services/:id/logs", get(services::get_service_logs))
-        .route("/services/:id/logs/stream", get(services::stream_service_logs))
+        .route(
+            "/services/:id/logs/stream",
+            get(services::stream_service_logs),
+        )
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
-        .route("/templates/categories", get(service_templates::list_categories))
+        .route(
+            "/templates/categories",
+            get(service_templates::list_categories),
+        )
         .route("/templates/:id", get(service_templates::get_template))
-        .route("/templates/:id/deploy", post(service_templates::deploy_template))
+        .route(
+            "/templates/:id/deploy",
+            post(service_templates::deploy_template),
+        )
+        // Settings
+        .route("/settings/alert-defaults", get(alerts::get_alert_defaults))
+        .route(
+            "/settings/alert-defaults",
+            put(alerts::update_alert_defaults),
+        )
+        .route("/settings/alert-stats", get(alerts::get_alert_stats))
+        .route("/settings/cost-rates", get(cost_rates::get_cost_rates))
+        .route("/settings/cost-rates", put(cost_rates::update_cost_rates))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/stats/history", get(system::get_stats_history))
         .route("/system/stats/summary", get(system::get_stats_summary))
         .route("/system/disk", get(system::get_disk_stats))
         .route("/system/health", get(system::get_detailed_health))
+        .route("/system/costs", get(costs::get_dashboard_costs))
         .route("/events/recent", get(system::get_recent_events))
         // Audit logs
         .route("/audit", get(audit::list_logs))
@@ -201,19 +329,40 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/github-apps", get(github_apps::list_apps))
         .route("/github-apps", post(github_apps::create_manifest))
         // List all installations (must be before :id routes)
-        .route("/github-apps/installations", get(github_apps::list_all_installations))
+        .route(
+            "/github-apps/installations",
+            get(github_apps::list_all_installations),
+        )
         // Get repos by installation ID (simpler pattern for frontend)
-        .route("/github-apps/installations/:installation_id/repos", get(github_apps::list_repos_by_installation))
+        .route(
+            "/github-apps/installations/:installation_id/repos",
+            get(github_apps::list_repos_by_installation),
+        )
         // Get branches for a repo
-        .route("/github-apps/installations/:installation_id/repos/:owner/:repo/branches", get(github_apps::list_repo_branches))
+        .route(
+            "/github-apps/installations/:installation_id/repos/:owner/:repo/branches",
+            get(github_apps::list_repo_branches),
+        )
         .route("/github-apps/:id", get(github_apps::get_app))
-        .route("/github-apps/:id/install", get(github_apps::get_install_url))
-        .route("/github-apps/:id/installations", get(github_apps::list_installations))
-        .route("/github-apps/:id/installations/:iid/repos", get(github_apps::list_installation_repos))
+        .route(
+            "/github-apps/:id/install",
+            get(github_apps::get_install_url),
+        )
+        .route(
+            "/github-apps/:id/installations",
+            get(github_apps::list_installations),
+        )
+        .route(
+            "/github-apps/:id/installations/:iid/repos",
+            get(github_apps::list_installation_repos),
+        )
         // Preview Deployments (PR previews)
         .route("/apps/:id/previews", get(previews::list_app_previews))
         .route("/previews", get(previews::list_all_previews))
-        .route("/previews/status/:status", get(previews::list_previews_by_status))
+        .route(
+            "/previews/status/:status",
+            get(previews::list_previews_by_status),
+        )
         .route("/previews/:id", get(previews::get_preview))
         .route("/previews/:id", delete(previews::delete_preview))
         .route("/previews/:id/redeploy", post(previews::redeploy_preview))
@@ -247,8 +396,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let static_dir = std::path::Path::new("static/dist/client");
     let fallback_file = static_dir.join("__spa-fallback.html");
 
-    let serve_static = ServeDir::new(static_dir)
-        .not_found_service(ServeFile::new(&fallback_file));
+    let serve_static = ServeDir::new(static_dir).not_found_service(ServeFile::new(&fallback_file));
 
     Router::new()
         .route("/health", get(health_check))
@@ -274,7 +422,9 @@ async fn security_headers(request: Request<Body>, next: axum::middleware::Next) 
     let mut response = next.run(request).await;
 
     // Check if cache-control already set (before borrowing headers mutably)
-    let needs_cache_control = !response.headers().contains_key(axum::http::header::CACHE_CONTROL);
+    let needs_cache_control = !response
+        .headers()
+        .contains_key(axum::http::header::CACHE_CONTROL);
 
     let headers = response.headers_mut();
 
@@ -285,10 +435,7 @@ async fn security_headers(request: Request<Body>, next: axum::middleware::Next) 
     );
 
     // Prevent clickjacking
-    headers.insert(
-        axum::http::header::X_FRAME_OPTIONS,
-        "DENY".parse().unwrap(),
-    );
+    headers.insert(axum::http::header::X_FRAME_OPTIONS, "DENY".parse().unwrap());
 
     // XSS protection for older browsers
     headers.insert(

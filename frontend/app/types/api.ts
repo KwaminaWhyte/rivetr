@@ -713,6 +713,57 @@ export interface TestNotificationRequest {
 }
 
 // -------------------------------------------------------------------------
+// Team Notification Channel types
+// -------------------------------------------------------------------------
+
+/** Webhook configuration for team notification channels */
+export interface WebhookConfig {
+  url: string;
+  headers?: Record<string, string>;
+  payload_template?: "json" | "slack" | "discord" | "custom";
+  custom_template?: string;
+}
+
+/** Team notification channel types including webhook */
+export type TeamNotificationChannelType =
+  | "slack"
+  | "discord"
+  | "email"
+  | "webhook";
+
+/** Team notification channel */
+export interface TeamNotificationChannel {
+  id: string;
+  team_id: string;
+  name: string;
+  channel_type: TeamNotificationChannelType;
+  config:
+    | SlackConfig
+    | DiscordConfig
+    | EmailConfig
+    | WebhookConfig
+    | Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create a team notification channel */
+export interface CreateTeamNotificationChannelRequest {
+  name: string;
+  channel_type: TeamNotificationChannelType;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  enabled?: boolean;
+}
+
+/** Request to update a team notification channel */
+export interface UpdateTeamNotificationChannelRequest {
+  name?: string;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  enabled?: boolean;
+}
+
+// -------------------------------------------------------------------------
 // Team types
 // -------------------------------------------------------------------------
 
@@ -1154,6 +1205,138 @@ export interface AuditLogQuery {
 }
 
 /** Available database configurations */
+// -------------------------------------------------------------------------
+// Alert Configuration types
+// -------------------------------------------------------------------------
+
+/** Metric types for alerts */
+export type AlertMetricType = "cpu" | "memory" | "disk";
+
+/** Alert configuration response */
+export interface AlertConfigResponse {
+  id: string;
+  app_id: string | null;
+  metric_type: string;
+  threshold_percent: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create an alert configuration */
+export interface CreateAlertConfigRequest {
+  metric_type: AlertMetricType;
+  threshold_percent: number;
+  enabled?: boolean;
+}
+
+/** Request to update an alert configuration */
+export interface UpdateAlertConfigRequest {
+  threshold_percent?: number;
+  enabled?: boolean;
+}
+
+/** Alert event response (triggered alerts) */
+export interface AlertEventResponse {
+  id: string;
+  app_id: string;
+  metric_type: string;
+  threshold_percent: number;
+  current_value: number;
+  status: "firing" | "resolved";
+  consecutive_breaches: number;
+  fired_at: string;
+  resolved_at: string | null;
+  last_notified_at: string | null;
+}
+
+/** Global alert default response */
+export interface GlobalAlertDefaultResponse {
+  id: string;
+  metric_type: string;
+  threshold_percent: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Global alert defaults (all metric types) */
+export interface GlobalAlertDefaultsResponse {
+  cpu: GlobalAlertDefaultResponse | null;
+  memory: GlobalAlertDefaultResponse | null;
+  disk: GlobalAlertDefaultResponse | null;
+}
+
+/** Request to update global alert defaults */
+export interface UpdateGlobalAlertDefaultsRequest {
+  cpu?: GlobalAlertDefaultUpdate;
+  memory?: GlobalAlertDefaultUpdate;
+  disk?: GlobalAlertDefaultUpdate;
+}
+
+/** Update for a single metric type's global default */
+export interface GlobalAlertDefaultUpdate {
+  threshold_percent?: number;
+  enabled?: boolean;
+}
+
+/** Alert configuration statistics */
+export interface AlertStatsResponse {
+  total_apps: number;
+  apps_with_custom_configs: number;
+  apps_using_defaults: number;
+}
+
+// -------------------------------------------------------------------------
+// Cost Estimation types
+// -------------------------------------------------------------------------
+
+/** Cost summary with totals and projections */
+export interface CostSummary {
+  cpu_cost: number;
+  memory_cost: number;
+  disk_cost: number;
+  total_cost: number;
+  avg_cpu_cores: number;
+  avg_memory_gb: number;
+  avg_disk_gb: number;
+  days_in_period: number;
+  projected_monthly_cost: number;
+}
+
+/** Cost breakdown for a single app */
+export interface AppCostBreakdown {
+  app_id: string;
+  app_name: string;
+  cpu_cost: number;
+  memory_cost: number;
+  disk_cost: number;
+  total_cost: number;
+}
+
+/** Daily cost data point for trend display */
+export interface DailyCostPoint {
+  date: string;
+  total_cost: number;
+}
+
+/** Dashboard cost response with summary, top apps, and trend data */
+export interface DashboardCostResponse {
+  summary: CostSummary;
+  top_apps: AppCostBreakdown[];
+  trend: DailyCostPoint[];
+  period: string;
+  period_days: number;
+}
+
+/** Cost response for app/project/team endpoints */
+export interface CostResponse {
+  summary: CostSummary;
+  breakdown?: AppCostBreakdown[];
+  period: string;
+  period_days: number;
+}
+
 export const DATABASE_TYPES: DatabaseTypeInfo[] = [
   {
     type: "postgres",

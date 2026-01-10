@@ -114,9 +114,7 @@ pub fn decrypt(ciphertext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
         .context("Ciphertext doesn't have expected prefix")?;
 
     // Base64 decode
-    let combined = BASE64
-        .decode(encoded)
-        .context("Failed to decode base64")?;
+    let combined = BASE64.decode(encoded).context("Failed to decode base64")?;
 
     // Extract nonce and ciphertext
     if combined.len() < NONCE_LENGTH + 1 {
@@ -219,7 +217,10 @@ mod tests {
         let encrypted1 = encrypt(plaintext, &key).unwrap();
         let encrypted2 = encrypt(plaintext, &key).unwrap();
 
-        assert_ne!(encrypted1, encrypted2, "Random nonce should produce different ciphertext");
+        assert_ne!(
+            encrypted1, encrypted2,
+            "Random nonce should produce different ciphertext"
+        );
 
         // But both should decrypt to the same value
         assert_eq!(decrypt(&encrypted1, &key).unwrap(), plaintext);
@@ -277,7 +278,10 @@ mod tests {
         let encrypted = encrypt("secret", &key).unwrap();
 
         let result = decrypt_if_encrypted(&encrypted, None);
-        assert!(result.is_err(), "Should fail when encrypted value has no key");
+        assert!(
+            result.is_err(),
+            "Should fail when encrypted value has no key"
+        );
     }
 
     #[test]

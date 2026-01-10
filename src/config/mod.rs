@@ -643,8 +643,8 @@ impl Config {
             info!("Loading configuration from {}", path.display());
             let content = std::fs::read_to_string(path)
                 .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-            let config: Config = toml::from_str(&content)
-                .with_context(|| "Failed to parse configuration file")?;
+            let config: Config =
+                toml::from_str(&content).with_context(|| "Failed to parse configuration file")?;
             Ok(config)
         } else {
             info!("No config file found, using defaults");

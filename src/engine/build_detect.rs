@@ -190,8 +190,11 @@ async fn detect_cnb_config(source_dir: &Path) -> Result<Option<BuildDetectionRes
     if config_path.exists() {
         debug!("Found project.toml (CNB config) at {:?}", config_path);
         return Ok(Some(
-            BuildDetectionResult::new(BuildType::Cnb, "project.toml found (Cloud Native Buildpacks)")
-                .with_notes("Pack CLI with Paketo/Heroku buildpacks will be used"),
+            BuildDetectionResult::new(
+                BuildType::Cnb,
+                "project.toml found (Cloud Native Buildpacks)",
+            )
+            .with_notes("Pack CLI with Paketo/Heroku buildpacks will be used"),
         ));
     }
     Ok(None)
@@ -237,10 +240,7 @@ async fn detect_dockerfile(source_dir: &Path) -> Result<Option<BuildDetectionRes
                         BuildType::Dockerfile,
                         format!("{}/{} found", subdir, name),
                     )
-                    .with_notes(format!(
-                        "Dockerfile path: {}/{}",
-                        subdir, name
-                    )),
+                    .with_notes(format!("Dockerfile path: {}/{}", subdir, name)),
                 ));
             }
         }
@@ -315,7 +315,10 @@ async fn detect_nextjs_static(source_dir: &Path) -> Result<Option<BuildDetection
 
             // Check for output: 'export' or output: "export"
             if content.contains("output:") && content.contains("export") {
-                debug!("Found Next.js static export configuration in {}", config_name);
+                debug!(
+                    "Found Next.js static export configuration in {}",
+                    config_name
+                );
                 return Ok(Some(
                     BuildDetectionResult::new(
                         BuildType::StaticSite,
@@ -486,9 +489,12 @@ async fn detect_plain_html(source_dir: &Path) -> Result<Option<BuildDetectionRes
     if index_path.exists() && !package_json_path.exists() {
         debug!("Found plain HTML site (index.html without package.json)");
         return Ok(Some(
-            BuildDetectionResult::new(BuildType::StaticSite, "Plain HTML site detected (index.html found)")
-                .with_publish_dir(".")
-                .with_notes("No build step required"),
+            BuildDetectionResult::new(
+                BuildType::StaticSite,
+                "Plain HTML site detected (index.html found)",
+            )
+            .with_publish_dir(".")
+            .with_notes("No build step required"),
         ));
     }
 
@@ -505,9 +511,12 @@ async fn detect_nixpacks_compatible(source_dir: &Path) -> Result<Option<BuildDet
         if let Some(dir) = &publish_dir {
             debug!("Node.js project with static output to: {}", dir);
             return Ok(Some(
-                BuildDetectionResult::new(BuildType::Nixpacks, "Node.js project detected (package.json)")
-                    .with_publish_dir(dir.clone())
-                    .with_notes("Build output directory detected from package.json"),
+                BuildDetectionResult::new(
+                    BuildType::Nixpacks,
+                    "Node.js project detected (package.json)",
+                )
+                .with_publish_dir(dir.clone())
+                .with_notes("Build output directory detected from package.json"),
             ));
         }
 
@@ -975,11 +984,7 @@ export default defineConfig({});
 
         // Create both Dockerfile and package.json
         std::fs::write(temp_path.join("Dockerfile"), "FROM node:18").unwrap();
-        std::fs::write(
-            temp_path.join("package.json"),
-            r#"{"name": "test"}"#,
-        )
-        .unwrap();
+        std::fs::write(temp_path.join("package.json"), r#"{"name": "test"}"#).unwrap();
 
         let result = detect_build_type(temp_path).await.unwrap();
         // Dockerfile should take priority

@@ -1,0 +1,423 @@
+# Ralph Progress Log
+Started: Resource Alerts & Cost Estimation
+---
+
+## Codebase Patterns
+- Container runtime abstraction is in src/runtime/mod.rs (DockerRuntime, PodmanRuntime)
+- API routes use Axum in src/api/
+- Database uses SQLite with SQLx, migrations in migrations/
+- Frontend is React + TypeScript + shadcn/ui in frontend/
+- Use anyhow::Result for error handling in Rust code
+- State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
+- Stats collection tasks are spawned in main.rs using tokio::spawn
+- Per-app metrics: ResourceMetric model in src/db/models/resource_metric.rs
+- Background task pattern: spawn_*_task functions in src/engine/
+- Alert configs: AlertConfig and GlobalAlertDefault models in src/db/models/alert_config.rs
+- Settings API pattern: /api/settings/* for global configuration endpoints
+- Alert events: AlertEvent model in src/db/models/alert_event.rs with firing/resolved status
+- Alert evaluation runs alongside metrics collection in resource_metrics_collector.rs
+- Hysteresis pattern: Use AlertBreachCount table to track consecutive threshold breaches
+- Team notification channels: /api/teams/{id}/notification-channels endpoints, require_team_role() for access control
+- Webhook config: WebhookConfig in src/db/models/notification.rs with URL, headers, payload_template
+- Alert email notifications: AlertNotificationService in src/notifications/alert_notifications.rs
+- Email queue pattern: Use tokio mpsc channel to prevent blocking (see spawn_alert_notification_worker)
+- Dashboard URL for emails: config.server.external_url (Option<String>)
+- Webhook alerts: send_alert_webhook_with_retry() with exponential backoff in alert_notifications.rs
+- Payload builders: build_slack_alert_payload(), build_discord_alert_payload(), build_json_alert_payload()
+- Cost rates: CostRate model in src/db/models/cost_rate.rs with is_default flag for tracking customization
+- Settings API pattern: GET/PUT /api/settings/cost-rates follows same pattern as alert-defaults
+- Cost snapshots: CostSnapshot model in src/db/models/cost_snapshot.rs for daily cost storage
+- Cost calculator: CostCalculator service in src/engine/cost_calculator.rs runs daily
+- Cost aggregation: CostSnapshot has get_summary_for_app(), get_summary_for_project(), get_summary_for_team()
+- Apps<->Projects<->Teams: apps have project_id and team_id columns, projects have team_id
+- Cost API endpoints: GET /api/{apps|projects|teams}/:id/costs?period=7d|30d|90d
+- Dashboard cost API: GET /api/system/costs?period=7d|30d|90d returns DashboardCostResponse
+- Sparkline pattern: SVG path with createPath() similar to ResourceChart, used in CostSummaryCard
+- E2E testing: Use Playwright MCP with browser_navigate, browser_snapshot, browser_click, browser_type
+- Migrations MUST be added to src/db/mod.rs run_migrations() or tables won't be created
+- Frontend routes: Files in frontend/app/routes/ MUST be registered in frontend/app/routes.ts
+
+---
+
+## 2026-01-10 - US-001
+- What was implemented: Per-app resource metrics collection infrastructure
+- Files changed:
+  - migrations/032_resource_metrics.sql (new table)
+  - src/db/models/resource_metric.rs (new model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/resource_metrics_collector.rs (new collector service)
+  - src/engine/mod.rs (module registration)
+  - src/main.rs (spawn collector task)
+- **Learnings for future iterations:**
+  - ContainerRuntime::stats() returns ContainerStats with cpu_percent, memory_usage, memory_limit
+  - Existing stats_collector.rs handles system-wide stats, this new module handles per-app
+  - Deployment table has container_id field for looking up container stats
+  - Use tokio::select! for multiple interval tasks in single spawn
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-002
+- What was implemented: Alert configuration models and API for threshold-based resource alerts
+- Files changed:
+  - migrations/033_alert_configs.sql (new tables: alert_configs, global_alert_defaults)
+  - src/db/models/alert_config.rs (new model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/api/alerts.rs (new API endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Per-app alert configs are stored in alert_configs table with app_id foreign key
+  - Global defaults are stored in global_alert_defaults table (seeded with default thresholds)
+  - AlertConfig::get_effective_threshold() returns per-app config if exists, else global default
+  - API endpoints follow existing patterns: list/create/get/update/delete at /api/apps/{id}/alerts
+  - Settings endpoints at /api/settings/alert-defaults for global defaults
+  - Use StatusCode::CONFLICT for duplicate constraint violations
+---
+
+## 2026-01-10 - US-003
+- What was implemented: Alert evaluation engine with hysteresis and duplicate prevention
+- Files changed:
+  - migrations/034_alert_events.sql (new tables: alert_events, alert_breach_counts)
+  - src/db/models/alert_event.rs (AlertEvent and AlertBreachCount models)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/alert_evaluator.rs (AlertEvaluator service)
+  - src/engine/mod.rs (module registration)
+  - src/engine/resource_metrics_collector.rs (integrated alert evaluation)
+- **Learnings for future iterations:**
+  - Hysteresis: HYSTERESIS_THRESHOLD=2 requires 2 consecutive breaches before triggering
+  - AlertBreachCount table tracks consecutive_count per app/metric using upsert pattern
+  - AlertEvent.should_notify() checks 15-minute window via last_notified_at field
+  - Alert evaluation runs after each metrics collection cycle in resource_metrics_collector
+  - AlertEvaluator.evaluate_all() queries distinct app_ids from recent metrics
+  - Memory percentage calculated as: (memory_bytes / memory_limit_bytes) * 100.0
+  - Resolved alert cleanup uses 7-day retention (DEFAULT_ALERT_EVENT_RETENTION_HOURS=168)
+---
+
+## 2026-01-10 - US-004
+- What was implemented: Team-scoped notification channel configuration with webhook support
+- Files changed:
+  - migrations/035_team_notification_channels.sql (adds team_id to notification_channels)
+  - src/db/models/notification.rs (added Webhook channel type, WebhookConfig, team_id field)
+  - src/api/notifications.rs (team-scoped CRUD endpoints, webhook URL validation)
+  - src/api/mod.rs (registered team notification channel routes)
+  - src/notifications/mod.rs (added send_webhook method with multiple payload templates)
+- **Learnings for future iterations:**
+  - Existing notification_channels table extended with team_id column (nullable for global channels)
+  - Team-scoped endpoints at /api/teams/{id}/notification-channels with role-based access (Admin+)
+  - Webhook validation requires HTTPS, uses reqwest::Url::parse for URL format validation
+  - WebhookConfig supports payload_template: "json", "slack", "discord", "custom"
+  - Custom templates support variable substitution: {{app_name}}, {{metric_type}}, {{value}}, etc.
+  - Sensitive headers (containing auth/secret/token/key) are masked in API responses
+  - Use require_team_role() helper for team permission checks (pattern from teams.rs)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-005
+- What was implemented: Email notification sender for resource alerts
+- Files changed:
+  - src/notifications/alert_notifications.rs (new AlertNotificationService with email queue)
+  - src/notifications/mod.rs (module export)
+  - src/engine/alert_evaluator.rs (integrated notification service, added with_notifications constructor)
+  - src/engine/resource_metrics_collector.rs (spawns notification worker, passes dashboard_url)
+  - src/main.rs (updated to use spawn_resource_metrics_collector_task_with_notifications)
+- **Learnings for future iterations:**
+  - Alert emails use existing SMTP infrastructure from notification channels (EmailConfig)
+  - AlertNotificationPayload wraps AlertEvent with app_name and dashboard_url for templates
+  - Email queue uses tokio mpsc channel (capacity 100) to prevent blocking alert evaluation
+  - spawn_alert_notification_worker runs in background processing queued emails
+  - HTML email template includes severity-based colors (critical=red, warning=orange, info=blue, resolved=green)
+  - Dashboard link uses config.server.external_url when configured
+  - Re-notifications sent for ongoing alerts after 15-minute window (checked by should_notify())
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-006
+- What was implemented: Webhook notification sender with retry logic and default templates
+- Files changed:
+  - src/notifications/alert_notifications.rs (extended with webhook support)
+- **Learnings for future iterations:**
+  - AlertNotificationCommand enum now has SendEmail and SendWebhook variants
+  - queue_email_alert() and queue_webhook_alert() methods on AlertNotificationService
+  - get_webhook_channels() fetches all enabled webhook channels from notification_channels table
+  - send_alert_webhook_with_retry() implements 3 attempts with exponential backoff (1s, 2s, 4s)
+  - Webhook payload templates: "json", "slack", "discord", "custom"
+  - Slack uses :warning:, :rotating_light:, :white_check_mark: emojis for severity
+  - Discord uses unicode emojis and integer color values (hex parsed to i32)
+  - Custom templates support {{app_name}}, {{metric_type}}, {{value}}, {{threshold}}, {{severity}}, {{status}}, {{dashboard_url}}
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-007
+- What was implemented: Cost configuration and default rates for resource cost estimation
+- Files changed:
+  - migrations/036_cost_rates.sql (new table with default rates)
+  - src/db/models/cost_rate.rs (CostRate model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/api/cost_rates.rs (GET/PUT /api/settings/cost-rates endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Cost rates table stores cpu/memory/disk rates with is_default flag
+  - Default rates seeded in migration: CPU=$0.02/core/month, Memory=$0.05/GB/month, Disk=$0.10/GB/month
+  - When admin customizes a rate, is_default is set to 0 to track that it's been modified
+  - CostRatesResponse groups all three resource types (similar to GlobalAlertDefaultsResponse)
+  - UpdateCostRatesRequest allows partial updates of individual resource types
+  - Settings API follows same pattern as /api/settings/alert-defaults
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-008
+- What was implemented: Cost calculation service for daily cost snapshots
+- Files changed:
+  - migrations/037_cost_snapshots.sql (new table for daily cost storage)
+  - src/db/models/cost_snapshot.rs (CostSnapshot model with aggregation queries)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/cost_calculator.rs (CostCalculator service)
+  - src/engine/mod.rs (module registration)
+  - src/main.rs (spawn cost calculator task)
+- **Learnings for future iterations:**
+  - Cost snapshots store daily averages: avg_cpu_cores, avg_memory_gb, avg_disk_gb plus calculated costs
+  - CostCalculator loads rates from cost_rates table, applies daily rate (monthly/30)
+  - CPU percent converted to cores: avg_cpu_percent / 100.0
+  - Memory/disk bytes converted to GB: bytes / (1024 * 1024 * 1024)
+  - Background task runs hourly, calculates yesterday's costs once per day
+  - CostSnapshot::get_summary_for_*() returns CostSummary with projected monthly cost
+  - Retention: 365 days default for cost snapshots (vs 24h for resource metrics)
+  - Use chrono::{Datelike, Timelike} traits for weekday() and hour() methods
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+- Frontend alerts API: frontend/app/lib/api/apps.ts has getAlerts, createAlert, updateAlert, deleteAlert, getAlertEvents
+- Alert types: frontend/app/types/api.ts has AlertConfigResponse, AlertEventResponse, AlertMetricType
+
+---
+
+## 2026-01-10 - US-009
+- What was implemented: Cost estimation API endpoints for apps, projects, and teams
+- Files changed:
+  - src/api/costs.rs (new API module with three endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Cost endpoints use existing CostSnapshot aggregation methods from US-008
+  - Period query parameter supports "7d", "30d", "90d" (default: 30d)
+  - App endpoint returns just CostSummary, project/team endpoints include AppCostBreakdown
+  - CostResponse includes: summary (with projected_monthly_cost), optional breakdown, period info
+  - axum::Query extracts query parameters with Deserialize trait
+  - Empty cost data returns zeroed CostSummary rather than error (no snapshots = no costs yet)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-010
+- What was implemented: Alerts management UI in frontend app settings
+- Files changed:
+  - frontend/app/components/alerts-card.tsx (new AlertsCard component)
+  - frontend/app/routes/apps/$id/settings.tsx (added Alerts tab)
+  - frontend/app/lib/api/apps.ts (added alert API methods)
+  - frontend/app/lib/api/index.ts (registered alert API methods)
+  - frontend/app/types/api.ts (added alert types)
+  - src/api/alerts.rs (added list_alert_events endpoint)
+  - src/api/mod.rs (registered alert-events route)
+- **Learnings for future iterations:**
+  - Settings page tabs use shadcn/ui Tabs component with TabsList, TabsTrigger, TabsContent
+  - Tab grid requires updating grid-cols-N when adding new tabs (e.g., grid-cols-5 -> grid-cols-6)
+  - AlertsCard uses useQuery for fetching alerts and alertEvents, useMutation for create/update/delete
+  - Alert events endpoint needed to be added to backend: GET /api/apps/:id/alert-events
+  - Frontend has pre-existing TypeScript errors (unrelated), but build passes
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-011
+- What was implemented: Team notification channels management UI
+- Files changed:
+  - src/api/notifications.rs (added test_team_channel endpoint)
+  - src/api/mod.rs (registered test_team_channel route)
+  - frontend/app/lib/api/notifications.ts (added team notification channel API methods)
+  - frontend/app/lib/api/index.ts (registered team notification channel methods)
+  - frontend/app/types/api.ts (added TeamNotificationChannel types, WebhookConfig)
+  - frontend/app/components/team-notification-channels-card.tsx (new component)
+  - frontend/app/routes/settings/teams/$id.tsx (integrated TeamNotificationChannelsCard)
+- **Learnings for future iterations:**
+  - Team notification channels support 4 types: slack, discord, email, webhook
+  - Webhook channels have payload_template field: "json", "slack", "discord", "custom"
+  - Test endpoint follows same pattern as global: POST /api/teams/:id/notification-channels/:channel_id/test
+  - TeamNotificationChannelsCard uses same patterns as AlertsCard and notifications settings page
+  - Component is conditionally rendered based on canManage (admin+ role)
+  - Frontend has "typecheck" script instead of "lint" for TypeScript checking
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-012
+- What was implemented: Cost dashboard widget with summary, top apps, and sparkline trend
+- Files changed:
+  - src/api/costs.rs (added DashboardCostResponse, DailyCostPoint, get_dashboard_costs endpoint)
+  - src/api/mod.rs (registered /system/costs route)
+  - frontend/app/types/api.ts (added CostSummary, AppCostBreakdown, DailyCostPoint, DashboardCostResponse types)
+  - frontend/app/lib/api/system.ts (added getDashboardCosts method)
+  - frontend/app/lib/api/index.ts (registered getDashboardCosts in combined api object)
+  - frontend/app/components/cost-summary-card.tsx (new CostSummaryCard component with sparkline)
+  - frontend/app/routes/_index.tsx (integrated CostSummaryCard into dashboard)
+- **Learnings for future iterations:**
+  - Dashboard cost endpoint at GET /api/system/costs?period=7d|30d|90d
+  - CostSummaryCard uses SVG path for sparkline (similar to ResourceChart pattern)
+  - Trend calculation compares first half vs second half of period for up/down indicator
+  - formatCurrency helper handles edge cases: 0, <$0.01, and >$1000
+  - Dashboard grid uses space-y-6 to stack CostSummaryCard and RecentEvents vertically
+  - Link to /costs page (to be implemented in US-013)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-013
+- What was implemented: Detailed cost analysis page with hierarchical drill-down and CSV export
+- Files changed:
+  - frontend/app/lib/api/system.ts (added getTeamCosts, getProjectCosts, getAppCosts methods)
+  - frontend/app/lib/api/index.ts (registered new cost API methods)
+  - frontend/app/routes/costs.tsx (new comprehensive cost analysis page)
+- **Learnings for future iterations:**
+  - Cost page at /costs with period selector (7d, 30d, 90d)
+  - Uses Collapsible component from shadcn/ui for expandable team/project rows
+  - TeamCostRow and ProjectCostRow components load cost data lazily when expanded
+  - CostBreakdownChart uses horizontal stacked bar with CPU/Memory/Disk segments
+  - CSV export uses generateCostsCsv() and downloadCsv() helper functions
+  - Trend calculation compares first vs second half of period (same as CostSummaryCard)
+  - View mode toggle switches between "By Team" and "By Project" hierarchies
+  - formatCurrency helper reused from cost-summary-card pattern
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-014
+- What was implemented: Global alert defaults UI in admin settings
+- Files changed:
+  - src/api/alerts.rs (added AlertStatsResponse and get_alert_stats endpoint)
+  - src/api/mod.rs (registered /settings/alert-stats route)
+  - src/db/models/alert_config.rs (added count_apps_with_custom_configs method)
+  - frontend/app/types/api.ts (added UpdateGlobalAlertDefaultsRequest, AlertStatsResponse types)
+  - frontend/app/lib/api/system.ts (added getAlertDefaults, updateAlertDefaults, getAlertStats)
+  - frontend/app/lib/api/index.ts (registered alert defaults API methods)
+  - frontend/app/components/app-sidebar.tsx (added Alert Defaults nav link)
+  - frontend/app/routes/settings/alert-defaults.tsx (new Alert Defaults page)
+- **Learnings for future iterations:**
+  - Settings pages go in frontend/app/routes/settings/
+  - Add nav links in frontend/app/components/app-sidebar.tsx
+  - Settings API endpoints use /api/settings/* pattern
+  - ThresholdCard component pattern: local state with isDirty tracking for save button
+  - Stats card shows apps using defaults vs custom configs for visibility
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-015
+- What was implemented: E2E tests for Alerts management UI using Playwright MCP
+- Files changed:
+  - src/db/mod.rs (added missing migrations 032-037)
+  - scripts/ralph/prd.json (marked US-015 as passing)
+- **E2E tests performed:**
+  - Navigate to app settings page and click on Alerts tab
+  - Create CPU alert with 80% threshold
+  - Toggle alert enable/disable
+  - Edit alert threshold (80% to 85%)
+  - Delete alert and verify removal
+  - Verify alert history section displays correctly (empty state)
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/
+- **Learnings for future iterations:**
+  - Migrations 032-037 were missing from db/mod.rs, causing tables not to be created
+  - E2E tests with Playwright MCP: use browser_navigate, browser_snapshot, browser_click, browser_type
+  - Screenshots directory (.playwright-mcp/) is gitignored - manual test runs only
+  - Frontend dev server may need restart if Vite cache becomes stale (504 errors)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-016
+- What was implemented: E2E tests for Team notification channels UI using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-016 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Created new team "E2E Test Team" via the Teams settings page
+  - Navigated to team settings page and verified Notification Channels section visible
+  - Added email notification channel with SMTP config and recipient list
+  - Added Slack webhook channel with placeholder URL
+  - Tested "Test" button - correctly attempted to send to webhook URL (404 expected with fake URL)
+  - Edited channel configuration by toggling enabled/disabled status
+  - Deleted email notification channel and verified it was removed from table
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us016-*
+- **Learnings for future iterations:**
+  - Team notification channels support 4 types: slack, discord, email, webhook
+  - Channel types use combobox dropdown (select option by clicking)
+  - Actions column has two buttons: test notification (paper plane icon) and delete (trash icon)
+  - No direct edit button - editing is done by toggling enabled status
+  - Test notification for Slack shows 404 error when using fake webhook URL (expected behavior)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-017
+- What was implemented: E2E tests for Cost dashboard widget using Playwright MCP
+- Files changed:
+  - frontend/app/routes.ts (added missing /costs and /settings/alert-defaults route registrations)
+  - scripts/ralph/prd.json (marked US-017 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to main dashboard at http://localhost:8080/
+  - Verified Cost Summary card visible with dollar icon and "Cost Overview" title
+  - Verified total monthly cost displayed ($0.00 - empty state)
+  - Verified cost breakdown by resource type (CPU, Memory, Disk all $0.00)
+  - Verified empty state message "No cost data available yet"
+  - Clicked "View Details" link and verified navigation to /costs page
+  - Verified Cost Analysis page loads with proper structure:
+    - Period selector (Last 30 days)
+    - Total Cost, Projected Monthly, Avg. Resources, Days Tracked cards
+    - Cost Breakdown by Resource Type chart (empty state)
+    - Cost by Organization table with team drill-down
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us017-*
+- **Learnings for future iterations:**
+  - Route files created in routes/ must also be registered in routes.ts
+  - Missing route registrations cause 404 errors even when the route file exists
+  - Frontend rebuild required after routes.ts changes (npm run build)
+  - Cost widget shows sparkline only when trend data exists
+  - Top 5 apps breakdown only shown when topApps.length > 0
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-018
+- What was implemented: E2E tests for Detailed cost page using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-018 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to /costs page at http://localhost:8080/costs
+  - Verified period selector works (tested 7d, 30d, 90d switching)
+  - Verified page updates correctly when period changes (Days Tracked card updates)
+  - Tested team row drill-down (E2E Test Team expands to show "No apps with cost data in this team")
+  - Tested view mode switching from "By Team" to "By Project"
+  - Tested project row drill-down (Demo Project expands to show "No apps with cost data in this project")
+  - Verified cost breakdown chart displays empty state message ("No cost data available for this period")
+  - Tested CSV export button - downloaded rivetr-costs-30d-2026-01-10.csv with proper header row
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us018-*
+- **Learnings for future iterations:**
+  - Collapsible row click requires force: true or using dispatchEvent for reliable toggling
+  - TableRow with onClick doesn't always propagate to CollapsibleTrigger properly
+  - Cost page shows empty state gracefully when no cost data exists
+  - CSV export generates file with header row even when no data exists
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-019
+- What was implemented: E2E tests for Global alert defaults UI using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-019 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to /settings/alert-defaults page
+  - Verified page title "Alert Defaults" and description text
+  - Verified Alert Configuration Status card shows: Total Apps=3, Using Defaults=3 (100%), Custom Configs=0 (0%)
+  - Verified CPU threshold card displayed with 80% threshold and enabled toggle
+  - Verified Memory threshold card displayed with 85% threshold and enabled toggle
+  - Verified Disk threshold card displayed with 90% threshold and enabled toggle
+  - Updated CPU threshold from 80% to 85% - Save Changes button appeared
+  - Clicked Save Changes and verified success toast: "Alert defaults updated"
+  - Toggled CPU alerts off - text changed to "CPU alerts are disabled", threshold input disabled
+  - Toggled CPU alerts back on - text reverted to "Alert when cpu usage exceeds 85%"
+  - Saved final state with all alerts enabled
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us019-*
+- **Learnings for future iterations:**
+  - ThresholdCard component shows Save button only when isDirty (value changed from original)
+  - Enable/disable toggle immediately updates description text and disables threshold input
+  - Stats card queries AlertConfig.count_apps_with_custom_configs() for real-time stats
+  - All 19 user stories now complete - PRD is finished!
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+

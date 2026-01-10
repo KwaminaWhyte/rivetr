@@ -95,7 +95,11 @@ async fn handle_log_stream(socket: WebSocket, state: Arc<AppState>, deployment_i
                 "message": log.message,
                 "timestamp": log.timestamp,
             });
-            if sender.send(Message::Text(log_json.to_string().into())).await.is_err() {
+            if sender
+                .send(Message::Text(log_json.to_string().into()))
+                .await
+                .is_err()
+            {
                 return;
             }
         }
@@ -164,12 +168,10 @@ async fn handle_log_stream(socket: WebSocket, state: Arc<AppState>, deployment_i
 }
 
 async fn check_deployment_active(state: &AppState, deployment_id: &str) -> bool {
-    let result = sqlx::query_scalar::<_, String>(
-        "SELECT status FROM deployments WHERE id = ?",
-    )
-    .bind(deployment_id)
-    .fetch_optional(&state.db)
-    .await;
+    let result = sqlx::query_scalar::<_, String>("SELECT status FROM deployments WHERE id = ?")
+        .bind(deployment_id)
+        .fetch_optional(&state.db)
+        .await;
 
     match result {
         Ok(Some(status)) => {
@@ -236,7 +238,9 @@ async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_
                 "type": "error",
                 "message": "No container ID found for this deployment"
             });
-            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            let _ = sender
+                .send(Message::Text(error_msg.to_string().into()))
+                .await;
             return;
         }
     };
@@ -247,7 +251,11 @@ async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_
         "container_id": container_id,
         "app_id": app_id,
     });
-    if sender.send(Message::Text(connected_msg.to_string().into())).await.is_err() {
+    if sender
+        .send(Message::Text(connected_msg.to_string().into()))
+        .await
+        .is_err()
+    {
         return;
     }
 
@@ -259,7 +267,9 @@ async fn handle_runtime_log_stream(socket: WebSocket, state: Arc<AppState>, app_
                 "type": "error",
                 "message": format!("Failed to start log stream: {}", e)
             });
-            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            let _ = sender
+                .send(Message::Text(error_msg.to_string().into()))
+                .await;
             return;
         }
     };
@@ -378,7 +388,9 @@ async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id
                 "type": "error",
                 "message": "No container ID found for this deployment"
             });
-            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            let _ = sender
+                .send(Message::Text(error_msg.to_string().into()))
+                .await;
             return;
         }
     };
@@ -397,7 +409,9 @@ async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id
                 "type": "error",
                 "message": format!("Failed to start terminal: {}", e)
             });
-            let _ = sender.send(Message::Text(error_msg.to_string().into())).await;
+            let _ = sender
+                .send(Message::Text(error_msg.to_string().into()))
+                .await;
             return;
         }
     };
@@ -408,7 +422,11 @@ async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id
         "container_id": container_id,
         "app_id": app_id,
     });
-    if sender.send(Message::Text(connected_msg.to_string().into())).await.is_err() {
+    if sender
+        .send(Message::Text(connected_msg.to_string().into()))
+        .await
+        .is_err()
+    {
         return;
     }
 

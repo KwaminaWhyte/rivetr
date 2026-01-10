@@ -24,6 +24,10 @@ import type {
   UpdateVolumeRequest,
   BuildDetectionResult,
   UploadDeployResponse,
+  AlertConfigResponse,
+  CreateAlertConfigRequest,
+  UpdateAlertConfigRequest,
+  AlertEventResponse,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -425,6 +429,61 @@ export const appsApi = {
       headers,
       credentials: "include",
     });
+  },
+
+  // -------------------------------------------------------------------------
+  // Alert Configurations
+  // -------------------------------------------------------------------------
+
+  /** Get all alert configurations for an app */
+  getAlerts: (appId: string, token?: string) =>
+    apiRequest<AlertConfigResponse[]>(`/apps/${appId}/alerts`, {}, token),
+
+  /** Get a single alert configuration */
+  getAlert: (appId: string, alertId: string, token?: string) =>
+    apiRequest<AlertConfigResponse>(`/apps/${appId}/alerts/${alertId}`, {}, token),
+
+  /** Create a new alert configuration */
+  createAlert: (appId: string, data: CreateAlertConfigRequest, token?: string) =>
+    apiRequest<AlertConfigResponse>(
+      `/apps/${appId}/alerts`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Update an alert configuration */
+  updateAlert: (
+    appId: string,
+    alertId: string,
+    data: UpdateAlertConfigRequest,
+    token?: string
+  ) =>
+    apiRequest<AlertConfigResponse>(
+      `/apps/${appId}/alerts/${alertId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Delete an alert configuration */
+  deleteAlert: (appId: string, alertId: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/alerts/${alertId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  /** Get alert events (triggered alerts) for an app */
+  getAlertEvents: (appId: string, limit?: number, token?: string) => {
+    const params = limit ? `?limit=${limit}` : "";
+    return apiRequest<AlertEventResponse[]>(`/apps/${appId}/alert-events${params}`, {}, token);
   },
 
   // -------------------------------------------------------------------------

@@ -95,11 +95,10 @@ pub async fn list_logs(
 pub async fn list_action_types(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, ApiError> {
-    let actions: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT action FROM audit_logs ORDER BY action"
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let actions: Vec<(String,)> =
+        sqlx::query_as("SELECT DISTINCT action FROM audit_logs ORDER BY action")
+            .fetch_all(&state.db)
+            .await?;
 
     Ok(Json(actions.into_iter().map(|(a,)| a).collect()))
 }
@@ -108,11 +107,10 @@ pub async fn list_action_types(
 pub async fn list_resource_types(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, ApiError> {
-    let types: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT resource_type FROM audit_logs ORDER BY resource_type"
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let types: Vec<(String,)> =
+        sqlx::query_as("SELECT DISTINCT resource_type FROM audit_logs ORDER BY resource_type")
+            .fetch_all(&state.db)
+            .await?;
 
     Ok(Json(types.into_iter().map(|(t,)| t).collect()))
 }
