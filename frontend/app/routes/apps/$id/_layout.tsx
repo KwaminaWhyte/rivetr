@@ -403,7 +403,7 @@ export default function AppDetailLayout() {
                 href={
                   app.domain
                     ? `https://${app.domain}`
-                    : `http://localhost:${appStatus.host_port}`
+                    : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${appStatus.host_port}`
                 }
                 target="_blank"
                 rel="noopener noreferrer"

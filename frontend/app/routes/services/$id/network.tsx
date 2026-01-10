@@ -205,13 +205,13 @@ export default function ServiceNetworkTab() {
                   </div>
                   <div className="flex gap-2">
                     <CopyButton
-                      text={`http://localhost:${port.hostPort}`}
+                      text={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
                       field={`port-url-${idx}`}
                     />
                     {service.status === "running" && (
                       <Button variant="outline" size="sm" className="gap-1" asChild>
                         <a
-                          href={`http://localhost:${port.hostPort}`}
+                          href={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

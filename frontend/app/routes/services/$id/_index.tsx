@@ -277,7 +277,7 @@ export default function ServiceGeneralTab() {
                   </div>
                   <div className="flex gap-1">
                     <CopyButton
-                      text={`http://localhost:${port.hostPort}`}
+                      text={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
                       field={`port-${idx}`}
                     />
                     <Button
@@ -287,7 +287,7 @@ export default function ServiceGeneralTab() {
                       asChild
                     >
                       <a
-                        href={`http://localhost:${port.hostPort}`}
+                        href={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
