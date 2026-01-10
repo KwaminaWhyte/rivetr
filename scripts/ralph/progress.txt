@@ -411,3 +411,40 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Details field stores JSON as string, parsed to serde_json::Value on response
   - Pagination pattern: page (1-indexed), per_page with clamp, offset = (page-1)*per_page
 ---
+
+## 01/10/2026 - US-012
+- Added team-level audit logging to all resource operations
+- Updated imports in 5 API files to include TeamAuditAction, TeamAuditResourceType, log_team_audit
+- Added audit logging to apps.rs:
+  - create_app: logs AppCreated with app_name, git_url, branch
+  - update_app: logs AppUpdated with app_name
+  - delete_app: logs AppDeleted with app_name
+  - upload_create_app: logs AppCreated with app_name, source=upload, build_type
+- Added audit logging to deployments.rs:
+  - trigger_deploy: logs DeploymentTriggered with app_id, app_name
+  - upload_deploy: logs DeploymentTriggered with app_id, app_name, source=upload, build_type
+  - rollback_deployment: logs DeploymentRolledBack with app_id, app_name, target_deployment_id
+- Added audit logging to databases.rs:
+  - create_database: logs DatabaseCreated with database_name, db_type, version
+  - delete_database: logs DatabaseDeleted with database_name
+- Added audit logging to services.rs:
+  - create_service: logs ServiceCreated with service_name
+  - delete_service: logs ServiceDeleted with service_name
+- Added audit logging to projects.rs:
+  - create_project: logs ProjectCreated with project_name
+  - delete_project: logs ProjectDeleted with project_name
+- All audit logs only created when resource has team_id (team-scoped resources)
+- All audit logs include actor user_id
+- Files changed:
+  - src/api/apps.rs
+  - src/api/databases.rs
+  - src/api/deployments.rs
+  - src/api/projects.rs
+  - src/api/services.rs
+- **Learnings for future iterations:**
+  - log_team_audit helper already defined in src/api/teams.rs - just import and use
+  - Use "if let Some(ref team_id) = resource.team_id" pattern to conditionally log
+  - Always wrap log_team_audit in "if let Err(e) = " to not fail request on audit log failure
+  - Audit log failures should be logged as warnings, not errors (non-critical)
+  - All TeamAuditAction and TeamAuditResourceType variants already defined in src/db/models/team.rs
+---
