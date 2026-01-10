@@ -199,6 +199,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/teams/:id/notification-channels/:channel_id",
             delete(notifications::delete_team_channel),
         )
+        .route(
+            "/teams/:id/notification-channels/:channel_id/test",
+            post(notifications::test_team_channel),
+        )
         // Notification Channels (Global)
         .route("/notification-channels", get(notifications::list_channels))
         .route(

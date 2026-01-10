@@ -172,6 +172,14 @@ export const api = {
   createNotificationSubscription: notificationsApi.createNotificationSubscription,
   deleteNotificationSubscription: notificationsApi.deleteNotificationSubscription,
 
+  // Team Notification Channels
+  getTeamNotificationChannels: notificationsApi.getTeamNotificationChannels,
+  getTeamNotificationChannel: notificationsApi.getTeamNotificationChannel,
+  createTeamNotificationChannel: notificationsApi.createTeamNotificationChannel,
+  updateTeamNotificationChannel: notificationsApi.updateTeamNotificationChannel,
+  deleteTeamNotificationChannel: notificationsApi.deleteTeamNotificationChannel,
+  testTeamNotificationChannel: notificationsApi.testTeamNotificationChannel,
+
   // System
   getSystemStats: systemApi.getSystemStats,
   getDiskStats: systemApi.getDiskStats,

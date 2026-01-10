@@ -838,3 +838,50 @@ pub async fn delete_team_channel(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Test a team notification channel
+///
+/// POST /api/teams/:id/notification-channels/:channel_id/test
+pub async fn test_team_channel(
+    State(state): State<Arc<AppState>>,
+    Path((team_id, channel_id)): Path<(String, String)>,
+    user: User,
+    Json(req): Json<TestNotificationRequest>,
+) -> Result<StatusCode, ApiError> {
+    if let Err(e) = validate_uuid(&team_id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+    if let Err(e) = validate_uuid(&channel_id, "channel_id") {
+        return Err(ApiError::validation_field("channel_id", e));
+    }
+
+    // Check user has admin+ role in the team
+    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+
+    let channel = sqlx::query_as::<_, NotificationChannel>(
+        "SELECT * FROM notification_channels WHERE id = ? AND team_id = ?",
+    )
+    .bind(&channel_id)
+    .bind(&team_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("Notification channel not found"))?;
+
+    let notification_service = NotificationService::new(state.db.clone());
+
+    notification_service
+        .send_test(&channel, req.message)
+        .await
+        .map_err(|e| {
+            tracing::error!("Test notification failed for team channel: {}", e);
+            ApiError::internal(&format!("Failed to send test notification: {}", e))
+        })?;
+
+    tracing::info!(
+        team_id = %team_id,
+        channel_id = %channel_id,
+        "Tested team notification channel"
+    );
+
+    Ok(StatusCode::OK)
+}

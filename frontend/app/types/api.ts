@@ -713,6 +713,57 @@ export interface TestNotificationRequest {
 }
 
 // -------------------------------------------------------------------------
+// Team Notification Channel types
+// -------------------------------------------------------------------------
+
+/** Webhook configuration for team notification channels */
+export interface WebhookConfig {
+  url: string;
+  headers?: Record<string, string>;
+  payload_template?: "json" | "slack" | "discord" | "custom";
+  custom_template?: string;
+}
+
+/** Team notification channel types including webhook */
+export type TeamNotificationChannelType =
+  | "slack"
+  | "discord"
+  | "email"
+  | "webhook";
+
+/** Team notification channel */
+export interface TeamNotificationChannel {
+  id: string;
+  team_id: string;
+  name: string;
+  channel_type: TeamNotificationChannelType;
+  config:
+    | SlackConfig
+    | DiscordConfig
+    | EmailConfig
+    | WebhookConfig
+    | Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create a team notification channel */
+export interface CreateTeamNotificationChannelRequest {
+  name: string;
+  channel_type: TeamNotificationChannelType;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  enabled?: boolean;
+}
+
+/** Request to update a team notification channel */
+export interface UpdateTeamNotificationChannelRequest {
+  name?: string;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  enabled?: boolean;
+}
+
+// -------------------------------------------------------------------------
 // Team types
 // -------------------------------------------------------------------------
 
