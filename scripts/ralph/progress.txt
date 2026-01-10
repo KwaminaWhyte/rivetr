@@ -395,3 +395,29 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-019
+- What was implemented: E2E tests for Global alert defaults UI using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-019 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to /settings/alert-defaults page
+  - Verified page title "Alert Defaults" and description text
+  - Verified Alert Configuration Status card shows: Total Apps=3, Using Defaults=3 (100%), Custom Configs=0 (0%)
+  - Verified CPU threshold card displayed with 80% threshold and enabled toggle
+  - Verified Memory threshold card displayed with 85% threshold and enabled toggle
+  - Verified Disk threshold card displayed with 90% threshold and enabled toggle
+  - Updated CPU threshold from 80% to 85% - Save Changes button appeared
+  - Clicked Save Changes and verified success toast: "Alert defaults updated"
+  - Toggled CPU alerts off - text changed to "CPU alerts are disabled", threshold input disabled
+  - Toggled CPU alerts back on - text reverted to "Alert when cpu usage exceeds 85%"
+  - Saved final state with all alerts enabled
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us019-*
+- **Learnings for future iterations:**
+  - ThresholdCard component shows Save button only when isDirty (value changed from original)
+  - Enable/disable toggle immediately updates description text and disables threshold input
+  - Stats card queries AlertConfig.count_apps_with_custom_configs() for real-time stats
+  - All 19 user stories now complete - PRD is finished!
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+

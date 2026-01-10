@@ -331,8 +331,8 @@
         "Take screenshots of the settings page for documentation"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E tests performed with Playwright MCP. Verified CPU/Memory/Disk threshold cards, updated CPU threshold from 80% to 85%, verified Save button enables on changes, verified success toast notification, verified stats card shows apps using defaults vs custom configs (3/3, 100%), tested enable/disable toggles for alerts. Screenshots saved to .playwright-mcp/e2e-screenshots/us019-*."
     }
   ]
 }
