@@ -3,6 +3,7 @@ mod apps;
 mod audit;
 pub mod auth;
 mod basic_auth;
+mod cost_rates;
 mod database_backups;
 mod databases;
 mod deployments;
@@ -298,6 +299,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/settings/alert-defaults",
             put(alerts::update_alert_defaults),
         )
+        .route("/settings/cost-rates", get(cost_rates::get_cost_rates))
+        .route("/settings/cost-rates", put(cost_rates::update_cost_rates))
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/stats/history", get(system::get_stats_history))
