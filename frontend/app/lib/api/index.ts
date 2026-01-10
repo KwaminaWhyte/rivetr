@@ -83,6 +83,14 @@ export const api = {
   detectBuildType: appsApi.detectBuildType,
   uploadCreateApp: appsApi.uploadCreateApp,
 
+  // Alert Configurations
+  getAlerts: appsApi.getAlerts,
+  getAlert: appsApi.getAlert,
+  createAlert: appsApi.createAlert,
+  updateAlert: appsApi.updateAlert,
+  deleteAlert: appsApi.deleteAlert,
+  getAlertEvents: appsApi.getAlertEvents,
+
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
   createSshKey: gitApi.createSshKey,

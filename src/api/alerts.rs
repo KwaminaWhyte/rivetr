@@ -4,17 +4,26 @@
 //! and global alert defaults.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::db::{
-    AlertConfig, AlertConfigResponse, CreateAlertConfigRequest, GlobalAlertDefault,
-    GlobalAlertDefaultsResponse, UpdateAlertConfigRequest, UpdateGlobalAlertDefaultsRequest,
+    AlertConfig, AlertConfigResponse, AlertEvent, AlertEventResponse, CreateAlertConfigRequest,
+    GlobalAlertDefault, GlobalAlertDefaultsResponse, UpdateAlertConfigRequest,
+    UpdateGlobalAlertDefaultsRequest,
 };
 use crate::AppState;
+
+/// Query parameters for alert events
+#[derive(Debug, Deserialize)]
+pub struct AlertEventsQuery {
+    /// Maximum number of events to return (default: 50)
+    pub limit: Option<i64>,
+}
 
 /// Validate metric type
 fn is_valid_metric_type(metric_type: &str) -> bool {
@@ -306,4 +315,39 @@ pub async fn update_alert_defaults(
     tracing::info!("Updated global alert defaults");
 
     Ok(Json(defaults))
+}
+
+/// List alert events (triggered alerts) for an app
+///
+/// GET /api/apps/:id/alert-events
+pub async fn list_alert_events(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+    Query(query): Query<AlertEventsQuery>,
+) -> Result<Json<Vec<AlertEventResponse>>, StatusCode> {
+    // Verify app exists
+    let app_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check app: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if app_exists == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let limit = query.limit.unwrap_or(50);
+    let events = AlertEvent::list_for_app(&state.db, &app_id, Some(limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list alert events: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let responses: Vec<AlertEventResponse> = events.into_iter().map(|e| e.into()).collect();
+
+    Ok(Json(responses))
 }

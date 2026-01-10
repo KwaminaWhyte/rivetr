@@ -24,7 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Sparkles, FileCode, Package, Zap, Cloud } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud, Bell } from "lucide-react";
+import { AlertsCard } from "@/components/alerts-card";
 import { BasicAuthCard } from "@/components/basic-auth-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
 import { GitHubSourceCard } from "@/components/github-source-card";
@@ -221,11 +222,15 @@ export default function AppSettingsTab() {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="build">Build</TabsTrigger>
           <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="storage">Storage</TabsTrigger>
+          <TabsTrigger value="alerts">
+            <Bell className="h-4 w-4 mr-1" />
+            Alerts
+          </TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
         </TabsList>
 
@@ -641,6 +646,11 @@ export default function AppSettingsTab() {
 
           {/* Environment Variables */}
           <EnvVarsTab appId={app.id} />
+        </TabsContent>
+
+        {/* Alerts Tab */}
+        <TabsContent value="alerts" className="space-y-6">
+          <AlertsCard appId={app.id} />
         </TabsContent>
 
         {/* Security Tab */}

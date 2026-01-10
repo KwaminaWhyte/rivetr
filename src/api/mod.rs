@@ -123,6 +123,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/alerts/:alert_id", get(alerts::get_alert))
         .route("/apps/:id/alerts/:alert_id", put(alerts::update_alert))
         .route("/apps/:id/alerts/:alert_id", delete(alerts::delete_alert))
+        .route("/apps/:id/alert-events", get(alerts::list_alert_events))
         // App Costs
         .route("/apps/:id/costs", get(costs::get_app_costs))
         // HTTP Basic Auth

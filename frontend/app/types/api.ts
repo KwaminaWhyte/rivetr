@@ -1154,6 +1154,68 @@ export interface AuditLogQuery {
 }
 
 /** Available database configurations */
+// -------------------------------------------------------------------------
+// Alert Configuration types
+// -------------------------------------------------------------------------
+
+/** Metric types for alerts */
+export type AlertMetricType = "cpu" | "memory" | "disk";
+
+/** Alert configuration response */
+export interface AlertConfigResponse {
+  id: string;
+  app_id: string | null;
+  metric_type: string;
+  threshold_percent: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create an alert configuration */
+export interface CreateAlertConfigRequest {
+  metric_type: AlertMetricType;
+  threshold_percent: number;
+  enabled?: boolean;
+}
+
+/** Request to update an alert configuration */
+export interface UpdateAlertConfigRequest {
+  threshold_percent?: number;
+  enabled?: boolean;
+}
+
+/** Alert event response (triggered alerts) */
+export interface AlertEventResponse {
+  id: string;
+  app_id: string;
+  metric_type: string;
+  threshold_percent: number;
+  current_value: number;
+  status: "firing" | "resolved";
+  consecutive_breaches: number;
+  fired_at: string;
+  resolved_at: string | null;
+  last_notified_at: string | null;
+}
+
+/** Global alert default response */
+export interface GlobalAlertDefaultResponse {
+  id: string;
+  metric_type: string;
+  threshold_percent: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Global alert defaults (all metric types) */
+export interface GlobalAlertDefaultsResponse {
+  cpu: GlobalAlertDefaultResponse | null;
+  memory: GlobalAlertDefaultResponse | null;
+  disk: GlobalAlertDefaultResponse | null;
+}
+
 export const DATABASE_TYPES: DatabaseTypeInfo[] = [
   {
     type: "postgres",
