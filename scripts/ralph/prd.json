@@ -378,8 +378,8 @@
         "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E test performed using Playwright MCP: navigated to team settings > Invitations tab, created invitation for test-invitation@example.com with Admin role, verified invitation appeared in pending list with correct email/role/expiry. Tested resend button (received expected 'email not configured' error). Tested revoke button with confirmation dialog, verified invitation was removed. Screenshots saved (07-11)."
     },
     {
       "id": "US-023",

@@ -716,3 +716,39 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Playwright MCP provides refs for accessibility tree elements (use for reliable clicking)
   - E2E screenshots require creating the directory first with mkdir -p
 ---
+
+## 01/10/2026 - US-022
+- E2E tested team invitations functionality using Playwright MCP
+- Test flow:
+  1. Navigated to Settings > Teams > "test team" > Invitations tab
+  2. Verified initial state: "Invitations (0)", "No pending invitations"
+  3. Tested Send Invitation form:
+     - Entered email: test-invitation@example.com
+     - Selected role: Admin (from dropdown with Owner/Admin/Developer/Viewer options)
+     - Clicked "Send Invitation"
+  4. Verified invitation created:
+     - Tab updated to "Invitations (1)"
+     - Table shows: email, Admin role, sent date (1/10/2026), "Expires in 7 days"
+     - Success toast: "Invitation sent successfully"
+  5. Tested Resend button:
+     - Clicked "Resend invitation email" button
+     - Received expected error: "Email is not configured. Cannot resend invitation."
+     - (Email not configured on test server, but button functionality works)
+  6. Tested Revoke button:
+     - Clicked "Revoke invitation" button
+     - Confirmation dialog appeared with email and warning message
+     - Clicked "Revoke Invitation" to confirm
+     - Invitation removed, tab shows "Invitations (0)" again
+- Screenshots saved to .playwright-mcp/.playwright-mcp/e2e-screenshots/:
+  - 07-invitations-tab-initial.png
+  - 08-invitation-created.png
+  - 09-resend-email-not-configured.png
+  - 10-revoke-confirmation-dialog.png
+  - 11-invitation-revoked.png
+- **Learnings for future iterations:**
+  - Invitations tab shows count in tab title (e.g., "Invitations (1)")
+  - Role dropdown shows all 4 roles: Owner, Admin, Developer, Viewer
+  - Resend requires email to be configured (returns 400 if not)
+  - Revoke confirmation dialog shows email address and warning about link invalidation
+  - Browser session persists - no need to re-authenticate between E2E tests
+---
