@@ -267,6 +267,38 @@ export interface UpdateBasicAuthRequest {
   password?: string;
 }
 
+// -------------------------------------------------------------------------
+// App Sharing types
+// -------------------------------------------------------------------------
+
+/** App share response with team details */
+export interface AppShare {
+  id: string;
+  app_id: string;
+  shared_with_team_id: string;
+  shared_with_team_name: string;
+  permission: string;
+  created_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
+}
+
+/** Request to create a new app share */
+export interface CreateAppShareRequest {
+  /** The team ID to share the app with */
+  team_id: string;
+  /** Permission level (currently only "view" is supported) */
+  permission?: string;
+}
+
+/** App with sharing indicator (for list views) */
+export interface AppWithSharing extends App {
+  /** Indicates if this app is shared with the requesting team (not owned) */
+  is_shared: boolean;
+  /** The team that owns this app (when is_shared is true) */
+  owner_team_name: string | null;
+}
+
 // Project types
 export interface Project {
   id: string;

@@ -7,7 +7,10 @@ import { apiRequest } from "./core";
 import type {
   App,
   AppStatus,
+  AppShare,
+  AppWithSharing,
   CreateAppRequest,
+  CreateAppShareRequest,
   UpdateAppRequest,
   Deployment,
   DeploymentListResponse,
@@ -443,6 +446,39 @@ export const appsApi = {
       credentials: "include",
     });
   },
+
+  // -------------------------------------------------------------------------
+  // App Sharing
+  // -------------------------------------------------------------------------
+
+  /** Get list of teams an app is shared with */
+  getAppShares: (appId: string, token?: string) =>
+    apiRequest<AppShare[]>(`/apps/${appId}/shares`, {}, token),
+
+  /** Share an app with a team */
+  createAppShare: (appId: string, data: CreateAppShareRequest, token?: string) =>
+    apiRequest<AppShare>(
+      `/apps/${appId}/shares`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Remove sharing for a team */
+  deleteAppShare: (appId: string, teamId: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/shares/${teamId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  /** Get apps with sharing information (owned + shared) */
+  getAppsWithSharing: (teamId: string, token?: string) =>
+    apiRequest<AppWithSharing[]>(`/apps/with-sharing?team_id=${encodeURIComponent(teamId)}`, {}, token),
 
   // -------------------------------------------------------------------------
   // WebSocket URLs

@@ -35,6 +35,7 @@ import { EnvVarsTab } from "@/components/env-vars-tab";
 import { NetworkConfigCard } from "@/components/network-config-card";
 import { VolumesCard } from "@/components/volumes-card";
 import { RollbackSettingsCard } from "@/components/rollback-settings-card";
+import { AppSharingCard } from "@/components/app-sharing-card";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, BuildType, NixpacksConfig, UpdateAppRequest } from "@/types/api";
 
@@ -221,12 +222,13 @@ export default function AppSettingsTab() {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="build">Build</TabsTrigger>
           <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="storage">Storage</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="sharing">Sharing</TabsTrigger>
         </TabsList>
 
         {/* General Tab */}
@@ -671,6 +673,11 @@ export default function AppSettingsTab() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Sharing Tab */}
+        <TabsContent value="sharing" className="space-y-6">
+          <AppSharingCard app={app} />
         </TabsContent>
       </Tabs>
 
