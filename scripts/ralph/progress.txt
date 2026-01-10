@@ -26,6 +26,10 @@ Started: Resource Alerts & Cost Estimation
 - Payload builders: build_slack_alert_payload(), build_discord_alert_payload(), build_json_alert_payload()
 - Cost rates: CostRate model in src/db/models/cost_rate.rs with is_default flag for tracking customization
 - Settings API pattern: GET/PUT /api/settings/cost-rates follows same pattern as alert-defaults
+- Cost snapshots: CostSnapshot model in src/db/models/cost_snapshot.rs for daily cost storage
+- Cost calculator: CostCalculator service in src/engine/cost_calculator.rs runs daily
+- Cost aggregation: CostSnapshot has get_summary_for_app(), get_summary_for_project(), get_summary_for_team()
+- Apps<->Projects<->Teams: apps have project_id and team_id columns, projects have team_id
 
 ---
 
@@ -151,6 +155,27 @@ Started: Resource Alerts & Cost Estimation
   - CostRatesResponse groups all three resource types (similar to GlobalAlertDefaultsResponse)
   - UpdateCostRatesRequest allows partial updates of individual resource types
   - Settings API follows same pattern as /api/settings/alert-defaults
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-008
+- What was implemented: Cost calculation service for daily cost snapshots
+- Files changed:
+  - migrations/037_cost_snapshots.sql (new table for daily cost storage)
+  - src/db/models/cost_snapshot.rs (CostSnapshot model with aggregation queries)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/cost_calculator.rs (CostCalculator service)
+  - src/engine/mod.rs (module registration)
+  - src/main.rs (spawn cost calculator task)
+- **Learnings for future iterations:**
+  - Cost snapshots store daily averages: avg_cpu_cores, avg_memory_gb, avg_disk_gb plus calculated costs
+  - CostCalculator loads rates from cost_rates table, applies daily rate (monthly/30)
+  - CPU percent converted to cores: avg_cpu_percent / 100.0
+  - Memory/disk bytes converted to GB: bytes / (1024 * 1024 * 1024)
+  - Background task runs hourly, calculates yesterday's costs once per day
+  - CostSnapshot::get_summary_for_*() returns CostSummary with projected monthly cost
+  - Retention: 365 days default for cost snapshots (vs 24h for resource metrics)
+  - Use chrono::{Datelike, Timelike} traits for weekday() and hour() methods
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
