@@ -372,3 +372,26 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-018
+- What was implemented: E2E tests for Detailed cost page using Playwright MCP
+- Files changed:
+  - scripts/ralph/prd.json (marked US-018 as passing)
+  - scripts/ralph/progress.txt (this file)
+- **E2E tests performed:**
+  - Navigated to /costs page at http://localhost:8080/costs
+  - Verified period selector works (tested 7d, 30d, 90d switching)
+  - Verified page updates correctly when period changes (Days Tracked card updates)
+  - Tested team row drill-down (E2E Test Team expands to show "No apps with cost data in this team")
+  - Tested view mode switching from "By Team" to "By Project"
+  - Tested project row drill-down (Demo Project expands to show "No apps with cost data in this project")
+  - Verified cost breakdown chart displays empty state message ("No cost data available for this period")
+  - Tested CSV export button - downloaded rivetr-costs-30d-2026-01-10.csv with proper header row
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/us018-*
+- **Learnings for future iterations:**
+  - Collapsible row click requires force: true or using dispatchEvent for reliable toggling
+  - TableRow with onClick doesn't always propagate to CollapsibleTrigger properly
+  - Cost page shows empty state gracefully when no cost data exists
+  - CSV export generates file with header row even when no data exists
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+

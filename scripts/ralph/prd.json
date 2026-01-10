@@ -313,8 +313,8 @@
         "Take screenshots of expanded views for documentation"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E tests performed with Playwright MCP. Tested period selector (7d, 30d, 90d), team/project drill-down, view mode switching (By Team/By Project), and CSV export. Screenshots saved to .playwright-mcp/e2e-screenshots/us018-*."
     },
     {
       "id": "US-019",
