@@ -585,3 +585,22 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Use controlled Select (value={} instead of defaultValue) for confirmation dialog flow
   - Role management logic: show dropdown only for members user can manage, not just non-owners
 ---
+
+## 01/10/2026 - US-017
+- Updated remove button visibility logic in team settings page
+  - Owners can remove any member (backend validates last owner)
+  - Admins can only remove developers and viewers
+  - Added title="Remove member" for accessibility
+- Remove button and confirmation dialog already existed from earlier implementation
+- Backend remove_member endpoint already has:
+  - Permission checks (role hierarchy)
+  - Last owner validation with clear error message
+  - Audit logging (MemberRemoved action)
+- Files changed:
+  - frontend/app/routes/settings/teams/$id.tsx
+- **Learnings for future iterations:**
+  - Remove button logic was overly restrictive (prevented removing ANY owner)
+  - Backend handles last owner case - frontend just needs to allow the action
+  - Role hierarchy for removals: owners can remove anyone, admins can only remove lower roles
+  - Existing confirmation dialog pattern works well - shows member name and warns about access loss
+---

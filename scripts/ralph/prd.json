@@ -294,8 +294,8 @@
         "npm run build passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Remove button shows for members current user can manage: owners can remove anyone (backend validates last owner), admins can only remove developers/viewers. Confirmation dialog shows member name. Backend handles last owner validation with clear error message. Audit logging already implemented in US-011. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-018",
