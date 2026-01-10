@@ -15,7 +15,7 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-RIVETR_VERSION="${RIVETR_VERSION:-v0.2.3}"
+RIVETR_VERSION="${RIVETR_VERSION:-v0.2.4}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/rivetr}"
 DATA_DIR="${DATA_DIR:-/var/lib/rivetr}"
 CONFIG_FILE="$INSTALL_DIR/rivetr.toml"
