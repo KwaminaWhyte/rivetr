@@ -9,10 +9,12 @@ import type {
   TeamDetail,
   TeamWithMemberCount,
   TeamMemberWithUser,
+  TeamInvitation,
   CreateTeamRequest,
   UpdateTeamRequest,
   InviteMemberRequest,
   UpdateMemberRoleRequest,
+  CreateInvitationRequest,
 } from "@/types/api";
 
 export const teamsApi = {
@@ -101,6 +103,49 @@ export const teamsApi = {
       `/teams/${teamId}/members/${userId}`,
       {
         method: "DELETE",
+      },
+      token
+    ),
+
+  // -------------------------------------------------------------------------
+  // Team Invitations
+  // -------------------------------------------------------------------------
+
+  /** List pending invitations for a team */
+  getTeamInvitations: (teamId: string, token?: string) =>
+    apiRequest<TeamInvitation[]>(`/teams/${teamId}/invitations`, {}, token),
+
+  /** Create a new invitation */
+  createTeamInvitation: (
+    teamId: string,
+    data: CreateInvitationRequest,
+    token?: string
+  ) =>
+    apiRequest<TeamInvitation>(
+      `/teams/${teamId}/invitations`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Revoke/delete a pending invitation */
+  deleteTeamInvitation: (teamId: string, invitationId: string, token?: string) =>
+    apiRequest<void>(
+      `/teams/${teamId}/invitations/${invitationId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  /** Resend an invitation email */
+  resendTeamInvitation: (teamId: string, invitationId: string, token?: string) =>
+    apiRequest<void>(
+      `/teams/${teamId}/invitations/${invitationId}/resend`,
+      {
+        method: "POST",
       },
       token
     ),

@@ -153,6 +153,11 @@ export const api = {
   inviteTeamMember: teamsApi.inviteTeamMember,
   updateTeamMemberRole: teamsApi.updateTeamMemberRole,
   removeTeamMember: teamsApi.removeTeamMember,
+  // Team Invitations
+  getTeamInvitations: teamsApi.getTeamInvitations,
+  createTeamInvitation: teamsApi.createTeamInvitation,
+  deleteTeamInvitation: teamsApi.deleteTeamInvitation,
+  resendTeamInvitation: teamsApi.resendTeamInvitation,
 
   // Notifications
   getNotificationChannels: notificationsApi.getNotificationChannels,

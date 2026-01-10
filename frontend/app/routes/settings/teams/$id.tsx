@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams, useNavigate } from "react-router";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +57,7 @@ import type {
   TeamDetail,
   TeamRole,
   TeamMemberWithUser,
+  TeamInvitation,
 } from "@/types/api";
 import {
   canManageMembers,
@@ -66,10 +73,39 @@ import {
   Code,
   Eye,
   Loader2,
+  Mail,
+  MailPlus,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
+}
+
+function formatDateTime(dateStr: string): string {
+  return new Date(dateStr).toLocaleString();
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return "Expired";
+  } else if (diffDays === 0) {
+    return "Expires today";
+  } else if (diffDays === 1) {
+    return "Expires tomorrow";
+  } else {
+    return `Expires in ${diffDays} days`;
+  }
+}
+
+function isExpired(dateStr: string): boolean {
+  return new Date(dateStr) < new Date();
 }
 
 function getRoleBadgeVariant(
@@ -129,17 +165,33 @@ const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] =
 export default function TeamDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  // Get initial tab from URL or default to "members"
+  const initialTab = searchParams.get("tab") || "members";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
+  const [showRevokeInvitationDialog, setShowRevokeInvitationDialog] = useState(false);
   const [selectedMember, setSelectedMember] =
     useState<TeamMemberWithUser | null>(null);
+  const [selectedInvitation, setSelectedInvitation] =
+    useState<TeamInvitation | null>(null);
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
+  const [inviteEmail, setInviteEmail] = useState("");
 
   const { data: team, isLoading } = useQuery<TeamDetail>({
     queryKey: ["team", id],
     queryFn: () => api.getTeam(id!),
+    enabled: !!id,
+  });
+
+  const { data: invitations = [], isLoading: isLoadingInvitations } = useQuery<TeamInvitation[]>({
+    queryKey: ["team-invitations", id],
+    queryFn: () => api.getTeamInvitations(id!),
     enabled: !!id,
   });
 
@@ -169,6 +221,45 @@ export default function TeamDetailPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to invite member");
+    },
+  });
+
+  const createInvitationMutation = useMutation({
+    mutationFn: ({ email, role }: { email: string; role: TeamRole }) =>
+      api.createTeamInvitation(id!, { email, role }),
+    onSuccess: () => {
+      toast.success("Invitation sent successfully");
+      setInviteEmail("");
+      setInviteRole("developer");
+      queryClient.invalidateQueries({ queryKey: ["team-invitations", id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to send invitation");
+    },
+  });
+
+  const resendInvitationMutation = useMutation({
+    mutationFn: (invitationId: string) =>
+      api.resendTeamInvitation(id!, invitationId),
+    onSuccess: () => {
+      toast.success("Invitation email resent");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to resend invitation");
+    },
+  });
+
+  const revokeInvitationMutation = useMutation({
+    mutationFn: (invitationId: string) =>
+      api.deleteTeamInvitation(id!, invitationId),
+    onSuccess: () => {
+      toast.success("Invitation revoked");
+      setShowRevokeInvitationDialog(false);
+      setSelectedInvitation(null);
+      queryClient.invalidateQueries({ queryKey: ["team-invitations", id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to revoke invitation");
     },
   });
 
@@ -220,6 +311,9 @@ export default function TeamDetailPage() {
   const isSubmitting =
     updateTeamMutation.isPending ||
     inviteMemberMutation.isPending ||
+    createInvitationMutation.isPending ||
+    resendInvitationMutation.isPending ||
+    revokeInvitationMutation.isPending ||
     updateRoleMutation.isPending ||
     removeMemberMutation.isPending ||
     deleteTeamMutation.isPending;
@@ -252,9 +346,31 @@ export default function TeamDetailPage() {
     });
   };
 
+  const handleCreateInvitation = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!inviteEmail?.trim()) {
+      toast.error("Email is required");
+      return;
+    }
+    createInvitationMutation.mutate({
+      email: inviteEmail.trim(),
+      role: inviteRole,
+    });
+  };
+
   const handleRoleChange = (userId: string, newRole: TeamRole) => {
     updateRoleMutation.mutate({ userId, role: newRole });
   };
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value });
+  };
+
+  // Filter pending invitations (not accepted and not expired)
+  const pendingInvitations = invitations.filter(
+    (inv) => !inv.accepted_at && !isExpired(inv.expires_at)
+  );
 
   if (isLoading) {
     return (
@@ -334,129 +450,302 @@ export default function TeamDetailPage() {
         </Card>
       )}
 
-      {/* Members Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Team Members
-              </CardTitle>
-              <CardDescription>
-                Manage who has access to this team and their roles.
-              </CardDescription>
-            </div>
-            {canManage && (
-              <Button onClick={() => setShowInviteDialog(true)}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Invite Member
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
-                {canManage && <TableHead className="w-32">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {team.members.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{member.user_name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {member.user_email}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {getRoleIcon(member.role as TeamRole)}
-                      <Badge variant={getRoleBadgeVariant(member.role as TeamRole)}>
-                        {formatRole(member.role as TeamRole)}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>{formatDate(member.created_at)}</TableCell>
-                  {canManage && (
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {/* Role change dropdown */}
-                        {member.role !== "owner" && (
-                          <Select
-                            defaultValue={member.role}
-                            onValueChange={(value) =>
-                              handleRoleChange(member.user_id, value as TeamRole)
-                            }
-                            disabled={updateRoleMutation.isPending}
-                          >
-                            <SelectTrigger className="w-28 h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {ROLE_OPTIONS.filter((r) =>
-                                currentUserRole === "owner"
-                                  ? true
-                                  : r.value !== "owner"
-                              ).map((role) => (
-                                <SelectItem key={role.value} value={role.value}>
-                                  {role.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                        {/* Remove button */}
-                        {member.role !== "owner" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedMember(member);
-                              setShowRemoveMemberDialog(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Tabs for Members and Invitations */}
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="members" className="gap-2">
+            <Users className="h-4 w-4" />
+            Members ({team.members.length})
+          </TabsTrigger>
+          {canManage && (
+            <TabsTrigger value="invitations" className="gap-2">
+              <Mail className="h-4 w-4" />
+              Invitations ({pendingInvitations.length})
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-      {/* Role Legend */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Role Permissions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {ROLE_OPTIONS.map((role) => (
-              <div key={role.value} className="flex items-start gap-3 p-3 rounded-lg border">
-                <div className="mt-0.5">{getRoleIcon(role.value)}</div>
+        {/* Members Tab */}
+        <TabsContent value="members">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium">{role.label}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {role.description}
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Team Members
+                  </CardTitle>
+                  <CardDescription>
+                    Manage who has access to this team and their roles.
+                  </CardDescription>
+                </div>
+                {canManage && (
+                  <Button onClick={() => setShowInviteDialog(true)}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Invite Member
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Joined</TableHead>
+                    {canManage && <TableHead className="w-32">Actions</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {team.members.map((member) => (
+                    <TableRow key={member.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{member.user_name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {member.user_email}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getRoleIcon(member.role as TeamRole)}
+                          <Badge variant={getRoleBadgeVariant(member.role as TeamRole)}>
+                            {formatRole(member.role as TeamRole)}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>{formatDate(member.created_at)}</TableCell>
+                      {canManage && (
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {/* Role change dropdown */}
+                            {member.role !== "owner" && (
+                              <Select
+                                defaultValue={member.role}
+                                onValueChange={(value) =>
+                                  handleRoleChange(member.user_id, value as TeamRole)
+                                }
+                                disabled={updateRoleMutation.isPending}
+                              >
+                                <SelectTrigger className="w-28 h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ROLE_OPTIONS.filter((r) =>
+                                    currentUserRole === "owner"
+                                      ? true
+                                      : r.value !== "owner"
+                                  ).map((role) => (
+                                    <SelectItem key={role.value} value={role.value}>
+                                      {role.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                            {/* Remove button */}
+                            {member.role !== "owner" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedMember(member);
+                                  setShowRemoveMemberDialog(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Role Legend */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Role Permissions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {ROLE_OPTIONS.map((role) => (
+                  <div key={role.value} className="flex items-start gap-3 p-3 rounded-lg border">
+                    <div className="mt-0.5">{getRoleIcon(role.value)}</div>
+                    <div>
+                      <div className="font-medium">{role.label}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {role.description}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Invitations Tab */}
+        {canManage && (
+          <TabsContent value="invitations">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <MailPlus className="h-5 w-5" />
+                      Send Invitation
+                    </CardTitle>
+                    <CardDescription>
+                      Invite new users to join this team via email.
+                    </CardDescription>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateInvitation} className="flex gap-4 items-end">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="inviteEmail">Email Address</Label>
+                    <Input
+                      id="inviteEmail"
+                      type="email"
+                      placeholder="user@example.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="w-40 space-y-2">
+                    <Label htmlFor="inviteRoleSelect">Role</Label>
+                    <Select
+                      value={inviteRole}
+                      onValueChange={(value) => setInviteRole(value as TeamRole)}
+                    >
+                      <SelectTrigger id="inviteRoleSelect">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLE_OPTIONS.filter((r) =>
+                          currentUserRole === "owner" ? true : r.value !== "owner"
+                        ).map((role) => (
+                          <SelectItem key={role.value} value={role.value}>
+                            {role.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="submit" disabled={createInvitationMutation.isPending}>
+                    {createInvitationMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4 mr-2" />
+                        Send Invitation
+                      </>
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Pending Invitations
+                </CardTitle>
+                <CardDescription>
+                  Invitations that have been sent but not yet accepted.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingInvitations ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : pendingInvitations.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No pending invitations
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Sent</TableHead>
+                        <TableHead>Expiry</TableHead>
+                        <TableHead className="w-40">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingInvitations.map((invitation) => (
+                        <TableRow key={invitation.id}>
+                          <TableCell>
+                            <span className="font-medium">{invitation.email}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getRoleIcon(invitation.role)}
+                              <Badge variant={getRoleBadgeVariant(invitation.role)}>
+                                {formatRole(invitation.role)}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatDate(invitation.created_at)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatRelativeTime(invitation.expires_at)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => resendInvitationMutation.mutate(invitation.id)}
+                                disabled={resendInvitationMutation.isPending}
+                                title="Resend invitation email"
+                              >
+                                <RefreshCw className={`h-4 w-4 ${resendInvitationMutation.isPending ? 'animate-spin' : ''}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedInvitation(invitation);
+                                  setShowRevokeInvitationDialog(true);
+                                }}
+                                title="Revoke invitation"
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* Invite Member Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
@@ -553,6 +842,43 @@ export default function TeamDetailPage() {
                 }
               >
                 {removeMemberMutation.isPending ? "Removing..." : "Remove Member"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Revoke Invitation Confirmation */}
+      <AlertDialog
+        open={showRevokeInvitationDialog}
+        onOpenChange={setShowRevokeInvitationDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke Invitation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to revoke the invitation for {selectedInvitation?.email}?
+              They will no longer be able to join the team using this invitation link.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowRevokeInvitationDialog(false);
+                setSelectedInvitation(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                disabled={revokeInvitationMutation.isPending}
+                onClick={() =>
+                  selectedInvitation && revokeInvitationMutation.mutate(selectedInvitation.id)
+                }
+              >
+                {revokeInvitationMutation.isPending ? "Revoking..." : "Revoke Invitation"}
               </Button>
             </AlertDialogAction>
           </AlertDialogFooter>

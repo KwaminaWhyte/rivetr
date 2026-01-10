@@ -814,6 +814,34 @@ export interface UpdateMemberRoleRequest {
   role: TeamRole;
 }
 
+// -------------------------------------------------------------------------
+// Team Invitation types
+// -------------------------------------------------------------------------
+
+/** Team invitation entity */
+export interface TeamInvitation {
+  id: string;
+  team_id: string;
+  email: string;
+  role: TeamRole;
+  expires_at: string;
+  accepted_at: string | null;
+  created_by: string;
+  created_at: string;
+  /** Team name (for display purposes) */
+  team_name: string | null;
+  /** Inviter name (for display purposes) */
+  inviter_name: string | null;
+}
+
+/** Request to create a team invitation */
+export interface CreateInvitationRequest {
+  /** Email address to invite */
+  email: string;
+  /** Role to assign */
+  role: TeamRole;
+}
+
 /** Helper: Check if user has at least the required role */
 export function hasRoleAtLeast(
   userRole: TeamRole | null,
