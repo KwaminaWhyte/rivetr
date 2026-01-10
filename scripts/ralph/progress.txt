@@ -22,6 +22,8 @@ Started: Resource Alerts & Cost Estimation
 - Alert email notifications: AlertNotificationService in src/notifications/alert_notifications.rs
 - Email queue pattern: Use tokio mpsc channel to prevent blocking (see spawn_alert_notification_worker)
 - Dashboard URL for emails: config.server.external_url (Option<String>)
+- Webhook alerts: send_alert_webhook_with_retry() with exponential backoff in alert_notifications.rs
+- Payload builders: build_slack_alert_payload(), build_discord_alert_payload(), build_json_alert_payload()
 
 ---
 
@@ -113,6 +115,22 @@ Started: Resource Alerts & Cost Estimation
   - HTML email template includes severity-based colors (critical=red, warning=orange, info=blue, resolved=green)
   - Dashboard link uses config.server.external_url when configured
   - Re-notifications sent for ongoing alerts after 15-minute window (checked by should_notify())
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-006
+- What was implemented: Webhook notification sender with retry logic and default templates
+- Files changed:
+  - src/notifications/alert_notifications.rs (extended with webhook support)
+- **Learnings for future iterations:**
+  - AlertNotificationCommand enum now has SendEmail and SendWebhook variants
+  - queue_email_alert() and queue_webhook_alert() methods on AlertNotificationService
+  - get_webhook_channels() fetches all enabled webhook channels from notification_channels table
+  - send_alert_webhook_with_retry() implements 3 attempts with exponential backoff (1s, 2s, 4s)
+  - Webhook payload templates: "json", "slack", "discord", "custom"
+  - Slack uses :warning:, :rotating_light:, :white_check_mark: emojis for severity
+  - Discord uses unicode emojis and integer color values (hex parsed to i32)
+  - Custom templates support {{app_name}}, {{metric_type}}, {{value}}, {{threshold}}, {{severity}}, {{status}}, {{dashboard_url}}
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
