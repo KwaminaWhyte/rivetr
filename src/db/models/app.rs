@@ -567,3 +567,56 @@ pub struct UpdateBasicAuthRequest {
     /// Password in plain text - will be hashed before storing
     pub password: Option<String>,
 }
+
+// -------------------------------------------------------------------------
+// App Sharing (Cross-Team)
+// -------------------------------------------------------------------------
+
+/// App share record for sharing apps between teams
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AppShare {
+    pub id: String,
+    pub app_id: String,
+    pub shared_with_team_id: String,
+    pub permission: String,
+    pub created_at: String,
+    pub created_by: Option<String>,
+}
+
+/// Response DTO for app share with team details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppShareResponse {
+    pub id: String,
+    pub app_id: String,
+    pub shared_with_team_id: String,
+    pub shared_with_team_name: String,
+    pub permission: String,
+    pub created_at: String,
+    pub created_by: Option<String>,
+    pub created_by_name: Option<String>,
+}
+
+/// Request to create a new app share
+#[derive(Debug, Deserialize)]
+pub struct CreateAppShareRequest {
+    /// The team ID to share the app with
+    pub team_id: String,
+    /// Permission level (currently only "view" is supported)
+    #[serde(default = "default_share_permission")]
+    pub permission: String,
+}
+
+fn default_share_permission() -> String {
+    "view".to_string()
+}
+
+/// Response for app with sharing indicator
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppWithSharing {
+    #[serde(flatten)]
+    pub app: App,
+    /// Indicates if this app is shared with the requesting team (not owned)
+    pub is_shared: bool,
+    /// The team that owns this app (when is_shared is true)
+    pub owner_team_name: Option<String>,
+}

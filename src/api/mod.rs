@@ -87,6 +87,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/stop", post(apps::stop_app))
         .route("/apps/:id/restart", post(apps::restart_app))
         .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
+        // App Sharing
+        .route("/apps/with-sharing", get(apps::list_apps_with_sharing))
+        .route("/apps/:id/shares", get(apps::list_app_shares))
+        .route("/apps/:id/shares", post(apps::create_app_share))
+        .route("/apps/:id/shares/:team_id", delete(apps::delete_app_share))
         // Deployments
         .route("/apps/:id/deploy", post(deployments::trigger_deploy))
         .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))

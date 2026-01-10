@@ -433,6 +433,15 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 036: Add app_shares table for sharing apps between teams
+    let has_app_shares_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='app_shares'")
+            .fetch_optional(pool)
+            .await?;
+    if has_app_shares_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/036_app_shares.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
