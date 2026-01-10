@@ -31,6 +31,8 @@ Started: Resource Alerts & Cost Estimation
 - Cost aggregation: CostSnapshot has get_summary_for_app(), get_summary_for_project(), get_summary_for_team()
 - Apps<->Projects<->Teams: apps have project_id and team_id columns, projects have team_id
 - Cost API endpoints: GET /api/{apps|projects|teams}/:id/costs?period=7d|30d|90d
+- Dashboard cost API: GET /api/system/costs?period=7d|30d|90d returns DashboardCostResponse
+- Sparkline pattern: SVG path with createPath() similar to ResourceChart, used in CostSummaryCard
 
 ---
 
@@ -234,6 +236,26 @@ Started: Resource Alerts & Cost Estimation
   - TeamNotificationChannelsCard uses same patterns as AlertsCard and notifications settings page
   - Component is conditionally rendered based on canManage (admin+ role)
   - Frontend has "typecheck" script instead of "lint" for TypeScript checking
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-012
+- What was implemented: Cost dashboard widget with summary, top apps, and sparkline trend
+- Files changed:
+  - src/api/costs.rs (added DashboardCostResponse, DailyCostPoint, get_dashboard_costs endpoint)
+  - src/api/mod.rs (registered /system/costs route)
+  - frontend/app/types/api.ts (added CostSummary, AppCostBreakdown, DailyCostPoint, DashboardCostResponse types)
+  - frontend/app/lib/api/system.ts (added getDashboardCosts method)
+  - frontend/app/lib/api/index.ts (registered getDashboardCosts in combined api object)
+  - frontend/app/components/cost-summary-card.tsx (new CostSummaryCard component with sparkline)
+  - frontend/app/routes/_index.tsx (integrated CostSummaryCard into dashboard)
+- **Learnings for future iterations:**
+  - Dashboard cost endpoint at GET /api/system/costs?period=7d|30d|90d
+  - CostSummaryCard uses SVG path for sparkline (similar to ResourceChart pattern)
+  - Trend calculation compares first half vs second half of period for up/down indicator
+  - formatCurrency helper handles edge cases: 0, <$0.01, and >$1000
+  - Dashboard grid uses space-y-6 to stack CostSummaryCard and RecentEvents vertically
+  - Link to /costs page (to be implemented in US-013)
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
