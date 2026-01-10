@@ -1,0 +1,401 @@
+{
+  "project": "Rivetr",
+  "branchName": "ralph/team-flow",
+  "description": "Team Flow Implementation - Complete team switching, resource scoping, invitations, and audit logging",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add team context to application state",
+      "description": "As a developer, I want the dashboard to maintain team context so that all API calls and views are scoped to my current team.",
+      "acceptanceCriteria": [
+        "Add currentTeamId to frontend application state (React context or store)",
+        "Store last active team ID in localStorage per user",
+        "Load last active team on dashboard mount (or first team if none saved)",
+        "All API calls include team context header or query parameter",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed. TeamProvider context created, localStorage persistence implemented, API core updated with X-Team-Id header support."
+    },
+    {
+      "id": "US-002",
+      "title": "Add team switcher dropdown to sidebar",
+      "description": "As a user belonging to multiple teams, I want a team switcher in the sidebar so that I can quickly change between teams.",
+      "acceptanceCriteria": [
+        "Add team switcher component to app-sidebar.tsx",
+        "Display current team name with dropdown arrow",
+        "Dropdown shows all teams user belongs to with role badges",
+        "Clicking a team switches context and reloads data",
+        "Show 'Create Team' option at bottom of dropdown for eligible users",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Filter apps list by current team",
+      "description": "As a team member, I want to see only apps belonging to my current team so that I'm not overwhelmed with unrelated resources.",
+      "acceptanceCriteria": [
+        "Modify GET /api/apps to accept team_id query parameter",
+        "Frontend apps list passes current team ID to API",
+        "Apps without team_id (legacy) show in a 'Personal' or 'Unassigned' section",
+        "Update app creation to assign team_id from current context",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Filter projects by current team",
+      "description": "As a team member, I want to see only projects belonging to my current team.",
+      "acceptanceCriteria": [
+        "Modify GET /api/projects to accept team_id query parameter",
+        "Frontend projects list passes current team ID to API",
+        "Update project creation to assign team_id from current context",
+        "Projects dropdown in app creation shows only current team's projects",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Filter databases by current team",
+      "description": "As a team member, I want to see only databases belonging to my current team.",
+      "acceptanceCriteria": [
+        "Add team_id column to databases table (migration)",
+        "Modify GET /api/databases to accept team_id query parameter",
+        "Frontend databases list passes current team ID to API",
+        "Update database creation to assign team_id from current context",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Filter services by current team",
+      "description": "As a team member, I want to see only services belonging to my current team.",
+      "acceptanceCriteria": [
+        "Add team_id column to services table (migration)",
+        "Modify GET /api/services to accept team_id query parameter",
+        "Frontend services list passes current team ID to API",
+        "Update service creation to assign team_id from current context",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add team invitation system backend",
+      "description": "As a team admin, I want to invite users to my team via email so that they can join without manual admin intervention.",
+      "acceptanceCriteria": [
+        "Create team_invitations table: id, team_id, email, role, token, expires_at, accepted_at, created_by",
+        "Add POST /api/teams/{id}/invitations endpoint (admin+ only)",
+        "Generate secure invitation token with 7-day expiry",
+        "Add GET /api/invitations/{token} to validate invitation",
+        "Add POST /api/invitations/{token}/accept to accept invitation",
+        "Prevent duplicate pending invitations for same email",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Send invitation emails",
+      "description": "As a team admin, I want invitation emails sent automatically so that invitees receive a link to join.",
+      "acceptanceCriteria": [
+        "Create invitation email template with team name, inviter name, role, and accept link",
+        "Send email on invitation creation using existing SMTP infrastructure",
+        "Include dashboard URL with invitation token",
+        "Log email delivery status",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Add team invitations UI",
+      "description": "As a team admin, I want to manage invitations in the dashboard so that I can invite users and track pending invitations.",
+      "acceptanceCriteria": [
+        "Add 'Invitations' tab to team settings page",
+        "Show list of pending invitations with email, role, expiry, sent date",
+        "Form to create new invitation: email input, role selector",
+        "Button to resend invitation email",
+        "Button to revoke/delete pending invitation",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Add invitation accept flow",
+      "description": "As an invitee, I want to accept team invitations so that I can join teams I've been invited to.",
+      "acceptanceCriteria": [
+        "Create /invitations/accept route with token parameter",
+        "Show invitation details: team name, role, inviter",
+        "If logged in: accept button adds user to team",
+        "If not logged in: redirect to login, then back to accept",
+        "If already a member: show 'already a member' message",
+        "If expired: show 'invitation expired' message",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Add team audit log backend",
+      "description": "As a team admin, I want an audit log so that I can track who did what in my team.",
+      "acceptanceCriteria": [
+        "Create team_audit_logs table: id, team_id, user_id, action, resource_type, resource_id, details_json, created_at",
+        "Define action types: member_invited, member_joined, member_removed, role_changed, app_created, app_deleted, etc.",
+        "Add audit logging to team member operations",
+        "Add GET /api/teams/{id}/audit-logs endpoint with pagination",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Add audit logging to resource operations",
+      "description": "As a platform operator, I want resource operations logged so that the audit trail is complete.",
+      "acceptanceCriteria": [
+        "Log app create/update/delete operations",
+        "Log deployment trigger operations",
+        "Log database create/delete operations",
+        "Log service create/delete operations",
+        "Log project create/delete operations",
+        "Include actor user_id in all logs",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Add team audit log UI",
+      "description": "As a team admin, I want to view the audit log in the dashboard so that I can see team activity.",
+      "acceptanceCriteria": [
+        "Add 'Activity' tab to team settings page",
+        "Show paginated list of audit events",
+        "Display: timestamp, user, action, resource, details",
+        "Filter by action type dropdown",
+        "Filter by date range",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Add app sharing between teams",
+      "description": "As a team admin, I want to share apps with other teams so that they can view (but not modify) shared resources.",
+      "acceptanceCriteria": [
+        "Create app_shares table: id, app_id, shared_with_team_id, permission (view), created_at, created_by",
+        "Add POST /api/apps/{id}/shares endpoint to share app",
+        "Add DELETE /api/apps/{id}/shares/{team_id} to unshare",
+        "Add GET /api/apps/{id}/shares to list shares",
+        "Modify app list query to include shared apps with 'shared' badge",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add app sharing UI",
+      "description": "As a team admin, I want to manage app sharing in the dashboard so that I can control which teams can view my apps.",
+      "acceptanceCriteria": [
+        "Add 'Sharing' section to app settings page",
+        "Show list of teams app is shared with",
+        "Dropdown to select team and share",
+        "Button to remove sharing",
+        "Show 'Shared with you' badge on shared apps in list view",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add team member role management UI",
+      "description": "As a team owner, I want to change member roles so that I can promote or demote team members.",
+      "acceptanceCriteria": [
+        "Add role dropdown to team members list (for owner/admin users)",
+        "Roles: owner, admin, developer, viewer",
+        "Owner can change any role except remove last owner",
+        "Admin can change developer/viewer roles only",
+        "Show confirmation dialog before role changes",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add team member removal",
+      "description": "As a team admin, I want to remove members from my team so that I can manage team access.",
+      "acceptanceCriteria": [
+        "Add remove button to team members list (for admin+ users)",
+        "Show confirmation dialog with member name",
+        "Cannot remove last owner (show error message)",
+        "After removal, member loses access to team resources",
+        "Log removal in audit log",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Update dashboard stats for team scope",
+      "description": "As a team member, I want dashboard statistics to reflect only my current team's resources.",
+      "acceptanceCriteria": [
+        "Modify GET /api/system/stats to accept team_id parameter",
+        "Filter app count, deployment count, etc. by team",
+        "Update frontend to pass team context to stats endpoint",
+        "Update cost summary to show team costs only",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Add personal/unassigned resources migration",
+      "description": "As a platform operator, I want existing resources assigned to a default team so that multi-tenancy works smoothly.",
+      "acceptanceCriteria": [
+        "Create migration to assign unassigned apps to user's first team",
+        "Create migration to assign unassigned projects to user's first team",
+        "Create migration to assign unassigned databases to user's first team",
+        "Create migration to assign unassigned services to user's first team",
+        "Add CLI command to run resource assignment: rivetr migrate-teams",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Build and start server for E2E testing",
+      "description": "As a QA engineer, I want a fresh build of backend and frontend running on port 8080 so that E2E tests can verify the implementation.",
+      "acceptanceCriteria": [
+        "Run cargo build --release to build the backend",
+        "Run npm run build in frontend/ directory to build the frontend",
+        "Stop any existing rivetr process on port 8080",
+        "Start the server with ./target/release/rivetr.exe --config rivetr.toml",
+        "Verify server is responding on http://localhost:8080",
+        "Verify /api/system/health returns healthy status"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "E2E test: Team switcher",
+      "description": "As a QA engineer, I want automated E2E tests for team switching so that we can verify the core flow works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to dashboard at http://localhost:8080",
+        "Verify team switcher is visible in sidebar",
+        "Test clicking switcher shows team dropdown",
+        "Test switching to a different team",
+        "Verify apps list updates after team switch",
+        "Verify team name updates in switcher",
+        "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "E2E test: Team invitations",
+      "description": "As a QA engineer, I want automated E2E tests for team invitations so that we can verify invite flow works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to team settings > Invitations tab",
+        "Test creating new invitation with email and role",
+        "Verify invitation appears in pending list",
+        "Test resend invitation button",
+        "Test revoke invitation button",
+        "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "E2E test: Team audit log",
+      "description": "As a QA engineer, I want automated E2E tests for the audit log so that we can verify activity tracking works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to team settings > Activity tab",
+        "Verify audit log table displays events",
+        "Test action type filter dropdown",
+        "Test date range filter",
+        "Test pagination (if enough events)",
+        "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

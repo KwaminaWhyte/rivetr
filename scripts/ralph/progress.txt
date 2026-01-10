@@ -1,13 +1,36 @@
 # Ralph Progress Log
-Started: Initial setup
+Started: 01/10/2026 11:27:17 (Team Flow PRD)
 ---
 
 ## Codebase Patterns
+- Team context is managed via React Context in frontend/app/lib/team-context.tsx
+- TeamSwitcher component already exists at frontend/app/components/team-switcher.tsx
+- API core supports X-Team-Id header via ApiRequestOptions.teamId
+- Dashboard layout (_layout.tsx) wraps authenticated routes with TeamProvider
 - Container runtime abstraction is in src/runtime/mod.rs (DockerRuntime, PodmanRuntime)
 - API routes use Axum in src/api/
 - Database uses SQLite with SQLx, migrations in migrations/
 - Frontend is React + TypeScript + shadcn/ui in frontend/
 - Use anyhow::Result for error handling in Rust code
 - State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
+- 2 pre-existing test failures in pack_builder and preview modules are unrelated to new work
 
+---
+
+## 01/10/2026 - US-001
+- Created TeamProvider context (frontend/app/lib/team-context.tsx)
+  - Stores currentTeamId in React state
+  - Persists to localStorage with key 'rivetr_current_team'
+  - Loads last active team on mount, or first team if none saved
+  - Invalidates relevant queries on team switch (apps, projects, databases, services, stats)
+- Updated API core (frontend/app/lib/api/core.ts)
+  - Added ApiRequestOptions interface with optional teamId
+  - Added X-Team-Id header support for team-scoped requests
+- Integrated TeamSwitcher into sidebar (frontend/app/components/app-sidebar.tsx)
+  - Connected existing TeamSwitcher component to team context
+- Wrapped dashboard layout with TeamProvider
+- **Learnings for future iterations:**
+  - TeamSwitcher component already existed and was well-designed
+  - Pre-existing test failures in pack_builder and preview modules
+  - Frontend uses React Query with query invalidation on context changes
 ---

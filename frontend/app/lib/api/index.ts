@@ -5,6 +5,7 @@
 
 // Re-export core utilities
 export { apiRequest, apiRawRequest, getStoredToken } from "./core";
+export type { ApiRequestOptions } from "./core";
 
 // Re-export domain-specific APIs
 export { projectsApi } from "./projects";
