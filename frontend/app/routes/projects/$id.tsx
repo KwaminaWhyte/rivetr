@@ -23,6 +23,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -156,6 +157,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isAddAppDialogOpen, setIsAddAppDialogOpen] = useState(false);
@@ -218,8 +220,9 @@ services:
   });
 
   const { data: allApps = [] } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryKey: ["apps", currentTeamId],
+    queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   const { data: templates = [] } = useQuery<ServiceTemplate[]>({
@@ -353,6 +356,7 @@ services:
         version: dbVersion,
         public_access: dbPublicAccess,
         project_id: id!,
+        team_id: currentTeamId ?? undefined,
         ...(dbUsername.trim() ? { username: dbUsername.trim() } : {}),
         ...(dbPassword.trim() ? { password: dbPassword.trim() } : {}),
         ...(dbDatabase.trim() ? { database: dbDatabase.trim() } : {}),

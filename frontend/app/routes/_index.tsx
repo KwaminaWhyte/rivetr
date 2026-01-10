@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -95,11 +96,14 @@ function StatCard({
 }
 
 export default function DashboardPage() {
+  const { currentTeamId } = useTeamContext();
+
   // Use React Query for real-time updates
   const { data: stats, isLoading: statsLoading } = useQuery<SystemStats | null>({
-    queryKey: ["system-stats"],
-    queryFn: () => api.getSystemStats(),
+    queryKey: ["system-stats", currentTeamId],
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
     refetchInterval: 10000, // Refresh every 10 seconds
+    enabled: currentTeamId !== null,
   });
 
   const { data: diskStats, isLoading: diskLoading } = useQuery<DiskStats | null>({

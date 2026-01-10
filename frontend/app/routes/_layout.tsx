@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useRequireAuth } from "@/lib/auth";
 import { BreadcrumbProvider, useBreadcrumb, type BreadcrumbItem as BreadcrumbItemType } from "@/lib/breadcrumb-context";
+import { TeamProvider } from "@/lib/team-context";
 
 // Static route titles as fallback
 const routeTitles: Record<string, BreadcrumbItemType[]> = {
@@ -203,8 +204,10 @@ function DashboardLayoutInner() {
 
 export default function DashboardLayout() {
   return (
-    <BreadcrumbProvider>
-      <DashboardLayoutInner />
-    </BreadcrumbProvider>
+    <TeamProvider>
+      <BreadcrumbProvider>
+        <DashboardLayoutInner />
+      </BreadcrumbProvider>
+    </TeamProvider>
   );
 }

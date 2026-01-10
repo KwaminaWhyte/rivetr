@@ -286,12 +286,23 @@
 - [x] **T2.7.4** Write deployment guide (DEPLOYMENT.md with install script, systemd service, SSL, backup/restore, troubleshooting)
 - [x] **T2.7.5** Write troubleshooting guide (included in DEPLOYMENT.md)
 - [x] **T2.7.6** Create one-liner install script (install.sh - auto-installs Docker, Rivetr, systemd service)
+- [x] **T2.7.7** Fix install script binary URL format and architecture detection
+- [x] **T2.7.8** Add systemd AmbientCapabilities for port 80/443 binding
+- [x] **T2.7.9** Add install script documentation to README
+
+### 2.8 Embedded Frontend ✅ COMPLETE
+
+- [x] **T2.8.1** Add rust-embed dependency for static file embedding
+- [x] **T2.8.2** Create StaticAssets struct with Embed derive
+- [x] **T2.8.3** Implement serve_embedded_static handler with MIME detection
+- [x] **T2.8.4** Add SPA fallback for client-side routing
+- [x] **T2.8.5** Set proper cache headers for assets vs HTML
 
 **Phase 2 Checkpoint**: Production-ready release
 
 ---
 
-## Phase 3: Enhanced Features - NOT STARTED
+## Phase 3: Enhanced Features ✅ COMPLETE
 
 ### 3.1 Project Organization
 
@@ -437,6 +448,66 @@
 - [x] **T3.16.3** Add registry authentication (username/password) - encrypted storage
 - [x] **T3.16.4** Support for private registries (Docker Hub, GHCR, etc.)
 - [x] **T3.16.5** Create Docker Registry section in app settings UI (tabs in new app form)
+
+### 3.18 Team Collaboration Flow ✅ COMPLETE
+
+Full multi-tenant team support with resource isolation and collaboration features.
+
+#### Team Context & Switching
+- [x] **T3.18.1** Add TeamProvider context (frontend/app/lib/team-context.tsx)
+- [x] **T3.18.2** Store currentTeamId in localStorage with persistence
+- [x] **T3.18.3** Add X-Team-Id header to API requests
+- [x] **T3.18.4** Add team switcher to sidebar (frontend/app/components/team-switcher.tsx)
+- [x] **T3.18.5** Add role badges to team dropdown (owner/admin/developer/viewer)
+- [x] **T3.18.6** Add "Create Team" option in team switcher
+- [x] **T3.18.7** Fix personal workspace switching (marker value in localStorage)
+
+#### Resource Scoping
+- [x] **T3.18.8** Add team_id filtering to GET /api/apps endpoint
+- [x] **T3.18.9** Add team_id filtering to GET /api/projects endpoint
+- [x] **T3.18.10** Add team_id to databases table (migration 032_databases_team.sql)
+- [x] **T3.18.11** Add team_id filtering to GET /api/databases endpoint
+- [x] **T3.18.12** Add team_id to services table (migration 033_services_team.sql)
+- [x] **T3.18.13** Add team_id filtering to GET /api/services endpoint
+- [x] **T3.18.14** Update frontend pages to pass team context to all queries
+
+#### Team Invitations
+- [x] **T3.18.15** Create team_invitations table (migration 034_team_invitations.sql)
+- [x] **T3.18.16** Add invitation endpoints (create, list, revoke, validate, accept)
+- [x] **T3.18.17** Generate secure 48-char tokens with 7-day expiry
+- [x] **T3.18.18** Add EmailConfig to config for SMTP settings
+- [x] **T3.18.19** Create SystemEmailService with invitation email templates
+- [x] **T3.18.20** Add Invitations tab to team settings page
+- [x] **T3.18.21** Create invitation accept route (/invitations/accept)
+- [x] **T3.18.22** Add login redirect with return URL support
+
+#### Team Audit Logging
+- [x] **T3.18.23** Create team_audit_logs table (migration 035_team_audit_logs.sql)
+- [x] **T3.18.24** Define TeamAuditAction enum (23 action types)
+- [x] **T3.18.25** Define TeamAuditResourceType enum (8 resource types)
+- [x] **T3.18.26** Add log_team_audit helper function
+- [x] **T3.18.27** Add audit logging to team operations (create, invite, role change, remove)
+- [x] **T3.18.28** Add audit logging to resource operations (apps, databases, services, projects, deployments)
+- [x] **T3.18.29** Add GET /api/teams/:id/audit-logs with pagination and filters
+- [x] **T3.18.30** Add Activity tab to team settings with filter dropdowns
+
+#### App Sharing
+- [x] **T3.18.31** Create app_shares table (migration 036_app_shares.sql)
+- [x] **T3.18.32** Add sharing endpoints (share, list shares, unshare)
+- [x] **T3.18.33** Add GET /api/apps/with-sharing for owned + shared apps
+- [x] **T3.18.34** Create AppSharingCard component for app settings
+- [x] **T3.18.35** Add "Shared" badge to shared apps in nav-apps
+
+#### Member Management
+- [x] **T3.18.36** Add user_role to TeamDetail response
+- [x] **T3.18.37** Add role change confirmation dialog
+- [x] **T3.18.38** Add member removal with confirmation
+- [x] **T3.18.39** Enforce role hierarchy (owners can change any, admins only lower roles)
+
+#### Team-scoped Stats & Migration
+- [x] **T3.18.40** Add team_id parameter to GET /api/system/stats
+- [x] **T3.18.41** Update dashboard and monitoring pages to pass team context
+- [x] **T3.18.42** Add CLI command `rivetr db migrate-teams` for legacy resource migration
 
 ---
 
@@ -687,12 +758,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 | --------- | ----------- | --------- | -------- |
 | Phase 0   | 30          | 28        | 93%      |
 | Phase 1   | 94          | 94        | 100%     |
-| Phase 2   | 31          | 31        | 100%     |
-| Phase 3   | 94          | 88        | 94%      |
+| Phase 2   | 39          | 39        | 100%     |
+| Phase 3   | 136         | 130       | 96%      |
 | Phase 4   | 61          | 61        | 100%     |
 | Phase 5   | 30          | 20        | 67%      |
 | Phase 6   | 28          | 0         | 0%       |
-| **Total** | **368**     | **322**   | **88%**  |
+| **Total** | **418**     | **372**   | **89%**  |
 
 ---
 
@@ -862,6 +933,8 @@ _No active bugs - all recently identified issues have been fixed._
 - **GitHub App Integration** - Full GitHub App manifest registration, OAuth installation flow, installation tokens, auto-configured webhooks, repository browser with branch selection (github-repo-picker.tsx), system-wide sharing, settings UI in git-providers.tsx.
 - **CLI Tool** - Full command-line interface with `rivetr status`, `rivetr apps list/show`, `rivetr deploy <app>`, `rivetr logs <app> [--follow]`, `rivetr config check`. Supports `--api-url` and `--token` flags with environment variable fallbacks (RIVETR_API_URL, RIVETR_TOKEN).
 - **Metrics Storage with Retention** - SQLite-based metrics aggregation with stats_hourly/stats_daily tables, configurable retention policies (7 days raw, 30 days hourly, 365 days daily), background aggregation task, and GET /api/system/stats/summary endpoint for system-wide metrics.
+- **Embedded Frontend Assets** - Frontend static files now embedded in binary using rust-embed. Single binary deployment with no external files needed. Proper MIME types, cache headers, and SPA fallback for client-side routing.
+- **Install Script Fixes** - Production install script (install.sh) fixed: corrected GitHub releases URL format (rivetr-v{VERSION}-linux-{ARCH}), fixed architecture detection, added AmbientCapabilities for port 80/443 binding, automatic build dependency installation for source compilation fallback. Tested on Ubuntu 24.04 LTS.
 
 ### Known Deployment Issues (User Repository Issues)
 

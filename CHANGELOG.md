@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Team Collaboration (Multi-tenant)** - Full multi-tenant team support with resource isolation:
+  - **Team Switching** - Sidebar team switcher with persistent context across sessions
+  - **Resource Scoping** - Apps, projects, databases, and services scoped to teams via `team_id` columns
+  - **Team Invitations** - Email-based invitation system with secure tokens and 7-day expiry
+  - **Invitation Emails** - Professional HTML/text email templates via configurable SMTP
+  - **Invitation Accept Flow** - Complete invite acceptance with login redirect support
+  - **Audit Logging** - 23 action types tracking all team and resource operations
+  - **Audit Log UI** - Paginated activity log with action, resource type, and date filters
+  - **App Sharing** - Share apps between teams with view-only permissions
+  - **Member Management** - Role changes with hierarchy (owner > admin > developer > viewer)
+  - **Member Removal** - Remove team members with proper role-based access control
+  - **Team-scoped Stats** - Dashboard statistics filtered by current team context
+  - **Migration CLI** - `rivetr db migrate-teams` command to migrate legacy resources to teams
+  - **Personal Workspace** - "Personal (default)" option for resources without team context
+
+- **Embedded Frontend Assets** - Frontend static files are now embedded in the binary using `rust-embed`:
+  - Single binary deployment - no external static files needed
+  - Compressed assets with proper cache headers
+  - SPA fallback for client-side routing
+  - MIME type detection for all asset types
+
 - **CLI Tool** - Full command-line interface:
   - `rivetr status` - Show server health, version, uptime, and resource usage
   - `rivetr apps list` - List all applications in a formatted table
@@ -23,6 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Background aggregation task running hourly
   - Configurable retention policies via `[stats_retention]` config section
   - New `GET /api/system/stats/summary` endpoint for system-wide metrics
+
+### Fixed
+- **Team Switcher** - Fixed switching to Personal workspace after creating other teams:
+  - Personal workspace selection now persists correctly using a marker value in localStorage
+  - Distinguished between "no preference yet" and "explicitly chose personal workspace"
+
+- **Install Script** - Fixed production installation script (`install.sh`):
+  - Corrected binary download URL format to match GitHub releases (`rivetr-v{VERSION}-linux-{ARCH}`)
+  - Fixed architecture detection (`x86_64` and `aarch64` instead of `amd64`/`arm64`)
+  - Added `AmbientCapabilities=CAP_NET_BIND_SERVICE` to systemd service for port 80/443 binding
+  - Added automatic build dependency installation for source compilation fallback
+  - Added dynamic version fetching from GitHub API when `RIVETR_VERSION=latest`
 
 ### Planned
 - Preview deployments for pull requests

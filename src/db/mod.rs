@@ -383,7 +383,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
-    // Migration 032: Add resource_metrics table for per-app resource monitoring
+    // Migration 032a: Add team_id to databases table
+    let has_databases_team_id: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('databases') WHERE name = 'team_id'")
+            .fetch_optional(pool)
+            .await?;
+    if has_databases_team_id.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/032_databases_team.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 032b: Add resource_metrics table for per-app resource monitoring
     let has_resource_metrics_table: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='resource_metrics'",
     )
@@ -397,7 +410,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
-    // Migration 033: Add alert_configs and global_alert_defaults tables
+    // Migration 033a: Add team_id to services table
+    let has_services_team_id: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('services') WHERE name = 'team_id'")
+            .fetch_optional(pool)
+            .await?;
+    if has_services_team_id.is_none() {
+        execute_sql(pool, include_str!("../../migrations/033_services_team.sql")).await?;
+    }
+
+    // Migration 033b: Add alert_configs and global_alert_defaults tables
     let has_alert_configs_table: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='alert_configs'",
     )
@@ -407,7 +429,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/033_alert_configs.sql")).await?;
     }
 
-    // Migration 034: Add alert_events and alert_breach_counts tables
+    // Migration 034a: Add team_invitations table for email-based invitations
+    let has_team_invitations_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_invitations'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_invitations_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/034_team_invitations.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 034b: Add alert_events and alert_breach_counts tables
     let has_alert_events_table: Option<(String,)> =
         sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='alert_events'")
             .fetch_optional(pool)
@@ -416,7 +452,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/034_alert_events.sql")).await?;
     }
 
-    // Migration 035: Add team_id to notification_channels for team-scoped notifications
+    // Migration 035a: Add team_audit_logs table for tracking team activities
+    let has_team_audit_logs_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_audit_logs'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_audit_logs_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/035_team_audit_logs.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 035b: Add team_id to notification_channels for team-scoped notifications
     let has_team_id_in_notification_channels: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM pragma_table_info('notification_channels') WHERE name = 'team_id'",
     )
@@ -430,7 +480,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
-    // Migration 036: Add cost_rates table for resource cost estimation
+    // Migration 036a: Add app_shares table for sharing apps between teams
+    let has_app_shares_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='app_shares'")
+            .fetch_optional(pool)
+            .await?;
+    if has_app_shares_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/036_app_shares.sql")).await?;
+    }
+
+    // Migration 036b: Add cost_rates table for resource cost estimation
     let has_cost_rates_table: Option<(String,)> =
         sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='cost_rates'")
             .fetch_optional(pool)

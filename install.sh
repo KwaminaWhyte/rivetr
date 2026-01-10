@@ -15,12 +15,12 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-RIVETR_VERSION="${RIVETR_VERSION:-latest}"
+RIVETR_VERSION="${RIVETR_VERSION:-v0.2.3}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/rivetr}"
 DATA_DIR="${DATA_DIR:-/var/lib/rivetr}"
 CONFIG_FILE="$INSTALL_DIR/rivetr.toml"
-BINARY_URL="https://github.com/KwaminaWhyte/rivetr/releases/download/${RIVETR_VERSION}/rivetr-linux-amd64"
 SERVICE_USER="rivetr"
+GITHUB_REPO="KwaminaWhyte/rivetr"
 
 # Colors
 RED='\033[0;31m'
@@ -72,10 +72,10 @@ detect_arch() {
     ARCH=$(uname -m)
     case "$ARCH" in
         x86_64|amd64)
-            ARCH="amd64"
+            ARCH="x86_64"
             ;;
         aarch64|arm64)
-            ARCH="arm64"
+            ARCH="aarch64"
             ;;
         *)
             error "Unsupported architecture: $ARCH"
@@ -210,12 +210,8 @@ install_railpack() {
     info "Installing Railpack..."
 
     # Try downloading binary directly from GitHub releases
+    # ARCH is already x86_64 or aarch64 from detect_arch
     local RAILPACK_ARCH="$ARCH"
-    if [ "$ARCH" = "amd64" ]; then
-        RAILPACK_ARCH="x86_64"
-    elif [ "$ARCH" = "arm64" ]; then
-        RAILPACK_ARCH="aarch64"
-    fi
 
     # Try latest release binary
     local RAILPACK_URL="https://github.com/railwayapp/railpack/releases/latest/download/railpack-${RAILPACK_ARCH}-unknown-linux-gnu.tar.gz"
@@ -286,7 +282,7 @@ install_pack_cli() {
     for PACK_VERSION in "0.36.1" "0.35.1" "0.34.2"; do
         local PACK_URL="https://github.com/buildpacks/pack/releases/download/v${PACK_VERSION}/pack-v${PACK_VERSION}-linux"
 
-        if [ "$ARCH" = "amd64" ]; then
+        if [ "$ARCH" = "x86_64" ]; then
             PACK_URL="${PACK_URL}.tgz"
         else
             PACK_URL="${PACK_URL}-arm64.tgz"
@@ -366,11 +362,20 @@ create_directories() {
     success "Created directories"
 }
 
+fetch_latest_version() {
+    # Fetch latest release version from GitHub API
+    local latest_version
+    latest_version=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+    if [ -n "$latest_version" ]; then
+        echo "$latest_version"
+    else
+        echo "$RIVETR_VERSION"
+    fi
+}
+
 download_binary() {
     info "Downloading Rivetr binary..."
 
-    # For now, we'll build from source if no binary available
-    # In production, this would download from releases
     local BINARY_PATH="$INSTALL_DIR/rivetr"
 
     # Check if we have a local binary (for testing)
@@ -381,11 +386,27 @@ download_binary() {
         cp "$RIVETR_BINARY_PATH" "$BINARY_PATH"
         success "Copied binary from $RIVETR_BINARY_PATH"
     else
+        # Resolve version (fetch latest if set to "latest")
+        local VERSION="$RIVETR_VERSION"
+        if [ "$VERSION" = "latest" ]; then
+            info "Fetching latest release version..."
+            VERSION=$(fetch_latest_version)
+            info "Latest version: $VERSION"
+        fi
+
+        # Construct the correct download URL
+        # Format: rivetr-v0.2.3-linux-x86_64
+        local BINARY_URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/rivetr-${VERSION}-linux-${ARCH}"
+
+        info "Downloading from: $BINARY_URL"
+
         # Try to download from releases
         if curl -fsSL -o "$BINARY_PATH" "$BINARY_URL" 2>/dev/null; then
-            success "Downloaded binary from GitHub releases"
+            success "Downloaded binary from GitHub releases (${VERSION})"
         else
-            warn "Cannot download binary. Building from source..."
+            warn "Cannot download binary from releases."
+            warn "URL attempted: $BINARY_URL"
+            warn "Building from source..."
             build_from_source
             return
         fi
@@ -393,10 +414,33 @@ download_binary() {
 
     chmod +x "$BINARY_PATH"
     chown "$SERVICE_USER:$SERVICE_USER" "$BINARY_PATH"
+
+    # Allow binding to privileged ports (80, 443) without running as root
+    if command_exists setcap; then
+        setcap 'cap_net_bind_service=+ep' "$BINARY_PATH"
+        success "Set CAP_NET_BIND_SERVICE capability on binary"
+    else
+        warn "setcap not found. Install libcap2-bin to allow binding to ports < 1024"
+    fi
 }
 
 build_from_source() {
     info "Building Rivetr from source..."
+
+    # Install build dependencies
+    info "Installing build dependencies..."
+    case "$OS" in
+        ubuntu|debian)
+            apt-get update -qq
+            apt-get install -y -qq build-essential pkg-config libssl-dev
+            ;;
+        fedora)
+            dnf install -y gcc pkg-config openssl-devel
+            ;;
+        centos|rhel|rocky|almalinux)
+            yum install -y gcc pkg-config openssl-devel
+            ;;
+    esac
 
     # Install Rust if needed
     if ! command_exists cargo; then
@@ -407,7 +451,7 @@ build_from_source() {
     # Clone and build
     local BUILD_DIR="/tmp/rivetr-build"
     rm -rf "$BUILD_DIR"
-    git clone --depth 1 https://github.com/KwaminaWhyte/rivetr.git "$BUILD_DIR"
+    git clone --depth 1 https://github.com/${GITHUB_REPO}.git "$BUILD_DIR"
     cd "$BUILD_DIR"
     cargo build --release
 
@@ -531,11 +575,14 @@ Restart=always
 RestartSec=10
 
 # Security hardening
-NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=$DATA_DIR
 PrivateTmp=true
+
+# Allow binding to privileged ports (80, 443)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 # Environment
 Environment=RUST_LOG=info

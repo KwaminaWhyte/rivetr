@@ -5,6 +5,7 @@
 
 // Re-export core utilities
 export { apiRequest, apiRawRequest, getStoredToken } from "./core";
+export type { ApiRequestOptions } from "./core";
 
 // Re-export domain-specific APIs
 export { projectsApi } from "./projects";
@@ -99,9 +100,9 @@ export const api = {
   // Git Providers
   getGitProviders: gitApi.getGitProviders,
   getGitProvider: gitApi.getGitProvider,
+  addGitProvider: gitApi.addGitProvider,
   deleteGitProvider: gitApi.deleteGitProvider,
   getGitProviderRepos: gitApi.getGitProviderRepos,
-  getGitProviderAuthUrl: gitApi.getGitProviderAuthUrl,
 
   // GitHub Apps
   getGitHubApps: gitApi.getGitHubApps,
@@ -160,6 +161,15 @@ export const api = {
   inviteTeamMember: teamsApi.inviteTeamMember,
   updateTeamMemberRole: teamsApi.updateTeamMemberRole,
   removeTeamMember: teamsApi.removeTeamMember,
+  // Team Invitations
+  getTeamInvitations: teamsApi.getTeamInvitations,
+  createTeamInvitation: teamsApi.createTeamInvitation,
+  deleteTeamInvitation: teamsApi.deleteTeamInvitation,
+  resendTeamInvitation: teamsApi.resendTeamInvitation,
+  validateInvitation: teamsApi.validateInvitation,
+  acceptInvitation: teamsApi.acceptInvitation,
+  // Team Audit Logs
+  getTeamAuditLogs: teamsApi.getTeamAuditLogs,
 
   // Notifications
   getNotificationChannels: notificationsApi.getNotificationChannels,
@@ -169,8 +179,10 @@ export const api = {
   deleteNotificationChannel: notificationsApi.deleteNotificationChannel,
   testNotificationChannel: notificationsApi.testNotificationChannel,
   getNotificationSubscriptions: notificationsApi.getNotificationSubscriptions,
-  createNotificationSubscription: notificationsApi.createNotificationSubscription,
-  deleteNotificationSubscription: notificationsApi.deleteNotificationSubscription,
+  createNotificationSubscription:
+    notificationsApi.createNotificationSubscription,
+  deleteNotificationSubscription:
+    notificationsApi.deleteNotificationSubscription,
 
   // Team Notification Channels
   getTeamNotificationChannels: notificationsApi.getTeamNotificationChannels,

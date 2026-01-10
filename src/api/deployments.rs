@@ -8,7 +8,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
-use crate::db::{actions, resource_types, App, Deployment, DeploymentLog, User};
+use crate::db::{
+    actions, resource_types, App, Deployment, DeploymentLog, TeamAuditAction,
+    TeamAuditResourceType, User,
+};
 use crate::engine::{
     detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult,
 };
@@ -18,6 +21,7 @@ use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
 use super::error::ApiError;
+use super::teams::log_team_audit;
 use super::validation::validate_uuid;
 
 /// Key length for AES-256 encryption
@@ -218,6 +222,26 @@ pub async fn trigger_deploy(
         })),
     )
     .await;
+
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DeploymentTriggered,
+            TeamAuditResourceType::Deployment,
+            Some(&deployment.id),
+            Some(serde_json::json!({
+                "app_id": app.id,
+                "app_name": app.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     Ok((StatusCode::ACCEPTED, Json(deployment)))
 }
@@ -479,6 +503,27 @@ pub async fn rollback_deployment(
         .bind(&rollback_id)
         .fetch_one(&state.db)
         .await?;
+
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            None, // User context not available in this function
+            TeamAuditAction::DeploymentRolledBack,
+            TeamAuditResourceType::Deployment,
+            Some(&deployment.id),
+            Some(serde_json::json!({
+                "app_id": app.id,
+                "app_name": app.name,
+                "target_deployment_id": target_deployment.id,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     Ok((StatusCode::ACCEPTED, Json(deployment)))
 }
@@ -764,6 +809,28 @@ pub async fn upload_deploy(
         })),
     )
     .await;
+
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DeploymentTriggered,
+            TeamAuditResourceType::Deployment,
+            Some(&deployment.id),
+            Some(serde_json::json!({
+                "app_id": app.id,
+                "app_name": app.name,
+                "source": "upload",
+                "build_type": build_type_str,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     Ok((
         StatusCode::ACCEPTED,

@@ -12,7 +12,8 @@ use uuid::Uuid;
 
 use crate::db::{
     actions, resource_types, CreateManagedDatabaseRequest, DatabaseCredentials, DatabaseStatus,
-    DatabaseType, ManagedDatabase, ManagedDatabaseResponse, User,
+    DatabaseType, ManagedDatabase, ManagedDatabaseResponse, TeamAuditAction, TeamAuditResourceType,
+    User,
 };
 use crate::engine::database_config::{
     generate_env_vars, generate_password, generate_username, get_config,
@@ -21,11 +22,14 @@ use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
+use super::teams::log_team_audit;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     #[serde(default)]
     pub reveal: bool,
+    /// Filter by team ID
+    pub team_id: Option<String>,
 }
 
 /// List all managed databases
@@ -33,14 +37,33 @@ pub async fn list_databases(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ManagedDatabaseResponse>>, StatusCode> {
-    let databases =
+    let databases = if let Some(team_id) = &query.team_id {
+        // Filter by team_id
+        // Also include databases with NULL team_id if team_id is empty (for backward compatibility)
+        if team_id.is_empty() {
+            sqlx::query_as::<_, ManagedDatabase>(
+                "SELECT * FROM databases WHERE team_id IS NULL ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await
+        } else {
+            sqlx::query_as::<_, ManagedDatabase>(
+                "SELECT * FROM databases WHERE team_id = ? ORDER BY created_at DESC",
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await
+        }
+    } else {
+        // No filter, return all databases
         sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases ORDER BY created_at DESC")
             .fetch_all(&state.db)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to list databases: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to list databases: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let host = Some(state.config.server.host.as_str());
     let responses: Vec<ManagedDatabaseResponse> = databases
@@ -149,8 +172,8 @@ pub async fn create_database(
         INSERT INTO databases (
             id, name, db_type, version, status, internal_port, external_port,
             public_access, credentials, volume_name, volume_path, memory_limit,
-            cpu_limit, project_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cpu_limit, project_id, team_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -167,6 +190,7 @@ pub async fn create_database(
     .bind(req.memory_limit.as_deref().unwrap_or("512mb"))
     .bind(req.cpu_limit.as_deref().unwrap_or("0.5"))
     .bind(&req.project_id)
+    .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -221,6 +245,27 @@ pub async fn create_database(
         })),
     )
     .await;
+
+    // Log team audit event if database belongs to a team
+    if let Some(ref team_id) = database.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DatabaseCreated,
+            TeamAuditResourceType::Database,
+            Some(&database.id),
+            Some(serde_json::json!({
+                "database_name": database.name,
+                "db_type": req.db_type.to_string(),
+                "version": version,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     let host = Some(state.config.server.host.as_str());
     Ok((StatusCode::CREATED, Json(database.to_response(true, host))))
@@ -277,6 +322,25 @@ pub async fn delete_database(
         None,
     )
     .await;
+
+    // Log team audit event if database belonged to a team
+    if let Some(ref team_id) = database.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DatabaseDeleted,
+            TeamAuditResourceType::Database,
+            Some(&database.id),
+            Some(serde_json::json!({
+                "database_name": database.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!("Deleted managed database: {}", database.name);
     Ok(StatusCode::NO_CONTENT)

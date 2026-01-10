@@ -123,6 +123,8 @@ pub struct ManagedDatabase {
     pub error_message: Option<String>,
     /// Associated project ID
     pub project_id: Option<String>,
+    /// Associated team ID for multi-tenancy
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -265,6 +267,7 @@ pub struct ManagedDatabaseResponse {
     pub external_connection_string: Option<String>,
     pub error_message: Option<String>,
     pub project_id: Option<String>,
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -309,6 +312,7 @@ impl ManagedDatabase {
                 .and_then(|h| self.external_connection_string(h)),
             error_message: self.error_message.clone(),
             project_id: self.project_id.clone(),
+            team_id: self.team_id.clone(),
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
         }
@@ -340,6 +344,8 @@ pub struct CreateManagedDatabaseRequest {
     pub cpu_limit: Option<String>,
     /// Associated project ID
     pub project_id: Option<String>,
+    /// Associated team ID for multi-tenancy
+    pub team_id: Option<String>,
 }
 
 fn default_db_version() -> String {

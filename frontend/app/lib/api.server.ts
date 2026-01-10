@@ -82,7 +82,10 @@ async function apiRequest<T>(
 
 export const api = {
   // Apps
-  getApps: (token: string) => apiRequest<App[]>("/apps", token),
+  getApps: (token: string, teamId?: string) => {
+    const params = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+    return apiRequest<App[]>(`/apps${params}`, token);
+  },
   getApp: (token: string, id: string) => apiRequest<App>(`/apps/${id}`, token),
   createApp: (token: string, data: CreateAppRequest) =>
     apiRequest<App>("/apps", token, {
@@ -116,7 +119,10 @@ export const api = {
     apiRequest<AppStatus>(`/apps/${id}/stop`, token, { method: "POST" }),
 
   // Projects
-  getProjects: (token: string) => apiRequest<Project[]>("/projects", token),
+  getProjects: (token: string, teamId?: string) => {
+    const params = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+    return apiRequest<Project[]>(`/projects${params}`, token);
+  },
   getProject: (token: string, id: string) =>
     apiRequest<ProjectWithApps>(`/projects/${id}`, token),
   createProject: (token: string, data: CreateProjectRequest) =>
@@ -345,9 +351,18 @@ export const api = {
     apiRequest<void>(`/volumes/${volumeId}`, token, { method: "DELETE" }),
 
   // Managed Databases
-  getDatabases: (token: string, reveal = false) => {
-    const params = reveal ? "?reveal=true" : "";
-    return apiRequest<ManagedDatabase[]>(`/databases${params}`, token);
+  getDatabases: (
+    token: string,
+    options: { reveal?: boolean; teamId?: string } = {}
+  ) => {
+    const params = new URLSearchParams();
+    if (options.reveal) params.append("reveal", "true");
+    if (options.teamId) params.append("team_id", options.teamId);
+    const queryString = params.toString();
+    return apiRequest<ManagedDatabase[]>(
+      `/databases${queryString ? `?${queryString}` : ""}`,
+      token
+    );
   },
   getDatabase: (token: string, id: string, reveal = false) => {
     const params = reveal ? "?reveal=true" : "";
@@ -370,7 +385,15 @@ export const api = {
     }),
 
   // Docker Compose Services
-  getServices: (token: string) => apiRequest<Service[]>("/services", token),
+  getServices: (options: { teamId?: string }, token: string) => {
+    const params = new URLSearchParams();
+    if (options.teamId !== undefined) {
+      params.set("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    const url = queryString ? `/services?${queryString}` : "/services";
+    return apiRequest<Service[]>(url, token);
+  },
   getService: (token: string, id: string) =>
     apiRequest<Service>(`/services/${id}`, token),
   createService: (token: string, data: CreateServiceRequest) =>

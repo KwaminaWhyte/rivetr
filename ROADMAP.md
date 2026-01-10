@@ -6,14 +6,14 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 
 ## Current Status
 
-**Overall Progress: 88% Complete (322/368 tasks)**
+**Overall Progress: 89% Complete (372/418 tasks)**
 
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Foundation | Complete | 93% |
 | Phase 1: Core Engine (MVP) | Complete | 100% |
 | Phase 2: Production Ready | Complete | 100% |
-| Phase 3: Enhanced Features | In Progress | 94% |
+| Phase 3: Enhanced Features | Complete | 96% |
 | Phase 4: Platform Services | Complete | 100% |
 | Phase 5: Advanced CI/CD | In Progress | 67% |
 | Phase 6: Unique Features | Planned | 0% |
@@ -35,6 +35,18 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 - 26 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, etc.)
 - Automated database backup scheduling with retention policies
 
+### Team Collaboration ✅ NEW
+Full multi-tenant team support with resource isolation.
+
+- **Team Switching** - Switch between teams with persistent context
+- **Resource Scoping** - Apps, projects, databases, and services scoped to teams
+- **Team Invitations** - Email-based invitation system with 7-day expiry
+- **Audit Logging** - Complete activity tracking for team operations
+- **App Sharing** - Share apps between teams with view permissions
+- **Member Management** - Role changes and member removal with role hierarchy
+- **Team-scoped Stats** - Dashboard statistics filtered by current team
+- **Migration CLI** - `rivetr db migrate-teams` to migrate legacy resources
+
 ### Security & Operations
 - HTTPS with automatic Let's Encrypt certificates and auto-renewal
 - Team management with RBAC (owner/admin/developer/viewer roles)
@@ -48,6 +60,8 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 - Browser-based terminal access to containers (xterm.js)
 - GitHub App integration for seamless repository access
 - Environment variables with encrypted secret storage
+- **Single binary deployment** - Frontend embedded in binary, no external files needed
+- **One-liner production install** - `curl | bash` installs Docker, Rivetr, and systemd service
 
 ---
 

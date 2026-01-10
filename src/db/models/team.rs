@@ -186,6 +186,8 @@ pub struct TeamDetail {
     pub created_at: String,
     pub updated_at: String,
     pub members: Vec<TeamMemberWithUser>,
+    /// Current user's role in this team
+    pub user_role: Option<String>,
 }
 
 /// Request to create a new team
@@ -216,4 +218,273 @@ pub struct InviteMemberRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateMemberRoleRequest {
     pub role: String,
+}
+
+/// Team invitation entity for email-based invitations
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TeamInvitation {
+    pub id: String,
+    pub team_id: String,
+    pub email: String,
+    pub role: String,
+    pub token: String,
+    pub expires_at: String,
+    pub accepted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+}
+
+impl TeamInvitation {
+    /// Check if the invitation has expired
+    pub fn is_expired(&self) -> bool {
+        if let Ok(expires) = chrono::DateTime::parse_from_rfc3339(&self.expires_at) {
+            expires < chrono::Utc::now()
+        } else {
+            true // Treat parse errors as expired
+        }
+    }
+
+    /// Check if the invitation has been accepted
+    pub fn is_accepted(&self) -> bool {
+        self.accepted_at.is_some()
+    }
+}
+
+/// Team invitation response for API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamInvitationResponse {
+    pub id: String,
+    pub team_id: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: String,
+    pub accepted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+    /// Team name (for display purposes)
+    pub team_name: Option<String>,
+    /// Inviter name (for display purposes)
+    pub inviter_name: Option<String>,
+}
+
+impl From<TeamInvitation> for TeamInvitationResponse {
+    fn from(inv: TeamInvitation) -> Self {
+        Self {
+            id: inv.id,
+            team_id: inv.team_id,
+            email: inv.email,
+            role: inv.role,
+            expires_at: inv.expires_at,
+            accepted_at: inv.accepted_at,
+            created_by: inv.created_by,
+            created_at: inv.created_at,
+            team_name: None,
+            inviter_name: None,
+        }
+    }
+}
+
+/// Request to create a team invitation
+#[derive(Debug, Deserialize)]
+pub struct CreateInvitationRequest {
+    /// Email address to invite
+    pub email: String,
+    /// Role to assign (owner, admin, developer, viewer)
+    pub role: String,
+}
+
+/// Team audit log action types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamAuditAction {
+    // Team operations
+    TeamCreated,
+    TeamUpdated,
+    TeamDeleted,
+
+    // Member operations
+    MemberInvited,
+    MemberJoined,
+    MemberRemoved,
+    RoleChanged,
+
+    // Invitation operations
+    InvitationCreated,
+    InvitationRevoked,
+    InvitationAccepted,
+    InvitationResent,
+
+    // App operations
+    AppCreated,
+    AppUpdated,
+    AppDeleted,
+
+    // Project operations
+    ProjectCreated,
+    ProjectUpdated,
+    ProjectDeleted,
+
+    // Database operations
+    DatabaseCreated,
+    DatabaseDeleted,
+
+    // Service operations
+    ServiceCreated,
+    ServiceDeleted,
+
+    // Deployment operations
+    DeploymentTriggered,
+    DeploymentRolledBack,
+}
+
+impl std::fmt::Display for TeamAuditAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TeamAuditAction::TeamCreated => "team_created",
+            TeamAuditAction::TeamUpdated => "team_updated",
+            TeamAuditAction::TeamDeleted => "team_deleted",
+            TeamAuditAction::MemberInvited => "member_invited",
+            TeamAuditAction::MemberJoined => "member_joined",
+            TeamAuditAction::MemberRemoved => "member_removed",
+            TeamAuditAction::RoleChanged => "role_changed",
+            TeamAuditAction::InvitationCreated => "invitation_created",
+            TeamAuditAction::InvitationRevoked => "invitation_revoked",
+            TeamAuditAction::InvitationAccepted => "invitation_accepted",
+            TeamAuditAction::InvitationResent => "invitation_resent",
+            TeamAuditAction::AppCreated => "app_created",
+            TeamAuditAction::AppUpdated => "app_updated",
+            TeamAuditAction::AppDeleted => "app_deleted",
+            TeamAuditAction::ProjectCreated => "project_created",
+            TeamAuditAction::ProjectUpdated => "project_updated",
+            TeamAuditAction::ProjectDeleted => "project_deleted",
+            TeamAuditAction::DatabaseCreated => "database_created",
+            TeamAuditAction::DatabaseDeleted => "database_deleted",
+            TeamAuditAction::ServiceCreated => "service_created",
+            TeamAuditAction::ServiceDeleted => "service_deleted",
+            TeamAuditAction::DeploymentTriggered => "deployment_triggered",
+            TeamAuditAction::DeploymentRolledBack => "deployment_rolled_back",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl std::str::FromStr for TeamAuditAction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "team_created" => Ok(TeamAuditAction::TeamCreated),
+            "team_updated" => Ok(TeamAuditAction::TeamUpdated),
+            "team_deleted" => Ok(TeamAuditAction::TeamDeleted),
+            "member_invited" => Ok(TeamAuditAction::MemberInvited),
+            "member_joined" => Ok(TeamAuditAction::MemberJoined),
+            "member_removed" => Ok(TeamAuditAction::MemberRemoved),
+            "role_changed" => Ok(TeamAuditAction::RoleChanged),
+            "invitation_created" => Ok(TeamAuditAction::InvitationCreated),
+            "invitation_revoked" => Ok(TeamAuditAction::InvitationRevoked),
+            "invitation_accepted" => Ok(TeamAuditAction::InvitationAccepted),
+            "invitation_resent" => Ok(TeamAuditAction::InvitationResent),
+            "app_created" => Ok(TeamAuditAction::AppCreated),
+            "app_updated" => Ok(TeamAuditAction::AppUpdated),
+            "app_deleted" => Ok(TeamAuditAction::AppDeleted),
+            "project_created" => Ok(TeamAuditAction::ProjectCreated),
+            "project_updated" => Ok(TeamAuditAction::ProjectUpdated),
+            "project_deleted" => Ok(TeamAuditAction::ProjectDeleted),
+            "database_created" => Ok(TeamAuditAction::DatabaseCreated),
+            "database_deleted" => Ok(TeamAuditAction::DatabaseDeleted),
+            "service_created" => Ok(TeamAuditAction::ServiceCreated),
+            "service_deleted" => Ok(TeamAuditAction::ServiceDeleted),
+            "deployment_triggered" => Ok(TeamAuditAction::DeploymentTriggered),
+            "deployment_rolled_back" => Ok(TeamAuditAction::DeploymentRolledBack),
+            _ => Err(format!("Unknown audit action: {}", s)),
+        }
+    }
+}
+
+/// Resource types for audit logs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamAuditResourceType {
+    Team,
+    Member,
+    Invitation,
+    App,
+    Project,
+    Database,
+    Service,
+    Deployment,
+}
+
+impl std::fmt::Display for TeamAuditResourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TeamAuditResourceType::Team => "team",
+            TeamAuditResourceType::Member => "member",
+            TeamAuditResourceType::Invitation => "invitation",
+            TeamAuditResourceType::App => "app",
+            TeamAuditResourceType::Project => "project",
+            TeamAuditResourceType::Database => "database",
+            TeamAuditResourceType::Service => "service",
+            TeamAuditResourceType::Deployment => "deployment",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl std::str::FromStr for TeamAuditResourceType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "team" => Ok(TeamAuditResourceType::Team),
+            "member" => Ok(TeamAuditResourceType::Member),
+            "invitation" => Ok(TeamAuditResourceType::Invitation),
+            "app" => Ok(TeamAuditResourceType::App),
+            "project" => Ok(TeamAuditResourceType::Project),
+            "database" => Ok(TeamAuditResourceType::Database),
+            "service" => Ok(TeamAuditResourceType::Service),
+            "deployment" => Ok(TeamAuditResourceType::Deployment),
+            _ => Err(format!("Unknown resource type: {}", s)),
+        }
+    }
+}
+
+/// Team audit log entry
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TeamAuditLog {
+    pub id: String,
+    pub team_id: String,
+    pub user_id: Option<String>,
+    pub action: String,
+    pub resource_type: String,
+    pub resource_id: Option<String>,
+    pub details: Option<String>,
+    pub created_at: String,
+}
+
+/// Team audit log response for API with user details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamAuditLogResponse {
+    pub id: String,
+    pub team_id: String,
+    pub user_id: Option<String>,
+    pub action: String,
+    pub resource_type: String,
+    pub resource_id: Option<String>,
+    pub details: Option<serde_json::Value>,
+    pub created_at: String,
+    /// User's name for display
+    pub user_name: Option<String>,
+    /// User's email for display
+    pub user_email: Option<String>,
+}
+
+/// Paginated response for audit logs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamAuditLogPage {
+    pub items: Vec<TeamAuditLogResponse>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+    pub total_pages: i32,
 }

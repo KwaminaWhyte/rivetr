@@ -75,10 +75,18 @@ export default function LoginPage() {
         throw new Error(errorText || "Invalid email or password");
       }
 
-      // Store token and navigate to dashboard
+      // Store token and navigate to return URL or dashboard
       const data = await response.json();
       setAuthToken(data.token);
-      navigate("/", { replace: true });
+
+      // Check for return URL (e.g., from invitation accept flow)
+      const returnUrl = localStorage.getItem("rivetr_return_url");
+      if (returnUrl) {
+        localStorage.removeItem("rivetr_return_url");
+        navigate(returnUrl, { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setIsSubmitting(false);

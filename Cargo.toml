@@ -97,6 +97,10 @@ flate2 = "1.1.5"
 tempfile = "3.24.0"
 tokio-util = { version = "0.7.17", features = ["io"] }
 
+# Embedded static files
+rust-embed = { version = "8", features = ["compression"] }
+mime_guess = "2"
+
 # Platform-specific dependencies
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -21,9 +21,19 @@ export const databasesApi = {
   // -------------------------------------------------------------------------
 
   /** List all databases */
-  getDatabases: (reveal = false, token?: string) => {
-    const params = reveal ? "?reveal=true" : "";
-    return apiRequest<ManagedDatabase[]>(`/databases${params}`, {}, token);
+  getDatabases: (
+    options: { reveal?: boolean; teamId?: string } = {},
+    token?: string
+  ) => {
+    const params = new URLSearchParams();
+    if (options.reveal) params.append("reveal", "true");
+    if (options.teamId) params.append("team_id", options.teamId);
+    const queryString = params.toString();
+    return apiRequest<ManagedDatabase[]>(
+      `/databases${queryString ? `?${queryString}` : ""}`,
+      {},
+      token
+    );
   },
 
   /** Get a single database by ID */

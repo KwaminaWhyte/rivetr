@@ -4,10 +4,12 @@
 //! on deployment events and app state changes.
 
 pub mod alert_notifications;
+pub mod email;
 
 pub use alert_notifications::{
     spawn_alert_notification_worker, AlertNotificationPayload, AlertNotificationService,
 };
+pub use email::SystemEmailService;
 
 use anyhow::Result;
 use lettre::{

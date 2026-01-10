@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2, GripVertical, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
@@ -10,11 +16,15 @@ import type { App, UpdateAppRequest } from "@/types/api";
 
 interface DeploymentCommandsCardProps {
   app: App;
-  token: string;
+  token?: string;
   onSave?: () => void;
 }
 
-export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommandsCardProps) {
+export function DeploymentCommandsCard({
+  app,
+  token,
+  onSave,
+}: DeploymentCommandsCardProps) {
   const [preDeployCommands, setPreDeployCommands] = useState<string[]>([]);
   const [postDeployCommands, setPostDeployCommands] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,14 +32,18 @@ export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommand
   // Parse JSON from app on mount or when app changes
   useEffect(() => {
     try {
-      const preCmds = app.pre_deploy_commands ? JSON.parse(app.pre_deploy_commands) : [];
+      const preCmds = app.pre_deploy_commands
+        ? JSON.parse(app.pre_deploy_commands)
+        : [];
       setPreDeployCommands(Array.isArray(preCmds) ? preCmds : []);
     } catch {
       setPreDeployCommands([]);
     }
 
     try {
-      const postCmds = app.post_deploy_commands ? JSON.parse(app.post_deploy_commands) : [];
+      const postCmds = app.post_deploy_commands
+        ? JSON.parse(app.post_deploy_commands)
+        : [];
       setPostDeployCommands(Array.isArray(postCmds) ? postCmds : []);
     } catch {
       setPostDeployCommands([]);
@@ -69,18 +83,23 @@ export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommand
     try {
       // Filter out empty commands
       const filteredPre = preDeployCommands.filter((cmd) => cmd.trim() !== "");
-      const filteredPost = postDeployCommands.filter((cmd) => cmd.trim() !== "");
+      const filteredPost = postDeployCommands.filter(
+        (cmd) => cmd.trim() !== "",
+      );
 
       const updates: UpdateAppRequest = {
         pre_deploy_commands: filteredPre.length > 0 ? filteredPre : undefined,
-        post_deploy_commands: filteredPost.length > 0 ? filteredPost : undefined,
+        post_deploy_commands:
+          filteredPost.length > 0 ? filteredPost : undefined,
       };
 
       await api.updateApp(app.id, updates, token);
       toast.success("Deployment commands saved");
       onSave?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save commands");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save commands",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -94,8 +113,9 @@ export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommand
           Deployment Commands
         </CardTitle>
         <CardDescription>
-          Configure commands to run during the deployment pipeline. Pre-deploy commands run before the health check,
-          and post-deploy commands run after the container is healthy.
+          Configure commands to run during the deployment pipeline. Pre-deploy
+          commands run before the health check, and post-deploy commands run
+          after the container is healthy.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -129,11 +149,15 @@ export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommand
                 <div key={index} className="flex items-center gap-2">
                   <div className="flex items-center text-muted-foreground">
                     <GripVertical className="h-4 w-4" />
-                    <span className="w-6 text-xs text-center">{index + 1}.</span>
+                    <span className="w-6 text-xs text-center">
+                      {index + 1}.
+                    </span>
                   </div>
                   <Input
                     value={cmd}
-                    onChange={(e) => handleUpdatePreCommand(index, e.target.value)}
+                    onChange={(e) =>
+                      handleUpdatePreCommand(index, e.target.value)
+                    }
                     placeholder="e.g., npm run db:migrate"
                     className="font-mono text-sm"
                   />
@@ -182,11 +206,15 @@ export function DeploymentCommandsCard({ app, token, onSave }: DeploymentCommand
                 <div key={index} className="flex items-center gap-2">
                   <div className="flex items-center text-muted-foreground">
                     <GripVertical className="h-4 w-4" />
-                    <span className="w-6 text-xs text-center">{index + 1}.</span>
+                    <span className="w-6 text-xs text-center">
+                      {index + 1}.
+                    </span>
                   </div>
                   <Input
                     value={cmd}
-                    onChange={(e) => handleUpdatePostCommand(index, e.target.value)}
+                    onChange={(e) =>
+                      handleUpdatePostCommand(index, e.target.value)
+                    }
                     placeholder="e.g., npm run cache:warm"
                     className="font-mono text-sm"
                   />

@@ -5,7 +5,12 @@ export type AppEnvironment = "development" | "staging" | "production";
 // -------------------------------------------------------------------------
 
 /** Build type for applications */
-export type BuildType = "dockerfile" | "nixpacks" | "railpack" | "cnb" | "staticsite";
+export type BuildType =
+  | "dockerfile"
+  | "nixpacks"
+  | "railpack"
+  | "cnb"
+  | "staticsite";
 
 /** Deployment source type */
 export type DeploymentSource = "git" | "upload" | "registry";
@@ -29,6 +34,13 @@ export interface BuildDetectionResult {
 /** Response from upload deploy endpoint */
 export interface UploadDeployResponse {
   deployment: Deployment;
+  detected_build_type: BuildDetectionResult;
+}
+
+/** Response from upload create app endpoint */
+export interface UploadAppResponse {
+  app: App;
+  deployment_id: string;
   detected_build_type: BuildDetectionResult;
 }
 
@@ -197,6 +209,8 @@ export interface App {
   cpu_limit: string | null;
   environment: AppEnvironment;
   project_id: string | null;
+  /** Team ID for multi-tenant scoping (null for legacy/unassigned apps) */
+  team_id: string | null;
   // Advanced build options
   dockerfile_path: string | null;
   base_directory: string | null;
@@ -253,11 +267,44 @@ export interface UpdateBasicAuthRequest {
   password?: string;
 }
 
+// -------------------------------------------------------------------------
+// App Sharing types
+// -------------------------------------------------------------------------
+
+/** App share response with team details */
+export interface AppShare {
+  id: string;
+  app_id: string;
+  shared_with_team_id: string;
+  shared_with_team_name: string;
+  permission: string;
+  created_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
+}
+
+/** Request to create a new app share */
+export interface CreateAppShareRequest {
+  /** The team ID to share the app with */
+  team_id: string;
+  /** Permission level (currently only "view" is supported) */
+  permission?: string;
+}
+
+/** App with sharing indicator (for list views) */
+export interface AppWithSharing extends App {
+  /** Indicates if this app is shared with the requesting team (not owned) */
+  is_shared: boolean;
+  /** The team that owns this app (when is_shared is true) */
+  owner_team_name: string | null;
+}
+
 // Project types
 export interface Project {
   id: string;
   name: string;
   description: string | null;
+  team_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -271,6 +318,7 @@ export interface ProjectWithApps extends Project {
 export interface CreateProjectRequest {
   name: string;
   description?: string;
+  team_id?: string;
 }
 
 export interface UpdateProjectRequest {
@@ -337,6 +385,8 @@ export interface CreateAppRequest {
   memory_limit?: string;
   environment?: AppEnvironment;
   project_id?: string;
+  /** Team ID for multi-tenant scoping */
+  team_id?: string;
   // Advanced build options
   dockerfile_path?: string;
   base_directory?: string;
@@ -819,6 +869,8 @@ export interface TeamDetail {
   created_at: string;
   updated_at: string;
   members: TeamMemberWithUser[];
+  /** Current user's role in this team */
+  user_role: TeamRole | null;
 }
 
 /** Request to create a new team */
@@ -847,8 +899,121 @@ export interface UpdateMemberRoleRequest {
   role: TeamRole;
 }
 
+// -------------------------------------------------------------------------
+// Team Invitation types
+// -------------------------------------------------------------------------
+
+/** Team invitation entity */
+export interface TeamInvitation {
+  id: string;
+  team_id: string;
+  email: string;
+  role: TeamRole;
+  expires_at: string;
+  accepted_at: string | null;
+  created_by: string;
+  created_at: string;
+  /** Team name (for display purposes) */
+  team_name: string | null;
+  /** Inviter name (for display purposes) */
+  inviter_name: string | null;
+}
+
+/** Request to create a team invitation */
+export interface CreateInvitationRequest {
+  /** Email address to invite */
+  email: string;
+  /** Role to assign */
+  role: TeamRole;
+}
+
+// -------------------------------------------------------------------------
+// Team Audit Log types
+// -------------------------------------------------------------------------
+
+/** Team audit action types */
+export type TeamAuditAction =
+  | "team_created"
+  | "team_updated"
+  | "team_deleted"
+  | "member_invited"
+  | "member_joined"
+  | "member_removed"
+  | "role_changed"
+  | "invitation_created"
+  | "invitation_revoked"
+  | "invitation_accepted"
+  | "invitation_resent"
+  | "app_created"
+  | "app_updated"
+  | "app_deleted"
+  | "project_created"
+  | "project_updated"
+  | "project_deleted"
+  | "database_created"
+  | "database_deleted"
+  | "service_created"
+  | "service_deleted"
+  | "deployment_triggered"
+  | "deployment_rolled_back";
+
+/** Team audit resource types */
+export type TeamAuditResourceType =
+  | "team"
+  | "member"
+  | "invitation"
+  | "app"
+  | "project"
+  | "database"
+  | "service"
+  | "deployment";
+
+/** Team audit log entry */
+export interface TeamAuditLog {
+  id: string;
+  team_id: string;
+  user_id: string | null;
+  action: TeamAuditAction;
+  resource_type: TeamAuditResourceType;
+  resource_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+  /** User's name for display */
+  user_name: string | null;
+  /** User's email for display */
+  user_email: string | null;
+}
+
+/** Paginated response for team audit logs */
+export interface TeamAuditLogPage {
+  items: TeamAuditLog[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+/** Query parameters for fetching team audit logs */
+export interface TeamAuditLogQuery {
+  /** Filter by action type */
+  action?: string;
+  /** Filter by resource type */
+  resource_type?: string;
+  /** Start date for date range filter (ISO 8601) */
+  start_date?: string;
+  /** End date for date range filter (ISO 8601) */
+  end_date?: string;
+  /** Page number (1-indexed) */
+  page?: number;
+  /** Items per page (default 20, max 100) */
+  per_page?: number;
+}
+
 /** Helper: Check if user has at least the required role */
-export function hasRoleAtLeast(userRole: TeamRole | null, requiredRole: TeamRole): boolean {
+export function hasRoleAtLeast(
+  userRole: TeamRole | null,
+  requiredRole: TeamRole,
+): boolean {
   if (!userRole) return false;
   const roleOrder: TeamRole[] = ["viewer", "developer", "admin", "owner"];
   return roleOrder.indexOf(userRole) >= roleOrder.indexOf(requiredRole);
@@ -955,6 +1120,7 @@ export interface ManagedDatabase {
   external_connection_string: string | null;
   error_message: string | null;
   project_id: string | null;
+  team_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -976,6 +1142,7 @@ export interface CreateManagedDatabaseRequest {
   memory_limit?: string;
   cpu_limit?: string;
   project_id?: string;
+  team_id?: string;
 }
 
 /** Request to update a managed database */
@@ -1068,6 +1235,7 @@ export interface Service {
   id: string;
   name: string;
   project_id: string | null;
+  team_id: string | null;
   compose_content: string;
   status: ServiceStatus;
   error_message: string | null;
@@ -1080,6 +1248,7 @@ export interface CreateServiceRequest {
   name: string;
   compose_content: string;
   project_id?: string;
+  team_id?: string;
 }
 
 /** Request to update a service */
@@ -1157,13 +1326,48 @@ export interface TemplateCategoryInfo {
 
 /** Available template categories */
 export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
-  { id: "monitoring", name: "Monitoring", description: "Observability and alerting tools", icon: "activity" },
-  { id: "database", name: "Databases", description: "Database management systems", icon: "database" },
-  { id: "storage", name: "Storage", description: "File storage and object stores", icon: "hard-drive" },
-  { id: "development", name: "Development", description: "Developer tools and utilities", icon: "code" },
-  { id: "analytics", name: "Analytics", description: "Data analytics and visualization", icon: "bar-chart" },
-  { id: "networking", name: "Networking", description: "Network tools and proxies", icon: "network" },
-  { id: "security", name: "Security", description: "Security and authentication", icon: "shield" },
+  {
+    id: "monitoring",
+    name: "Monitoring",
+    description: "Observability and alerting tools",
+    icon: "activity",
+  },
+  {
+    id: "database",
+    name: "Databases",
+    description: "Database management systems",
+    icon: "database",
+  },
+  {
+    id: "storage",
+    name: "Storage",
+    description: "File storage and object stores",
+    icon: "hard-drive",
+  },
+  {
+    id: "development",
+    name: "Development",
+    description: "Developer tools and utilities",
+    icon: "code",
+  },
+  {
+    id: "analytics",
+    name: "Analytics",
+    description: "Data analytics and visualization",
+    icon: "bar-chart",
+  },
+  {
+    id: "networking",
+    name: "Networking",
+    description: "Network tools and proxies",
+    icon: "network",
+  },
+  {
+    id: "security",
+    name: "Security",
+    description: "Security and authentication",
+    icon: "shield",
+  },
 ];
 
 // -------------------------------------------------------------------------

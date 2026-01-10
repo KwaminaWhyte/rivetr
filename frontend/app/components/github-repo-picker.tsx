@@ -24,10 +24,26 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Github, ExternalLink, Lock, Globe, AlertCircle, Loader2, Check, ChevronsUpDown, Search, GitBranch, Shield } from "lucide-react";
+import {
+  Github,
+  ExternalLink,
+  Lock,
+  Globe,
+  AlertCircle,
+  Loader2,
+  Check,
+  ChevronsUpDown,
+  Search,
+  GitBranch,
+  Shield,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
-import type { GitHubAppInstallation, GitHubAppRepository, GitHubBranch } from "@/types/api";
+import type {
+  GitHubAppInstallation,
+  GitHubAppRepository,
+  GitHubBranch,
+} from "@/types/api";
 
 export interface SelectedRepo {
   repository: GitHubAppRepository;
@@ -47,8 +63,12 @@ export function GitHubRepoPicker({
   selectedInstallationId,
   selectedRepoFullName,
 }: GitHubRepoPickerProps) {
-  const [installationId, setInstallationId] = useState<string>(selectedInstallationId || "");
-  const [repoFullName, setRepoFullName] = useState<string>(selectedRepoFullName || "");
+  const [installationId, setInstallationId] = useState<string>(
+    selectedInstallationId || "",
+  );
+  const [repoFullName, setRepoFullName] = useState<string>(
+    selectedRepoFullName || "",
+  );
   const [selectedBranch, setSelectedBranch] = useState<string>("");
   const [repoSearchOpen, setRepoSearchOpen] = useState(false);
   const [branchSearchOpen, setBranchSearchOpen] = useState(false);
@@ -77,7 +97,9 @@ export function GitHubRepoPicker({
   });
 
   // Get owner/repo from full_name for branches query
-  const [repoOwner, repoName] = repoFullName ? repoFullName.split("/") : ["", ""];
+  const [repoOwner, repoName] = repoFullName
+    ? repoFullName.split("/")
+    : ["", ""];
 
   // Fetch branches for selected repository
   const {
@@ -86,7 +108,8 @@ export function GitHubRepoPicker({
     error: branchesError,
   } = useQuery<GitHubBranch[]>({
     queryKey: ["github-app-branches", installationId, repoOwner, repoName],
-    queryFn: () => api.getGitHubAppRepoBranches(installationId, repoOwner, repoName),
+    queryFn: () =>
+      api.getGitHubAppRepoBranches(installationId, repoOwner, repoName),
     enabled: !!installationId && !!repoOwner && !!repoName,
   });
 
@@ -94,7 +117,9 @@ export function GitHubRepoPicker({
   const filteredBranches = useMemo(() => {
     if (!branchSearchQuery) return branches;
     const query = branchSearchQuery.toLowerCase();
-    return branches.filter((branch) => branch.name.toLowerCase().includes(query));
+    return branches.filter((branch) =>
+      branch.name.toLowerCase().includes(query),
+    );
   }, [branches, branchSearchQuery]);
 
   // Fetch GitHub Apps for "Connect" button
@@ -112,7 +137,7 @@ export function GitHubRepoPicker({
       (repo) =>
         repo.name.toLowerCase().includes(query) ||
         repo.full_name.toLowerCase().includes(query) ||
-        repo.description?.toLowerCase().includes(query)
+        repo.description?.toLowerCase().includes(query),
     );
   }, [repositories, searchQuery]);
 
@@ -170,7 +195,9 @@ export function GitHubRepoPicker({
     if (githubApps.length > 0) {
       // Use the first available GitHub App
       try {
-        const { install_url } = await api.getGitHubAppInstallUrl(githubApps[0].id);
+        const { install_url } = await api.getGitHubAppInstallUrl(
+          githubApps[0].id,
+        );
         window.location.href = install_url;
       } catch (error) {
         console.error("Failed to get install URL:", error);
@@ -240,12 +267,18 @@ export function GitHubRepoPicker({
                   <Github className="h-4 w-4" />
                   <span>{installation.account_login}</span>
                   <Badge variant="outline" className="text-xs">
-                    {installation.account_type === "organization" ? "Org" : "User"}
+                    {installation.account_type === "organization"
+                      ? "Org"
+                      : "User"}
                   </Badge>
                   {installation.repository_selection === "all" ? (
-                    <Badge variant="secondary" className="text-xs">All repos</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      All repos
+                    </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-xs">Selected repos</Badge>
+                    <Badge variant="outline" className="text-xs">
+                      Selected repos
+                    </Badge>
                   )}
                 </div>
               </SelectItem>
@@ -270,7 +303,8 @@ export function GitHubRepoPicker({
             </div>
           ) : repositories.length === 0 ? (
             <div className="text-sm text-muted-foreground py-2">
-              No repositories found. Make sure the GitHub App has access to your repositories.
+              No repositories found. Make sure the GitHub App has access to your
+              repositories.
             </div>
           ) : (
             <Popover open={repoSearchOpen} onOpenChange={setRepoSearchOpen}>
@@ -294,7 +328,9 @@ export function GitHubRepoPicker({
                       </span>
                     </div>
                   ) : (
-                    <span className="text-muted-foreground">Search repositories...</span>
+                    <span className="text-muted-foreground">
+                      Search repositories...
+                    </span>
                   )}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -319,7 +355,9 @@ export function GitHubRepoPicker({
                           <Check
                             className={cn(
                               "mr-2 h-4 w-4",
-                              repoFullName === repo.full_name ? "opacity-100" : "opacity-0"
+                              repoFullName === repo.full_name
+                                ? "opacity-100"
+                                : "opacity-0",
                             )}
                           />
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -329,14 +367,19 @@ export function GitHubRepoPicker({
                               <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
                             )}
                             <div className="flex flex-col min-w-0">
-                              <span className="font-medium truncate">{repo.name}</span>
+                              <span className="font-medium truncate">
+                                {repo.name}
+                              </span>
                               {repo.description && (
                                 <span className="text-xs text-muted-foreground truncate">
                                   {repo.description}
                                 </span>
                               )}
                             </div>
-                            <Badge variant="outline" className="ml-auto text-xs shrink-0">
+                            <Badge
+                              variant="outline"
+                              className="ml-auto text-xs shrink-0"
+                            >
                               {repo.default_branch}
                             </Badge>
                           </div>
@@ -382,15 +425,23 @@ export function GitHubRepoPicker({
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-3 w-3 text-muted-foreground" />
                       <span>{selectedBranch}</span>
-                      {branches.find(b => b.name === selectedBranch)?.protected && (
-                        <Shield className="h-3 w-3 text-amber-500" title="Protected branch" />
+                      {branches.find((b) => b.name === selectedBranch)
+                        ?.protected && (
+                        <Shield
+                          className="h-3 w-3 text-amber-500"
+                          aria-label="Protected branch"
+                        />
                       )}
                       {selectedBranch === selectedRepo.default_branch && (
-                        <Badge variant="secondary" className="text-xs">default</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          default
+                        </Badge>
                       )}
                     </div>
                   ) : (
-                    <span className="text-muted-foreground">Select branch...</span>
+                    <span className="text-muted-foreground">
+                      Select branch...
+                    </span>
                   )}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -415,17 +466,27 @@ export function GitHubRepoPicker({
                           <Check
                             className={cn(
                               "mr-2 h-4 w-4",
-                              selectedBranch === branch.name ? "opacity-100" : "opacity-0"
+                              selectedBranch === branch.name
+                                ? "opacity-100"
+                                : "opacity-0",
                             )}
                           />
                           <div className="flex items-center gap-2 flex-1">
                             <GitBranch className="h-3 w-3 text-muted-foreground" />
                             <span>{branch.name}</span>
                             {branch.protected && (
-                              <Shield className="h-3 w-3 text-amber-500" title="Protected" />
+                              <Shield
+                                className="h-3 w-3 text-amber-500"
+                                aria-label="Protected"
+                              />
                             )}
                             {branch.name === selectedRepo.default_branch && (
-                              <Badge variant="secondary" className="text-xs ml-auto">default</Badge>
+                              <Badge
+                                variant="secondary"
+                                className="text-xs ml-auto"
+                              >
+                                default
+                              </Badge>
                             )}
                           </div>
                         </CommandItem>
@@ -443,7 +504,9 @@ export function GitHubRepoPicker({
       {selectedRepo && (
         <div className="p-3 border rounded-lg bg-muted/30 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">{selectedRepo.full_name}</span>
+            <span className="text-sm font-medium">
+              {selectedRepo.full_name}
+            </span>
             <a
               href={selectedRepo.html_url}
               target="_blank"
@@ -454,7 +517,9 @@ export function GitHubRepoPicker({
             </a>
           </div>
           {selectedRepo.description && (
-            <p className="text-xs text-muted-foreground">{selectedRepo.description}</p>
+            <p className="text-xs text-muted-foreground">
+              {selectedRepo.description}
+            </p>
           )}
         </div>
       )}

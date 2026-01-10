@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { Plus, Play, Square, Trash2, Layers, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -79,17 +80,19 @@ services:
 
 export default function ServicesPage() {
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [newComposeContent, setNewComposeContent] = useState(DEFAULT_COMPOSE);
 
   const { data: services = [], isLoading } = useQuery<Service[]>({
-    queryKey: ["services"],
-    queryFn: () => api.getServices(),
+    queryKey: ["services", currentTeamId],
+    queryFn: () => api.getServices({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; compose_content: string }) =>
+    mutationFn: (data: { name: string; compose_content: string; team_id?: string }) =>
       api.createService(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
@@ -149,6 +152,7 @@ export default function ServicesPage() {
     createMutation.mutate({
       name: newServiceName.trim(),
       compose_content: newComposeContent.trim(),
+      team_id: currentTeamId ?? undefined,
     });
   };
 

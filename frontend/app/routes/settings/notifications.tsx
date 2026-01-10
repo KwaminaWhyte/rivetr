@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import type {
   NotificationChannel,
   NotificationChannelType,
@@ -86,6 +87,7 @@ export function meta() {
 
 export default function SettingsNotificationsPage() {
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showSubscriptionsDialog, setShowSubscriptionsDialog] = useState(false);
@@ -115,8 +117,9 @@ export default function SettingsNotificationsPage() {
   });
 
   const { data: apps = [] } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryKey: ["apps", currentTeamId],
+    queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   const createMutation = useMutation({

@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,6 +63,7 @@ function getProjectHealth(
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [name, setName] = useState("");
@@ -70,24 +72,27 @@ export default function ProjectsPage() {
 
   // Use React Query for data fetching
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectWithApps[]>({
-    queryKey: ["projects-with-apps"],
+    queryKey: ["projects-with-apps", currentTeamId],
     queryFn: async () => {
-      const projectList = await api.getProjects();
+      const projectList = await api.getProjects(currentTeamId ?? undefined);
       const projectsWithApps = await Promise.all(
         projectList.map((p) => api.getProject(p.id).catch(() => ({ ...p, apps: [], databases: [], services: [] } as ProjectWithApps)))
       );
       return projectsWithApps;
     },
+    enabled: currentTeamId !== null,
   });
 
   const { data: apps = [] } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+    queryKey: ["apps", currentTeamId],
+    queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   const { data: databases = [] } = useQuery<ManagedDatabase[]>({
-    queryKey: ["databases"],
-    queryFn: () => api.getDatabases(),
+    queryKey: ["databases", currentTeamId],
+    queryFn: () => api.getDatabases({ teamId: currentTeamId ?? undefined }),
+    enabled: currentTeamId !== null,
   });
 
   // Fetch app statuses
@@ -158,6 +163,7 @@ export default function ProjectsPage() {
       return api.createProject({
         name: name.trim(),
         description: description.trim() || undefined,
+        team_id: currentTeamId ?? undefined,
       });
     },
     onSuccess: () => {

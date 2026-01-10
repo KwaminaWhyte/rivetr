@@ -18,11 +18,19 @@ use uuid::Uuid;
 
 use crate::db::{
     actions, resource_types, CreateServiceRequest, Service, ServiceResponse, ServiceStatus,
-    UpdateServiceRequest, User,
+    TeamAuditAction, TeamAuditResourceType, UpdateServiceRequest, User,
 };
 use crate::AppState;
 
+/// Query parameters for listing services
+#[derive(Debug, Deserialize, Default)]
+pub struct ListServicesQuery {
+    /// Filter by team ID (optional)
+    pub team_id: Option<String>,
+}
+
 use super::audit::{audit_log, extract_client_ip};
+use super::teams::log_team_audit;
 
 /// Validate docker-compose content
 /// Checks that it's valid YAML with a 'services' key
@@ -159,14 +167,37 @@ async fn run_compose_command(
 /// List all services
 pub async fn list_services(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ListServicesQuery>,
 ) -> Result<Json<Vec<ServiceResponse>>, StatusCode> {
-    let services = sqlx::query_as::<_, Service>("SELECT * FROM services ORDER BY created_at DESC")
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list services: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let services = match &query.team_id {
+        Some(team_id) if team_id.is_empty() => {
+            // Empty string means get legacy/unassigned services
+            sqlx::query_as::<_, Service>(
+                "SELECT * FROM services WHERE team_id IS NULL ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await
+        }
+        Some(team_id) => {
+            // Filter by specific team
+            sqlx::query_as::<_, Service>(
+                "SELECT * FROM services WHERE team_id = ? ORDER BY created_at DESC",
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await
+        }
+        None => {
+            // No filter, return all services (backward compatibility)
+            sqlx::query_as::<_, Service>("SELECT * FROM services ORDER BY created_at DESC")
+                .fetch_all(&state.db)
+                .await
+        }
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to list services: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let responses: Vec<ServiceResponse> = services.into_iter().map(Into::into).collect();
     Ok(Json(responses))
@@ -225,13 +256,14 @@ pub async fn create_service(
 
     sqlx::query(
         r#"
-        INSERT INTO services (id, name, project_id, compose_content, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO services (id, name, project_id, team_id, compose_content, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(&req.name)
     .bind(&req.project_id)
+    .bind(&req.team_id)
     .bind(&req.compose_content)
     .bind(ServiceStatus::Pending.to_string())
     .bind(&now)
@@ -279,6 +311,25 @@ pub async fn create_service(
         None,
     )
     .await;
+
+    // Log team audit event if service belongs to a team
+    if let Some(ref team_id) = service.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ServiceCreated,
+            TeamAuditResourceType::Service,
+            Some(&service.id),
+            Some(serde_json::json!({
+                "service_name": service.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!("Created Docker Compose service: {}", req.name);
     Ok((StatusCode::CREATED, Json(service.into())))
@@ -421,6 +472,25 @@ pub async fn delete_service(
         None,
     )
     .await;
+
+    // Log team audit event if service belonged to a team
+    if let Some(ref team_id) = service.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ServiceDeleted,
+            TeamAuditResourceType::Service,
+            Some(&service.id),
+            Some(serde_json::json!({
+                "service_name": service.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!("Deleted Docker Compose service: {}", service.name);
     Ok(StatusCode::NO_CONTENT)

@@ -12,19 +12,29 @@ export function getStoredToken(): string | null {
 }
 
 /**
+ * Options for API requests including team context
+ */
+export interface ApiRequestOptions extends RequestInit {
+  /** Team ID for scoping the request */
+  teamId?: string;
+}
+
+/**
  * Make an authenticated API request.
  * @param path - API path (without /api prefix)
- * @param options - Fetch options
+ * @param options - Fetch options with optional teamId
  * @param token - Optional auth token (uses stored token if not provided)
  */
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
   token?: string
 ): Promise<T> {
+  const { teamId, ...fetchOptions } = options;
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
 
   // Add Authorization header - use provided token or get from localStorage
@@ -33,8 +43,13 @@ export async function apiRequest<T>(
     headers["Authorization"] = `Bearer ${authToken}`;
   }
 
+  // Add team context header if provided
+  if (teamId) {
+    headers["X-Team-Id"] = teamId;
+  }
+
   const response = await fetch(`/api${path}`, {
-    ...options,
+    ...fetchOptions,
     headers,
   });
 

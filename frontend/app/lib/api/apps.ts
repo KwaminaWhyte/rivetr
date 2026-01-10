@@ -7,7 +7,10 @@ import { apiRequest } from "./core";
 import type {
   App,
   AppStatus,
+  AppShare,
+  AppWithSharing,
   CreateAppRequest,
+  CreateAppShareRequest,
   UpdateAppRequest,
   Deployment,
   DeploymentListResponse,
@@ -28,6 +31,7 @@ import type {
   CreateAlertConfigRequest,
   UpdateAlertConfigRequest,
   AlertEventResponse,
+  UploadAppResponse,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -36,8 +40,16 @@ export const appsApi = {
   // App CRUD
   // -------------------------------------------------------------------------
 
-  /** List all apps */
-  getApps: (token?: string) => apiRequest<App[]>("/apps", {}, token),
+  /** List all apps, optionally filtered by team */
+  getApps: (options?: { teamId?: string }, token?: string) => {
+    const params = new URLSearchParams();
+    if (options?.teamId) {
+      params.append("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    const url = queryString ? `/apps?${queryString}` : "/apps";
+    return apiRequest<App[]>(url, { teamId: options?.teamId }, token);
+  },
 
   /** Get a single app by ID */
   getApp: (id: string, token?: string) =>
@@ -51,7 +63,7 @@ export const appsApi = {
         method: "POST",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Update an existing app */
@@ -62,7 +74,7 @@ export const appsApi = {
         method: "PUT",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Delete an app */
@@ -73,18 +85,22 @@ export const appsApi = {
         method: "DELETE",
         body: JSON.stringify({ password }),
       },
-      token
+      token,
     ),
 
   /** Assign an app to a project */
-  assignAppToProject: (appId: string, projectId: string | null, token?: string) =>
+  assignAppToProject: (
+    appId: string,
+    projectId: string | null,
+    token?: string,
+  ) =>
     apiRequest<App>(
       `/apps/${appId}`,
       {
         method: "PUT",
         body: JSON.stringify({ project_id: projectId }),
       },
-      token
+      token,
     ),
 
   // -------------------------------------------------------------------------
@@ -112,7 +128,11 @@ export const appsApi = {
   // -------------------------------------------------------------------------
 
   /** Get all deployments for an app with pagination */
-  getDeployments: (appId: string, query: DeploymentQuery = {}, token?: string) => {
+  getDeployments: (
+    appId: string,
+    query: DeploymentQuery = {},
+    token?: string,
+  ) => {
     const params = new URLSearchParams();
     if (query.page) params.append("page", String(query.page));
     if (query.per_page) params.append("per_page", String(query.per_page));
@@ -136,7 +156,7 @@ export const appsApi = {
     apiRequest<Deployment>(
       `/deployments/${id}/rollback`,
       { method: "POST" },
-      token
+      token,
     ),
 
   // -------------------------------------------------------------------------
@@ -150,7 +170,7 @@ export const appsApi = {
   uploadDeploy: async (
     appId: string,
     file: File,
-    token?: string
+    token?: string,
   ): Promise<UploadDeployResponse> => {
     const authToken = token || getStoredToken();
     const formData = new FormData();
@@ -189,7 +209,7 @@ export const appsApi = {
    */
   detectBuildType: async (
     file: File,
-    token?: string
+    token?: string,
   ): Promise<BuildDetectionResult> => {
     const authToken = token || getStoredToken();
     const formData = new FormData();
@@ -240,8 +260,8 @@ export const appsApi = {
       build_type?: string;
       publish_directory?: string;
     },
-    token?: string
-  ): Promise<UploadDeployResponse> => {
+    token?: string,
+  ): Promise<UploadAppResponse> => {
     const authToken = token || getStoredToken();
     const formData = new FormData();
     formData.append("file", file);
@@ -298,7 +318,7 @@ export const appsApi = {
     return apiRequest<EnvVar>(
       `/apps/${appId}/env-vars/${encodeURIComponent(key)}${params}`,
       {},
-      token
+      token,
     );
   },
 
@@ -310,7 +330,7 @@ export const appsApi = {
         method: "POST",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Update an existing environment variable */
@@ -318,7 +338,7 @@ export const appsApi = {
     appId: string,
     key: string,
     data: UpdateEnvVarRequest,
-    token?: string
+    token?: string,
   ) =>
     apiRequest<EnvVar>(
       `/apps/${appId}/env-vars/${encodeURIComponent(key)}`,
@@ -326,7 +346,7 @@ export const appsApi = {
         method: "PUT",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Delete an environment variable */
@@ -336,7 +356,7 @@ export const appsApi = {
       {
         method: "DELETE",
       },
-      token
+      token,
     ),
 
   // -------------------------------------------------------------------------
@@ -351,7 +371,7 @@ export const appsApi = {
   updateBasicAuth: (
     appId: string,
     data: UpdateBasicAuthRequest,
-    token?: string
+    token?: string,
   ) =>
     apiRequest<BasicAuthStatus>(
       `/apps/${appId}/basic-auth`,
@@ -359,7 +379,7 @@ export const appsApi = {
         method: "PUT",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Disable basic auth */
@@ -369,7 +389,7 @@ export const appsApi = {
       {
         method: "DELETE",
       },
-      token
+      token,
     ),
 
   // -------------------------------------------------------------------------
@@ -392,7 +412,7 @@ export const appsApi = {
         method: "POST",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Update an existing volume */
@@ -403,7 +423,7 @@ export const appsApi = {
         method: "PUT",
         body: JSON.stringify(data),
       },
-      token
+      token,
     ),
 
   /** Delete a volume */
@@ -413,7 +433,7 @@ export const appsApi = {
       {
         method: "DELETE",
       },
-      token
+      token,
     ),
 
   /** Backup a volume (returns raw Response for file download) */
@@ -485,6 +505,39 @@ export const appsApi = {
     const params = limit ? `?limit=${limit}` : "";
     return apiRequest<AlertEventResponse[]>(`/apps/${appId}/alert-events${params}`, {}, token);
   },
+
+  // -------------------------------------------------------------------------
+  // App Sharing
+  // -------------------------------------------------------------------------
+
+  /** Get list of teams an app is shared with */
+  getAppShares: (appId: string, token?: string) =>
+    apiRequest<AppShare[]>(`/apps/${appId}/shares`, {}, token),
+
+  /** Share an app with a team */
+  createAppShare: (appId: string, data: CreateAppShareRequest, token?: string) =>
+    apiRequest<AppShare>(
+      `/apps/${appId}/shares`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Remove sharing for a team */
+  deleteAppShare: (appId: string, teamId: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/shares/${teamId}`,
+      {
+        method: "DELETE",
+      },
+      token
+    ),
+
+  /** Get apps with sharing information (owned + shared) */
+  getAppsWithSharing: (teamId: string, token?: string) =>
+    apiRequest<AppWithSharing[]>(`/apps/with-sharing?team_id=${encodeURIComponent(teamId)}`, {}, token),
 
   // -------------------------------------------------------------------------
   // WebSocket URLs

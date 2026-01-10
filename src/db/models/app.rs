@@ -21,6 +21,8 @@ pub struct App {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping (nullable for legacy apps)
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
@@ -106,6 +108,8 @@ pub struct AppResponse {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
@@ -168,6 +172,7 @@ impl From<App> for AppResponse {
             ssh_key_id: app.ssh_key_id,
             environment: app.environment,
             project_id: app.project_id,
+            team_id: app.team_id,
             dockerfile_path: app.dockerfile_path,
             base_directory: app.base_directory,
             build_target: app.build_target,
@@ -415,6 +420,8 @@ pub struct CreateAppRequest {
     #[serde(default)]
     pub environment: Environment,
     pub project_id: Option<String>,
+    /// Team ID for multi-tenant scoping
+    pub team_id: Option<String>,
     // Advanced build options
     pub dockerfile_path: Option<String>,
     pub base_directory: Option<String>,
@@ -559,4 +566,57 @@ pub struct UpdateBasicAuthRequest {
     pub username: Option<String>,
     /// Password in plain text - will be hashed before storing
     pub password: Option<String>,
+}
+
+// -------------------------------------------------------------------------
+// App Sharing (Cross-Team)
+// -------------------------------------------------------------------------
+
+/// App share record for sharing apps between teams
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AppShare {
+    pub id: String,
+    pub app_id: String,
+    pub shared_with_team_id: String,
+    pub permission: String,
+    pub created_at: String,
+    pub created_by: Option<String>,
+}
+
+/// Response DTO for app share with team details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppShareResponse {
+    pub id: String,
+    pub app_id: String,
+    pub shared_with_team_id: String,
+    pub shared_with_team_name: String,
+    pub permission: String,
+    pub created_at: String,
+    pub created_by: Option<String>,
+    pub created_by_name: Option<String>,
+}
+
+/// Request to create a new app share
+#[derive(Debug, Deserialize)]
+pub struct CreateAppShareRequest {
+    /// The team ID to share the app with
+    pub team_id: String,
+    /// Permission level (currently only "view" is supported)
+    #[serde(default = "default_share_permission")]
+    pub permission: String,
+}
+
+fn default_share_permission() -> String {
+    "view".to_string()
+}
+
+/// Response for app with sharing indicator
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppWithSharing {
+    #[serde(flatten)]
+    pub app: App,
+    /// Indicates if this app is shared with the requesting team (not owned)
+    pub is_shared: bool,
+    /// The team that owns this app (when is_shared is true)
+    pub owner_team_name: Option<String>,
 }

@@ -9,7 +9,7 @@ import {
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
-import { NavBrand } from "@/components/nav-brand";
+import { TeamSwitcher } from "@/components/team-switcher";
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +17,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { useTeamContext } from "@/lib/team-context";
 
 const navMain: NavMainItem[] = [
   {
@@ -58,10 +59,16 @@ const navMain: NavMainItem[] = [
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { teams, currentTeamId, setCurrentTeamId } = useTeamContext();
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <NavBrand />
+        <TeamSwitcher
+          teams={teams}
+          currentTeamId={currentTeamId}
+          onTeamChange={setCurrentTeamId}
+        />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

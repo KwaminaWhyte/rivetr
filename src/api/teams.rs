@@ -1,21 +1,77 @@
 //! Teams API endpoints for multi-user support with role-based access control.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
+use rand::Rng;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    CreateTeamRequest, InviteMemberRequest, Team, TeamDetail, TeamMember, TeamMemberWithUser,
-    TeamRole, TeamWithMemberCount, UpdateMemberRoleRequest, UpdateTeamRequest, User,
+    CreateInvitationRequest, CreateTeamRequest, InviteMemberRequest, Team, TeamAuditAction,
+    TeamAuditLog, TeamAuditLogPage, TeamAuditLogResponse, TeamAuditResourceType, TeamDetail,
+    TeamInvitation, TeamInvitationResponse, TeamMember, TeamMemberWithUser, TeamRole,
+    TeamWithMemberCount, UpdateMemberRoleRequest, UpdateTeamRequest, User,
 };
+use crate::notifications::SystemEmailService;
 use crate::AppState;
 
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::validate_uuid;
+
+/// Helper function to log audit events
+pub async fn log_team_audit(
+    pool: &sqlx::SqlitePool,
+    team_id: &str,
+    user_id: Option<&str>,
+    action: TeamAuditAction,
+    resource_type: TeamAuditResourceType,
+    resource_id: Option<&str>,
+    details: Option<serde_json::Value>,
+) -> Result<(), sqlx::Error> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let details_str = details.map(|d| d.to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_audit_logs (id, team_id, user_id, action, resource_type, resource_id, details, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(team_id)
+    .bind(user_id)
+    .bind(action.to_string())
+    .bind(resource_type.to_string())
+    .bind(resource_id)
+    .bind(details_str)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Query parameters for listing audit logs
+#[derive(Debug, Deserialize)]
+pub struct ListAuditLogsQuery {
+    /// Filter by action type
+    pub action: Option<String>,
+    /// Filter by resource type
+    pub resource_type: Option<String>,
+    /// Start date for date range filter (RFC3339)
+    pub start_date: Option<String>,
+    /// End date for date range filter (RFC3339)
+    pub end_date: Option<String>,
+    /// Page number (1-indexed)
+    pub page: Option<i32>,
+    /// Items per page (default 20, max 100)
+    pub per_page: Option<i32>,
+}
 
 /// Generate a URL-friendly slug from a name
 fn generate_slug(name: &str) -> String {
@@ -219,8 +275,8 @@ pub async fn get_team(
         return Err(ApiError::validation_field("team_id", e));
     }
 
-    // Check user is a member of the team
-    let _membership = require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
+    // Check user is a member of the team and get their role
+    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
 
     let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
         .bind(&id)
@@ -257,6 +313,7 @@ pub async fn get_team(
         created_at: team.created_at,
         updated_at: team.updated_at,
         members,
+        user_role: Some(membership.role),
     }))
 }
 
@@ -323,6 +380,24 @@ pub async fn create_team(
         .bind(&id)
         .fetch_one(&state.db)
         .await?;
+
+    // Log audit event for team creation
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::TeamCreated,
+        TeamAuditResourceType::Team,
+        Some(&id),
+        Some(serde_json::json!({
+            "name": &team.name,
+            "slug": &team.slug
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log team creation audit: {}", e);
+    }
 
     tracing::info!("Created team '{}' with owner {}", team.name, user.email);
 
@@ -526,14 +601,34 @@ pub async fn invite_member(
     })?;
 
     let member = TeamMemberWithUser {
-        id: member_id,
-        team_id: id,
-        user_id: target_user.id,
-        role: req.role,
+        id: member_id.clone(),
+        team_id: id.clone(),
+        user_id: target_user.id.clone(),
+        role: req.role.clone(),
         created_at: now,
-        user_name: target_user.name,
-        user_email: target_user.email,
+        user_name: target_user.name.clone(),
+        user_email: target_user.email.clone(),
     };
+
+    // Log audit event for member addition
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::MemberJoined,
+        TeamAuditResourceType::Member,
+        Some(&target_user.id),
+        Some(serde_json::json!({
+            "email": &target_user.email,
+            "name": &target_user.name,
+            "role": &req.role,
+            "added_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log member addition audit: {}", e);
+    }
 
     tracing::info!("Added {} to team as {}", member.user_email, member.role);
 
@@ -626,6 +721,26 @@ pub async fn update_member_role(
     .fetch_one(&state.db)
     .await?;
 
+    // Log audit event for role change
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &team_id,
+        Some(&user.id),
+        TeamAuditAction::RoleChanged,
+        TeamAuditResourceType::Member,
+        Some(&user_id),
+        Some(serde_json::json!({
+            "email": &member.user_email,
+            "old_role": target_membership.role,
+            "new_role": &req.role,
+            "changed_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log role change audit: {}", e);
+    }
+
     tracing::info!(
         "Updated {}'s role to {} in team {}",
         member.user_email,
@@ -686,6 +801,12 @@ pub async fn remove_member(
         }
     }
 
+    // Get user details for audit log before removing
+    let removed_user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.db)
+        .await?;
+
     // Remove the member
     let result = sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
         .bind(&team_id)
@@ -697,7 +818,822 @@ pub async fn remove_member(
         return Err(ApiError::not_found("Team member not found"));
     }
 
+    // Log audit event for member removal
+    let removed_email = removed_user
+        .as_ref()
+        .map(|u| u.email.as_str())
+        .unwrap_or("unknown");
+    let removed_name = removed_user.as_ref().map(|u| u.name.as_str()).unwrap_or("");
+    let is_self_removal = user_id == user.id;
+
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &team_id,
+        Some(&user.id),
+        TeamAuditAction::MemberRemoved,
+        TeamAuditResourceType::Member,
+        Some(&user_id),
+        Some(serde_json::json!({
+            "email": removed_email,
+            "name": removed_name,
+            "role": target_membership.role,
+            "removed_by": &user.email,
+            "self_removal": is_self_removal
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log member removal audit: {}", e);
+    }
+
     tracing::info!("Removed user {} from team {}", user_id, team_id);
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Generate a secure random token for invitations
+fn generate_invitation_token() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = rand::rng();
+    (0..48)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
+}
+
+/// Validate email format (basic validation)
+fn validate_email(email: &str) -> Result<(), String> {
+    if email.is_empty() {
+        return Err("Email is required".to_string());
+    }
+    if !email.contains('@') || !email.contains('.') {
+        return Err("Invalid email format".to_string());
+    }
+    if email.len() > 255 {
+        return Err("Email is too long (max 255 characters)".to_string());
+    }
+    Ok(())
+}
+
+/// List pending invitations for a team
+pub async fn list_invitations(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    user: User,
+) -> Result<Json<Vec<TeamInvitationResponse>>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+
+    // Check user has admin+ role to view invitations
+    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+
+    // Get all pending invitations (not accepted)
+    let invitations = sqlx::query_as::<_, TeamInvitation>(
+        r#"
+        SELECT * FROM team_invitations
+        WHERE team_id = ? AND accepted_at IS NULL
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    // Get inviter names for each invitation
+    let mut results = Vec::new();
+    for inv in invitations {
+        let inviter: Option<(String,)> = sqlx::query_as("SELECT name FROM users WHERE id = ?")
+            .bind(&inv.created_by)
+            .fetch_optional(&state.db)
+            .await?;
+
+        let mut response: TeamInvitationResponse = inv.into();
+        response.inviter_name = inviter.map(|u| u.0);
+        results.push(response);
+    }
+
+    Ok(Json(results))
+}
+
+/// Create a new invitation
+pub async fn create_invitation(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    user: User,
+    Json(req): Json<CreateInvitationRequest>,
+) -> Result<(StatusCode, Json<TeamInvitationResponse>), ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+
+    // Validate email
+    let mut errors = ValidationErrorBuilder::new();
+    if let Err(e) = validate_email(&req.email) {
+        errors.add("email", &e);
+    }
+    errors.finish()?;
+
+    // Validate role
+    let target_role =
+        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
+
+    // Check user has admin+ role to create invitations
+    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+    let user_role = membership.role_enum();
+
+    // Check user can assign the target role
+    if !user_role.can_manage_member_role(target_role) {
+        return Err(ApiError::forbidden(
+            "You don't have permission to assign this role",
+        ));
+    }
+
+    // Check if team exists
+    let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Team not found"))?;
+
+    // Check if user with this email is already a member
+    let existing_user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+        .bind(&req.email)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if let Some(existing) = existing_user {
+        let existing_membership = get_user_team_membership(&state.db, &id, &existing.id).await?;
+        if existing_membership.is_some() {
+            return Err(ApiError::conflict(
+                "A user with this email is already a member of this team",
+            ));
+        }
+    }
+
+    // Check for existing pending invitation for this email
+    let existing_invitation: Option<TeamInvitation> = sqlx::query_as(
+        r#"
+        SELECT * FROM team_invitations
+        WHERE team_id = ? AND email = ? AND accepted_at IS NULL
+        "#,
+    )
+    .bind(&id)
+    .bind(&req.email)
+    .fetch_optional(&state.db)
+    .await?;
+
+    if existing_invitation.is_some() {
+        return Err(ApiError::conflict(
+            "A pending invitation already exists for this email",
+        ));
+    }
+
+    // Create the invitation
+    let inv_id = Uuid::new_v4().to_string();
+    let token = generate_invitation_token();
+    let now = chrono::Utc::now();
+    let expires_at = now + chrono::Duration::days(7);
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_invitations (id, team_id, email, role, token, expires_at, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&inv_id)
+    .bind(&id)
+    .bind(&req.email)
+    .bind(&req.role)
+    .bind(&token)
+    .bind(expires_at.to_rfc3339())
+    .bind(&user.id)
+    .bind(now.to_rfc3339())
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create invitation: {}", e);
+        ApiError::database("Failed to create invitation")
+    })?;
+
+    let response = TeamInvitationResponse {
+        id: inv_id,
+        team_id: id.clone(),
+        email: req.email.clone(),
+        role: req.role.clone(),
+        expires_at: expires_at.to_rfc3339(),
+        accepted_at: None,
+        created_by: user.id.clone(),
+        created_at: now.to_rfc3339(),
+        team_name: Some(team.name.clone()),
+        inviter_name: Some(user.name.clone()),
+    };
+
+    // Log audit event for invitation creation
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::InvitationCreated,
+        TeamAuditResourceType::Invitation,
+        Some(&response.id),
+        Some(serde_json::json!({
+            "email": &req.email,
+            "role": &req.role,
+            "invited_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log invitation creation audit: {}", e);
+    }
+
+    tracing::info!(
+        "Created invitation for {} to team {} by {}",
+        req.email,
+        id,
+        user.email
+    );
+
+    // Send invitation email (non-blocking, log errors but don't fail the request)
+    let email_service = SystemEmailService::new(state.config.email.clone());
+    if email_service.is_enabled() {
+        // Build the accept URL
+        let base_url = state
+            .config
+            .server
+            .external_url
+            .as_deref()
+            .unwrap_or("http://localhost:8080");
+        let accept_url = format!("{}/invitations/accept?token={}", base_url, token);
+
+        match email_service
+            .send_invitation_email(
+                &req.email,
+                &team.name,
+                &req.role,
+                &user.name,
+                &accept_url,
+                7, // 7 days expiry
+            )
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    to = %req.email,
+                    team = %team.name,
+                    "Invitation email sent successfully"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    to = %req.email,
+                    team = %team.name,
+                    error = %e,
+                    "Failed to send invitation email"
+                );
+            }
+        }
+    } else {
+        tracing::debug!(
+            "Email not configured, invitation email not sent to {}",
+            req.email
+        );
+    }
+
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+/// Delete/revoke a pending invitation
+pub async fn delete_invitation(
+    State(state): State<Arc<AppState>>,
+    Path((team_id, inv_id)): Path<(String, String)>,
+    user: User,
+) -> Result<StatusCode, ApiError> {
+    // Validate IDs
+    if let Err(e) = validate_uuid(&team_id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+    if let Err(e) = validate_uuid(&inv_id, "invitation_id") {
+        return Err(ApiError::validation_field("invitation_id", e));
+    }
+
+    // Check user has admin+ role
+    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+
+    // Get invitation details for audit log before deleting
+    let invitation: Option<TeamInvitation> =
+        sqlx::query_as("SELECT * FROM team_invitations WHERE id = ? AND team_id = ?")
+            .bind(&inv_id)
+            .bind(&team_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    // Delete the invitation
+    let result = sqlx::query("DELETE FROM team_invitations WHERE id = ? AND team_id = ?")
+        .bind(&inv_id)
+        .bind(&team_id)
+        .execute(&state.db)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("Invitation not found"));
+    }
+
+    // Log audit event for invitation revocation
+    if let Some(inv) = invitation {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            &team_id,
+            Some(&user.id),
+            TeamAuditAction::InvitationRevoked,
+            TeamAuditResourceType::Invitation,
+            Some(&inv_id),
+            Some(serde_json::json!({
+                "email": &inv.email,
+                "role": &inv.role,
+                "revoked_by": &user.email
+            })),
+        )
+        .await
+        {
+            tracing::error!("Failed to log invitation revocation audit: {}", e);
+        }
+    }
+
+    tracing::info!("Deleted invitation {} from team {}", inv_id, team_id);
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Resend invitation email
+pub async fn resend_invitation(
+    State(state): State<Arc<AppState>>,
+    Path((team_id, inv_id)): Path<(String, String)>,
+    user: User,
+) -> Result<StatusCode, ApiError> {
+    // Validate IDs
+    if let Err(e) = validate_uuid(&team_id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+    if let Err(e) = validate_uuid(&inv_id, "invitation_id") {
+        return Err(ApiError::validation_field("invitation_id", e));
+    }
+
+    // Check user has admin+ role
+    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+
+    // Get the invitation
+    let invitation = sqlx::query_as::<_, TeamInvitation>(
+        "SELECT * FROM team_invitations WHERE id = ? AND team_id = ?",
+    )
+    .bind(&inv_id)
+    .bind(&team_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("Invitation not found"))?;
+
+    // Check if already accepted
+    if invitation.is_accepted() {
+        return Err(ApiError::bad_request(
+            "Cannot resend an accepted invitation",
+        ));
+    }
+
+    // Check if expired
+    if invitation.is_expired() {
+        return Err(ApiError::bad_request(
+            "Cannot resend an expired invitation. Please create a new invitation.",
+        ));
+    }
+
+    // Get team name
+    let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+        .bind(&team_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Get inviter name
+    let inviter: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&invitation.created_by)
+        .fetch_optional(&state.db)
+        .await?;
+    let inviter_name = inviter
+        .map(|u| u.name)
+        .unwrap_or_else(|| "A team member".to_string());
+
+    // Send invitation email
+    let email_service = SystemEmailService::new(state.config.email.clone());
+    if !email_service.is_enabled() {
+        return Err(ApiError::bad_request(
+            "Email is not configured. Cannot resend invitation.",
+        ));
+    }
+
+    // Build the accept URL
+    let base_url = state
+        .config
+        .server
+        .external_url
+        .as_deref()
+        .unwrap_or("http://localhost:8080");
+    let accept_url = format!("{}/invitations/accept?token={}", base_url, invitation.token);
+
+    email_service
+        .send_invitation_email(
+            &invitation.email,
+            &team.name,
+            &invitation.role,
+            &inviter_name,
+            &accept_url,
+            7, // 7 days expiry
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                to = %invitation.email,
+                team = %team.name,
+                error = %e,
+                "Failed to resend invitation email"
+            );
+            ApiError::internal("Failed to send invitation email")
+        })?;
+
+    tracing::info!(
+        to = %invitation.email,
+        team = %team.name,
+        "Invitation email resent successfully"
+    );
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Validate an invitation token (public endpoint)
+pub async fn validate_invitation(
+    State(state): State<Arc<AppState>>,
+    Path(token): Path<String>,
+) -> Result<Json<TeamInvitationResponse>, ApiError> {
+    // Get the invitation by token
+    let invitation =
+        sqlx::query_as::<_, TeamInvitation>("SELECT * FROM team_invitations WHERE token = ?")
+            .bind(&token)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Invitation not found"))?;
+
+    // Check if already accepted
+    if invitation.is_accepted() {
+        return Err(ApiError::bad_request(
+            "This invitation has already been accepted",
+        ));
+    }
+
+    // Check if expired
+    if invitation.is_expired() {
+        return Err(ApiError::bad_request("This invitation has expired"));
+    }
+
+    // Get team name
+    let team: Option<Team> = sqlx::query_as("SELECT * FROM teams WHERE id = ?")
+        .bind(&invitation.team_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    // Get inviter name
+    let inviter: Option<(String,)> = sqlx::query_as("SELECT name FROM users WHERE id = ?")
+        .bind(&invitation.created_by)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let mut response: TeamInvitationResponse = invitation.into();
+    response.team_name = team.map(|t| t.name);
+    response.inviter_name = inviter.map(|u| u.0);
+
+    Ok(Json(response))
+}
+
+/// Accept an invitation (requires authenticated user)
+pub async fn accept_invitation(
+    State(state): State<Arc<AppState>>,
+    Path(token): Path<String>,
+    user: User,
+) -> Result<Json<TeamMemberWithUser>, ApiError> {
+    // Get the invitation by token
+    let invitation =
+        sqlx::query_as::<_, TeamInvitation>("SELECT * FROM team_invitations WHERE token = ?")
+            .bind(&token)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Invitation not found"))?;
+
+    // Check if already accepted
+    if invitation.is_accepted() {
+        return Err(ApiError::bad_request(
+            "This invitation has already been accepted",
+        ));
+    }
+
+    // Check if expired
+    if invitation.is_expired() {
+        return Err(ApiError::bad_request("This invitation has expired"));
+    }
+
+    // Optionally verify the user's email matches the invitation (for security)
+    // Note: This is optional - you may want to allow any authenticated user to accept
+    // if they have the token, or you may want strict email matching
+    // For now, we'll check that the email matches (case-insensitive)
+    if user.email.to_lowercase() != invitation.email.to_lowercase() {
+        return Err(ApiError::forbidden(
+            "This invitation was sent to a different email address",
+        ));
+    }
+
+    // Check if user is already a member
+    let existing_membership =
+        get_user_team_membership(&state.db, &invitation.team_id, &user.id).await?;
+    if existing_membership.is_some() {
+        return Err(ApiError::conflict("You are already a member of this team"));
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Add the user as a team member
+    let member_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO team_members (id, team_id, user_id, role, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&member_id)
+    .bind(&invitation.team_id)
+    .bind(&user.id)
+    .bind(&invitation.role)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to add team member: {}", e);
+        ApiError::database("Failed to add team member")
+    })?;
+
+    // Mark the invitation as accepted
+    sqlx::query("UPDATE team_invitations SET accepted_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&invitation.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update invitation: {}", e);
+            ApiError::database("Failed to update invitation")
+        })?;
+
+    let member = TeamMemberWithUser {
+        id: member_id,
+        team_id: invitation.team_id.clone(),
+        user_id: user.id.clone(),
+        role: invitation.role.clone(),
+        created_at: now,
+        user_name: user.name.clone(),
+        user_email: user.email.clone(),
+    };
+
+    // Log audit event for invitation acceptance
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &invitation.team_id,
+        Some(&user.id),
+        TeamAuditAction::InvitationAccepted,
+        TeamAuditResourceType::Invitation,
+        Some(&invitation.id),
+        Some(serde_json::json!({
+            "email": &user.email,
+            "name": &user.name,
+            "role": &invitation.role
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log invitation acceptance audit: {}", e);
+    }
+
+    tracing::info!(
+        "User {} accepted invitation and joined team {}",
+        user.email,
+        invitation.team_id
+    );
+
+    Ok(Json(member))
+}
+
+/// List audit logs for a team with pagination and filtering
+pub async fn list_audit_logs(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ListAuditLogsQuery>,
+    user: User,
+) -> Result<Json<TeamAuditLogPage>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+
+    // Check user has admin+ role to view audit logs
+    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+
+    // Pagination defaults
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    // Build the count query
+    let mut count_sql = String::from("SELECT COUNT(*) FROM team_audit_logs WHERE team_id = ?");
+    let mut params: Vec<String> = vec![id.clone()];
+
+    if let Some(ref action) = query.action {
+        count_sql.push_str(" AND action = ?");
+        params.push(action.clone());
+    }
+    if let Some(ref resource_type) = query.resource_type {
+        count_sql.push_str(" AND resource_type = ?");
+        params.push(resource_type.clone());
+    }
+    if let Some(ref start_date) = query.start_date {
+        count_sql.push_str(" AND created_at >= ?");
+        params.push(start_date.clone());
+    }
+    if let Some(ref end_date) = query.end_date {
+        count_sql.push_str(" AND created_at <= ?");
+        params.push(end_date.clone());
+    }
+
+    // Execute count query with dynamic binding
+    let total: i64 = match params.len() {
+        1 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        2 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        3 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        4 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        5 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(&params[4])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        _ => 0,
+    };
+
+    let total_pages = ((total as f64) / (per_page as f64)).ceil() as i32;
+
+    // Build the select query
+    let mut select_sql = String::from("SELECT * FROM team_audit_logs WHERE team_id = ?");
+    if query.action.is_some() {
+        select_sql.push_str(" AND action = ?");
+    }
+    if query.resource_type.is_some() {
+        select_sql.push_str(" AND resource_type = ?");
+    }
+    if query.start_date.is_some() {
+        select_sql.push_str(" AND created_at >= ?");
+    }
+    if query.end_date.is_some() {
+        select_sql.push_str(" AND created_at <= ?");
+    }
+    select_sql.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+
+    // Execute select query with dynamic binding
+    let logs: Vec<TeamAuditLog> = match params.len() {
+        1 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        2 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        3 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        4 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        5 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(&params[4])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        _ => vec![],
+    };
+
+    // Fetch user details for each log entry
+    let mut items = Vec::with_capacity(logs.len());
+    for log in logs {
+        let (user_name, user_email) = if let Some(ref uid) = log.user_id {
+            let user_info: Option<(String, String)> =
+                sqlx::query_as("SELECT name, email FROM users WHERE id = ?")
+                    .bind(uid)
+                    .fetch_optional(&state.db)
+                    .await?;
+            user_info
+                .map(|(n, e)| (Some(n), Some(e)))
+                .unwrap_or((None, None))
+        } else {
+            (None, None)
+        };
+
+        let details = log
+            .details
+            .as_ref()
+            .and_then(|d| serde_json::from_str(d).ok());
+
+        items.push(TeamAuditLogResponse {
+            id: log.id,
+            team_id: log.team_id,
+            user_id: log.user_id,
+            action: log.action,
+            resource_type: log.resource_type,
+            resource_id: log.resource_id,
+            details,
+            created_at: log.created_at,
+            user_name,
+            user_email,
+        });
+    }
+
+    Ok(Json(TeamAuditLogPage {
+        items,
+        total,
+        page,
+        per_page,
+        total_pages,
+    }))
 }

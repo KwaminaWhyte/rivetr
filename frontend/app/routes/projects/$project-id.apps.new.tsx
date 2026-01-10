@@ -19,6 +19,7 @@ import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import { ZipUploadZone } from "@/components/zip-upload-zone";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import type { AppEnvironment, BuildType, BuildDetectionResult, NixpacksConfig, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
@@ -38,6 +39,7 @@ export default function NewAppPage() {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry" | "upload">("git");
   const [gitSourceType, setGitSourceType] = useState<"github" | "manual">("github");
   const [buildType, setBuildType] = useState<BuildType>("nixpacks");
@@ -64,10 +66,11 @@ export default function NewAppPage() {
     apt_packages: undefined,
   });
 
-  // Use React Query for data fetching
+  // Use React Query for data fetching - filter by current team
   const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.getProjects(),
+    queryKey: ["projects", currentTeamId],
+    queryFn: () => api.getProjects(currentTeamId ?? undefined),
+    enabled: currentTeamId !== null,
   });
 
   const { data: project } = useQuery<ProjectWithApps>({

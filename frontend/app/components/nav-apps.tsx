@@ -7,6 +7,7 @@ import {
   Trash2,
   ExternalLink,
   Plus,
+  Share2,
 } from "lucide-react";
 
 import {
@@ -26,15 +27,19 @@ import {
   SidebarMenuSkeleton,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import type { App } from "@/types/api";
+import { useTeamContext } from "@/lib/team-context";
+import type { AppWithSharing } from "@/types/api";
 
 export function NavApps() {
   const { isMobile } = useSidebar();
+  const { currentTeamId } = useTeamContext();
 
-  const { data: apps = [], isLoading } = useQuery<App[]>({
-    queryKey: ["apps"],
-    queryFn: () => api.getApps(),
+  const { data: apps = [], isLoading } = useQuery<AppWithSharing[]>({
+    queryKey: ["apps-with-sharing", currentTeamId],
+    queryFn: () => api.getAppsWithSharing(currentTeamId!),
+    enabled: currentTeamId !== null,
   });
 
   // Show only 5 most recent apps
@@ -64,9 +69,18 @@ export function NavApps() {
             {recentApps.map((app) => (
               <SidebarMenuItem key={app.id}>
                 <SidebarMenuButton asChild>
-                  <Link to={`/apps/${app.id}`}>
-                    <Package className="size-4" />
-                    <span>{app.name}</span>
+                  <Link to={`/apps/${app.id}`} className="flex items-center gap-2">
+                    {app.is_shared ? (
+                      <Share2 className="size-4 text-blue-500" />
+                    ) : (
+                      <Package className="size-4" />
+                    )}
+                    <span className="truncate">{app.name}</span>
+                    {app.is_shared && (
+                      <Badge variant="secondary" className="ml-auto text-xs px-1.5 py-0">
+                        Shared
+                      </Badge>
+                    )}
                   </Link>
                 </SidebarMenuButton>
                 <DropdownMenu>
@@ -87,12 +101,17 @@ export function NavApps() {
                         <span>View Details</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => api.triggerDeploy(app.id)}
-                    >
-                      <Rocket className="mr-2 h-4 w-4 text-muted-foreground" />
-                      <span>Deploy</span>
-                    </DropdownMenuItem>
+                    {/* Only show Deploy and Delete for owned apps */}
+                    {!app.is_shared && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={() => api.triggerDeploy(app.id)}
+                        >
+                          <Rocket className="mr-2 h-4 w-4 text-muted-foreground" />
+                          <span>Deploy</span>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     {app.domain && (
                       <DropdownMenuItem asChild>
                         <a
@@ -105,11 +124,15 @@ export function NavApps() {
                         </a>
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive">
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      <span>Delete</span>
-                    </DropdownMenuItem>
+                    {!app.is_shared && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Delete</span>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </SidebarMenuItem>

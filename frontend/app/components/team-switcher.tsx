@@ -18,7 +18,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import type { TeamWithMemberCount } from "@/types/api";
+import { Badge } from "@/components/ui/badge";
+import type { TeamWithMemberCount, TeamRole } from "@/types/api";
 
 interface TeamSwitcherProps {
   teams: TeamWithMemberCount[];
@@ -45,6 +46,21 @@ export function TeamSwitcher({
       .toUpperCase()
       .slice(0, 2);
   };
+
+  // Get role badge variant based on role
+  const getRoleBadgeVariant = (role: TeamRole | null): "default" | "secondary" | "outline" => {
+    switch (role) {
+      case "owner":
+        return "default";
+      case "admin":
+        return "secondary";
+      default:
+        return "outline";
+    }
+  };
+
+  // Check if user can create teams (any user can create teams)
+  const canCreateTeam = true;
 
   return (
     <SidebarMenu>
@@ -119,7 +135,17 @@ export function TeamSwitcher({
                 <div className="flex size-6 items-center justify-center rounded-md border bg-muted text-xs font-semibold">
                   {getInitials(team.name)}
                 </div>
-                <div className="flex-1 truncate">{team.name}</div>
+                <div className="flex flex-1 items-center gap-2 truncate">
+                  <span className="truncate">{team.name}</span>
+                  {team.user_role && (
+                    <Badge
+                      variant={getRoleBadgeVariant(team.user_role)}
+                      className="h-5 px-1.5 text-[10px] capitalize"
+                    >
+                      {team.user_role}
+                    </Badge>
+                  )}
+                </div>
                 {team.id === currentTeamId && (
                   <span className="text-xs text-primary">Active</span>
                 )}
@@ -127,17 +153,19 @@ export function TeamSwitcher({
             ))}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="gap-2 p-2"
-              onClick={() => navigate("/settings/teams")}
-            >
-              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                <Plus className="size-4" />
-              </div>
-              <div className="text-muted-foreground font-medium">
-                Manage Teams
-              </div>
-            </DropdownMenuItem>
+            {canCreateTeam && (
+              <DropdownMenuItem
+                className="gap-2 p-2"
+                onClick={() => navigate("/settings/teams?create=true")}
+              >
+                <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                  <Plus className="size-4" />
+                </div>
+                <div className="text-muted-foreground font-medium">
+                  Create Team
+                </div>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
