@@ -154,8 +154,8 @@
         "npm run build passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added Invitations tab to team settings page with: pending invitations table (email, role, sent date, expiry), send invitation form with email input and role selector, resend button, revoke/delete button. URL supports ?tab=invitations. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-010",

@@ -295,3 +295,35 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Don't fail requests if email fails - just log the error
   - lettre crate already available in project for SMTP
 ---
+
+## 01/10/2026 - US-009
+- Added TeamInvitation type and CreateInvitationRequest to frontend types (frontend/app/types/api.ts)
+  - TeamInvitation: id, team_id, email, role, expires_at, accepted_at, created_by, created_at, team_name, inviter_name
+  - CreateInvitationRequest: email, role
+- Added invitation API functions to teams API (frontend/app/lib/api/teams.ts)
+  - getTeamInvitations: GET /teams/{id}/invitations
+  - createTeamInvitation: POST /teams/{id}/invitations
+  - deleteTeamInvitation: DELETE /teams/{id}/invitations/{id}
+  - resendTeamInvitation: POST /teams/{id}/invitations/{id}/resend
+- Updated api index to export new invitation functions
+- Rewrote team detail page with Tabs component (frontend/app/routes/settings/teams/$id.tsx)
+  - Added Members tab (existing functionality)
+  - Added Invitations tab (admin+ users only)
+  - Invitations tab includes:
+    - Send Invitation card with email input and role selector
+    - Pending Invitations table showing email, role, sent date, expiry
+    - Resend button (RefreshCw icon) to re-send invitation email
+    - Revoke button (Trash2 icon) with confirmation dialog
+  - URL supports ?tab=invitations query param for deep linking
+- Files changed:
+  - frontend/app/types/api.ts (added TeamInvitation, CreateInvitationRequest)
+  - frontend/app/lib/api/teams.ts (added invitation API functions)
+  - frontend/app/lib/api/index.ts (exported new functions)
+  - frontend/app/routes/settings/teams/$id.tsx (added Invitations tab)
+- **Learnings for future iterations:**
+  - Tabs component from shadcn/ui works well for adding sections to detail pages
+  - Use useSearchParams to sync tab state with URL
+  - formatRelativeTime helper is useful for expiry dates
+  - Filter pending invitations client-side: !accepted_at && !isExpired(expires_at)
+  - Query key pattern: ["team-invitations", teamId] for invitation cache
+---
