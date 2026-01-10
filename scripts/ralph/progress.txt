@@ -259,3 +259,21 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-013
+- What was implemented: Detailed cost analysis page with hierarchical drill-down and CSV export
+- Files changed:
+  - frontend/app/lib/api/system.ts (added getTeamCosts, getProjectCosts, getAppCosts methods)
+  - frontend/app/lib/api/index.ts (registered new cost API methods)
+  - frontend/app/routes/costs.tsx (new comprehensive cost analysis page)
+- **Learnings for future iterations:**
+  - Cost page at /costs with period selector (7d, 30d, 90d)
+  - Uses Collapsible component from shadcn/ui for expandable team/project rows
+  - TeamCostRow and ProjectCostRow components load cost data lazily when expanded
+  - CostBreakdownChart uses horizontal stacked bar with CPU/Memory/Disk segments
+  - CSV export uses generateCostsCsv() and downloadCsv() helper functions
+  - Trend calculation compares first vs second half of period (same as CostSummaryCard)
+  - View mode toggle switches between "By Team" and "By Project" hierarchies
+  - formatCurrency helper reused from cost-summary-card pattern
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
