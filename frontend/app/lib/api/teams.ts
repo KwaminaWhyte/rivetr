@@ -149,4 +149,22 @@ export const teamsApi = {
       },
       token
     ),
+
+  // -------------------------------------------------------------------------
+  // Public Invitation Operations
+  // -------------------------------------------------------------------------
+
+  /** Validate an invitation token (public endpoint) */
+  validateInvitation: (invitationToken: string) =>
+    apiRequest<TeamInvitation>(`/auth/invitations/${invitationToken}`, {}),
+
+  /** Accept an invitation (requires authentication) */
+  acceptInvitation: (invitationToken: string, token?: string) =>
+    apiRequest<TeamMemberWithUser>(
+      `/invitations/${invitationToken}/accept`,
+      {
+        method: "POST",
+      },
+      token
+    ),
 };
