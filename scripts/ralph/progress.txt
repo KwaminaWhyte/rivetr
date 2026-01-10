@@ -277,3 +277,23 @@ Started: Resource Alerts & Cost Estimation
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
+## 2026-01-10 - US-014
+- What was implemented: Global alert defaults UI in admin settings
+- Files changed:
+  - src/api/alerts.rs (added AlertStatsResponse and get_alert_stats endpoint)
+  - src/api/mod.rs (registered /settings/alert-stats route)
+  - src/db/models/alert_config.rs (added count_apps_with_custom_configs method)
+  - frontend/app/types/api.ts (added UpdateGlobalAlertDefaultsRequest, AlertStatsResponse types)
+  - frontend/app/lib/api/system.ts (added getAlertDefaults, updateAlertDefaults, getAlertStats)
+  - frontend/app/lib/api/index.ts (registered alert defaults API methods)
+  - frontend/app/components/app-sidebar.tsx (added Alert Defaults nav link)
+  - frontend/app/routes/settings/alert-defaults.tsx (new Alert Defaults page)
+- **Learnings for future iterations:**
+  - Settings pages go in frontend/app/routes/settings/
+  - Add nav links in frontend/app/components/app-sidebar.tsx
+  - Settings API endpoints use /api/settings/* pattern
+  - ThresholdCard component pattern: local state with isDirty tracking for save button
+  - Stats card shows apps using defaults vs custom configs for visibility
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
