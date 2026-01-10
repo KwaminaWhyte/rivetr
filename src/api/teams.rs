@@ -14,6 +14,7 @@ use crate::db::{
     TeamInvitation, TeamInvitationResponse, TeamMember, TeamMemberWithUser, TeamRole,
     TeamWithMemberCount, UpdateMemberRoleRequest, UpdateTeamRequest, User,
 };
+use crate::notifications::SystemEmailService;
 use crate::AppState;
 
 use super::error::{ApiError, ValidationErrorBuilder};
@@ -877,12 +878,12 @@ pub async fn create_invitation(
         id: inv_id,
         team_id: id.clone(),
         email: req.email.clone(),
-        role: req.role,
+        role: req.role.clone(),
         expires_at: expires_at.to_rfc3339(),
         accepted_at: None,
         created_by: user.id.clone(),
         created_at: now.to_rfc3339(),
-        team_name: Some(team.name),
+        team_name: Some(team.name.clone()),
         inviter_name: Some(user.name.clone()),
     };
 
@@ -892,6 +893,52 @@ pub async fn create_invitation(
         id,
         user.email
     );
+
+    // Send invitation email (non-blocking, log errors but don't fail the request)
+    let email_service = SystemEmailService::new(state.config.email.clone());
+    if email_service.is_enabled() {
+        // Build the accept URL
+        let base_url = state
+            .config
+            .server
+            .external_url
+            .as_deref()
+            .unwrap_or("http://localhost:8080");
+        let accept_url = format!("{}/invitations/accept?token={}", base_url, token);
+
+        match email_service
+            .send_invitation_email(
+                &req.email,
+                &team.name,
+                &req.role,
+                &user.name,
+                &accept_url,
+                7, // 7 days expiry
+            )
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    to = %req.email,
+                    team = %team.name,
+                    "Invitation email sent successfully"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    to = %req.email,
+                    team = %team.name,
+                    error = %e,
+                    "Failed to send invitation email"
+                );
+            }
+        }
+    } else {
+        tracing::debug!(
+            "Email not configured, invitation email not sent to {}",
+            req.email
+        );
+    }
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -925,6 +972,108 @@ pub async fn delete_invitation(
     }
 
     tracing::info!("Deleted invitation {} from team {}", inv_id, team_id);
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Resend invitation email
+pub async fn resend_invitation(
+    State(state): State<Arc<AppState>>,
+    Path((team_id, inv_id)): Path<(String, String)>,
+    user: User,
+) -> Result<StatusCode, ApiError> {
+    // Validate IDs
+    if let Err(e) = validate_uuid(&team_id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+    if let Err(e) = validate_uuid(&inv_id, "invitation_id") {
+        return Err(ApiError::validation_field("invitation_id", e));
+    }
+
+    // Check user has admin+ role
+    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+
+    // Get the invitation
+    let invitation = sqlx::query_as::<_, TeamInvitation>(
+        "SELECT * FROM team_invitations WHERE id = ? AND team_id = ?",
+    )
+    .bind(&inv_id)
+    .bind(&team_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("Invitation not found"))?;
+
+    // Check if already accepted
+    if invitation.is_accepted() {
+        return Err(ApiError::bad_request(
+            "Cannot resend an accepted invitation",
+        ));
+    }
+
+    // Check if expired
+    if invitation.is_expired() {
+        return Err(ApiError::bad_request(
+            "Cannot resend an expired invitation. Please create a new invitation.",
+        ));
+    }
+
+    // Get team name
+    let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+        .bind(&team_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    // Get inviter name
+    let inviter: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&invitation.created_by)
+        .fetch_optional(&state.db)
+        .await?;
+    let inviter_name = inviter
+        .map(|u| u.name)
+        .unwrap_or_else(|| "A team member".to_string());
+
+    // Send invitation email
+    let email_service = SystemEmailService::new(state.config.email.clone());
+    if !email_service.is_enabled() {
+        return Err(ApiError::bad_request(
+            "Email is not configured. Cannot resend invitation.",
+        ));
+    }
+
+    // Build the accept URL
+    let base_url = state
+        .config
+        .server
+        .external_url
+        .as_deref()
+        .unwrap_or("http://localhost:8080");
+    let accept_url = format!("{}/invitations/accept?token={}", base_url, invitation.token);
+
+    email_service
+        .send_invitation_email(
+            &invitation.email,
+            &team.name,
+            &invitation.role,
+            &inviter_name,
+            &accept_url,
+            7, // 7 days expiry
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                to = %invitation.email,
+                team = %team.name,
+                error = %e,
+                "Failed to resend invitation email"
+            );
+            ApiError::internal("Failed to send invitation email")
+        })?;
+
+    tracing::info!(
+        to = %invitation.email,
+        team = %team.name,
+        "Invitation email resent successfully"
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }

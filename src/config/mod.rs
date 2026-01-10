@@ -32,6 +32,8 @@ pub struct Config {
     pub database_backup: DatabaseBackupConfig,
     #[serde(default)]
     pub stats_retention: StatsRetentionConfig,
+    #[serde(default)]
+    pub email: EmailConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -637,6 +639,69 @@ impl Default for StatsRetentionConfig {
     }
 }
 
+/// Email/SMTP configuration for sending system emails (invitations, notifications)
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmailConfig {
+    /// Enable email sending (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+    /// SMTP server host (e.g., "smtp.gmail.com")
+    #[serde(default)]
+    pub smtp_host: Option<String>,
+    /// SMTP server port (default: 587)
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    /// SMTP username for authentication
+    #[serde(default)]
+    pub smtp_username: Option<String>,
+    /// SMTP password for authentication
+    #[serde(default)]
+    pub smtp_password: Option<String>,
+    /// Use TLS for SMTP connection (default: true)
+    #[serde(default = "default_smtp_tls")]
+    pub smtp_tls: bool,
+    /// From address for outgoing emails (e.g., "noreply@rivetr.io")
+    #[serde(default)]
+    pub from_address: Option<String>,
+    /// From name for outgoing emails (e.g., "Rivetr")
+    #[serde(default = "default_from_name")]
+    pub from_name: String,
+}
+
+fn default_smtp_port() -> u16 {
+    587
+}
+
+fn default_smtp_tls() -> bool {
+    true
+}
+
+fn default_from_name() -> String {
+    "Rivetr".to_string()
+}
+
+impl Default for EmailConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            smtp_host: None,
+            smtp_port: default_smtp_port(),
+            smtp_username: None,
+            smtp_password: None,
+            smtp_tls: default_smtp_tls(),
+            from_address: None,
+            from_name: default_from_name(),
+        }
+    }
+}
+
+impl EmailConfig {
+    /// Check if email is properly configured
+    pub fn is_configured(&self) -> bool {
+        self.enabled && self.smtp_host.is_some() && self.from_address.is_some()
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -667,6 +732,7 @@ impl Config {
             container_monitor: ContainerMonitorConfig::default(),
             database_backup: DatabaseBackupConfig::default(),
             stats_retention: StatsRetentionConfig::default(),
+            email: EmailConfig::default(),
         }
     }
 }

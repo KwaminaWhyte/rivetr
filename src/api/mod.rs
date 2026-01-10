@@ -172,6 +172,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/teams/:id/invitations/:inv_id",
             delete(teams::delete_invitation),
         )
+        .route(
+            "/teams/:id/invitations/:inv_id/resend",
+            post(teams::resend_invitation),
+        )
         // Invitation accept (requires auth)
         .route("/invitations/:token/accept", post(teams::accept_invitation))
         // Notification Channels

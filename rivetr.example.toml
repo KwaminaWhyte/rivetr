@@ -124,3 +124,21 @@ max_backoff_secs = 300
 # Duration in seconds a container must run before being considered stable (default: 120)
 # After this duration without crashing, the restart counter is reset
 stable_duration_secs = 120
+
+[email]
+# Enable email sending for team invitations and notifications (default: false)
+# enabled = true
+# SMTP server host (e.g., "smtp.gmail.com", "smtp.sendgrid.net")
+# smtp_host = "smtp.example.com"
+# SMTP server port (default: 587)
+# smtp_port = 587
+# SMTP username for authentication (optional for some servers)
+# smtp_username = "apikey"
+# SMTP password for authentication
+# smtp_password = "your-smtp-password"
+# Use TLS for SMTP connection (default: true)
+# smtp_tls = true
+# From email address for outgoing emails
+# from_address = "noreply@example.com"
+# From name for outgoing emails (default: "Rivetr")
+# from_name = "Rivetr"

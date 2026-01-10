@@ -3,6 +3,10 @@
 //! This module provides a unified interface for sending notifications
 //! on deployment events and app state changes.
 
+pub mod email;
+
+pub use email::SystemEmailService;
+
 use anyhow::Result;
 use lettre::{
     message::{header::ContentType, Mailbox, MultiPart, SinglePart},
