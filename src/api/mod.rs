@@ -1,3 +1,4 @@
+mod alerts;
 mod apps;
 mod audit;
 pub mod auth;
@@ -114,6 +115,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
         .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
         .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
+        // Alert Configurations
+        .route("/apps/:id/alerts", get(alerts::list_alerts))
+        .route("/apps/:id/alerts", post(alerts::create_alert))
+        .route("/apps/:id/alerts/:alert_id", get(alerts::get_alert))
+        .route("/apps/:id/alerts/:alert_id", put(alerts::update_alert))
+        .route("/apps/:id/alerts/:alert_id", delete(alerts::delete_alert))
         // HTTP Basic Auth
         .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
@@ -263,6 +270,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/templates/:id/deploy",
             post(service_templates::deploy_template),
+        )
+        // Settings
+        .route("/settings/alert-defaults", get(alerts::get_alert_defaults))
+        .route(
+            "/settings/alert-defaults",
+            put(alerts::update_alert_defaults),
         )
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))

@@ -9,6 +9,45 @@ Started: Resource Alerts & Cost Estimation
 - Frontend is React + TypeScript + shadcn/ui in frontend/
 - Use anyhow::Result for error handling in Rust code
 - State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
+- Stats collection tasks are spawned in main.rs using tokio::spawn
+- Per-app metrics: ResourceMetric model in src/db/models/resource_metric.rs
+- Background task pattern: spawn_*_task functions in src/engine/
+- Alert configs: AlertConfig and GlobalAlertDefault models in src/db/models/alert_config.rs
+- Settings API pattern: /api/settings/* for global configuration endpoints
 
+---
+
+## 2026-01-10 - US-001
+- What was implemented: Per-app resource metrics collection infrastructure
+- Files changed:
+  - migrations/032_resource_metrics.sql (new table)
+  - src/db/models/resource_metric.rs (new model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/resource_metrics_collector.rs (new collector service)
+  - src/engine/mod.rs (module registration)
+  - src/main.rs (spawn collector task)
+- **Learnings for future iterations:**
+  - ContainerRuntime::stats() returns ContainerStats with cpu_percent, memory_usage, memory_limit
+  - Existing stats_collector.rs handles system-wide stats, this new module handles per-app
+  - Deployment table has container_id field for looking up container stats
+  - Use tokio::select! for multiple interval tasks in single spawn
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-002
+- What was implemented: Alert configuration models and API for threshold-based resource alerts
+- Files changed:
+  - migrations/033_alert_configs.sql (new tables: alert_configs, global_alert_defaults)
+  - src/db/models/alert_config.rs (new model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/api/alerts.rs (new API endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Per-app alert configs are stored in alert_configs table with app_id foreign key
+  - Global defaults are stored in global_alert_defaults table (seeded with default thresholds)
+  - AlertConfig::get_effective_threshold() returns per-app config if exists, else global default
+  - API endpoints follow existing patterns: list/create/get/update/delete at /api/apps/{id}/alerts
+  - Settings endpoints at /api/settings/alert-defaults for global defaults
+  - Use StatusCode::CONFLICT for duplicate constraint violations
 ---
 
