@@ -4,6 +4,7 @@ mod audit;
 pub mod auth;
 mod basic_auth;
 mod cost_rates;
+mod costs;
 mod database_backups;
 mod databases;
 mod deployments;
@@ -122,6 +123,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/alerts/:alert_id", get(alerts::get_alert))
         .route("/apps/:id/alerts/:alert_id", put(alerts::update_alert))
         .route("/apps/:id/alerts/:alert_id", delete(alerts::delete_alert))
+        // App Costs
+        .route("/apps/:id/costs", get(costs::get_app_costs))
         // HTTP Basic Auth
         .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
@@ -157,6 +160,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id", put(projects::update_project))
         .route("/projects/:id", delete(projects::delete_project))
         .route("/projects/:id/apps/upload", post(apps::upload_create_app))
+        .route("/projects/:id/costs", get(costs::get_project_costs))
         .route("/apps/:id/project", put(projects::assign_app_project))
         // Teams
         .route("/teams", get(teams::list_teams))
@@ -171,6 +175,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(teams::update_member_role),
         )
         .route("/teams/:id/members/:user_id", delete(teams::remove_member))
+        // Team Costs
+        .route("/teams/:id/costs", get(costs::get_team_costs))
         // Team Notification Channels
         .route(
             "/teams/:id/notification-channels",
