@@ -272,6 +272,7 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  team_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -285,6 +286,7 @@ export interface ProjectWithApps extends Project {
 export interface CreateProjectRequest {
   name: string;
   description?: string;
+  team_id?: string;
 }
 
 export interface UpdateProjectRequest {

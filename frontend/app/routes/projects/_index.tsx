@@ -74,7 +74,7 @@ export default function ProjectsPage() {
   const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectWithApps[]>({
     queryKey: ["projects-with-apps", currentTeamId],
     queryFn: async () => {
-      const projectList = await api.getProjects();
+      const projectList = await api.getProjects(currentTeamId ?? undefined);
       const projectsWithApps = await Promise.all(
         projectList.map((p) => api.getProject(p.id).catch(() => ({ ...p, apps: [], databases: [], services: [] } as ProjectWithApps)))
       );
@@ -163,6 +163,7 @@ export default function ProjectsPage() {
       return api.createProject({
         name: name.trim(),
         description: description.trim() || undefined,
+        team_id: currentTeamId ?? undefined,
       });
     },
     onSuccess: () => {

@@ -12,6 +12,7 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -22,6 +23,7 @@ pub struct ProjectWithAppCount {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub app_count: i64,
@@ -33,6 +35,7 @@ pub struct ProjectWithApps {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub apps: Vec<App>,
@@ -46,6 +49,7 @@ pub struct ProjectWithApps {
 pub struct CreateProjectRequest {
     pub name: String,
     pub description: Option<String>,
+    pub team_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

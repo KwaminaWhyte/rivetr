@@ -12,8 +12,18 @@ import type {
 } from "@/types/api";
 
 export const projectsApi = {
-  /** List all projects */
-  getProjects: () => apiRequest<Project[]>("/projects"),
+  /**
+   * List all projects, optionally filtered by team.
+   * @param teamId - If provided, filter projects by team. Empty string gets unassigned projects.
+   */
+  getProjects: (teamId?: string) => {
+    const params = new URLSearchParams();
+    if (teamId !== undefined) {
+      params.set("team_id", teamId);
+    }
+    const query = params.toString();
+    return apiRequest<Project[]>(`/projects${query ? `?${query}` : ""}`);
+  },
 
   /** Get a single project with its apps, databases, and services */
   getProject: (id: string) => apiRequest<ProjectWithApps>(`/projects/${id}`),

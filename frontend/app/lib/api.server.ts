@@ -119,7 +119,10 @@ export const api = {
     apiRequest<AppStatus>(`/apps/${id}/stop`, token, { method: "POST" }),
 
   // Projects
-  getProjects: (token: string) => apiRequest<Project[]>("/projects", token),
+  getProjects: (token: string, teamId?: string) => {
+    const params = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+    return apiRequest<Project[]>(`/projects${params}`, token);
+  },
   getProject: (token: string, id: string) =>
     apiRequest<ProjectWithApps>(`/projects/${id}`, token),
   createProject: (token: string, data: CreateProjectRequest) =>

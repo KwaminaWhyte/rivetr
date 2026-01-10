@@ -1,10 +1,11 @@
 //! Projects API endpoints for grouping related apps/services together.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json,
 };
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -17,6 +18,15 @@ use crate::AppState;
 use super::audit::{audit_log, extract_client_ip};
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::validate_uuid;
+
+/// Query parameters for listing projects
+#[derive(Debug, Deserialize)]
+pub struct ListProjectsQuery {
+    /// Filter by team ID - if provided, only projects for this team are returned.
+    /// If empty string, returns projects without a team_id (legacy/unassigned).
+    /// If not provided, returns all projects.
+    pub team_id: Option<String>,
+}
 
 /// Validate a project name
 fn validate_project_name(name: &str) -> Result<(), String> {
@@ -81,27 +91,47 @@ fn validate_update_request(req: &UpdateProjectRequest) -> Result<(), ApiError> {
 /// List all projects with app counts
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ListProjectsQuery>,
 ) -> Result<Json<Vec<ProjectWithAppCount>>, ApiError> {
-    let projects = sqlx::query_as::<_, Project>(
-        "SELECT * FROM projects ORDER BY created_at DESC"
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let projects = match &query.team_id {
+        Some(team_id) if team_id.is_empty() => {
+            // Empty string means get projects without a team_id (legacy/unassigned)
+            sqlx::query_as::<_, Project>(
+                "SELECT * FROM projects WHERE team_id IS NULL ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await?
+        }
+        Some(team_id) => {
+            // Filter by specific team_id
+            sqlx::query_as::<_, Project>(
+                "SELECT * FROM projects WHERE team_id = ? ORDER BY created_at DESC",
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await?
+        }
+        None => {
+            // No filter, return all projects
+            sqlx::query_as::<_, Project>("SELECT * FROM projects ORDER BY created_at DESC")
+                .fetch_all(&state.db)
+                .await?
+        }
+    };
 
     // Get app counts for each project
     let mut results = Vec::new();
     for project in projects {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM apps WHERE project_id = ?"
-        )
-        .bind(&project.id)
-        .fetch_one(&state.db)
-        .await?;
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM apps WHERE project_id = ?")
+            .bind(&project.id)
+            .fetch_one(&state.db)
+            .await?;
 
         results.push(ProjectWithAppCount {
             id: project.id,
             name: project.name,
             description: project.description,
+            team_id: project.team_id,
             created_at: project.created_at,
             updated_at: project.updated_at,
             app_count: count.0,
@@ -128,21 +158,21 @@ pub async fn get_project(
         .ok_or_else(|| ApiError::not_found("Project not found"))?;
 
     let apps = sqlx::query_as::<_, App>(
-        "SELECT * FROM apps WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM apps WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
     .await?;
 
     let databases = sqlx::query_as::<_, ManagedDatabase>(
-        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
     .await?;
 
     let services = sqlx::query_as::<_, Service>(
-        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
@@ -154,15 +184,13 @@ pub async fn get_project(
         .map(|db| db.to_response(false, host))
         .collect();
 
-    let service_responses = services
-        .into_iter()
-        .map(|s| s.to_response())
-        .collect();
+    let service_responses = services.into_iter().map(|s| s.to_response()).collect();
 
     Ok(Json(ProjectWithApps {
         id: project.id,
         name: project.name,
         description: project.description,
+        team_id: project.team_id,
         created_at: project.created_at,
         updated_at: project.updated_at,
         apps,
@@ -186,13 +214,14 @@ pub async fn create_project(
 
     sqlx::query(
         r#"
-        INSERT INTO projects (id, name, description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO projects (id, name, description, team_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(&req.name)
     .bind(&req.description)
+    .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
