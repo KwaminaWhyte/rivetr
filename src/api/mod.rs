@@ -27,17 +27,23 @@ mod ws;
 
 use axum::{
     body::Body,
-    http::{Request, Response},
+    http::{header, Request, Response, StatusCode, Uri},
     middleware,
+    response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
 };
+use rust_embed::Embed;
 use std::sync::Arc;
-use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::AppState;
 use rate_limit::{rate_limit_api, rate_limit_auth, rate_limit_webhook};
+
+/// Embedded static files from the frontend build
+#[derive(Embed)]
+#[folder = "static/dist/client"]
+struct StaticAssets;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     // Auth routes (public, but rate limited)
@@ -362,22 +368,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             rate_limit_webhook,
         ));
 
-    // Static file serving for SPA frontend
-    // Serves from static/dist/client with fallback to __spa-fallback.html for client-side routing
-    // Note: index.html is pre-rendered for "/" only, __spa-fallback.html is the proper SPA shell
-    let static_dir = std::path::Path::new("static/dist/client");
-    let fallback_file = static_dir.join("__spa-fallback.html");
-
-    let serve_static = ServeDir::new(static_dir).not_found_service(ServeFile::new(&fallback_file));
-
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
         .nest("/api/auth", auth_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)
-        // Fallback to static files for frontend SPA
-        .fallback_service(serve_static)
+        // Fallback to embedded static files for frontend SPA
+        .fallback(serve_embedded_static)
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(metrics::metrics_middleware))
         .layer(TraceLayer::new_for_http())
@@ -386,6 +384,66 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
 async fn health_check() -> &'static str {
     "OK"
+}
+
+/// Serve embedded static files with SPA fallback
+async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+
+    // Try to serve the exact file first
+    if let Some(content) = StaticAssets::get(path) {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+
+        // Set appropriate cache headers
+        let cache_control = if path.starts_with("assets/") {
+            // Hashed assets can be cached forever
+            "public, max-age=31536000, immutable"
+        } else {
+            // HTML and other files should be revalidated
+            "public, max-age=0, must-revalidate"
+        };
+
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, mime.as_ref()),
+                (header::CACHE_CONTROL, cache_control),
+            ],
+            content.data.into_owned(),
+        )
+            .into_response();
+    }
+
+    // For root path, try index.html
+    if path.is_empty() || path == "index.html" {
+        if let Some(content) = StaticAssets::get("index.html") {
+            return (
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                    (header::CACHE_CONTROL, "public, max-age=0, must-revalidate"),
+                ],
+                content.data.into_owned(),
+            )
+                .into_response();
+        }
+    }
+
+    // SPA fallback: serve __spa-fallback.html for client-side routing
+    if let Some(content) = StaticAssets::get("__spa-fallback.html") {
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CACHE_CONTROL, "public, max-age=0, must-revalidate"),
+            ],
+            content.data.into_owned(),
+        )
+            .into_response();
+    }
+
+    // If no fallback exists, return 404
+    (StatusCode::NOT_FOUND, "Not Found").into_response()
 }
 
 /// Security headers middleware

@@ -752,3 +752,39 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Revoke confirmation dialog shows email address and warning about link invalidation
   - Browser session persists - no need to re-authenticate between E2E tests
 ---
+
+## 01/10/2026 - US-023
+- E2E tested team audit log Activity tab using Playwright MCP
+- Test flow:
+  1. Navigated to Settings > Teams > "test team" > Activity tab
+  2. Verified audit log table displays events:
+     - Table columns: Timestamp, User, Action, Resource, Details
+     - 2 events visible (from US-022): Invitation Revoked, Invitation Created
+     - Events show user (Kwamina), action badges (colored), resource type, details
+  3. Tested action type filter dropdown:
+     - 23 action options (Team Created, Member Invited, App Created, etc.)
+     - Selected "Invitation Created" - table filtered to 1 row
+     - "Clear Filters" button appeared when filter active
+  4. Tested resource type filter dropdown:
+     - 8 resource options (Team, Member, Invitation, App, Project, Database, Service, Deployment)
+  5. Tested date range filter:
+     - Entered start date "2026-01-10"
+     - Events from today shown (combined with action filter)
+  6. Tested Clear Filters button:
+     - Reset all filters to defaults
+     - Both events visible again
+  7. Pagination not testable - only 2 events (below page threshold)
+- Screenshots saved to .playwright-mcp/e2e-screenshots/:
+  - 12-activity-tab-initial.png
+  - 13-action-filter-dropdown.png
+  - 14-action-filter-applied.png
+  - 15-resource-filter-dropdown.png
+  - 16-date-filter-applied.png
+  - 17-filters-cleared.png
+- **Learnings for future iterations:**
+  - Activity tab only visible to admin+ users
+  - Action badges are color-coded: destructive for deletions, default for creations
+  - Clear Filters button only appears when any filter is active
+  - Browser session persists across E2E test stories (no re-auth needed)
+  - Date inputs accept ISO format (YYYY-MM-DD)
+---

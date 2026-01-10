@@ -19,6 +19,8 @@ import { teamsApi } from "@/lib/api/teams";
 import type { TeamWithMemberCount, TeamRole } from "@/types/api";
 
 const TEAM_STORAGE_KEY = "rivetr_current_team";
+// Special value to indicate user explicitly chose personal workspace
+const PERSONAL_WORKSPACE_VALUE = "__personal__";
 
 interface TeamContextType {
   /** Current team ID (null for personal workspace) */
@@ -43,21 +45,27 @@ const TeamContext = createContext<TeamContextType | null>(null);
 
 /**
  * Get the stored team ID from localStorage
+ * Returns null for personal workspace, undefined if no preference stored
  */
-function getStoredTeamId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TEAM_STORAGE_KEY);
+function getStoredTeamId(): string | null | undefined {
+  if (typeof window === "undefined") return undefined;
+  const stored = localStorage.getItem(TEAM_STORAGE_KEY);
+  if (stored === null) return undefined; // No preference stored yet
+  if (stored === PERSONAL_WORKSPACE_VALUE) return null; // User chose personal workspace
+  return stored; // Team ID
 }
 
 /**
  * Store the team ID in localStorage
+ * Uses special marker for personal workspace to distinguish from "no preference"
  */
 function storeTeamId(teamId: string | null): void {
   if (typeof window === "undefined") return;
-  if (teamId) {
-    localStorage.setItem(TEAM_STORAGE_KEY, teamId);
+  if (teamId === null) {
+    // User explicitly chose personal workspace
+    localStorage.setItem(TEAM_STORAGE_KEY, PERSONAL_WORKSPACE_VALUE);
   } else {
-    localStorage.removeItem(TEAM_STORAGE_KEY);
+    localStorage.setItem(TEAM_STORAGE_KEY, teamId);
   }
 }
 
@@ -67,9 +75,11 @@ interface TeamProviderProps {
 
 export function TeamProvider({ children }: TeamProviderProps) {
   const queryClient = useQueryClient();
-  const [currentTeamId, setCurrentTeamIdState] = useState<string | null>(() =>
-    getStoredTeamId()
-  );
+  const [currentTeamId, setCurrentTeamIdState] = useState<string | null>(() => {
+    const stored = getStoredTeamId();
+    // undefined means no preference yet, will be set by useEffect after teams load
+    return stored === undefined ? null : stored;
+  });
 
   // Fetch teams list
   const {
@@ -88,21 +98,24 @@ export function TeamProvider({ children }: TeamProviderProps) {
   useEffect(() => {
     if (!isLoading && teams.length > 0) {
       const storedId = getStoredTeamId();
-      if (storedId) {
+      if (storedId === undefined) {
+        // No preference stored yet (first visit), default to first team
+        setCurrentTeamIdState(teams[0].id);
+        storeTeamId(teams[0].id);
+      } else if (storedId === null) {
+        // User explicitly chose personal workspace, keep it as null
+        setCurrentTeamIdState(null);
+      } else {
         // Verify stored team still exists and user has access
         const teamExists = teams.some((t) => t.id === storedId);
         if (!teamExists) {
-          // Team no longer accessible, use first team or null
+          // Team no longer accessible, use first team
           const firstTeam = teams[0];
           setCurrentTeamIdState(firstTeam?.id ?? null);
           storeTeamId(firstTeam?.id ?? null);
         } else {
           setCurrentTeamIdState(storedId);
         }
-      } else if (teams.length > 0) {
-        // No stored team, use first team
-        setCurrentTeamIdState(teams[0].id);
-        storeTeamId(teams[0].id);
       }
     }
   }, [teams, isLoading]);

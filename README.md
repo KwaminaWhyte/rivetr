@@ -32,22 +32,70 @@ Rivetr is a **single-binary PaaS** that lets you deploy applications from Git wi
 
 ## Quick Start
 
-### Using Setup Script
+### Production Install (Recommended)
+
+The one-liner install script sets up everything you need on a fresh Linux server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+```
+
+**What the install script does:**
+
+1. **Installs Docker** - If not already present (supports Ubuntu, Debian, Fedora, CentOS, RHEL)
+2. **Installs Build Tools** - Git, Nixpacks, Railpack (optional), Pack CLI for buildpacks
+3. **Creates Service User** - `rivetr` user with Docker access
+4. **Downloads Binary** - From GitHub releases (or builds from source as fallback)
+5. **Creates Configuration** - `/opt/rivetr/rivetr.toml` with secure admin token
+6. **Sets Up Systemd Service** - Auto-start on boot, auto-restart on crash
+7. **Configures Firewall** - Opens ports 80, 443, and 8080
+
+**After installation:**
+
+```
+Web Dashboard:  http://your-server-ip:8080
+Config File:    /opt/rivetr/rivetr.toml
+Data Directory: /var/lib/rivetr
+Service Logs:   sudo journalctl -u rivetr -f
+```
+
+**Environment Variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RIVETR_VERSION` | `v0.2.3` | Version to install (or `latest`) |
+| `INSTALL_DIR` | `/opt/rivetr` | Binary installation directory |
+| `DATA_DIR` | `/var/lib/rivetr` | Data storage directory |
+
+Example with custom version:
+```bash
+RIVETR_VERSION=latest curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+```
+
+### Service Management
+
+```bash
+# Check status
+sudo systemctl status rivetr
+
+# Start/stop/restart
+sudo systemctl start rivetr
+sudo systemctl stop rivetr
+sudo systemctl restart rivetr
+
+# View logs
+sudo journalctl -u rivetr -f
+
+# View last 100 lines
+sudo journalctl -u rivetr -n 100
+```
+
+### Development Setup
 
 **Linux/macOS:**
 
 ```bash
-# One-liner install (Linux)
-curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-
-# Or build from source
 git clone https://github.com/KwaminaWhyte/rivetr.git
-cd rivetr
-cargo build --release
-./target/release/rivetr --config rivetr.toml
-
-
-git clone https://github.com/Kwaminawhyte/rivetr.git
 cd rivetr
 chmod +x scripts/setup.sh
 ./scripts/setup.sh
@@ -56,30 +104,17 @@ chmod +x scripts/setup.sh
 **Windows (PowerShell):**
 
 ```powershell
-git clone https://github.com/Kwaminawhyte/rivetr.git
+git clone https://github.com/KwaminaWhyte/rivetr.git
 cd rivetr
 .\scripts\setup.ps1
 ```
 
-The setup script will:
-
-1. Check prerequisites (Rust, Git, Docker/Podman)
-2. Create necessary directories
-3. Set up configuration
-4. Build the project
-5. Optionally start the server
-
-### Manual Setup
+**Manual Build:**
 
 ```bash
-# Clone
-git clone https://github.com/Kwaminawhyte/rivetr.git
+git clone https://github.com/KwaminaWhyte/rivetr.git
 cd rivetr
-
-# Build
 cargo build --release
-
-# Run
 ./target/release/rivetr --config rivetr.toml
 ```
 
@@ -173,6 +208,55 @@ cargo test
 cargo fmt --check
 cargo clippy
 ```
+
+## Troubleshooting
+
+### Port 80 Permission Denied
+
+If you see `Proxy server error error=Permission denied (os error 13)` in the logs, the service doesn't have permission to bind to port 80. The install script handles this automatically, but if you're running manually:
+
+```bash
+# Option 1: Use setcap (recommended)
+sudo setcap 'cap_net_bind_service=+ep' /opt/rivetr/rivetr
+
+# Option 2: Run as root (not recommended)
+sudo ./rivetr --config rivetr.toml
+```
+
+### Service Won't Start
+
+Check the logs for details:
+```bash
+sudo journalctl -u rivetr -n 50 --no-pager
+```
+
+Common issues:
+- **Missing Docker**: Ensure Docker is installed and running (`systemctl status docker`)
+- **Port in use**: Check if ports 80 or 8080 are already in use (`ss -tlnp | grep -E ':(80|8080)'`)
+- **Config error**: Validate your config file (`/opt/rivetr/rivetr --config /opt/rivetr/rivetr.toml config check`)
+
+### Reinstalling
+
+To completely remove and reinstall:
+```bash
+sudo systemctl stop rivetr
+sudo rm -rf /opt/rivetr /var/lib/rivetr /etc/systemd/system/rivetr.service
+sudo userdel rivetr
+sudo systemctl daemon-reload
+
+# Then run the install script again
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+```
+
+### Updating
+
+To update to a newer version:
+```bash
+sudo systemctl stop rivetr
+RIVETR_VERSION=v0.2.4 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+```
+
+The install script preserves your existing configuration.
 
 ## Documentation
 
