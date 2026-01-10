@@ -519,7 +519,8 @@ fn default_hours() -> i64 {
 /// GET /api/system/stats/history
 ///
 /// Returns historical system stats for the specified time range.
-/// Data points are recorded every 5 minutes.
+/// For short time ranges (<=24h), returns raw 5-minute data.
+/// For longer ranges (>24h), returns aggregated hourly data for efficiency.
 ///
 /// Query parameters:
 /// - hours: Time range in hours (default: 24, valid: 1, 6, 24, 168, 720)
@@ -536,11 +537,22 @@ pub async fn get_stats_history(
         _ => 720, // 30 days
     };
 
-    // Calculate number of records based on time range
-    // 5-minute intervals: 12 per hour
-    let limit = hours * 12;
+    // For time ranges > 24 hours, use aggregated hourly data for efficiency
+    // This returns fewer data points but covers longer periods
+    let history = if hours > 24 {
+        get_aggregated_history(&state.db, hours).await
+    } else {
+        get_raw_history(&state.db, hours).await
+    };
 
-    // Calculate the cutoff time
+    let count = history.len();
+
+    Ok(Json(StatsHistoryResponse { history, count }))
+}
+
+/// Get raw stats history (5-minute intervals) for short time ranges
+async fn get_raw_history(db: &sqlx::SqlitePool, hours: i64) -> Vec<StatsHistoryPoint> {
+    let limit = hours * 12; // 12 samples per hour at 5-min intervals
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
     let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -556,15 +568,105 @@ pub async fn get_stats_history(
     )
     .bind(&cutoff_str)
     .bind(limit)
-    .fetch_all(&state.db)
+    .fetch_all(db)
     .await
     .unwrap_or_default();
 
     // Reverse to get chronological order
     let mut history = history;
     history.reverse();
+    history
+}
 
-    let count = history.len();
+/// Get aggregated hourly stats for longer time ranges
+async fn get_aggregated_history(db: &sqlx::SqlitePool, hours: i64) -> Vec<StatsHistoryPoint> {
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
+    let cutoff_str = cutoff.format("%Y-%m-%d %H:00:00").to_string();
 
-    Ok(Json(StatsHistoryResponse { history, count }))
+    // Try to get from hourly aggregates first
+    #[derive(Debug, sqlx::FromRow)]
+    struct HourlyRow {
+        hour_timestamp: String,
+        avg_cpu_percent: f64,
+        avg_memory_used_bytes: i64,
+        avg_memory_total_bytes: i64,
+        avg_running_apps: f64,
+        avg_running_databases: f64,
+        avg_running_services: f64,
+    }
+
+    let hourly: Vec<HourlyRow> = sqlx::query_as(
+        r#"
+        SELECT hour_timestamp, avg_cpu_percent, avg_memory_used_bytes, avg_memory_total_bytes,
+               avg_running_apps, avg_running_databases, avg_running_services
+        FROM stats_hourly
+        WHERE hour_timestamp >= ?
+        ORDER BY hour_timestamp ASC
+        "#,
+    )
+    .bind(&cutoff_str)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    // If we have hourly data, use it
+    if !hourly.is_empty() {
+        return hourly
+            .into_iter()
+            .map(|h| StatsHistoryPoint {
+                timestamp: h.hour_timestamp,
+                cpu_percent: h.avg_cpu_percent,
+                memory_used_bytes: h.avg_memory_used_bytes,
+                memory_total_bytes: h.avg_memory_total_bytes,
+                running_apps: h.avg_running_apps.round() as i64,
+                running_databases: h.avg_running_databases.round() as i64,
+                running_services: h.avg_running_services.round() as i64,
+            })
+            .collect();
+    }
+
+    // Fall back to raw data if no hourly aggregates exist
+    // This can happen if the aggregation task hasn't run yet
+    let raw_cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+    let limit = hours * 12;
+
+    let history: Vec<StatsHistoryPoint> = sqlx::query_as(
+        r#"
+        SELECT timestamp, cpu_percent, memory_used_bytes, memory_total_bytes,
+               running_apps, running_databases, running_services
+        FROM stats_history
+        WHERE timestamp >= ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(&raw_cutoff_str)
+    .bind(limit)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    let mut history = history;
+    history.reverse();
+    history
+}
+
+/// System-wide aggregated stats summary
+/// GET /api/system/stats/summary
+///
+/// Returns a summary of system stats with different time period aggregations:
+/// - Current: Most recent stats
+/// - Last 24 hours: Average and max from raw data
+/// - Last 7 days: Average and max from hourly aggregates
+/// - Last 30 days: Average and max from daily aggregates
+pub async fn get_stats_summary(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::db::SystemStatsSummary>, ApiError> {
+    use crate::db::SystemStatsSummary;
+
+    let summary = SystemStatsSummary::get(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to get stats summary: {}", e)))?;
+
+    Ok(Json(summary))
 }

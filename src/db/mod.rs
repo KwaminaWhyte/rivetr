@@ -346,6 +346,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/030_auto_rollback.sql")).await?;
     }
 
+    // Migration 031: Add stats aggregation tables (hourly and daily)
+    let has_stats_hourly_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='stats_hourly'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_stats_hourly_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/031_stats_aggregation.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

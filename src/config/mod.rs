@@ -30,6 +30,8 @@ pub struct Config {
     pub container_monitor: ContainerMonitorConfig,
     #[serde(default)]
     pub database_backup: DatabaseBackupConfig,
+    #[serde(default)]
+    pub stats_retention: StatsRetentionConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -583,6 +585,58 @@ impl Default for DatabaseBackupConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatsRetentionConfig {
+    /// Enable stats retention and aggregation cleanup (default: true)
+    #[serde(default = "default_stats_retention_enabled")]
+    pub enabled: bool,
+    /// Raw stats retention in days (default: 7)
+    /// Raw stats are recorded every 5 minutes
+    #[serde(default = "default_raw_retention_days")]
+    pub raw_retention_days: i64,
+    /// Hourly aggregated stats retention in days (default: 30)
+    #[serde(default = "default_hourly_retention_days")]
+    pub hourly_retention_days: i64,
+    /// Daily aggregated stats retention in days (default: 365)
+    #[serde(default = "default_daily_retention_days")]
+    pub daily_retention_days: i64,
+    /// Interval between cleanup/aggregation runs in seconds (default: 3600 = 1 hour)
+    #[serde(default = "default_stats_cleanup_interval")]
+    pub cleanup_interval_seconds: u64,
+}
+
+fn default_stats_retention_enabled() -> bool {
+    true
+}
+
+fn default_raw_retention_days() -> i64 {
+    7
+}
+
+fn default_hourly_retention_days() -> i64 {
+    30
+}
+
+fn default_daily_retention_days() -> i64 {
+    365
+}
+
+fn default_stats_cleanup_interval() -> u64 {
+    3600 // 1 hour
+}
+
+impl Default for StatsRetentionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_stats_retention_enabled(),
+            raw_retention_days: default_raw_retention_days(),
+            hourly_retention_days: default_hourly_retention_days(),
+            daily_retention_days: default_daily_retention_days(),
+            cleanup_interval_seconds: default_stats_cleanup_interval(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -612,6 +666,7 @@ impl Config {
             disk_monitor: DiskMonitorConfig::default(),
             container_monitor: ContainerMonitorConfig::default(),
             database_backup: DatabaseBackupConfig::default(),
+            stats_retention: StatsRetentionConfig::default(),
         }
     }
 }

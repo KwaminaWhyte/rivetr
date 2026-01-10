@@ -262,13 +262,13 @@
 - [x] **T2.4.4** Add container resource metrics (CPU, memory, network gauges with app_name labels, background stats collector)
 - [x] **T2.4.5** Add health check metrics (success/failure counters, duration histogram, consecutive failures gauge)
 
-### 2.5 CLI
+### 2.5 CLI ✅ COMPLETE
 
-- [ ] **T2.5.1** Implement `rivetr status`
-- [ ] **T2.5.2** Implement `rivetr apps list`
-- [ ] **T2.5.3** Implement `rivetr deploy <app>`
-- [ ] **T2.5.4** Implement `rivetr logs <app>`
-- [ ] **T2.5.5** Implement `rivetr config check`
+- [x] **T2.5.1** Implement `rivetr status`
+- [x] **T2.5.2** Implement `rivetr apps list`
+- [x] **T2.5.3** Implement `rivetr deploy <app>`
+- [x] **T2.5.4** Implement `rivetr logs <app>`
+- [x] **T2.5.5** Implement `rivetr config check`
 
 ### 2.6 Testing
 
@@ -309,13 +309,13 @@
 - [x] **T3.2.6** Mask secret values in UI (**\*\*\*\*** with reveal button)
 - [x] **T3.2.7** Pass env vars to container at runtime (already in engine pipeline)
 
-### 3.3 Resource Monitoring
+### 3.3 Resource Monitoring ✅ COMPLETE
 
 - [x] **T3.3.1** Add container stats collection (CPU, memory, network) - ContainerStats in runtime trait
-- [ ] **T3.3.2** Store metrics in SQLite (with retention policy)
+- [x] **T3.3.2** Store metrics in SQLite (with retention policy) - stats_hourly/stats_daily tables with aggregation
 - [x] **T3.3.3** Create metrics API endpoint (GET /api/apps/:id/stats)
 - [x] **T3.3.4** Add resource usage graphs in app detail (ResourceMonitor.tsx with sparklines)
-- [ ] **T3.3.5** Add system-wide dashboard metrics
+- [x] **T3.3.5** Add system-wide dashboard metrics - GET /api/system/stats/summary endpoint
 
 ### 3.4 Preview Deployments
 
@@ -687,12 +687,12 @@ Research conducted to identify feature gaps and improvement opportunities.
 | --------- | ----------- | --------- | -------- |
 | Phase 0   | 30          | 28        | 93%      |
 | Phase 1   | 94          | 94        | 100%     |
-| Phase 2   | 31          | 26        | 84%      |
-| Phase 3   | 94          | 86        | 91%      |
+| Phase 2   | 31          | 31        | 100%     |
+| Phase 3   | 94          | 88        | 94%      |
 | Phase 4   | 61          | 61        | 100%     |
 | Phase 5   | 30          | 20        | 67%      |
 | Phase 6   | 28          | 0         | 0%       |
-| **Total** | **368**     | **315**   | **86%**  |
+| **Total** | **368**     | **322**   | **88%**  |
 
 ---
 
@@ -860,6 +860,8 @@ _No active bugs - all recently identified issues have been fixed._
 - **Railpack Builder** - Railway's Nixpacks successor with BuildKit integration (src/engine/railpack.rs). Supports custom install/build/start commands, provider selection, and real-time build output streaming.
 - **Cloud Native Buildpacks** - Unified pack CLI builder for Heroku and Paketo buildpacks (src/engine/pack_builder.rs). Supports 5 builder images (paketobuildpacks/builder-jammy-base/full/tiny, heroku/builder:24/22) with auto-detection via `suggest_builder()`.
 - **GitHub App Integration** - Full GitHub App manifest registration, OAuth installation flow, installation tokens, auto-configured webhooks, repository browser with branch selection (github-repo-picker.tsx), system-wide sharing, settings UI in git-providers.tsx.
+- **CLI Tool** - Full command-line interface with `rivetr status`, `rivetr apps list/show`, `rivetr deploy <app>`, `rivetr logs <app> [--follow]`, `rivetr config check`. Supports `--api-url` and `--token` flags with environment variable fallbacks (RIVETR_API_URL, RIVETR_TOKEN).
+- **Metrics Storage with Retention** - SQLite-based metrics aggregation with stats_hourly/stats_daily tables, configurable retention policies (7 days raw, 30 days hourly, 365 days daily), background aggregation task, and GET /api/system/stats/summary endpoint for system-wide metrics.
 
 ### Known Deployment Issues (User Repository Issues)
 

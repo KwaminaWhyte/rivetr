@@ -3,12 +3,25 @@
 //! This module periodically collects resource statistics (CPU, memory, network)
 //! from all running containers and updates Prometheus metrics with labels for
 //! each app. It also saves aggregate stats to the database for dashboard charts.
+//!
+//! ## Stats Storage Architecture
+//!
+//! Stats are stored at three granularity levels:
+//! - **Raw stats** (`stats_history`): 5-minute intervals, 7-day retention
+//! - **Hourly aggregates** (`stats_hourly`): Hourly averages/max/min, 30-day retention
+//! - **Daily aggregates** (`stats_daily`): Daily averages/max/min, 365-day retention
+//!
+//! The retention cleanup task runs hourly to:
+//! 1. Aggregate raw stats into hourly buckets
+//! 2. Aggregate hourly stats into daily buckets
+//! 3. Delete old records based on retention policy
 
 use crate::api::metrics::{
     set_container_cpu_percent, set_container_memory_bytes, set_container_memory_limit_bytes,
     set_container_network_rx_bytes, set_container_network_tx_bytes,
 };
-use crate::db::{Deployment, ManagedDatabase, Service};
+use crate::config::StatsRetentionConfig;
+use crate::db::{Deployment, ManagedDatabase, Service, StatsRetention, StatsRetentionConfig as DbStatsRetentionConfig};
 use crate::runtime::ContainerRuntime;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -362,6 +375,87 @@ fn get_system_memory() -> u64 {
     {
         0
     }
+}
+
+/// Spawn the stats retention cleanup and aggregation task
+///
+/// This task runs at the configured interval (default: hourly) to:
+/// 1. Aggregate raw stats into hourly buckets
+/// 2. Aggregate hourly stats into daily buckets
+/// 3. Delete old records based on retention policy
+pub fn spawn_stats_retention_task(db: SqlitePool, config: StatsRetentionConfig) {
+    if !config.enabled {
+        tracing::info!("Stats retention task disabled");
+        return;
+    }
+
+    tracing::info!(
+        interval_secs = config.cleanup_interval_seconds,
+        raw_retention_days = config.raw_retention_days,
+        hourly_retention_days = config.hourly_retention_days,
+        daily_retention_days = config.daily_retention_days,
+        "Starting stats retention and aggregation task"
+    );
+
+    tokio::spawn(async move {
+        // Wait a bit before first run to let the system stabilize
+        tokio::time::sleep(Duration::from_secs(60)).await;
+
+        let mut tick = interval(Duration::from_secs(config.cleanup_interval_seconds));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tick.tick().await;
+
+            if let Err(e) = run_stats_retention(&db, &config).await {
+                tracing::warn!(error = %e, "Stats retention task failed");
+            }
+        }
+    });
+}
+
+/// Run the stats retention cleanup and aggregation
+async fn run_stats_retention(db: &SqlitePool, config: &StatsRetentionConfig) -> anyhow::Result<()> {
+    let start = std::time::Instant::now();
+
+    // First, aggregate raw stats into hourly buckets
+    let hourly_aggregated = StatsRetention::aggregate_to_hourly(db).await.unwrap_or(0);
+
+    // Then, aggregate hourly stats into daily buckets
+    let daily_aggregated = StatsRetention::aggregate_to_daily(db).await.unwrap_or(0);
+
+    // Convert config to db retention config
+    let retention_config = DbStatsRetentionConfig {
+        raw_retention_days: config.raw_retention_days,
+        hourly_retention_days: config.hourly_retention_days,
+        daily_retention_days: config.daily_retention_days,
+    };
+
+    // Finally, cleanup old records
+    let (raw_deleted, hourly_deleted, daily_deleted) =
+        StatsRetention::run_cleanup(db, &retention_config).await?;
+
+    let elapsed = start.elapsed();
+
+    // Only log if something was done
+    if hourly_aggregated > 0 || daily_aggregated > 0 || raw_deleted > 0 || hourly_deleted > 0 || daily_deleted > 0 {
+        tracing::info!(
+            hourly_aggregated = hourly_aggregated,
+            daily_aggregated = daily_aggregated,
+            raw_deleted = raw_deleted,
+            hourly_deleted = hourly_deleted,
+            daily_deleted = daily_deleted,
+            elapsed_ms = elapsed.as_millis(),
+            "Stats retention task completed"
+        );
+    } else {
+        tracing::debug!(
+            elapsed_ms = elapsed.as_millis(),
+            "Stats retention task completed (no changes)"
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

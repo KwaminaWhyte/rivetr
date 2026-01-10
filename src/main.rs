@@ -2,40 +2,30 @@ use anyhow::Result;
 use arc_swap::ArcSwap;
 use clap::Parser;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
+use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, spawn_stats_history_task, reconcile_container_status, BuildLimits, DeploymentEngine};
+use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, spawn_stats_history_task, spawn_stats_retention_task, reconcile_container_status, BuildLimits, DeploymentEngine};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
 use rivetr::AppState;
 use rivetr::DbPool;
 
-#[derive(Parser, Debug)]
-#[command(name = "rivetr")]
-#[command(author, version, about = "A fast, lightweight deployment engine", long_about = None)]
-struct Cli {
-    /// Path to configuration file
-    #[arg(short, long, default_value = "rivetr.toml")]
-    config: PathBuf,
-
-    /// Override log level
-    #[arg(short, long)]
-    log_level: Option<String>,
-
-    /// Skip startup self-checks (for development only)
-    #[arg(long)]
-    skip_checks: bool,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // If a subcommand is provided, run it and exit
+    if cli.command.is_some() {
+        return cli::run_command(&cli).await;
+    }
+
+    // No subcommand - start the server
 
     // Load configuration
     let config = Config::load(&cli.config)?;
@@ -183,6 +173,9 @@ async fn main() -> Result<()> {
         config.database_backup.clone(),
         config.server.data_dir.clone(),
     );
+
+    // Start stats retention and aggregation task
+    spawn_stats_retention_task(db.clone(), config.stats_retention.clone());
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
