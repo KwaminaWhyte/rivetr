@@ -244,6 +244,95 @@
       "priority": 14,
       "passes": true,
       "notes": "Completed. 2 pre-existing test failures in pack_builder and preview modules are unrelated to this implementation."
+    },
+    {
+      "id": "US-015",
+      "title": "E2E test: Alerts management UI",
+      "description": "As a QA engineer, I want automated E2E tests for the alerts management UI so that we can catch regressions.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to an app's settings page",
+        "Click on the Alerts tab and verify it loads",
+        "Test creating a new CPU alert with 80% threshold",
+        "Test enabling/disabling an alert toggle",
+        "Test editing an existing alert threshold",
+        "Test deleting an alert and verify it's removed",
+        "Verify alert history section displays events correctly",
+        "Take screenshots of key states for documentation"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Completed. E2E tests performed with Playwright MCP. Screenshots saved to .playwright-mcp/e2e-screenshots/. Also added missing migrations 032-037 to db/mod.rs."
+    },
+    {
+      "id": "US-016",
+      "title": "E2E test: Team notification channels UI",
+      "description": "As a QA engineer, I want automated E2E tests for the notification channels UI so that we can verify channel configuration works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to team settings page",
+        "Verify Notification Channels section is visible for admin users",
+        "Test adding an email notification channel with recipient list",
+        "Test adding a webhook channel with Slack template",
+        "Test the 'Test' button sends a sample notification",
+        "Test editing a channel configuration",
+        "Test deleting a notification channel",
+        "Take screenshots of key states for documentation"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "E2E test: Cost dashboard widget",
+      "description": "As a QA engineer, I want automated E2E tests for the cost dashboard widget so that we can verify cost display works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to main dashboard",
+        "Verify Cost Summary card is visible",
+        "Verify total monthly cost is displayed",
+        "Verify top 5 apps breakdown is shown",
+        "Verify sparkline trend chart renders",
+        "Click 'View Details' link and verify navigation to /costs page",
+        "Take screenshots of the cost widget for documentation"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "E2E test: Detailed cost page",
+      "description": "As a QA engineer, I want automated E2E tests for the detailed cost page so that we can verify drill-down and export work.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to /costs page",
+        "Verify period selector (7d, 30d, 90d) changes displayed data",
+        "Test expanding a team row to see project breakdown",
+        "Test expanding a project row to see app breakdown",
+        "Verify cost breakdown chart displays CPU/Memory/Disk segments",
+        "Test CSV export button downloads a file",
+        "Test switching between 'By Team' and 'By Project' views",
+        "Take screenshots of expanded views for documentation"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "E2E test: Global alert defaults UI",
+      "description": "As a QA engineer, I want automated E2E tests for the global alert defaults page so that we can verify admin configuration works.",
+      "acceptanceCriteria": [
+        "Use Playwright MCP to navigate to /settings/alert-defaults",
+        "Verify CPU, Memory, and Disk threshold cards are displayed",
+        "Test updating CPU threshold from 80% to 85%",
+        "Verify Save button becomes enabled after changes",
+        "Test saving changes and verify success message",
+        "Verify stats card shows apps using defaults vs custom configs",
+        "Test enabling/disabling global alerts toggle",
+        "Take screenshots of the settings page for documentation"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
     }
   ]
 }
