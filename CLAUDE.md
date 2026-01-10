@@ -129,8 +129,39 @@ Skills in `.claude/skills/` provide domain-specific knowledge:
 | `docker-testing` | Container runtime testing, Docker/Podman debugging, Nixpacks, Railpack, and buildpack support |
 | `database-operations` | SQLite database patterns and SQLx usage (queries, migrations, models, debugging) |
 | `deployment-pipeline` | Debug and understand the deployment pipeline (stages, build types, rollbacks, health checks) |
+| `prd` | Generate Product Requirements Documents for new features |
+| `ralph` | Convert PRDs to prd.json format for Ralph autonomous agent execution |
 
 Skills are automatically activated when relevant to the current task.
+
+## Ralph (Autonomous Agent Loop)
+
+Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all PRD items are complete. Located in `scripts/ralph/`.
+
+### Workflow
+
+1. **Create PRD**: Use the `prd` skill to generate requirements
+   ```
+   Load the prd skill and create a PRD for [feature description]
+   ```
+
+2. **Convert to JSON**: Use the `ralph` skill to create prd.json
+   ```
+   Load the ralph skill and convert tasks/prd-[feature].md to prd.json
+   ```
+
+3. **Run Ralph**:
+   - Linux/macOS: `./scripts/ralph/ralph.sh [max_iterations]`
+   - Windows: `.\scripts\ralph\ralph.ps1 [max_iterations]`
+
+### Key Concepts
+
+- Each iteration spawns a fresh Claude Code instance
+- Memory persists via git history, `progress.txt`, and `prd.json`
+- Stories should be small (completable in one context window)
+- All commits must pass: `cargo fmt --check && cargo clippy && cargo test`
+
+See `scripts/ralph/README.md` for detailed documentation.
 
 ## Development Status
 

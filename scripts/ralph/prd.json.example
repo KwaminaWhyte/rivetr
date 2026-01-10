@@ -1,0 +1,53 @@
+{
+  "project": "Rivetr",
+  "branchName": "ralph/example-feature",
+  "description": "Example Feature - Demonstrates the PRD format for Ralph",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add example field to database",
+      "description": "As a developer, I need to store the example data in the database.",
+      "acceptanceCriteria": [
+        "Add example column to appropriate table",
+        "Generate and run migration successfully",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add API endpoint for example",
+      "description": "As a user, I want to access the example data via API.",
+      "acceptanceCriteria": [
+        "GET /api/example returns data",
+        "POST /api/example creates new entry",
+        "Proper error handling for invalid requests",
+        "cargo fmt --check passes",
+        "cargo clippy passes",
+        "cargo test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add frontend component for example",
+      "description": "As a user, I want to see and interact with example data in the dashboard.",
+      "acceptanceCriteria": [
+        "Component displays example data",
+        "User can create new entries",
+        "Loading and error states handled",
+        "npm run lint passes",
+        "npm run build passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

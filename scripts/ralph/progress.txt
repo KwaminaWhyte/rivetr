@@ -1,0 +1,13 @@
+# Ralph Progress Log
+Started: Initial setup
+---
+
+## Codebase Patterns
+- Container runtime abstraction is in src/runtime/mod.rs (DockerRuntime, PodmanRuntime)
+- API routes use Axum in src/api/
+- Database uses SQLite with SQLx, migrations in migrations/
+- Frontend is React + TypeScript + shadcn/ui in frontend/
+- Use anyhow::Result for error handling in Rust code
+- State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
+
+---
