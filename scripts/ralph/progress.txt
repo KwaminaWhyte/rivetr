@@ -33,6 +33,8 @@ Started: Resource Alerts & Cost Estimation
 - Cost API endpoints: GET /api/{apps|projects|teams}/:id/costs?period=7d|30d|90d
 - Dashboard cost API: GET /api/system/costs?period=7d|30d|90d returns DashboardCostResponse
 - Sparkline pattern: SVG path with createPath() similar to ResourceChart, used in CostSummaryCard
+- E2E testing: Use Playwright MCP with browser_navigate, browser_snapshot, browser_click, browser_type
+- Migrations MUST be added to src/db/mod.rs run_migrations() or tables won't be created
 
 ---
 
@@ -294,6 +296,27 @@ Started: Resource Alerts & Cost Estimation
   - Settings API endpoints use /api/settings/* pattern
   - ThresholdCard component pattern: local state with isDirty tracking for save button
   - Stats card shows apps using defaults vs custom configs for visibility
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-015
+- What was implemented: E2E tests for Alerts management UI using Playwright MCP
+- Files changed:
+  - src/db/mod.rs (added missing migrations 032-037)
+  - scripts/ralph/prd.json (marked US-015 as passing)
+- **E2E tests performed:**
+  - Navigate to app settings page and click on Alerts tab
+  - Create CPU alert with 80% threshold
+  - Toggle alert enable/disable
+  - Edit alert threshold (80% to 85%)
+  - Delete alert and verify removal
+  - Verify alert history section displays correctly (empty state)
+  - Screenshots saved to .playwright-mcp/e2e-screenshots/
+- **Learnings for future iterations:**
+  - Migrations 032-037 were missing from db/mod.rs, causing tables not to be created
+  - E2E tests with Playwright MCP: use browser_navigate, browser_snapshot, browser_click, browser_type
+  - Screenshots directory (.playwright-mcp/) is gitignored - manual test runs only
+  - Frontend dev server may need restart if Vite cache becomes stale (504 errors)
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
