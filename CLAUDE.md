@@ -9,8 +9,12 @@ Rivetr is a single-binary PaaS (Platform as a Service) built in Rust. It deploys
 ## Build Commands
 
 ```bash
-# Development build and run
-cargo run -- --config rivetr.example.toml
+# Development with auto-reload (recommended)
+# Install once: cargo install cargo-watch
+cargo watch -x "run -- --config rivetr.toml"
+
+# Development build and run (manual)
+cargo run -- --config rivetr.toml
 
 # Release build
 cargo build --release

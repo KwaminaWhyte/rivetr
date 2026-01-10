@@ -16,12 +16,14 @@ use uuid::Uuid;
 use crate::engine::{detect_build_type, extract_zip_and_find_root, BuildDetectionResult};
 
 use crate::db::{
-    actions, resource_types, App, CreateAppRequest, Deployment, UpdateAppRequest, User,
+    actions, resource_types, App, CreateAppRequest, Deployment, TeamAuditAction,
+    TeamAuditResourceType, UpdateAppRequest, User,
 };
 use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
 use super::auth::verify_password;
+use super::teams::log_team_audit;
 
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::{
@@ -471,6 +473,27 @@ pub async fn create_app(
     )
     .await;
 
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::AppCreated,
+            TeamAuditResourceType::App,
+            Some(&app.id),
+            Some(serde_json::json!({
+                "app_name": app.name,
+                "git_url": req.git_url,
+                "branch": req.branch,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
+
     Ok((StatusCode::CREATED, Json(app)))
 }
 
@@ -710,6 +733,25 @@ pub async fn update_app(
     )
     .await;
 
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::AppUpdated,
+            TeamAuditResourceType::App,
+            Some(&app.id),
+            Some(serde_json::json!({
+                "app_name": app.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
+
     Ok(Json(app))
 }
 
@@ -806,6 +848,25 @@ pub async fn delete_app(
         None,
     )
     .await;
+
+    // Log team audit event if app belonged to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::AppDeleted,
+            TeamAuditResourceType::App,
+            Some(&app.id),
+            Some(serde_json::json!({
+                "app_name": app.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1359,6 +1420,27 @@ pub async fn upload_create_app(
         })),
     )
     .await;
+
+    // Log team audit event if app belongs to a team
+    if let Some(ref team_id) = app.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::AppCreated,
+            TeamAuditResourceType::App,
+            Some(&app.id),
+            Some(serde_json::json!({
+                "app_name": app.name,
+                "source": "upload",
+                "build_type": build_type,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!(
         app_id = %app_id,

@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::db::{
     actions, resource_types, CreateServiceRequest, Service, ServiceResponse, ServiceStatus,
-    UpdateServiceRequest, User,
+    TeamAuditAction, TeamAuditResourceType, UpdateServiceRequest, User,
 };
 use crate::AppState;
 
@@ -30,6 +30,7 @@ pub struct ListServicesQuery {
 }
 
 use super::audit::{audit_log, extract_client_ip};
+use super::teams::log_team_audit;
 
 /// Validate docker-compose content
 /// Checks that it's valid YAML with a 'services' key
@@ -311,6 +312,25 @@ pub async fn create_service(
     )
     .await;
 
+    // Log team audit event if service belongs to a team
+    if let Some(ref team_id) = service.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ServiceCreated,
+            TeamAuditResourceType::Service,
+            Some(&service.id),
+            Some(serde_json::json!({
+                "service_name": service.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
+
     tracing::info!("Created Docker Compose service: {}", req.name);
     Ok((StatusCode::CREATED, Json(service.into())))
 }
@@ -452,6 +472,25 @@ pub async fn delete_service(
         None,
     )
     .await;
+
+    // Log team audit event if service belonged to a team
+    if let Some(ref team_id) = service.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ServiceDeleted,
+            TeamAuditResourceType::Service,
+            Some(&service.id),
+            Some(serde_json::json!({
+                "service_name": service.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!("Deleted Docker Compose service: {}", service.name);
     Ok(StatusCode::NO_CONTENT)

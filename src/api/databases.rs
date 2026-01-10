@@ -12,7 +12,8 @@ use uuid::Uuid;
 
 use crate::db::{
     actions, resource_types, CreateManagedDatabaseRequest, DatabaseCredentials, DatabaseStatus,
-    DatabaseType, ManagedDatabase, ManagedDatabaseResponse, User,
+    DatabaseType, ManagedDatabase, ManagedDatabaseResponse, TeamAuditAction, TeamAuditResourceType,
+    User,
 };
 use crate::engine::database_config::{
     generate_env_vars, generate_password, generate_username, get_config,
@@ -21,6 +22,7 @@ use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
+use super::teams::log_team_audit;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -244,6 +246,27 @@ pub async fn create_database(
     )
     .await;
 
+    // Log team audit event if database belongs to a team
+    if let Some(ref team_id) = database.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DatabaseCreated,
+            TeamAuditResourceType::Database,
+            Some(&database.id),
+            Some(serde_json::json!({
+                "database_name": database.name,
+                "db_type": req.db_type.to_string(),
+                "version": version,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
+
     let host = Some(state.config.server.host.as_str());
     Ok((StatusCode::CREATED, Json(database.to_response(true, host))))
 }
@@ -299,6 +322,25 @@ pub async fn delete_database(
         None,
     )
     .await;
+
+    // Log team audit event if database belonged to a team
+    if let Some(ref team_id) = database.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::DatabaseDeleted,
+            TeamAuditResourceType::Database,
+            Some(&database.id),
+            Some(serde_json::json!({
+                "database_name": database.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     tracing::info!("Deleted managed database: {}", database.name);
     Ok(StatusCode::NO_CONTENT)

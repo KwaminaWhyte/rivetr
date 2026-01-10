@@ -11,12 +11,14 @@ use uuid::Uuid;
 
 use crate::db::{
     actions, resource_types, App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase,
-    Project, ProjectWithAppCount, ProjectWithApps, Service, UpdateProjectRequest, User,
+    Project, ProjectWithAppCount, ProjectWithApps, Service, TeamAuditAction, TeamAuditResourceType,
+    UpdateProjectRequest, User,
 };
 use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
 use super::error::{ApiError, ValidationErrorBuilder};
+use super::teams::log_team_audit;
 use super::validation::validate_uuid;
 
 /// Query parameters for listing projects
@@ -255,6 +257,25 @@ pub async fn create_project(
     )
     .await;
 
+    // Log team audit event if project belongs to a team
+    if let Some(ref team_id) = project.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ProjectCreated,
+            TeamAuditResourceType::Project,
+            Some(&project.id),
+            Some(serde_json::json!({
+                "project_name": project.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
+
     Ok((StatusCode::CREATED, Json(project)))
 }
 
@@ -372,6 +393,25 @@ pub async fn delete_project(
         None,
     )
     .await;
+
+    // Log team audit event if project belonged to a team
+    if let Some(ref team_id) = project.team_id {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            team_id,
+            Some(&user.id),
+            TeamAuditAction::ProjectDeleted,
+            TeamAuditResourceType::Project,
+            Some(&project.id),
+            Some(serde_json::json!({
+                "project_name": project.name,
+            })),
+        )
+        .await
+        {
+            tracing::warn!("Failed to log team audit event: {}", e);
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
