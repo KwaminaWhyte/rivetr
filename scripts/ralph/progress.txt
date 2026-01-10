@@ -24,6 +24,8 @@ Started: Resource Alerts & Cost Estimation
 - Dashboard URL for emails: config.server.external_url (Option<String>)
 - Webhook alerts: send_alert_webhook_with_retry() with exponential backoff in alert_notifications.rs
 - Payload builders: build_slack_alert_payload(), build_discord_alert_payload(), build_json_alert_payload()
+- Cost rates: CostRate model in src/db/models/cost_rate.rs with is_default flag for tracking customization
+- Settings API pattern: GET/PUT /api/settings/cost-rates follows same pattern as alert-defaults
 
 ---
 
@@ -131,6 +133,24 @@ Started: Resource Alerts & Cost Estimation
   - Slack uses :warning:, :rotating_light:, :white_check_mark: emojis for severity
   - Discord uses unicode emojis and integer color values (hex parsed to i32)
   - Custom templates support {{app_name}}, {{metric_type}}, {{value}}, {{threshold}}, {{severity}}, {{status}}, {{dashboard_url}}
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-007
+- What was implemented: Cost configuration and default rates for resource cost estimation
+- Files changed:
+  - migrations/036_cost_rates.sql (new table with default rates)
+  - src/db/models/cost_rate.rs (CostRate model with CRUD operations)
+  - src/db/models/mod.rs (module registration)
+  - src/api/cost_rates.rs (GET/PUT /api/settings/cost-rates endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Cost rates table stores cpu/memory/disk rates with is_default flag
+  - Default rates seeded in migration: CPU=$0.02/core/month, Memory=$0.05/GB/month, Disk=$0.10/GB/month
+  - When admin customizes a rate, is_default is set to 0 to track that it's been modified
+  - CostRatesResponse groups all three resource types (similar to GlobalAlertDefaultsResponse)
+  - UpdateCostRatesRequest allows partial updates of individual resource types
+  - Settings API follows same pattern as /api/settings/alert-defaults
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
