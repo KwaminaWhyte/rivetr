@@ -81,14 +81,8 @@ impl StartupCheckReport {
         let all_critical_passed = checks.iter().filter(|c| c.critical).all(|c| c.passed);
         let all_passed = checks.iter().all(|c| c.passed);
 
-        let failed_critical = checks
-            .iter()
-            .filter(|c| c.critical && !c.passed)
-            .count();
-        let failed_non_critical = checks
-            .iter()
-            .filter(|c| !c.critical && !c.passed)
-            .count();
+        let failed_critical = checks.iter().filter(|c| c.critical && !c.passed).count();
+        let failed_non_critical = checks.iter().filter(|c| !c.critical && !c.passed).count();
         let total = checks.len();
         let passed = checks.iter().filter(|c| c.passed).count();
 
@@ -179,10 +173,7 @@ pub async fn run_startup_checks(config: &Config, db: &DbPool) -> StartupCheckRep
 /// Check database connectivity
 async fn check_database_connectivity(db: &DbPool) -> CheckResult {
     match sqlx::query("SELECT 1").fetch_one(db).await {
-        Ok(_) => CheckResult::pass(
-            "database_connectivity",
-            "Database connection successful",
-        ),
+        Ok(_) => CheckResult::pass("database_connectivity", "Database connection successful"),
         Err(e) => CheckResult::fail(
             "database_connectivity",
             "Failed to connect to database",
@@ -196,7 +187,7 @@ async fn check_database_connectivity(db: &DbPool) -> CheckResult {
 async fn check_database_schema(db: &DbPool) -> CheckResult {
     // Count the number of tables to estimate schema version
     let result: Result<Vec<(String,)>, _> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
     )
     .fetch_all(db)
     .await;
@@ -220,20 +211,12 @@ async fn check_database_schema(db: &DbPool) -> CheckResult {
                 )
                 .with_details(format!("Tables: {}", table_names.join(", ")))
             } else {
-                CheckResult::fail(
-                    "database_schema",
-                    "Missing essential database tables",
-                    true,
-                )
-                .with_details(format!("Missing: {}", missing.join(", ")))
+                CheckResult::fail("database_schema", "Missing essential database tables", true)
+                    .with_details(format!("Missing: {}", missing.join(", ")))
             }
         }
-        Err(e) => CheckResult::fail(
-            "database_schema",
-            "Failed to query database schema",
-            true,
-        )
-        .with_details(e.to_string()),
+        Err(e) => CheckResult::fail("database_schema", "Failed to query database schema", true)
+            .with_details(e.to_string()),
     }
 }
 
@@ -272,20 +255,12 @@ async fn check_docker_runtime(docker_socket: &str) -> CheckResult {
                 CheckResult::pass("container_runtime", "Docker runtime available")
                     .with_details(format!("Socket: {}", docker_socket))
             } else {
-                CheckResult::fail(
-                    "container_runtime",
-                    "Docker daemon not responding",
-                    false,
-                )
-                .with_details(format!("Socket: {}", docker_socket))
+                CheckResult::fail("container_runtime", "Docker daemon not responding", false)
+                    .with_details(format!("Socket: {}", docker_socket))
             }
         }
-        Err(e) => CheckResult::fail(
-            "container_runtime",
-            "Failed to connect to Docker",
-            false,
-        )
-        .with_details(e.to_string()),
+        Err(e) => CheckResult::fail("container_runtime", "Failed to connect to Docker", false)
+            .with_details(e.to_string()),
     }
 }
 
@@ -294,12 +269,8 @@ async fn check_podman_runtime() -> CheckResult {
     if runtime.is_available().await {
         CheckResult::pass("container_runtime", "Podman runtime available")
     } else {
-        CheckResult::fail(
-            "container_runtime",
-            "Podman not available",
-            false,
-        )
-        .with_details("Podman command not found or not responding")
+        CheckResult::fail("container_runtime", "Podman not available", false)
+            .with_details("Podman command not found or not responding")
     }
 }
 
@@ -322,11 +293,8 @@ fn check_required_directories(config: &Config) -> CheckResult {
     };
 
     if missing.is_empty() {
-        let mut result = CheckResult::pass(
-            "required_directories",
-            "Required directories exist",
-        )
-        .with_details(format!("Data dir: {}", data_dir.display()));
+        let mut result = CheckResult::pass("required_directories", "Required directories exist")
+            .with_details(format!("Data dir: {}", data_dir.display()));
 
         if let Some(warning) = static_warning {
             result.details = Some(format!(
@@ -338,12 +306,8 @@ fn check_required_directories(config: &Config) -> CheckResult {
 
         result
     } else {
-        CheckResult::fail(
-            "required_directories",
-            "Missing required directories",
-            true,
-        )
-        .with_details(format!("Missing: {}", missing.join(", ")))
+        CheckResult::fail("required_directories", "Missing required directories", true)
+            .with_details(format!("Missing: {}", missing.join(", ")))
     }
 }
 
@@ -358,11 +322,8 @@ fn check_directory_writability(config: &Config) -> CheckResult {
         Ok(_) => {
             // Clean up test file
             let _ = std::fs::remove_file(&test_file);
-            CheckResult::pass(
-                "directory_writability",
-                "Data directory is writable",
-            )
-            .with_details(format!("Path: {}", data_dir.display()))
+            CheckResult::pass("directory_writability", "Data directory is writable")
+                .with_details(format!("Path: {}", data_dir.display()))
         }
         Err(e) => CheckResult::fail(
             "directory_writability",
@@ -403,12 +364,8 @@ fn check_disk_space(data_dir: &Path) -> CheckResult {
                 .with_details(format!("Usage: {:.1}%", stats.usage_percent))
             }
         }
-        Err(e) => CheckResult::fail(
-            "disk_space",
-            "Failed to check disk space",
-            false,
-        )
-        .with_details(e.to_string()),
+        Err(e) => CheckResult::fail("disk_space", "Failed to check disk space", false)
+            .with_details(e.to_string()),
     }
 }
 

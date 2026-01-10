@@ -56,8 +56,7 @@ pub fn generate_app_jwt(app_id: i64, private_key_pem: &str) -> Result<String> {
     let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes())
         .context("Failed to parse private key PEM")?;
 
-    let token = encode(&header, &claims, &encoding_key)
-        .context("Failed to encode JWT")?;
+    let token = encode(&header, &claims, &encoding_key).context("Failed to encode JWT")?;
 
     Ok(token)
 }

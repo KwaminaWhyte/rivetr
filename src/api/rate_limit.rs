@@ -87,7 +87,10 @@ impl RateLimiter {
         let key = (ip, tier);
         let now = Instant::now();
 
-        let mut entry = self.entries.entry(key).or_insert_with(|| RateLimitEntry::new(max_tokens));
+        let mut entry = self
+            .entries
+            .entry(key)
+            .or_insert_with(|| RateLimitEntry::new(max_tokens));
 
         // Check if we need to reset the window
         let elapsed = now.duration_since(entry.window_start);
@@ -116,7 +119,11 @@ impl RateLimiter {
             })
         } else {
             // Calculate retry after based on when tokens will be available
-            let retry_after = self.window_duration.saturating_sub(elapsed).as_secs().max(1);
+            let retry_after = self
+                .window_duration
+                .saturating_sub(elapsed)
+                .as_secs()
+                .max(1);
             Err(retry_after)
         }
     }
@@ -135,9 +142,8 @@ impl RateLimiter {
         let now = Instant::now();
         let expiry = self.window_duration * 2; // Keep entries for 2x window duration
 
-        self.entries.retain(|_, entry| {
-            now.duration_since(entry.window_start) < expiry
-        });
+        self.entries
+            .retain(|_, entry| now.duration_since(entry.window_start) < expiry);
     }
 
     /// Get the number of tracked entries (for monitoring)
@@ -227,10 +233,9 @@ async fn rate_limit_with_tier(
 
             // Add rate limit headers to successful responses
             let (mut parts, body) = response.into_parts();
-            parts.headers.insert(
-                "X-RateLimit-Limit",
-                info.limit.to_string().parse().unwrap(),
-            );
+            parts
+                .headers
+                .insert("X-RateLimit-Limit", info.limit.to_string().parse().unwrap());
             parts.headers.insert(
                 "X-RateLimit-Remaining",
                 info.remaining.to_string().parse().unwrap(),
@@ -247,7 +252,14 @@ async fn rate_limit_with_tier(
                 StatusCode::TOO_MANY_REQUESTS,
                 [
                     ("Retry-After", retry_after.to_string()),
-                    ("X-RateLimit-Limit", state.rate_limiter.config.api_requests_per_window.to_string()),
+                    (
+                        "X-RateLimit-Limit",
+                        state
+                            .rate_limiter
+                            .config
+                            .api_requests_per_window
+                            .to_string(),
+                    ),
                     ("X-RateLimit-Remaining", "0".to_string()),
                     ("X-RateLimit-Reset", retry_after.to_string()),
                 ],
@@ -364,7 +376,10 @@ mod tests {
         // Should allow unlimited requests when disabled
         for _ in 0..100 {
             let result = limiter.check_rate_limit(ip, RateLimitTier::Api);
-            assert!(result.is_ok(), "All requests should be allowed when disabled");
+            assert!(
+                result.is_ok(),
+                "All requests should be allowed when disabled"
+            );
         }
     }
 

@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use bollard::auth::DockerCredentials;
 use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions, RemoveContainerOptions,
-    StatsOptions, StopContainerOptions,
+    Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions,
+    RemoveContainerOptions, StatsOptions, StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
-use bollard::auth::DockerCredentials;
 use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
 use bollard::Docker;
 use bytes::Bytes;
@@ -15,7 +15,10 @@ use std::pin::Pin;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize};
+use super::{
+    BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig,
+    ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize,
+};
 
 pub struct DockerRuntime {
     client: Docker,
@@ -25,11 +28,12 @@ impl DockerRuntime {
     pub fn new(socket: &str) -> Result<Self> {
         // On Windows, always use local defaults (named pipe)
         // On Unix, use socket path if specified
-        let client = if cfg!(windows) || socket.starts_with("npipe://") || socket.starts_with("tcp://") {
-            Docker::connect_with_local_defaults()?
-        } else {
-            Docker::connect_with_socket(socket, 120, bollard::API_DEFAULT_VERSION)?
-        };
+        let client =
+            if cfg!(windows) || socket.starts_with("npipe://") || socket.starts_with("tcp://") {
+                Docker::connect_with_local_defaults()?
+            } else {
+                Docker::connect_with_socket(socket, 120, bollard::API_DEFAULT_VERSION)?
+            };
 
         Ok(Self { client })
     }
@@ -59,7 +63,10 @@ impl ContainerRuntime for DockerRuntime {
         let extra_build_args = parse_custom_build_args(ctx.custom_options.as_deref());
 
         // Parse build resource limits
-        let memory = ctx.memory_limit.as_ref().and_then(|m| parse_build_memory(m));
+        let memory = ctx
+            .memory_limit
+            .as_ref()
+            .and_then(|m| parse_build_memory(m));
         let (cpuperiod, cpuquota) = parse_cpu_limits(ctx.cpu_limit.as_deref());
 
         let target = ctx.build_target.as_deref().unwrap_or("");
@@ -88,7 +95,9 @@ impl ContainerRuntime for DockerRuntime {
             );
         }
 
-        let mut stream = self.client.build_image(options, None, Some(Bytes::from(tar_data)));
+        let mut stream = self
+            .client
+            .build_image(options, None, Some(Bytes::from(tar_data)));
 
         while let Some(result) = stream.next().await {
             match result {
@@ -114,7 +123,8 @@ impl ContainerRuntime for DockerRuntime {
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
 
-        let mut port_bindings: HashMap<String, Option<Vec<bollard::service::PortBinding>>> = HashMap::new();
+        let mut port_bindings: HashMap<String, Option<Vec<bollard::service::PortBinding>>> =
+            HashMap::new();
         let mut exposed_ports: HashMap<String, HashMap<(), ()>> = HashMap::new();
 
         // Add primary port (legacy)
@@ -183,7 +193,10 @@ impl ContainerRuntime for DockerRuntime {
         // Full network alias support requires creating/joining a Docker network
         let mut final_env = env;
         if !config.network_aliases.is_empty() {
-            final_env.push(format!("RIVETR_NETWORK_ALIASES={}", config.network_aliases.join(",")));
+            final_env.push(format!(
+                "RIVETR_NETWORK_ALIASES={}",
+                config.network_aliases.join(",")
+            ));
         }
 
         // Set up container labels
@@ -250,12 +263,15 @@ impl ContainerRuntime for DockerRuntime {
         Ok(())
     }
 
-    async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+    async fn logs(
+        &self,
+        container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         let options = LogsOptions::<String> {
             stdout: true,
             stderr: true,
-            follow: false, // Don't follow - just fetch existing logs
-            timestamps: true, // Include Docker timestamps
+            follow: false,            // Don't follow - just fetch existing logs
+            timestamps: true,         // Include Docker timestamps
             tail: "1000".to_string(), // Get last 1000 lines
             ..Default::default()
         };
@@ -273,17 +289,18 @@ impl ContainerRuntime for DockerRuntime {
                     let message_str = String::from_utf8_lossy(&message).to_string();
                     // Parse Docker timestamp from the beginning of the message
                     // Format: "2024-01-01T00:00:00.000000000Z message"
-                    let (timestamp, msg) = if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
-                        // Has timestamp prefix
-                        let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
-                        if parts.len() == 2 {
-                            (parts[0].to_string(), parts[1].to_string())
+                    let (timestamp, msg) =
+                        if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
+                            // Has timestamp prefix
+                            let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
+                            if parts.len() == 2 {
+                                (parts[0].to_string(), parts[1].to_string())
+                            } else {
+                                (chrono::Utc::now().to_rfc3339(), message_str)
+                            }
                         } else {
                             (chrono::Utc::now().to_rfc3339(), message_str)
-                        }
-                    } else {
-                        (chrono::Utc::now().to_rfc3339(), message_str)
-                    };
+                        };
                     Some(LogLine {
                         timestamp,
                         message: msg.trim_end().to_string(),
@@ -300,7 +317,10 @@ impl ContainerRuntime for DockerRuntime {
         Ok(Box::pin(mapped))
     }
 
-    async fn logs_stream(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+    async fn logs_stream(
+        &self,
+        container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         let options = LogsOptions::<String> {
             stdout: true,
             stderr: true,
@@ -322,16 +342,17 @@ impl ContainerRuntime for DockerRuntime {
                     };
                     let message_str = String::from_utf8_lossy(&message).to_string();
                     // Parse Docker timestamp from the beginning of the message
-                    let (timestamp, msg) = if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
-                        let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
-                        if parts.len() == 2 {
-                            (parts[0].to_string(), parts[1].to_string())
+                    let (timestamp, msg) =
+                        if message_str.len() > 30 && message_str.chars().nth(4) == Some('-') {
+                            let parts: Vec<&str> = message_str.splitn(2, ' ').collect();
+                            if parts.len() == 2 {
+                                (parts[0].to_string(), parts[1].to_string())
+                            } else {
+                                (chrono::Utc::now().to_rfc3339(), message_str)
+                            }
                         } else {
                             (chrono::Utc::now().to_rfc3339(), message_str)
-                        }
-                    } else {
-                        (chrono::Utc::now().to_rfc3339(), message_str)
-                    };
+                        };
                     Some(LogLine {
                         timestamp,
                         message: msg.trim_end().to_string(),
@@ -374,7 +395,8 @@ impl ContainerRuntime for DockerRuntime {
             .as_ref()
             .map(|s| {
                 let is_running = s.running.unwrap_or(false);
-                let status_str = s.status
+                let status_str = s
+                    .status
                     .as_ref()
                     .map(|st| format!("{:?}", st))
                     .unwrap_or_default();
@@ -662,7 +684,10 @@ impl ContainerRuntime for DockerRuntime {
         });
 
         match start_result {
-            StartExecResults::Attached { mut output, mut input } => {
+            StartExecResults::Attached {
+                mut output,
+                mut input,
+            } => {
                 // Spawn stdin writer task
                 tokio::spawn(async move {
                     while let Some(data) = stdin_rx.recv().await {

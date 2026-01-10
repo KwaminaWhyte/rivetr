@@ -251,7 +251,14 @@ pub fn validate_uuid(id: &str, field_name: &str) -> Result<(), String> {
 const VALID_ENVIRONMENTS: [&str; 3] = ["development", "staging", "production"];
 
 /// Valid build type values
-const VALID_BUILD_TYPES: [&str; 6] = ["dockerfile", "nixpacks", "railpack", "cnb", "static", "staticsite"];
+const VALID_BUILD_TYPES: [&str; 6] = [
+    "dockerfile",
+    "nixpacks",
+    "railpack",
+    "cnb",
+    "static",
+    "staticsite",
+];
 
 /// Validate an environment value
 pub fn validate_environment(environment: &str) -> Result<(), String> {
@@ -319,7 +326,10 @@ pub fn validate_build_target(target: &Option<String>) -> Result<(), String> {
         }
 
         // Build target should be alphanumeric with dashes and underscores
-        if !t.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !t
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(
                 "Build target must contain only alphanumeric characters, dashes, and underscores"
                     .to_string(),
@@ -347,16 +357,10 @@ pub fn validate_watch_paths(paths: &Option<String>) -> Result<(), String> {
                 // Validate each path
                 for path in arr {
                     if path.contains("..") {
-                        return Err(format!(
-                            "Watch path '{}' cannot contain '..'",
-                            path
-                        ));
+                        return Err(format!("Watch path '{}' cannot contain '..'", path));
                     }
                     if path.starts_with('/') {
-                        return Err(format!(
-                            "Watch path '{}' must be a relative path",
-                            path
-                        ));
+                        return Err(format!("Watch path '{}' must be a relative path", path));
                     }
                 }
             }
@@ -392,8 +396,8 @@ pub fn validate_custom_docker_options(options: &Option<String>) -> Result<(), St
             "--network=host",
             "--userns=host",
             "--ipc=host",
-            "-v /:",        // Root mount
-            "--volume /:",  // Root mount alternative
+            "-v /:",                      // Root mount
+            "--volume /:",                // Root mount alternative
             "--mount type=bind,source=/", // Root bind mount
         ];
 
@@ -534,10 +538,7 @@ pub fn validate_extra_hosts(extra_hosts: &Option<Vec<String>>) -> Result<(), Str
 
             // Validate hostname
             if hostname.is_empty() {
-                return Err(format!(
-                    "Extra host {}: hostname cannot be empty",
-                    i + 1
-                ));
+                return Err(format!("Extra host {}: hostname cannot be empty", i + 1));
             }
 
             if hostname.len() > 253 {
@@ -585,30 +586,30 @@ const MAX_DOMAINS_PER_APP: usize = 100;
 /// Dangerous shell metacharacters that could enable command injection
 /// These are blocked to prevent arbitrary command execution in containers
 const DANGEROUS_SHELL_CHARS: &[&str] = &[
-    "$(", "`",     // Command substitution
-    "&&", "||",    // Command chaining
-    ";",           // Command separator
-    "|",           // Pipe to another command
-    ">", ">>",     // Output redirection
-    "<", "<<",     // Input redirection
-    "&",           // Background execution
-    "\n", "\r",    // Newlines (command separation)
+    "$(", "`", // Command substitution
+    "&&", "||", // Command chaining
+    ";",  // Command separator
+    "|",  // Pipe to another command
+    ">", ">>", // Output redirection
+    "<", "<<", // Input redirection
+    "&",  // Background execution
+    "\n", "\r", // Newlines (command separation)
 ];
 
 /// Dangerous patterns in deployment commands
 const DANGEROUS_PATTERNS: &[&str] = &[
-    "rm -rf /",           // Dangerous recursive delete
-    "rm -rf /*",          // Dangerous recursive delete
-    ":(){:|:&};:",        // Fork bomb
-    "mkfs",               // Filesystem formatting
-    "dd if=",             // Raw disk access
-    "/dev/sda",           // Disk device access
-    "/dev/null",          // While harmless, may indicate redirection attempt
-    "chmod 777",          // Overly permissive permissions
-    "curl | sh",          // Remote code execution pattern
-    "curl | bash",        // Remote code execution pattern
-    "wget | sh",          // Remote code execution pattern
-    "wget | bash",        // Remote code execution pattern
+    "rm -rf /",    // Dangerous recursive delete
+    "rm -rf /*",   // Dangerous recursive delete
+    ":(){:|:&};:", // Fork bomb
+    "mkfs",        // Filesystem formatting
+    "dd if=",      // Raw disk access
+    "/dev/sda",    // Disk device access
+    "/dev/null",   // While harmless, may indicate redirection attempt
+    "chmod 777",   // Overly permissive permissions
+    "curl | sh",   // Remote code execution pattern
+    "curl | bash", // Remote code execution pattern
+    "wget | sh",   // Remote code execution pattern
+    "wget | bash", // Remote code execution pattern
 ];
 
 /// Validate deployment commands (pre or post deploy)
@@ -701,10 +702,7 @@ pub fn validate_domain_name(domain: &str) -> Result<(), String> {
 pub fn validate_domains(domains: &Option<Vec<crate::db::Domain>>) -> Result<(), String> {
     if let Some(domain_list) = domains {
         if domain_list.len() > MAX_DOMAINS_PER_APP {
-            return Err(format!(
-                "Too many domains (max {})",
-                MAX_DOMAINS_PER_APP
-            ));
+            return Err(format!("Too many domains (max {})", MAX_DOMAINS_PER_APP));
         }
 
         let mut primary_count = 0;
@@ -712,17 +710,12 @@ pub fn validate_domains(domains: &Option<Vec<crate::db::Domain>>) -> Result<(), 
 
         for (i, domain) in domain_list.iter().enumerate() {
             // Validate domain name
-            validate_domain_name(&domain.domain).map_err(|e| {
-                format!("Domain {}: {}", i + 1, e)
-            })?;
+            validate_domain_name(&domain.domain).map_err(|e| format!("Domain {}: {}", i + 1, e))?;
 
             // Check for duplicates
             let normalized = domain.domain.to_lowercase();
             if seen_domains.contains(&normalized) {
-                return Err(format!(
-                    "Duplicate domain: '{}'",
-                    domain.domain
-                ));
+                return Err(format!("Duplicate domain: '{}'", domain.domain));
             }
             seen_domains.insert(normalized);
 
@@ -994,7 +987,10 @@ mod tests {
         assert!(validate_watch_paths(&Some("".to_string())).is_ok());
         assert!(validate_watch_paths(&Some(r#"["src/"]"#.to_string())).is_ok());
         assert!(validate_watch_paths(&Some(r#"["src/", "package.json"]"#.to_string())).is_ok());
-        assert!(validate_watch_paths(&Some(r#"["Dockerfile", "docker-compose.yml"]"#.to_string())).is_ok());
+        assert!(
+            validate_watch_paths(&Some(r#"["Dockerfile", "docker-compose.yml"]"#.to_string()))
+                .is_ok()
+        );
 
         // Invalid: not valid JSON
         assert!(validate_watch_paths(&Some("src/".to_string())).is_err());
@@ -1014,7 +1010,10 @@ mod tests {
         assert!(validate_custom_docker_options(&Some("".to_string())).is_ok());
         assert!(validate_custom_docker_options(&Some("--no-cache".to_string())).is_ok());
         assert!(validate_custom_docker_options(&Some("--build-arg FOO=bar".to_string())).is_ok());
-        assert!(validate_custom_docker_options(&Some("--add-host=myhost:192.168.1.1".to_string())).is_ok());
+        assert!(
+            validate_custom_docker_options(&Some("--add-host=myhost:192.168.1.1".to_string()))
+                .is_ok()
+        );
 
         // Dangerous options (security)
         assert!(validate_custom_docker_options(&Some("--privileged".to_string())).is_err());
@@ -1047,29 +1046,28 @@ mod tests {
         // Valid domains
         assert!(validate_domains(&None).is_ok());
         assert!(validate_domains(&Some(vec![])).is_ok());
-        assert!(validate_domains(&Some(vec![
-            Domain::new("example.com".to_string()),
-        ])).is_ok());
+        assert!(validate_domains(&Some(vec![Domain::new("example.com".to_string()),])).is_ok());
         assert!(validate_domains(&Some(vec![
             Domain::primary("example.com".to_string()),
             Domain::new("www.example.com".to_string()),
-        ])).is_ok());
+        ]))
+        .is_ok());
 
         // Invalid: duplicate domains
         assert!(validate_domains(&Some(vec![
             Domain::new("example.com".to_string()),
             Domain::new("example.com".to_string()),
-        ])).is_err());
+        ]))
+        .is_err());
 
         // Invalid: multiple primary domains
         assert!(validate_domains(&Some(vec![
             Domain::primary("example.com".to_string()),
             Domain::primary("other.com".to_string()),
-        ])).is_err());
+        ]))
+        .is_err());
 
         // Invalid: bad domain format
-        assert!(validate_domains(&Some(vec![
-            Domain::new("-invalid.com".to_string()),
-        ])).is_err());
+        assert!(validate_domains(&Some(vec![Domain::new("-invalid.com".to_string()),])).is_err());
     }
 }

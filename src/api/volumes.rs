@@ -82,7 +82,10 @@ pub async fn create_volume(
 
     // Container path must be absolute
     if !req.container_path.starts_with('/') {
-        tracing::warn!("Volume container_path must be absolute: {}", req.container_path);
+        tracing::warn!(
+            "Volume container_path must be absolute: {}",
+            req.container_path
+        );
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -174,7 +177,10 @@ pub async fn update_volume(
 
     // Validate container_path is absolute
     if !new_container_path.starts_with('/') {
-        tracing::warn!("Volume container_path must be absolute: {}", new_container_path);
+        tracing::warn!(
+            "Volume container_path must be absolute: {}",
+            new_container_path
+        );
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -243,7 +249,14 @@ pub async fn delete_volume(
 pub async fn backup_volume(
     State(state): State<Arc<AppState>>,
     Path(volume_id): Path<String>,
-) -> Result<(StatusCode, [(axum::http::header::HeaderName, String); 2], Vec<u8>), StatusCode> {
+) -> Result<
+    (
+        StatusCode,
+        [(axum::http::header::HeaderName, String); 2],
+        Vec<u8>,
+    ),
+    StatusCode,
+> {
     use crate::db::App;
 
     // Get the volume
@@ -285,7 +298,9 @@ pub async fn backup_volume(
 
         // Find running container by app name prefix
         let container_prefix = format!("rivetr-{}", app.name);
-        let containers = state.runtime.list_containers(&container_prefix)
+        let containers = state
+            .runtime
+            .list_containers(&container_prefix)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list containers: {}", e);

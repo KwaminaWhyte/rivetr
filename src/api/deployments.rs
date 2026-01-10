@@ -9,7 +9,9 @@ use uuid::Uuid;
 
 use crate::crypto;
 use crate::db::{actions, resource_types, App, Deployment, DeploymentLog, User};
-use crate::engine::{detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult};
+use crate::engine::{
+    detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult,
+};
 use crate::proxy::Backend;
 use crate::runtime::ContainerStats;
 use crate::AppState;
@@ -113,58 +115,59 @@ pub async fn trigger_deploy(
     // 1. If source directory still exists, rebuild from source
     // 2. If not but image exists, restart from existing image
     // 3. If neither, require new ZIP upload
-    let (upload_source_path, existing_image_tag): (Option<String>, Option<String>) = if is_upload_app {
-        // First, check if source directory from last deployment still exists
-        let last_deployment: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+    let (upload_source_path, existing_image_tag): (Option<String>, Option<String>) =
+        if is_upload_app {
+            // First, check if source directory from last deployment still exists
+            let last_deployment: Option<(Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT commit_sha, image_tag FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') ORDER BY started_at DESC LIMIT 1"
         )
         .bind(&app_id)
         .fetch_optional(&state.db)
         .await?;
 
-        match last_deployment {
-            Some((Some(path), image_tag)) if path.contains("rivetr-upload-") => {
-                // Check if the source directory still exists
-                let source_path = std::path::Path::new(&path);
-                if source_path.exists() {
-                    // Rebuild from source
-                    (Some(path), None)
-                } else if let Some(ref tag) = image_tag {
-                    // Source cleaned up, but we have an image - restart from image
-                    tracing::info!(
-                        app_id = %app_id,
-                        image_tag = %tag,
-                        "Source directory cleaned up, will restart from existing image"
-                    );
-                    (None, image_tag)
-                } else {
-                    // No source and no image
-                    return Err(ApiError::bad_request(
+            match last_deployment {
+                Some((Some(path), image_tag)) if path.contains("rivetr-upload-") => {
+                    // Check if the source directory still exists
+                    let source_path = std::path::Path::new(&path);
+                    if source_path.exists() {
+                        // Rebuild from source
+                        (Some(path), None)
+                    } else if let Some(ref tag) = image_tag {
+                        // Source cleaned up, but we have an image - restart from image
+                        tracing::info!(
+                            app_id = %app_id,
+                            image_tag = %tag,
+                            "Source directory cleaned up, will restart from existing image"
+                        );
+                        (None, image_tag)
+                    } else {
+                        // No source and no image
+                        return Err(ApiError::bad_request(
                         "This app was deployed from a ZIP file, but the source files have been cleaned up and no image exists. \
                         Please upload a new ZIP file using the 'Deploy from ZIP file' option."
                     ));
+                    }
                 }
-            }
-            Some((_, Some(image_tag))) => {
-                // No source path but have an image
-                tracing::info!(
-                    app_id = %app_id,
-                    image_tag = %image_tag,
-                    "No source path found, will restart from existing image"
-                );
-                (None, Some(image_tag))
-            }
-            _ => {
-                // No previous deployment found
-                return Err(ApiError::bad_request(
+                Some((_, Some(image_tag))) => {
+                    // No source path but have an image
+                    tracing::info!(
+                        app_id = %app_id,
+                        image_tag = %image_tag,
+                        "No source path found, will restart from existing image"
+                    );
+                    (None, Some(image_tag))
+                }
+                _ => {
+                    // No previous deployment found
+                    return Err(ApiError::bad_request(
                     "This app was configured for ZIP upload deployment but has no previous successful deployment. \
                     Please upload a ZIP file using the 'Deploy from ZIP file' option."
                 ));
+                }
             }
-        }
-    } else {
-        (None, None)
-    };
+        } else {
+            (None, None)
+        };
 
     let deployment_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -186,7 +189,11 @@ pub async fn trigger_deploy(
     .await?;
 
     // Queue the deployment job
-    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+    if let Err(e) = state
+        .deploy_tx
+        .send((deployment_id.clone(), app.clone()))
+        .await
+    {
         tracing::error!("Failed to queue deployment: {}", e);
         return Err(ApiError::internal("Failed to queue deployment job"));
     }
@@ -241,12 +248,10 @@ pub async fn list_deployments(
     let offset = (page - 1) * per_page;
 
     // Get total count
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM deployments WHERE app_id = ?",
-    )
-    .bind(&app_id)
-    .fetch_one(&state.db)
-    .await?;
+    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM deployments WHERE app_id = ?")
+        .bind(&app_id)
+        .fetch_one(&state.db)
+        .await?;
 
     // Calculate total pages
     let total_pages = (total + per_page - 1) / per_page;
@@ -336,13 +341,12 @@ pub async fn rollback_deployment(
     }
 
     // Get the current deployment
-    let current_deployment = sqlx::query_as::<_, Deployment>(
-        "SELECT * FROM deployments WHERE id = ?"
-    )
-    .bind(&deployment_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
+    let current_deployment =
+        sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+            .bind(&deployment_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
 
     // Get the app
     let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
@@ -427,7 +431,16 @@ pub async fn rollback_deployment(
     let encryption_key = get_encryption_key(&state);
 
     tokio::spawn(async move {
-        match run_rollback(&db, runtime, &rollback_id_clone, &target_deployment_clone, &app_clone, encryption_key.as_ref()).await {
+        match run_rollback(
+            &db,
+            runtime,
+            &rollback_id_clone,
+            &target_deployment_clone,
+            &app_clone,
+            encryption_key.as_ref(),
+        )
+        .await
+        {
             Ok(result) => {
                 // Update proxy routes on successful rollback
                 if let Some(domain) = &app_clone.domain {
@@ -486,7 +499,7 @@ async fn find_previous_successful_deployment(
           AND image_tag IS NOT NULL
         ORDER BY started_at DESC
         LIMIT 1
-        "#
+        "#,
     )
     .bind(&current.app_id)
     .bind(&current.id)
@@ -532,14 +545,10 @@ pub async fn get_app_stats(
         .ok_or_else(|| ApiError::not_found("Running deployment has no container ID"))?;
 
     // Get stats from the container runtime
-    let stats = state
-        .runtime
-        .stats(&container_id)
-        .await
-        .map_err(|e| {
-            tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
-            ApiError::internal(format!("Failed to get container stats: {}", e))
-        })?;
+    let stats = state.runtime.stats(&container_id).await.map_err(|e| {
+        tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
+        ApiError::internal(format!("Failed to get container stats: {}", e))
+    })?;
 
     Ok(Json(stats))
 }
@@ -624,7 +633,9 @@ pub async fn upload_deploy(
     }
 
     let zip_data = zip_data.ok_or_else(|| {
-        ApiError::bad_request("No ZIP file provided. Include a 'file' or 'zip' field in the multipart form")
+        ApiError::bad_request(
+            "No ZIP file provided. Include a 'file' or 'zip' field in the multipart form",
+        )
     })?;
 
     tracing::info!(
@@ -719,7 +730,11 @@ pub async fn upload_deploy(
         .await?;
 
     // Queue the deployment
-    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+    if let Err(e) = state
+        .deploy_tx
+        .send((deployment_id.clone(), app.clone()))
+        .await
+    {
         // Cleanup on error
         let _ = tokio::fs::remove_dir_all(&work_dir).await;
         tracing::error!("Failed to queue deployment: {}", e);
@@ -750,10 +765,13 @@ pub async fn upload_deploy(
     )
     .await;
 
-    Ok((StatusCode::ACCEPTED, Json(UploadDeployResponse {
-        deployment,
-        detected_build_type: detection,
-    })))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(UploadDeployResponse {
+            deployment,
+            detected_build_type: detection,
+        }),
+    ))
 }
 
 /// Preview build type detection from uploaded ZIP
@@ -791,9 +809,7 @@ pub async fn detect_build_type_from_upload(
         }
     }
 
-    let zip_data = zip_data.ok_or_else(|| {
-        ApiError::bad_request("No ZIP file provided")
-    })?;
+    let zip_data = zip_data.ok_or_else(|| ApiError::bad_request("No ZIP file provided"))?;
 
     // Create temp directory
     let temp_id = Uuid::new_v4().to_string();
@@ -809,7 +825,8 @@ pub async fn detect_build_type_from_upload(
     // Cleanup temp directory
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
 
-    let detection = result.map_err(|e| ApiError::bad_request(format!("Detection failed: {}", e)))?;
+    let detection =
+        result.map_err(|e| ApiError::bad_request(format!("Detection failed: {}", e)))?;
 
     Ok(Json(detection))
 }

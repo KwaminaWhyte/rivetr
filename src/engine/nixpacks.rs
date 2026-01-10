@@ -328,11 +328,12 @@ pub async fn build_image(
     // Set up for streaming output
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    debug!("Executing Nixpacks command: nixpacks build {:?}", source_path);
+    debug!(
+        "Executing Nixpacks command: nixpacks build {:?}",
+        source_path
+    );
 
-    let mut child = cmd
-        .spawn()
-        .context("Failed to spawn nixpacks process")?;
+    let mut child = cmd.spawn().context("Failed to spawn nixpacks process")?;
 
     // Stream stdout
     let stdout = child.stdout.take().expect("stdout was piped");
@@ -494,10 +495,7 @@ pub async fn generate_dockerfile(
     let output_dir = source_path.join(".nixpacks");
 
     let mut cmd = Command::new("nixpacks");
-    cmd.arg("build")
-        .arg(source_path)
-        .arg("-o")
-        .arg(&output_dir);
+    cmd.arg("build").arg(source_path).arg("-o").arg(&output_dir);
 
     // Load config from nixpacks.toml if present
     let mut effective_config = NixpacksConfig::default();
@@ -582,10 +580,7 @@ mod tests {
             config.packages,
             Some(vec!["imagemagick".to_string(), "ffmpeg".to_string()])
         );
-        assert_eq!(
-            config.apt_packages,
-            Some(vec!["libpng-dev".to_string()])
-        );
+        assert_eq!(config.apt_packages, Some(vec!["libpng-dev".to_string()]));
         assert_eq!(config.provider, Some("node".to_string()));
     }
 

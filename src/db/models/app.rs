@@ -379,7 +379,11 @@ impl App {
     /// Check if this app can push to registry (has registry configured and push enabled)
     pub fn can_push_to_registry(&self) -> bool {
         self.is_registry_push_enabled()
-            && self.registry_url.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+            && self
+                .registry_url
+                .as_ref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
     }
 
     /// Get the registry URL for pushing images (for rollback support)

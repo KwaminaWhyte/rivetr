@@ -8,7 +8,10 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-use super::{BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig, ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize};
+use super::{
+    BuildContext, CommandResult, ContainerInfo, ContainerRuntime, ContainerStats, ExecConfig,
+    ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize,
+};
 
 pub struct PodmanRuntime;
 
@@ -237,7 +240,14 @@ impl ContainerRuntime for PodmanRuntime {
     ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         // Follow logs with --follow flag, get last 100 lines first
         let mut child = Command::new("podman")
-            .args(["logs", "--timestamps", "--tail", "100", "--follow", container_id])
+            .args([
+                "logs",
+                "--timestamps",
+                "--tail",
+                "100",
+                "--follow",
+                container_id,
+            ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -285,8 +295,7 @@ impl ContainerRuntime for PodmanRuntime {
         let parts: Vec<&str> = output.split('|').collect();
         if parts.len() >= 4 {
             let is_running = parts.get(3).map(|s| *s == "true").unwrap_or(false);
-            let host_port = parts.get(4)
-                .and_then(|s| s.parse::<u16>().ok());
+            let host_port = parts.get(4).and_then(|s| s.parse::<u16>().ok());
 
             Ok(ContainerInfo {
                 id: parts[0].to_string(),
@@ -394,13 +403,7 @@ impl ContainerRuntime for PodmanRuntime {
     async fn stats(&self, container_id: &str) -> Result<ContainerStats> {
         // Use podman stats with JSON output for reliable parsing
         let output = Command::new("podman")
-            .args([
-                "stats",
-                "--no-stream",
-                "--format",
-                "json",
-                container_id,
-            ])
+            .args(["stats", "--no-stream", "--format", "json", container_id])
             .output()
             .await
             .context("Failed to execute podman stats")?;
@@ -413,8 +416,8 @@ impl ContainerRuntime for PodmanRuntime {
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         // Podman stats returns an array of stats objects
-        let stats: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-            .context("Failed to parse podman stats JSON")?;
+        let stats: Vec<serde_json::Value> =
+            serde_json::from_str(&stdout).context("Failed to parse podman stats JSON")?;
 
         if stats.is_empty() {
             anyhow::bail!("No stats returned for container");
@@ -442,16 +445,28 @@ impl ContainerRuntime for PodmanRuntime {
             .and_then(|v| v.as_str())
             .map(|s| {
                 let parts: Vec<&str> = s.split('/').collect();
-                let usage = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
-                let limit = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                let usage = parts
+                    .first()
+                    .map(|p| parse_podman_size(p.trim()))
+                    .unwrap_or(0);
+                let limit = parts
+                    .get(1)
+                    .map(|p| parse_podman_size(p.trim()))
+                    .unwrap_or(0);
                 (usage, limit)
             })
             .or_else(|| {
                 // Alternative field names
                 stat.get("MemUsage").and_then(|v| v.as_str()).map(|s| {
                     let parts: Vec<&str> = s.split('/').collect();
-                    let usage = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
-                    let limit = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    let usage = parts
+                        .first()
+                        .map(|p| parse_podman_size(p.trim()))
+                        .unwrap_or(0);
+                    let limit = parts
+                        .get(1)
+                        .map(|p| parse_podman_size(p.trim()))
+                        .unwrap_or(0);
                     (usage, limit)
                 })
             })
@@ -463,15 +478,27 @@ impl ContainerRuntime for PodmanRuntime {
             .and_then(|v| v.as_str())
             .map(|s| {
                 let parts: Vec<&str> = s.split('/').collect();
-                let rx = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
-                let tx = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                let rx = parts
+                    .first()
+                    .map(|p| parse_podman_size(p.trim()))
+                    .unwrap_or(0);
+                let tx = parts
+                    .get(1)
+                    .map(|p| parse_podman_size(p.trim()))
+                    .unwrap_or(0);
                 (rx, tx)
             })
             .or_else(|| {
                 stat.get("NetIO").and_then(|v| v.as_str()).map(|s| {
                     let parts: Vec<&str> = s.split('/').collect();
-                    let rx = parts.first().map(|p| parse_podman_size(p.trim())).unwrap_or(0);
-                    let tx = parts.get(1).map(|p| parse_podman_size(p.trim())).unwrap_or(0);
+                    let rx = parts
+                        .first()
+                        .map(|p| parse_podman_size(p.trim()))
+                        .unwrap_or(0);
+                    let tx = parts
+                        .get(1)
+                        .map(|p| parse_podman_size(p.trim()))
+                        .unwrap_or(0);
                     (rx, tx)
                 })
             })
@@ -564,7 +591,11 @@ impl ContainerRuntime for PodmanRuntime {
                 match stdout.read(&mut buf).await {
                     Ok(0) => break, // EOF
                     Ok(n) => {
-                        if stdout_tx_clone.send(Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                        if stdout_tx_clone
+                            .send(Bytes::copy_from_slice(&buf[..n]))
+                            .await
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -584,7 +615,11 @@ impl ContainerRuntime for PodmanRuntime {
                 match stderr_reader.read(&mut buf).await {
                     Ok(0) => break, // EOF
                     Ok(n) => {
-                        if stdout_tx.send(Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                        if stdout_tx
+                            .send(Bytes::copy_from_slice(&buf[..n]))
+                            .await
+                            .is_err()
+                        {
                             break;
                         }
                     }

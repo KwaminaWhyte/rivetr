@@ -40,7 +40,10 @@ impl GitHubClient {
             anyhow::bail!("GitHub API error: {} - {}", status, body);
         }
 
-        response.json().await.context("Failed to parse GitHub API response")
+        response
+            .json()
+            .await
+            .context("Failed to parse GitHub API response")
     }
 
     /// Make an authenticated POST request to the GitHub API.
@@ -67,7 +70,10 @@ impl GitHubClient {
             anyhow::bail!("GitHub API error: {} - {}", status, body);
         }
 
-        response.json().await.context("Failed to parse GitHub API response")
+        response
+            .json()
+            .await
+            .context("Failed to parse GitHub API response")
     }
 
     /// List repositories accessible to an installation.
@@ -160,10 +166,7 @@ impl GitHubClient {
         repo: &str,
         config: WebhookConfig,
     ) -> Result<u64> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/hooks",
-            owner, repo
-        );
+        let url = format!("https://api.github.com/repos/{}/{}/hooks", owner, repo);
 
         let request_body = CreateWebhookRequest {
             name: "web".to_string(),

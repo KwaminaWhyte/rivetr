@@ -111,8 +111,12 @@ pub async fn add_route(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let backend = Backend::new(req.container_id.clone(), req.backend_host.clone(), req.backend_port)
-        .with_healthcheck(req.healthcheck_path.clone());
+    let backend = Backend::new(
+        req.container_id.clone(),
+        req.backend_host.clone(),
+        req.backend_port,
+    )
+    .with_healthcheck(req.healthcheck_path.clone());
 
     let routes = state.routes.load();
     routes.add_route(req.domain.clone(), backend.clone());

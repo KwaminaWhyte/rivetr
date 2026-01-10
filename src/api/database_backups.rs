@@ -244,12 +244,11 @@ pub async fn get_schedule(
         .await?
         .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "Database not found"))?;
 
-    let schedule: Option<DatabaseBackupSchedule> = sqlx::query_as(
-        "SELECT * FROM database_backup_schedules WHERE database_id = ?",
-    )
-    .bind(&database_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let schedule: Option<DatabaseBackupSchedule> =
+        sqlx::query_as("SELECT * FROM database_backup_schedules WHERE database_id = ?")
+            .bind(&database_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     Ok(Json(schedule.map(Into::into)))
 }
@@ -268,12 +267,11 @@ pub async fn upsert_schedule(
         .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "Database not found"))?;
 
     // Check if schedule exists
-    let existing: Option<DatabaseBackupSchedule> = sqlx::query_as(
-        "SELECT * FROM database_backup_schedules WHERE database_id = ?",
-    )
-    .bind(&database_id)
-    .fetch_optional(&state.db)
-    .await?;
+    let existing: Option<DatabaseBackupSchedule> =
+        sqlx::query_as("SELECT * FROM database_backup_schedules WHERE database_id = ?")
+            .bind(&database_id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let schedule_type = req
         .schedule_type
@@ -289,7 +287,10 @@ pub async fn upsert_schedule(
 
     if let Some(existing) = existing {
         // Update existing schedule
-        let enabled = req.enabled.map(|e| if e { 1 } else { 0 }).unwrap_or(existing.enabled);
+        let enabled = req
+            .enabled
+            .map(|e| if e { 1 } else { 0 })
+            .unwrap_or(existing.enabled);
         let schedule_hour = req.schedule_hour.unwrap_or(existing.schedule_hour);
         let schedule_day = req.schedule_day.or(existing.schedule_day);
         let retention_count = req.retention_count.unwrap_or(existing.retention_count);
@@ -320,12 +321,11 @@ pub async fn upsert_schedule(
         .await?;
 
         // Fetch updated schedule
-        let schedule: DatabaseBackupSchedule = sqlx::query_as(
-            "SELECT * FROM database_backup_schedules WHERE database_id = ?",
-        )
-        .bind(&database_id)
-        .fetch_one(&state.db)
-        .await?;
+        let schedule: DatabaseBackupSchedule =
+            sqlx::query_as("SELECT * FROM database_backup_schedules WHERE database_id = ?")
+                .bind(&database_id)
+                .fetch_one(&state.db)
+                .await?;
 
         Ok(Json(schedule.into()))
     } else {
@@ -364,12 +364,11 @@ pub async fn upsert_schedule(
         .await?;
 
         // Fetch created schedule
-        let schedule: DatabaseBackupSchedule = sqlx::query_as(
-            "SELECT * FROM database_backup_schedules WHERE database_id = ?",
-        )
-        .bind(&database_id)
-        .fetch_one(&state.db)
-        .await?;
+        let schedule: DatabaseBackupSchedule =
+            sqlx::query_as("SELECT * FROM database_backup_schedules WHERE database_id = ?")
+                .bind(&database_id)
+                .fetch_one(&state.db)
+                .await?;
 
         Ok(Json(schedule.into()))
     }

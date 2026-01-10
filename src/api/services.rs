@@ -33,11 +33,12 @@ fn validate_compose_content(content: &str) -> Result<(), String> {
     }
 
     // Parse as YAML
-    let yaml: serde_yaml::Value = serde_yaml::from_str(content)
-        .map_err(|e| format!("Invalid YAML: {}", e))?;
+    let yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
 
     // Check for 'services' key
-    let mapping = yaml.as_mapping()
+    let mapping = yaml
+        .as_mapping()
         .ok_or_else(|| "Compose file must be a YAML mapping".to_string())?;
 
     // Check for 'services' key (required in docker-compose)
@@ -56,22 +57,25 @@ fn get_compose_dir(data_dir: &PathBuf, service_name: &str) -> PathBuf {
 /// Namespace container names in compose content to prevent global conflicts
 /// Prefixes all container_name values with "rivetr-{service_name}-"
 fn namespace_container_names(content: &str, service_name: &str) -> Result<String, String> {
-    let mut yaml: serde_yaml::Value = serde_yaml::from_str(content)
-        .map_err(|e| format!("Invalid YAML: {}", e))?;
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
 
     let prefix = format!("rivetr-{}-", service_name);
 
     if let Some(mapping) = yaml.as_mapping_mut() {
-        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string())) {
+        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string()))
+        {
             if let Some(services_map) = services.as_mapping_mut() {
                 for (_service_key, service_config) in services_map.iter_mut() {
                     if let Some(config_map) = service_config.as_mapping_mut() {
-                        let container_name_key = serde_yaml::Value::String("container_name".to_string());
+                        let container_name_key =
+                            serde_yaml::Value::String("container_name".to_string());
                         if let Some(container_name_val) = config_map.get_mut(&container_name_key) {
                             if let Some(name) = container_name_val.as_str() {
                                 // Only add prefix if not already prefixed
                                 if !name.starts_with(&prefix) && !name.starts_with("rivetr-") {
-                                    *container_name_val = serde_yaml::Value::String(format!("{}{}", prefix, name));
+                                    *container_name_val =
+                                        serde_yaml::Value::String(format!("{}{}", prefix, name));
                                 }
                             }
                         }
@@ -81,23 +85,28 @@ fn namespace_container_names(content: &str, service_name: &str) -> Result<String
         }
     }
 
-    serde_yaml::to_string(&yaml)
-        .map_err(|e| format!("Failed to serialize YAML: {}", e))
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
 }
 
 /// Write compose content to file
 /// Namespaces container names to prevent global conflicts
-async fn write_compose_file(data_dir: &PathBuf, service_name: &str, content: &str) -> Result<PathBuf, std::io::Error> {
+async fn write_compose_file(
+    data_dir: &PathBuf,
+    service_name: &str,
+    content: &str,
+) -> Result<PathBuf, std::io::Error> {
     let dir = get_compose_dir(data_dir, service_name);
     tokio::fs::create_dir_all(&dir).await?;
     let compose_file = dir.join("docker-compose.yml");
 
     // Namespace container names to prevent global conflicts
-    let namespaced_content = namespace_container_names(content, service_name)
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to namespace container names: {}. Using original content.", e);
-            content.to_string()
-        });
+    let namespaced_content = namespace_container_names(content, service_name).unwrap_or_else(|e| {
+        tracing::warn!(
+            "Failed to namespace container names: {}. Using original content.",
+            e
+        );
+        content.to_string()
+    });
 
     tokio::fs::write(&compose_file, namespaced_content).await?;
     Ok(dir)
@@ -151,15 +160,13 @@ async fn run_compose_command(
 pub async fn list_services(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ServiceResponse>>, StatusCode> {
-    let services = sqlx::query_as::<_, Service>(
-        "SELECT * FROM services ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to list services: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let services = sqlx::query_as::<_, Service>("SELECT * FROM services ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list services: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let responses: Vec<ServiceResponse> = services.into_iter().map(Into::into).collect();
     Ok(Json(responses))
@@ -197,7 +204,11 @@ pub async fn create_service(
     }
 
     // Validate name format (alphanumeric and hyphens only)
-    if !req.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if !req
+        .name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
         tracing::warn!("Service name contains invalid characters: {}", req.name);
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -371,7 +382,13 @@ pub async fn delete_service(
 
     if compose_dir.exists() {
         // Run docker compose down to clean up containers
-        if let Err(e) = run_compose_command(&compose_dir, &project_name, &["down", "--volumes", "--remove-orphans"]).await {
+        if let Err(e) = run_compose_command(
+            &compose_dir,
+            &project_name,
+            &["down", "--volumes", "--remove-orphans"],
+        )
+        .await
+        {
             tracing::warn!("Failed to run compose down: {}", e);
         }
 
@@ -439,8 +456,13 @@ pub async fn start_service(
 
     // Clean up any orphaned containers from previous failed deployments
     // This prevents "container name already in use" errors
-    tracing::debug!("Cleaning up orphaned containers for project: {}", project_name);
-    if let Err(e) = run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await {
+    tracing::debug!(
+        "Cleaning up orphaned containers for project: {}",
+        project_name
+    );
+    if let Err(e) =
+        run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await
+    {
         // Log but don't fail - the containers might not exist yet
         tracing::debug!("Compose down (cleanup) result: {}", e);
     }
@@ -474,7 +496,11 @@ pub async fn start_service(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
-            tracing::error!("Failed to start Docker Compose service {}: {}", service.name, e);
+            tracing::error!(
+                "Failed to start Docker Compose service {}: {}",
+                service.name,
+                e
+            );
         }
     }
 
@@ -553,7 +579,11 @@ pub async fn stop_service(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
-            tracing::error!("Failed to stop Docker Compose service {}: {}", service.name, e);
+            tracing::error!(
+                "Failed to stop Docker Compose service {}: {}",
+                service.name,
+                e
+            );
         }
     }
 
@@ -825,7 +855,8 @@ fn parse_log_line(line: &str) -> Option<ServiceLogEntry> {
 pub async fn stream_service_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<serde_json::Value>)>
+{
     // Get the service
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(&id)

@@ -179,9 +179,10 @@ impl PackConfig {
     /// Get the effective builder image
     pub fn get_builder_image(&self) -> Result<String> {
         if self.builder == CnbBuilder::Custom {
-            self.custom_builder
-                .clone()
-                .ok_or_else(|| PackError::InvalidBuilder("Custom builder specified but no image provided".into()).into())
+            self.custom_builder.clone().ok_or_else(|| {
+                PackError::InvalidBuilder("Custom builder specified but no image provided".into())
+                    .into()
+            })
         } else {
             Ok(self.builder.image().to_string())
         }
@@ -261,11 +262,7 @@ pub async fn is_available() -> bool {
 
 /// Get Pack CLI version if available
 pub async fn get_version() -> Option<String> {
-    let output = Command::new("pack")
-        .arg("--version")
-        .output()
-        .await
-        .ok()?;
+    let output = Command::new("pack").arg("--version").output().await.ok()?;
 
     if output.status.success() {
         Some(String::from_utf8_lossy(&output.stdout).trim().to_string())

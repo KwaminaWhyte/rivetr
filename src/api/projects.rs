@@ -82,21 +82,17 @@ fn validate_update_request(req: &UpdateProjectRequest) -> Result<(), ApiError> {
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ProjectWithAppCount>>, ApiError> {
-    let projects = sqlx::query_as::<_, Project>(
-        "SELECT * FROM projects ORDER BY created_at DESC"
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let projects = sqlx::query_as::<_, Project>("SELECT * FROM projects ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await?;
 
     // Get app counts for each project
     let mut results = Vec::new();
     for project in projects {
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM apps WHERE project_id = ?"
-        )
-        .bind(&project.id)
-        .fetch_one(&state.db)
-        .await?;
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM apps WHERE project_id = ?")
+            .bind(&project.id)
+            .fetch_one(&state.db)
+            .await?;
 
         results.push(ProjectWithAppCount {
             id: project.id,
@@ -128,21 +124,21 @@ pub async fn get_project(
         .ok_or_else(|| ApiError::not_found("Project not found"))?;
 
     let apps = sqlx::query_as::<_, App>(
-        "SELECT * FROM apps WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM apps WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
     .await?;
 
     let databases = sqlx::query_as::<_, ManagedDatabase>(
-        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
     .await?;
 
     let services = sqlx::query_as::<_, Service>(
-        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC"
+        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC",
     )
     .bind(&id)
     .fetch_all(&state.db)
@@ -154,10 +150,7 @@ pub async fn get_project(
         .map(|db| db.to_response(false, host))
         .collect();
 
-    let service_responses = services
-        .into_iter()
-        .map(|s| s.to_response())
-        .collect();
+    let service_responses = services.into_iter().map(|s| s.to_response()).collect();
 
     Ok(Json(ProjectWithApps {
         id: project.id,

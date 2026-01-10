@@ -190,9 +190,7 @@ pub async fn run_preview_deployment(
 
     let image_tag = format!(
         "rivetr-preview-{}-pr-{}:{}",
-        app.name,
-        preview.pr_number,
-        preview_id
+        app.name, preview.pr_number, preview_id
     );
 
     let build_ctx = BuildContext {
@@ -232,20 +230,19 @@ pub async fn run_preview_deployment(
     update_preview_status(db, preview_id, PreviewDeploymentStatus::Starting, None).await?;
 
     // Get env vars from database (same as production app)
-    let raw_env_vars = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value FROM env_vars WHERE app_id = ?",
-    )
-    .bind(&app.id)
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    let raw_env_vars =
+        sqlx::query_as::<_, (String, String)>("SELECT key, value FROM env_vars WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
 
     // Decrypt env var values
     let env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
-            let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
-                .unwrap_or_else(|e| {
+            let decrypted =
+                crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
                     warn!("Failed to decrypt env var {}: {}", key, e);
                     value
                 });
@@ -258,7 +255,10 @@ pub async fn run_preview_deployment(
         .memory_limit
         .clone()
         .or_else(|| Some("256m".to_string()));
-    let cpu_limit = preview.cpu_limit.clone().or_else(|| Some("0.5".to_string()));
+    let cpu_limit = preview
+        .cpu_limit
+        .clone()
+        .or_else(|| Some("0.5".to_string()));
 
     let run_config = RunConfig {
         image: image_tag.clone(),
@@ -273,10 +273,7 @@ pub async fn run_preview_deployment(
         labels: std::collections::HashMap::from([
             ("rivetr.preview".to_string(), "true".to_string()),
             ("rivetr.app".to_string(), app.id.clone()),
-            (
-                "rivetr.pr".to_string(),
-                preview.pr_number.to_string(),
-            ),
+            ("rivetr.pr".to_string(), preview.pr_number.to_string()),
         ]),
         binds: vec![],
     };
@@ -539,13 +536,12 @@ pub async fn find_or_create_preview(
     base_domain: &str,
 ) -> Result<PreviewDeployment> {
     // Check if preview already exists for this PR
-    let existing: Option<PreviewDeployment> = sqlx::query_as(
-        "SELECT * FROM preview_deployments WHERE app_id = ? AND pr_number = ?",
-    )
-    .bind(&app.id)
-    .bind(info.pr_number)
-    .fetch_optional(db)
-    .await?;
+    let existing: Option<PreviewDeployment> =
+        sqlx::query_as("SELECT * FROM preview_deployments WHERE app_id = ? AND pr_number = ?")
+            .bind(&app.id)
+            .bind(info.pr_number)
+            .fetch_optional(db)
+            .await?;
 
     if let Some(mut preview) = existing {
         // Update existing preview with new commit info
