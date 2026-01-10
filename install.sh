@@ -587,7 +587,7 @@ RestartSec=10
 
 # Security hardening
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ReadWritePaths=$DATA_DIR /home/$SERVICE_USER
 PrivateTmp=true
 
