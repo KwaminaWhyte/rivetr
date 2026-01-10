@@ -419,6 +419,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 035: Add team_audit_logs table for tracking team activities
+    let has_team_audit_logs_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_audit_logs'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_audit_logs_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/035_team_audit_logs.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

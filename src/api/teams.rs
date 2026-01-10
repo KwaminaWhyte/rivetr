@@ -1,16 +1,18 @@
 //! Teams API endpoints for multi-user support with role-based access control.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use rand::Rng;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    CreateInvitationRequest, CreateTeamRequest, InviteMemberRequest, Team, TeamDetail,
+    CreateInvitationRequest, CreateTeamRequest, InviteMemberRequest, Team, TeamAuditAction,
+    TeamAuditLog, TeamAuditLogPage, TeamAuditLogResponse, TeamAuditResourceType, TeamDetail,
     TeamInvitation, TeamInvitationResponse, TeamMember, TeamMemberWithUser, TeamRole,
     TeamWithMemberCount, UpdateMemberRoleRequest, UpdateTeamRequest, User,
 };
@@ -19,6 +21,57 @@ use crate::AppState;
 
 use super::error::{ApiError, ValidationErrorBuilder};
 use super::validation::validate_uuid;
+
+/// Helper function to log audit events
+pub async fn log_team_audit(
+    pool: &sqlx::SqlitePool,
+    team_id: &str,
+    user_id: Option<&str>,
+    action: TeamAuditAction,
+    resource_type: TeamAuditResourceType,
+    resource_id: Option<&str>,
+    details: Option<serde_json::Value>,
+) -> Result<(), sqlx::Error> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let details_str = details.map(|d| d.to_string());
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_audit_logs (id, team_id, user_id, action, resource_type, resource_id, details, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(team_id)
+    .bind(user_id)
+    .bind(action.to_string())
+    .bind(resource_type.to_string())
+    .bind(resource_id)
+    .bind(details_str)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Query parameters for listing audit logs
+#[derive(Debug, Deserialize)]
+pub struct ListAuditLogsQuery {
+    /// Filter by action type
+    pub action: Option<String>,
+    /// Filter by resource type
+    pub resource_type: Option<String>,
+    /// Start date for date range filter (RFC3339)
+    pub start_date: Option<String>,
+    /// End date for date range filter (RFC3339)
+    pub end_date: Option<String>,
+    /// Page number (1-indexed)
+    pub page: Option<i32>,
+    /// Items per page (default 20, max 100)
+    pub per_page: Option<i32>,
+}
 
 /// Generate a URL-friendly slug from a name
 fn generate_slug(name: &str) -> String {
@@ -327,6 +380,24 @@ pub async fn create_team(
         .fetch_one(&state.db)
         .await?;
 
+    // Log audit event for team creation
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::TeamCreated,
+        TeamAuditResourceType::Team,
+        Some(&id),
+        Some(serde_json::json!({
+            "name": &team.name,
+            "slug": &team.slug
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log team creation audit: {}", e);
+    }
+
     tracing::info!("Created team '{}' with owner {}", team.name, user.email);
 
     Ok((StatusCode::CREATED, Json(team)))
@@ -529,14 +600,34 @@ pub async fn invite_member(
     })?;
 
     let member = TeamMemberWithUser {
-        id: member_id,
-        team_id: id,
-        user_id: target_user.id,
-        role: req.role,
+        id: member_id.clone(),
+        team_id: id.clone(),
+        user_id: target_user.id.clone(),
+        role: req.role.clone(),
         created_at: now,
-        user_name: target_user.name,
-        user_email: target_user.email,
+        user_name: target_user.name.clone(),
+        user_email: target_user.email.clone(),
     };
+
+    // Log audit event for member addition
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::MemberJoined,
+        TeamAuditResourceType::Member,
+        Some(&target_user.id),
+        Some(serde_json::json!({
+            "email": &target_user.email,
+            "name": &target_user.name,
+            "role": &req.role,
+            "added_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log member addition audit: {}", e);
+    }
 
     tracing::info!("Added {} to team as {}", member.user_email, member.role);
 
@@ -629,6 +720,26 @@ pub async fn update_member_role(
     .fetch_one(&state.db)
     .await?;
 
+    // Log audit event for role change
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &team_id,
+        Some(&user.id),
+        TeamAuditAction::RoleChanged,
+        TeamAuditResourceType::Member,
+        Some(&user_id),
+        Some(serde_json::json!({
+            "email": &member.user_email,
+            "old_role": target_membership.role,
+            "new_role": &req.role,
+            "changed_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log role change audit: {}", e);
+    }
+
     tracing::info!(
         "Updated {}'s role to {} in team {}",
         member.user_email,
@@ -689,6 +800,12 @@ pub async fn remove_member(
         }
     }
 
+    // Get user details for audit log before removing
+    let removed_user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.db)
+        .await?;
+
     // Remove the member
     let result = sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
         .bind(&team_id)
@@ -698,6 +815,34 @@ pub async fn remove_member(
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Team member not found"));
+    }
+
+    // Log audit event for member removal
+    let removed_email = removed_user
+        .as_ref()
+        .map(|u| u.email.as_str())
+        .unwrap_or("unknown");
+    let removed_name = removed_user.as_ref().map(|u| u.name.as_str()).unwrap_or("");
+    let is_self_removal = user_id == user.id;
+
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &team_id,
+        Some(&user.id),
+        TeamAuditAction::MemberRemoved,
+        TeamAuditResourceType::Member,
+        Some(&user_id),
+        Some(serde_json::json!({
+            "email": removed_email,
+            "name": removed_name,
+            "role": target_membership.role,
+            "removed_by": &user.email,
+            "self_removal": is_self_removal
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log member removal audit: {}", e);
     }
 
     tracing::info!("Removed user {} from team {}", user_id, team_id);
@@ -887,6 +1032,25 @@ pub async fn create_invitation(
         inviter_name: Some(user.name.clone()),
     };
 
+    // Log audit event for invitation creation
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &id,
+        Some(&user.id),
+        TeamAuditAction::InvitationCreated,
+        TeamAuditResourceType::Invitation,
+        Some(&response.id),
+        Some(serde_json::json!({
+            "email": &req.email,
+            "role": &req.role,
+            "invited_by": &user.email
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log invitation creation audit: {}", e);
+    }
+
     tracing::info!(
         "Created invitation for {} to team {} by {}",
         req.email,
@@ -960,6 +1124,14 @@ pub async fn delete_invitation(
     // Check user has admin+ role
     require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
 
+    // Get invitation details for audit log before deleting
+    let invitation: Option<TeamInvitation> =
+        sqlx::query_as("SELECT * FROM team_invitations WHERE id = ? AND team_id = ?")
+            .bind(&inv_id)
+            .bind(&team_id)
+            .fetch_optional(&state.db)
+            .await?;
+
     // Delete the invitation
     let result = sqlx::query("DELETE FROM team_invitations WHERE id = ? AND team_id = ?")
         .bind(&inv_id)
@@ -969,6 +1141,27 @@ pub async fn delete_invitation(
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Invitation not found"));
+    }
+
+    // Log audit event for invitation revocation
+    if let Some(inv) = invitation {
+        if let Err(e) = log_team_audit(
+            &state.db,
+            &team_id,
+            Some(&user.id),
+            TeamAuditAction::InvitationRevoked,
+            TeamAuditResourceType::Invitation,
+            Some(&inv_id),
+            Some(serde_json::json!({
+                "email": &inv.email,
+                "role": &inv.role,
+                "revoked_by": &user.email
+            })),
+        )
+        .await
+        {
+            tracing::error!("Failed to log invitation revocation audit: {}", e);
+        }
     }
 
     tracing::info!("Deleted invitation {} from team {}", inv_id, team_id);
@@ -1202,11 +1395,30 @@ pub async fn accept_invitation(
         id: member_id,
         team_id: invitation.team_id.clone(),
         user_id: user.id.clone(),
-        role: invitation.role,
+        role: invitation.role.clone(),
         created_at: now,
-        user_name: user.name,
+        user_name: user.name.clone(),
         user_email: user.email.clone(),
     };
+
+    // Log audit event for invitation acceptance
+    if let Err(e) = log_team_audit(
+        &state.db,
+        &invitation.team_id,
+        Some(&user.id),
+        TeamAuditAction::InvitationAccepted,
+        TeamAuditResourceType::Invitation,
+        Some(&invitation.id),
+        Some(serde_json::json!({
+            "email": &user.email,
+            "name": &user.name,
+            "role": &invitation.role
+        })),
+    )
+    .await
+    {
+        tracing::error!("Failed to log invitation acceptance audit: {}", e);
+    }
 
     tracing::info!(
         "User {} accepted invitation and joined team {}",
@@ -1215,4 +1427,212 @@ pub async fn accept_invitation(
     );
 
     Ok(Json(member))
+}
+
+/// List audit logs for a team with pagination and filtering
+pub async fn list_audit_logs(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ListAuditLogsQuery>,
+    user: User,
+) -> Result<Json<TeamAuditLogPage>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+
+    // Check user has admin+ role to view audit logs
+    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+
+    // Pagination defaults
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    // Build the count query
+    let mut count_sql = String::from("SELECT COUNT(*) FROM team_audit_logs WHERE team_id = ?");
+    let mut params: Vec<String> = vec![id.clone()];
+
+    if let Some(ref action) = query.action {
+        count_sql.push_str(" AND action = ?");
+        params.push(action.clone());
+    }
+    if let Some(ref resource_type) = query.resource_type {
+        count_sql.push_str(" AND resource_type = ?");
+        params.push(resource_type.clone());
+    }
+    if let Some(ref start_date) = query.start_date {
+        count_sql.push_str(" AND created_at >= ?");
+        params.push(start_date.clone());
+    }
+    if let Some(ref end_date) = query.end_date {
+        count_sql.push_str(" AND created_at <= ?");
+        params.push(end_date.clone());
+    }
+
+    // Execute count query with dynamic binding
+    let total: i64 = match params.len() {
+        1 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        2 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        3 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        4 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        5 => {
+            let (count,): (i64,) = sqlx::query_as(&count_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(&params[4])
+                .fetch_one(&state.db)
+                .await?;
+            count
+        }
+        _ => 0,
+    };
+
+    let total_pages = ((total as f64) / (per_page as f64)).ceil() as i32;
+
+    // Build the select query
+    let mut select_sql = String::from("SELECT * FROM team_audit_logs WHERE team_id = ?");
+    if query.action.is_some() {
+        select_sql.push_str(" AND action = ?");
+    }
+    if query.resource_type.is_some() {
+        select_sql.push_str(" AND resource_type = ?");
+    }
+    if query.start_date.is_some() {
+        select_sql.push_str(" AND created_at >= ?");
+    }
+    if query.end_date.is_some() {
+        select_sql.push_str(" AND created_at <= ?");
+    }
+    select_sql.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+
+    // Execute select query with dynamic binding
+    let logs: Vec<TeamAuditLog> = match params.len() {
+        1 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        2 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        3 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        4 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        5 => {
+            sqlx::query_as(&select_sql)
+                .bind(&params[0])
+                .bind(&params[1])
+                .bind(&params[2])
+                .bind(&params[3])
+                .bind(&params[4])
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(&state.db)
+                .await?
+        }
+        _ => vec![],
+    };
+
+    // Fetch user details for each log entry
+    let mut items = Vec::with_capacity(logs.len());
+    for log in logs {
+        let (user_name, user_email) = if let Some(ref uid) = log.user_id {
+            let user_info: Option<(String, String)> =
+                sqlx::query_as("SELECT name, email FROM users WHERE id = ?")
+                    .bind(uid)
+                    .fetch_optional(&state.db)
+                    .await?;
+            user_info
+                .map(|(n, e)| (Some(n), Some(e)))
+                .unwrap_or((None, None))
+        } else {
+            (None, None)
+        };
+
+        let details = log
+            .details
+            .as_ref()
+            .and_then(|d| serde_json::from_str(d).ok());
+
+        items.push(TeamAuditLogResponse {
+            id: log.id,
+            team_id: log.team_id,
+            user_id: log.user_id,
+            action: log.action,
+            resource_type: log.resource_type,
+            resource_id: log.resource_id,
+            details,
+            created_at: log.created_at,
+            user_name,
+            user_email,
+        });
+    }
+
+    Ok(Json(TeamAuditLogPage {
+        items,
+        total,
+        page,
+        per_page,
+        total_pages,
+    }))
 }

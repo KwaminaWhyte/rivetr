@@ -178,6 +178,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Invitation accept (requires auth)
         .route("/invitations/:token/accept", post(teams::accept_invitation))
+        // Team Audit Logs
+        .route("/teams/:id/audit-logs", get(teams::list_audit_logs))
         // Notification Channels
         .route("/notification-channels", get(notifications::list_channels))
         .route(
