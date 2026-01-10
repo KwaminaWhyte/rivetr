@@ -137,3 +137,44 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Pattern for team filtering is consistent: add ListXxxQuery struct, optional team_id, use match expression
   - Frontend pattern: add teamId param to API function, include in query key, set enabled: currentTeamId !== null
 ---
+
+## 01/10/2026 - US-005
+- Created migration 032_databases_team.sql
+  - Added team_id column to databases table
+  - Created index idx_databases_team_id for faster lookups
+- Added team_id field to Rust ManagedDatabase model (src/db/models/database.rs)
+  - Added team_id to ManagedDatabase struct
+  - Added team_id to ManagedDatabaseResponse DTO
+  - Added team_id to CreateManagedDatabaseRequest DTO
+  - Updated to_response method to include team_id
+- Modified GET /api/databases endpoint (src/api/databases.rs)
+  - Added team_id to ListQuery struct
+  - Filter by team_id when provided
+  - Return all databases when no team_id filter (backward compatibility)
+  - Support empty string team_id to get legacy/unassigned databases
+- Updated database creation INSERT query to include team_id column
+- Updated frontend API (frontend/app/lib/api/databases.ts)
+  - Modified getDatabases to accept options object with optional teamId
+  - Pass team_id as query parameter using URLSearchParams
+- Updated frontend pages to pass team context:
+  - projects/_index.tsx - passes currentTeamId to getDatabases
+  - projects/$id.tsx - passes currentTeamId to createDatabase
+- Updated frontend types (frontend/app/types/api.ts)
+  - Added team_id to ManagedDatabase interface
+  - Added team_id to CreateManagedDatabaseRequest interface
+- Updated server-side API (frontend/app/lib/api.server.ts)
+  - Modified getDatabases to accept options object with teamId
+- Files changed:
+  - migrations/032_databases_team.sql (new)
+  - src/api/databases.rs
+  - src/db/models/database.rs
+  - frontend/app/lib/api/databases.ts
+  - frontend/app/lib/api.server.ts
+  - frontend/app/routes/projects/_index.tsx
+  - frontend/app/routes/projects/$id.tsx
+  - frontend/app/types/api.ts
+- **Learnings for future iterations:**
+  - Unlike apps and projects, databases table did NOT have team_id column - required new migration
+  - getDatabases needed signature change from (reveal, token) to (options, token) to add teamId
+  - Pattern is consistent with apps/projects: ListQuery struct, filter by team_id, frontend passes currentTeamId
+---

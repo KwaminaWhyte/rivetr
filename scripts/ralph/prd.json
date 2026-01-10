@@ -84,8 +84,8 @@
         "cargo test passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added team_id to ManagedDatabase struct, ManagedDatabaseResponse DTO, and CreateManagedDatabaseRequest. Created migration 032_databases_team.sql. GET /api/databases accepts team_id query param. Frontend passes currentTeamId to getDatabases and includes team_id in createDatabase. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-006",
