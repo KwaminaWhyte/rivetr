@@ -30,6 +30,7 @@ Started: Resource Alerts & Cost Estimation
 - Cost calculator: CostCalculator service in src/engine/cost_calculator.rs runs daily
 - Cost aggregation: CostSnapshot has get_summary_for_app(), get_summary_for_project(), get_summary_for_team()
 - Apps<->Projects<->Teams: apps have project_id and team_id columns, projects have team_id
+- Cost API endpoints: GET /api/{apps|projects|teams}/:id/costs?period=7d|30d|90d
 
 ---
 
@@ -176,6 +177,21 @@ Started: Resource Alerts & Cost Estimation
   - CostSnapshot::get_summary_for_*() returns CostSummary with projected monthly cost
   - Retention: 365 days default for cost snapshots (vs 24h for resource metrics)
   - Use chrono::{Datelike, Timelike} traits for weekday() and hour() methods
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-009
+- What was implemented: Cost estimation API endpoints for apps, projects, and teams
+- Files changed:
+  - src/api/costs.rs (new API module with three endpoints)
+  - src/api/mod.rs (module registration and route definitions)
+- **Learnings for future iterations:**
+  - Cost endpoints use existing CostSnapshot aggregation methods from US-008
+  - Period query parameter supports "7d", "30d", "90d" (default: 30d)
+  - App endpoint returns just CostSummary, project/team endpoints include AppCostBreakdown
+  - CostResponse includes: summary (with projected_monthly_cost), optional breakdown, period info
+  - axum::Query extracts query parameters with Deserialize trait
+  - Empty cost data returns zeroed CostSummary rather than error (no snapshots = no costs yet)
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
