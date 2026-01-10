@@ -219,3 +219,40 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Pattern is fully consistent: ListXxxQuery struct, filter by team_id, frontend uses currentTeamId
   - Services follow exact same pattern as apps, projects, and databases for team filtering
 ---
+
+## 01/10/2026 - US-007
+- Created migration 034_team_invitations.sql
+  - team_invitations table with id, team_id, email, role, token, expires_at, accepted_at, created_by, created_at
+  - Unique index on token for fast lookups
+  - Unique index on (team_id, email) WHERE accepted_at IS NULL to prevent duplicate pending invitations
+- Added TeamInvitation model (src/db/models/team.rs)
+  - TeamInvitation struct with is_expired() and is_accepted() helper methods
+  - TeamInvitationResponse DTO with team_name and inviter_name for display
+  - CreateInvitationRequest DTO for creating invitations
+- Added invitation endpoints (src/api/teams.rs)
+  - list_invitations: GET /api/teams/{id}/invitations - list pending invitations (admin+ only)
+  - create_invitation: POST /api/teams/{id}/invitations - create invitation (admin+ only)
+  - delete_invitation: DELETE /api/teams/{id}/invitations/{id} - revoke invitation
+  - validate_invitation: GET /api/auth/invitations/{token} - validate invitation (public)
+  - accept_invitation: POST /api/invitations/{token}/accept - accept invitation (authenticated)
+- Added routes to src/api/mod.rs
+  - Protected routes under /api for list, create, delete, accept
+  - Public route under /api/auth for validation
+- Security features:
+  - 48-character secure random tokens
+  - 7-day expiration
+  - Email matching on accept (case-insensitive)
+  - Role hierarchy enforced (admins can't assign owner role)
+- Files changed:
+  - migrations/034_team_invitations.sql (new)
+  - src/api/teams.rs
+  - src/api/mod.rs
+  - src/db/mod.rs (added migration 034)
+  - src/db/models/team.rs
+- **Learnings for future iterations:**
+  - Invitation tokens should be long (48+ chars) for security
+  - Use chrono::Duration for date calculations
+  - SQLite unique partial indexes (WHERE clause) work for preventing duplicate pending invitations
+  - Public endpoints go in auth_routes, protected in api_routes
+  - rand::rng() and random_range() for secure random generation
+---
