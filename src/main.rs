@@ -11,7 +11,7 @@ use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
 use rivetr::engine::{
     reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
-    spawn_container_monitor_task, spawn_disk_monitor_task,
+    spawn_container_monitor_task, spawn_cost_calculator_task, spawn_disk_monitor_task,
     spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
     spawn_stats_history_task, spawn_stats_retention_task, BuildLimits, DeploymentEngine,
 };
@@ -193,6 +193,10 @@ async fn main() -> Result<()> {
         runtime.clone(),
         config.server.external_url.clone(),
     );
+
+    // Start cost calculation background task
+    // This computes daily cost snapshots from resource metrics
+    spawn_cost_calculator_task(db.clone());
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
