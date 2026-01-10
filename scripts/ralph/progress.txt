@@ -515,3 +515,41 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - list_apps_with_sharing is useful for frontend to get owned + shared apps in one call
   - Audit logs use AppUpdated action for share/unshare with "action" field in details JSON
 ---
+
+## 01/10/2026 - US-015
+- Added app sharing frontend types to frontend/app/types/api.ts
+  - AppShare: Response DTO with team name and creator details
+  - CreateAppShareRequest: Request DTO for sharing
+  - AppWithSharing: App with is_shared flag and owner_team_name
+- Added app sharing API functions to frontend/app/lib/api/apps.ts
+  - getAppShares: GET /apps/:id/shares
+  - createAppShare: POST /apps/:id/shares
+  - deleteAppShare: DELETE /apps/:id/shares/:team_id
+  - getAppsWithSharing: GET /apps/with-sharing?team_id=xxx
+- Created AppSharingCard component (frontend/app/components/app-sharing-card.tsx)
+  - Shows list of teams app is shared with (table with team name, permission, date, creator)
+  - Team selector dropdown to share with other teams
+  - Remove sharing button with confirmation dialog
+  - Only visible for app owner (not shown for shared apps)
+  - Uses React Query for data fetching and mutations
+- Added Sharing tab to app settings page (frontend/app/routes/apps/$id/settings.tsx)
+  - Added 6th tab "Sharing" to TabsList (grid-cols-6)
+  - AppSharingCard rendered in Sharing tab content
+- Updated nav-apps.tsx to show shared badge
+  - Uses getAppsWithSharing endpoint instead of getApps
+  - Shows Share2 icon (blue) for shared apps, Package icon for owned
+  - Shows "Shared" badge next to shared app names
+  - Hides Deploy and Delete actions for shared apps (view-only)
+- Files changed:
+  - frontend/app/types/api.ts
+  - frontend/app/lib/api/apps.ts
+  - frontend/app/components/app-sharing-card.tsx (new)
+  - frontend/app/routes/apps/$id/settings.tsx
+  - frontend/app/components/nav-apps.tsx
+- **Learnings for future iterations:**
+  - AppWithSharing type extends App with is_shared and owner_team_name for list views
+  - getAppsWithSharing returns both owned and shared apps in one call
+  - Use Share2 icon for shared items to visually distinguish from owned
+  - Hide modification actions (deploy, delete) for shared apps
+  - Only show sharing card for app owner (check app.team_id === currentTeamId)
+---

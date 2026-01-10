@@ -260,8 +260,8 @@
         "npm run build passes"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added AppSharingCard component to app settings page Sharing tab. Shows list of teams with app shared, team selector dropdown to share, remove button with confirmation dialog. nav-apps sidebar uses getAppsWithSharing endpoint and shows 'Shared' badge with Share2 icon for shared apps. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-016",
