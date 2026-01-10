@@ -394,8 +394,8 @@
         "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E test performed using Playwright MCP: navigated to team settings > Activity tab, verified audit log table displays events (2 events from US-022: Invitation Created, Invitation Revoked). Tested action type filter dropdown (23 options), applied filter (Invitation Created) and verified filtering works. Tested resource type filter dropdown (8 options). Tested date range filter (start date). Tested Clear Filters button. Pagination not testable with only 2 events. Screenshots saved (12-17)."
     }
   ]
 }
