@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Preview deployments for pull requests
+- S3 backup integration
+
+---
+
+## [0.2.4] - 2025-01-10
+
 ### Added
 - **Team Collaboration (Multi-tenant)** - Full multi-tenant team support with resource isolation:
   - **Team Switching** - Sidebar team switcher with persistent context across sessions
@@ -22,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Team-scoped Stats** - Dashboard statistics filtered by current team context
   - **Migration CLI** - `rivetr db migrate-teams` command to migrate legacy resources to teams
   - **Personal Workspace** - "Personal (default)" option for resources without team context
+
+- **Resource Alerts & Cost Estimation** - Monitoring and cost tracking:
+  - **Resource Metrics Collection** - Per-app CPU, memory, disk, and network usage tracking
+  - **Alert Configurations** - Customizable thresholds per app with email notifications
+  - **Alert Events** - Historical record of threshold breaches with severity levels
+  - **Cost Rates** - Configurable pricing for CPU, memory, disk, and network resources
+  - **Cost Snapshots** - Daily cost calculations per app for billing and reporting
+  - **Team Costs API** - Aggregate cost reporting by team
 
 - **Embedded Frontend Assets** - Frontend static files are now embedded in the binary using `rust-embed`:
   - Single binary deployment - no external static files needed
@@ -56,11 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `AmbientCapabilities=CAP_NET_BIND_SERVICE` to systemd service for port 80/443 binding
   - Added automatic build dependency installation for source compilation fallback
   - Added dynamic version fetching from GitHub API when `RIVETR_VERSION=latest`
-
-### Planned
-- Preview deployments for pull requests
-- S3 backup integration
-- Resource alerts and cost estimation
 
 ---
 
@@ -166,6 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.4 | 2025-01-10 | Team collaboration, resource alerts, cost estimation |
 | 0.2.3 | 2025-01-10 | macOS runner update |
 | 0.2.2 | 2025-01-10 | OpenSSL vendoring fix |
 | 0.2.1 | 2025-01-10 | rustls-tls migration |
@@ -196,7 +208,8 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.0...v0.2.1

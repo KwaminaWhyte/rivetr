@@ -63,7 +63,7 @@ Service Logs:   sudo journalctl -u rivetr -f
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RIVETR_VERSION` | `v0.2.3` | Version to install (or `latest`) |
+| `RIVETR_VERSION` | `v0.2.4` | Version to install (or `latest`) |
 | `INSTALL_DIR` | `/opt/rivetr` | Binary installation directory |
 | `DATA_DIR` | `/var/lib/rivetr` | Data storage directory |
 
