@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::db::{
     DiscordConfig, EmailConfig, NotificationChannel, NotificationChannelType,
-    NotificationEventType, NotificationSubscription, SlackConfig,
+    NotificationEventType, NotificationSubscription, SlackConfig, WebhookConfig,
 };
 use crate::DbPool;
 
@@ -246,6 +246,16 @@ impl NotificationService {
                     tracing::warn!(
                         channel_id = %channel.id,
                         "Invalid Email config"
+                    );
+                }
+            }
+            NotificationChannelType::Webhook => {
+                if let Some(config) = channel.get_webhook_config() {
+                    self.send_webhook(&config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Webhook config"
                     );
                 }
             }
@@ -508,6 +518,138 @@ impl NotificationService {
             };
 
             mailer.build().send(email).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Send a generic webhook notification
+    pub async fn send_webhook(
+        &self,
+        config: &WebhookConfig,
+        payload: &NotificationPayload,
+    ) -> Result<()> {
+        // Build the payload based on template type
+        let body = match config.payload_template.as_str() {
+            "slack" => {
+                // Slack-compatible format
+                json!({
+                    "attachments": [{
+                        "color": payload.color(),
+                        "title": payload.title(),
+                        "text": &payload.message,
+                        "fields": [
+                            {
+                                "title": "Application",
+                                "value": &payload.app_name,
+                                "short": true
+                            },
+                            {
+                                "title": "Status",
+                                "value": &payload.status,
+                                "short": true
+                            }
+                        ],
+                        "footer": "Rivetr Deployment Engine",
+                        "ts": chrono::Utc::now().timestamp()
+                    }]
+                })
+            }
+            "discord" => {
+                // Discord-compatible format
+                let color_str = payload.color();
+                json!({
+                    "embeds": [{
+                        "color": match color_str.as_ref() {
+                            "#36a64f" => 0x36a64f,
+                            "#dc3545" => 0xdc3545,
+                            "#0d6efd" => 0x0d6efd,
+                            _ => 0x6c757d,
+                        },
+                        "title": payload.title(),
+                        "description": &payload.message,
+                        "fields": [
+                            {
+                                "name": "Application",
+                                "value": &payload.app_name,
+                                "inline": true
+                            },
+                            {
+                                "name": "Status",
+                                "value": &payload.status,
+                                "inline": true
+                            }
+                        ],
+                        "footer": {
+                            "text": "Rivetr Deployment Engine"
+                        },
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    }]
+                })
+            }
+            "custom" => {
+                // Parse custom template and substitute variables
+                if let Some(ref template) = config.custom_template {
+                    let result = template
+                        .replace("{{app_name}}", &payload.app_name)
+                        .replace("{{metric_type}}", &payload.status)
+                        .replace("{{value}}", &payload.status)
+                        .replace("{{threshold}}", "")
+                        .replace("{{timestamp}}", &payload.timestamp)
+                        .replace("{{severity}}", &payload.status)
+                        .replace("{{message}}", &payload.message)
+                        .replace("{{event_type}}", &payload.event_type.to_string());
+
+                    // Try to parse as JSON, if it fails, wrap in a message object
+                    serde_json::from_str(&result).unwrap_or_else(|_| json!({"message": result}))
+                } else {
+                    // Default JSON format if no custom template
+                    json!({
+                        "app_name": &payload.app_name,
+                        "event_type": payload.event_type.to_string(),
+                        "status": &payload.status,
+                        "message": &payload.message,
+                        "timestamp": &payload.timestamp
+                    })
+                }
+            }
+            _ => {
+                // Default JSON format
+                json!({
+                    "app_name": &payload.app_name,
+                    "app_id": &payload.app_id,
+                    "deployment_id": &payload.deployment_id,
+                    "event_type": payload.event_type.to_string(),
+                    "status": &payload.status,
+                    "message": &payload.message,
+                    "error_message": &payload.error_message,
+                    "timestamp": &payload.timestamp
+                })
+            }
+        };
+
+        // Build the request with custom headers
+        let client = reqwest::Client::new();
+        let mut request = client.post(&config.url).json(&body);
+
+        // Add custom headers
+        for (key, value) in &config.headers {
+            request = request.header(key, value);
+        }
+
+        // Send the request
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                url = %config.url,
+                status = %status,
+                response_body = %body,
+                "Webhook request failed"
+            );
+            anyhow::bail!("Webhook request failed with status {}: {}", status, body);
         }
 
         Ok(())

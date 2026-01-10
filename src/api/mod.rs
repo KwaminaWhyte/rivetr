@@ -170,7 +170,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(teams::update_member_role),
         )
         .route("/teams/:id/members/:user_id", delete(teams::remove_member))
-        // Notification Channels
+        // Team Notification Channels
+        .route(
+            "/teams/:id/notification-channels",
+            get(notifications::list_team_channels),
+        )
+        .route(
+            "/teams/:id/notification-channels",
+            post(notifications::create_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            get(notifications::get_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            put(notifications::update_team_channel),
+        )
+        .route(
+            "/teams/:id/notification-channels/:channel_id",
+            delete(notifications::delete_team_channel),
+        )
+        // Notification Channels (Global)
         .route("/notification-channels", get(notifications::list_channels))
         .route(
             "/notification-channels",

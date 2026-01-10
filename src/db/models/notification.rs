@@ -10,6 +10,7 @@ pub enum NotificationChannelType {
     Slack,
     Discord,
     Email,
+    Webhook,
 }
 
 impl std::fmt::Display for NotificationChannelType {
@@ -18,6 +19,7 @@ impl std::fmt::Display for NotificationChannelType {
             Self::Slack => write!(f, "slack"),
             Self::Discord => write!(f, "discord"),
             Self::Email => write!(f, "email"),
+            Self::Webhook => write!(f, "webhook"),
         }
     }
 }
@@ -30,6 +32,7 @@ impl std::str::FromStr for NotificationChannelType {
             "slack" => Ok(Self::Slack),
             "discord" => Ok(Self::Discord),
             "email" => Ok(Self::Email),
+            "webhook" => Ok(Self::Webhook),
             _ => Err(format!("Unknown channel type: {}", s)),
         }
     }
@@ -109,6 +112,26 @@ pub struct EmailConfig {
     pub to_addresses: Vec<String>,
 }
 
+/// Generic webhook configuration with headers and payload template
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookConfig {
+    /// Webhook URL (must be HTTPS)
+    pub url: String,
+    /// Optional custom headers (key-value pairs)
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+    /// Payload template type: "json", "slack", "discord", or "custom"
+    #[serde(default = "default_payload_template")]
+    pub payload_template: String,
+    /// Custom payload template (used when payload_template is "custom")
+    /// Supports variables: {{app_name}}, {{metric_type}}, {{value}}, {{threshold}}, {{timestamp}}, {{severity}}
+    pub custom_template: Option<String>,
+}
+
+fn default_payload_template() -> String {
+    "json".to_string()
+}
+
 /// Notification channel stored in database
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct NotificationChannel {
@@ -119,6 +142,8 @@ pub struct NotificationChannel {
     pub enabled: i32,
     pub created_at: String,
     pub updated_at: String,
+    /// Optional team ID for team-scoped channels (NULL for global channels)
+    pub team_id: Option<String>,
 }
 
 impl NotificationChannel {
@@ -148,6 +173,11 @@ impl NotificationChannel {
     pub fn get_email_config(&self) -> Option<EmailConfig> {
         serde_json::from_str(&self.config).ok()
     }
+
+    /// Parse the config as WebhookConfig
+    pub fn get_webhook_config(&self) -> Option<WebhookConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
 }
 
 /// Response DTO for NotificationChannel (masks sensitive config data)
@@ -160,26 +190,55 @@ pub struct NotificationChannelResponse {
     pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub team_id: Option<String>,
 }
 
 impl From<NotificationChannel> for NotificationChannelResponse {
     fn from(channel: NotificationChannel) -> Self {
-        // Parse and sanitize the config (mask passwords)
+        // Parse and sanitize the config (mask passwords and sensitive headers)
         let config: serde_json::Value =
             serde_json::from_str(&channel.config).unwrap_or(serde_json::Value::Null);
 
-        // For email config, mask the password
-        let sanitized_config = if channel.channel_type == "email" {
-            if let serde_json::Value::Object(mut obj) = config {
-                if obj.contains_key("smtp_password") {
-                    obj.insert("smtp_password".to_string(), serde_json::json!("********"));
+        // Sanitize based on channel type
+        let sanitized_config = match channel.channel_type.as_str() {
+            "email" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    if obj.contains_key("smtp_password") {
+                        obj.insert("smtp_password".to_string(), serde_json::json!("********"));
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
                 }
-                serde_json::Value::Object(obj)
-            } else {
-                config
             }
-        } else {
-            config
+            "webhook" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    // Mask any headers that might contain sensitive values (Authorization, etc.)
+                    if let Some(serde_json::Value::Object(headers)) = obj.get("headers").cloned() {
+                        let mut masked_headers = serde_json::Map::new();
+                        for (key, value) in &headers {
+                            let lower_key = key.to_lowercase();
+                            if lower_key.contains("auth")
+                                || lower_key.contains("secret")
+                                || lower_key.contains("token")
+                                || lower_key.contains("key")
+                            {
+                                masked_headers.insert(key.clone(), serde_json::json!("********"));
+                            } else {
+                                masked_headers.insert(key.clone(), value.clone());
+                            }
+                        }
+                        obj.insert(
+                            "headers".to_string(),
+                            serde_json::Value::Object(masked_headers),
+                        );
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
+                }
+            }
+            _ => config,
         };
 
         Self {
@@ -190,6 +249,7 @@ impl From<NotificationChannel> for NotificationChannelResponse {
             enabled: channel.enabled != 0,
             created_at: channel.created_at,
             updated_at: channel.updated_at,
+            team_id: channel.team_id,
         }
     }
 }

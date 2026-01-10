@@ -14,6 +14,11 @@ Started: Resource Alerts & Cost Estimation
 - Background task pattern: spawn_*_task functions in src/engine/
 - Alert configs: AlertConfig and GlobalAlertDefault models in src/db/models/alert_config.rs
 - Settings API pattern: /api/settings/* for global configuration endpoints
+- Alert events: AlertEvent model in src/db/models/alert_event.rs with firing/resolved status
+- Alert evaluation runs alongside metrics collection in resource_metrics_collector.rs
+- Hysteresis pattern: Use AlertBreachCount table to track consecutive threshold breaches
+- Team notification channels: /api/teams/{id}/notification-channels endpoints, require_team_role() for access control
+- Webhook config: WebhookConfig in src/db/models/notification.rs with URL, headers, payload_template
 
 ---
 
@@ -49,5 +54,43 @@ Started: Resource Alerts & Cost Estimation
   - API endpoints follow existing patterns: list/create/get/update/delete at /api/apps/{id}/alerts
   - Settings endpoints at /api/settings/alert-defaults for global defaults
   - Use StatusCode::CONFLICT for duplicate constraint violations
+---
+
+## 2026-01-10 - US-003
+- What was implemented: Alert evaluation engine with hysteresis and duplicate prevention
+- Files changed:
+  - migrations/034_alert_events.sql (new tables: alert_events, alert_breach_counts)
+  - src/db/models/alert_event.rs (AlertEvent and AlertBreachCount models)
+  - src/db/models/mod.rs (module registration)
+  - src/engine/alert_evaluator.rs (AlertEvaluator service)
+  - src/engine/mod.rs (module registration)
+  - src/engine/resource_metrics_collector.rs (integrated alert evaluation)
+- **Learnings for future iterations:**
+  - Hysteresis: HYSTERESIS_THRESHOLD=2 requires 2 consecutive breaches before triggering
+  - AlertBreachCount table tracks consecutive_count per app/metric using upsert pattern
+  - AlertEvent.should_notify() checks 15-minute window via last_notified_at field
+  - Alert evaluation runs after each metrics collection cycle in resource_metrics_collector
+  - AlertEvaluator.evaluate_all() queries distinct app_ids from recent metrics
+  - Memory percentage calculated as: (memory_bytes / memory_limit_bytes) * 100.0
+  - Resolved alert cleanup uses 7-day retention (DEFAULT_ALERT_EVENT_RETENTION_HOURS=168)
+---
+
+## 2026-01-10 - US-004
+- What was implemented: Team-scoped notification channel configuration with webhook support
+- Files changed:
+  - migrations/035_team_notification_channels.sql (adds team_id to notification_channels)
+  - src/db/models/notification.rs (added Webhook channel type, WebhookConfig, team_id field)
+  - src/api/notifications.rs (team-scoped CRUD endpoints, webhook URL validation)
+  - src/api/mod.rs (registered team notification channel routes)
+  - src/notifications/mod.rs (added send_webhook method with multiple payload templates)
+- **Learnings for future iterations:**
+  - Existing notification_channels table extended with team_id column (nullable for global channels)
+  - Team-scoped endpoints at /api/teams/{id}/notification-channels with role-based access (Admin+)
+  - Webhook validation requires HTTPS, uses reqwest::Url::parse for URL format validation
+  - WebhookConfig supports payload_template: "json", "slack", "discord", "custom"
+  - Custom templates support variable substitution: {{app_name}}, {{metric_type}}, {{value}}, etc.
+  - Sensitive headers (containing auth/secret/token/key) are masked in API responses
+  - Use require_team_role() helper for team permission checks (pattern from teams.rs)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 
