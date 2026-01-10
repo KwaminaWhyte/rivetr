@@ -98,13 +98,10 @@ export function TeamProvider({ children }: TeamProviderProps) {
   useEffect(() => {
     if (!isLoading && teams.length > 0) {
       const storedId = getStoredTeamId();
-      if (storedId === undefined) {
-        // No preference stored yet (first visit), default to first team
+      if (storedId === undefined || storedId === null) {
+        // No preference stored or was set to null (legacy), default to first team
         setCurrentTeamIdState(teams[0].id);
         storeTeamId(teams[0].id);
-      } else if (storedId === null) {
-        // User explicitly chose personal workspace, keep it as null
-        setCurrentTeamIdState(null);
       } else {
         // Verify stored team still exists and user has access
         const teamExists = teams.some((t) => t.id === storedId);

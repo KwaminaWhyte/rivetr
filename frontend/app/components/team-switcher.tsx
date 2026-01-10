@@ -98,31 +98,6 @@ export function TeamSwitcher({
             sideOffset={4}
           >
             <DropdownMenuLabel className="text-muted-foreground text-xs">
-              Workspaces
-            </DropdownMenuLabel>
-
-            {/* Personal Workspace Option */}
-            <DropdownMenuItem
-              onClick={() => onTeamChange?.(null)}
-              className="gap-2 p-2"
-            >
-              <div className="flex size-6 items-center justify-center rounded-md border bg-muted">
-                <Users className="size-3.5 shrink-0" />
-              </div>
-              <div className="flex-1">
-                <span>Personal</span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  (default)
-                </span>
-              </div>
-              {!currentTeamId && (
-                <span className="text-xs text-primary">Active</span>
-              )}
-            </DropdownMenuItem>
-
-            {teams.length > 0 && <DropdownMenuSeparator />}
-
-            <DropdownMenuLabel className="text-muted-foreground text-xs">
               Teams
             </DropdownMenuLabel>
 

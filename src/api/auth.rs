@@ -328,6 +328,38 @@ pub async fn setup(
 
     tracing::info!("Created admin user during setup: {}", request.email);
 
+    // Create a default "Personal" team for the user
+    let team_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO teams (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&team_id)
+    .bind("Personal")
+    .bind("personal")
+    .bind(&now)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Add the user as owner of the default team
+    let member_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&member_id)
+    .bind(&team_id)
+    .bind(&id)
+    .bind("owner")
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!("Created default Personal team for user: {}", request.email);
+
     // Auto-login the new user
     let token = generate_token();
     let token_hash = hash_token(&token);

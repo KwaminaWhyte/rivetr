@@ -228,7 +228,7 @@ pub async fn list_teams(
     user: User,
 ) -> Result<Json<Vec<TeamWithMemberCount>>, ApiError> {
     // Get all teams the user is a member of
-    let teams = sqlx::query_as::<_, Team>(
+    let mut teams = sqlx::query_as::<_, Team>(
         r#"
         SELECT t.* FROM teams t
         INNER JOIN team_members tm ON t.id = tm.team_id
@@ -239,6 +239,46 @@ pub async fn list_teams(
     .bind(&user.id)
     .fetch_all(&state.db)
     .await?;
+
+    // If user has no teams, create a default "Personal" team for them
+    if teams.is_empty() {
+        let team_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO teams (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&team_id)
+        .bind("Personal")
+        .bind(format!("personal-{}", &user.id[..8]))
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.db)
+        .await?;
+
+        let member_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&member_id)
+        .bind(&team_id)
+        .bind(&user.id)
+        .bind("owner")
+        .bind(&now)
+        .execute(&state.db)
+        .await?;
+
+        tracing::info!("Created default Personal team for user: {}", user.email);
+
+        // Fetch the newly created team
+        if let Some(team) = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+            .bind(&team_id)
+            .fetch_optional(&state.db)
+            .await?
+        {
+            teams.push(team);
+        }
+    }
 
     // Get member counts and user roles for each team
     let mut results = Vec::new();
