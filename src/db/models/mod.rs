@@ -3,6 +3,7 @@
 //! This module re-exports all types for backwards compatibility.
 
 pub mod alert_config;
+pub mod alert_event;
 pub mod app;
 pub mod audit;
 pub mod backup;
@@ -26,6 +27,7 @@ pub mod volume;
 
 // Re-export all types for backwards compatibility
 pub use alert_config::*;
+pub use alert_event::*;
 pub use app::*;
 pub use audit::*;
 pub use backup::*;

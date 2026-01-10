@@ -1,3 +1,4 @@
+mod alert_evaluator;
 pub mod build_detect;
 mod cleanup;
 mod container_monitor;
@@ -14,6 +15,7 @@ pub mod static_builder;
 mod stats_collector;
 pub mod zip_extract;
 
+pub use alert_evaluator::*;
 pub use build_detect::*;
 pub use cleanup::*;
 pub use container_monitor::*;

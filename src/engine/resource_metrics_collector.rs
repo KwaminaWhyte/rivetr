@@ -7,7 +7,8 @@
 //! Collection interval: 60 seconds (configurable)
 //! Retention: 24 hours by default
 
-use crate::db::{CreateResourceMetric, Deployment, ResourceMetric};
+use crate::db::{AlertEvent, CreateResourceMetric, Deployment, ResourceMetric};
+use crate::engine::AlertEvaluator;
 use crate::runtime::ContainerRuntime;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -18,6 +19,9 @@ const DEFAULT_RESOURCE_METRICS_INTERVAL_SECS: u64 = 60;
 
 /// Default retention period for resource metrics (in hours)
 const DEFAULT_RESOURCE_METRICS_RETENTION_HOURS: i64 = 24;
+
+/// Default retention period for resolved alert events (in hours)
+const DEFAULT_ALERT_EVENT_RETENTION_HOURS: i64 = 168; // 7 days
 
 /// Per-app resource metrics collector
 pub struct ResourceMetricsCollector {
@@ -193,6 +197,8 @@ pub fn spawn_resource_metrics_collector_task_with_config(
         "Starting per-app resource metrics collection task"
     );
 
+    let alert_evaluator = AlertEvaluator::new(db.clone());
+
     let collector =
         ResourceMetricsCollector::with_config(db, runtime, interval_secs, retention_hours);
 
@@ -220,9 +226,37 @@ pub fn spawn_resource_metrics_collector_task_with_config(
                             "Resource metrics collection cycle completed"
                         );
                     }
+
+                    // Evaluate alerts after collecting metrics
+                    let alert_result = alert_evaluator.evaluate_all().await;
+                    if alert_result.alerts_triggered > 0 || alert_result.alerts_resolved > 0 {
+                        tracing::debug!(
+                            triggered = alert_result.alerts_triggered,
+                            resolved = alert_result.alerts_resolved,
+                            "Alert evaluation completed"
+                        );
+                    }
                 }
                 _ = cleanup_tick.tick() => {
                     collector.cleanup().await;
+
+                    // Also cleanup old alert events
+                    match AlertEvent::cleanup_old_events(
+                        &collector.db,
+                        DEFAULT_ALERT_EVENT_RETENTION_HOURS,
+                    ).await {
+                        Ok(deleted) => {
+                            if deleted > 0 {
+                                tracing::debug!(
+                                    deleted = deleted,
+                                    "Cleaned up old alert events"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to cleanup old alert events");
+                        }
+                    }
                 }
             }
         }
