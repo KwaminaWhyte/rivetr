@@ -172,8 +172,8 @@
         "npm run build passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Created /invitations/accept route that validates invitation token, shows team name/role/inviter, handles logged in (accept button) and logged out (redirect to login with return URL) states. Shows appropriate messages for expired, already accepted, already a member, and email mismatch cases. Login page updated to handle return URL after authentication."
     },
     {
       "id": "US-011",

@@ -326,4 +326,42 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - formatRelativeTime helper is useful for expiry dates
   - Filter pending invitations client-side: !accepted_at && !isExpired(expires_at)
   - Query key pattern: ["team-invitations", teamId] for invitation cache
+- Public routes are defined outside the layout() block in routes.ts
+- Use localStorage rivetr_return_url for post-login redirect (invitation accept flow)
+---
+
+## 01/10/2026 - US-010
+- Created invitation accept route (frontend/app/routes/invitations/accept.tsx)
+  - Route: /invitations/accept?token=xxx
+  - Validates invitation token via GET /api/auth/invitations/{token}
+  - Shows invitation details: team name, role, inviter
+  - Handles multiple states:
+    - Loading: Shows spinner while validating
+    - Not found: Invalid or removed invitation
+    - Expired: Shows "invitation expired" with team name
+    - Already accepted: Shows "already accepted" with dashboard link
+    - Valid (logged in): Shows accept button that POSTs to /api/invitations/{token}/accept
+    - Valid (logged out): Shows login button that stores return URL
+  - After accept, redirects to /settings/teams/{team_id}
+  - Error handling for: already a member, email mismatch
+- Added API functions to teams API (frontend/app/lib/api/teams.ts)
+  - validateInvitation: GET /auth/invitations/{token} (public)
+  - acceptInvitation: POST /invitations/{token}/accept (authenticated)
+- Updated api index to export new functions
+- Updated routes.ts to add public route for /invitations/accept
+- Updated login page (frontend/app/routes/login.tsx)
+  - Checks for rivetr_return_url in localStorage after successful login
+  - Redirects to return URL if present, otherwise to dashboard
+- Files changed:
+  - frontend/app/routes/invitations/accept.tsx (new)
+  - frontend/app/lib/api/teams.ts (added validateInvitation, acceptInvitation)
+  - frontend/app/lib/api/index.ts (exported new functions)
+  - frontend/app/routes.ts (added invitations/accept route)
+  - frontend/app/routes/login.tsx (return URL handling)
+- **Learnings for future iterations:**
+  - Public routes go outside the layout() block in routes.ts
+  - Use localStorage to persist return URL across login redirect
+  - Backend already handles all validation (expired, accepted, email match)
+  - Use useMutation for accept action, useEffect for initial validation
+  - Card/CardHeader/CardContent/CardFooter provides clean invite UI structure
 ---
