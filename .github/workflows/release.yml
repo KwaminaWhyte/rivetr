@@ -166,7 +166,7 @@ jobs:
   build-macos-x86_64:
     name: Build macOS x86_64
     needs: build-frontend
-    runs-on: macos-latest
+    runs-on: macos-13  # Intel-based runner for native x86_64 build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -179,8 +179,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -201,7 +199,7 @@ jobs:
             macos-x86_64-cargo-build-
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-apple-darwin
+        run: cargo build --release
 
       - name: Get version
         id: version
@@ -210,7 +208,7 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist
-          cp target/x86_64-apple-darwin/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64
+          cp target/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64
           cd dist
           shasum -a 256 rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64 > rivetr-${{ steps.version.outputs.VERSION }}-macos-x86_64.sha256
 
@@ -224,7 +222,7 @@ jobs:
   build-macos-aarch64:
     name: Build macOS aarch64
     needs: build-frontend
-    runs-on: macos-latest
+    runs-on: macos-latest  # Apple Silicon runner for native aarch64 build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -237,8 +235,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -259,7 +255,7 @@ jobs:
             macos-aarch64-cargo-build-
 
       - name: Build release binary
-        run: cargo build --release --target aarch64-apple-darwin
+        run: cargo build --release
 
       - name: Get version
         id: version
@@ -268,7 +264,7 @@ jobs:
       - name: Package binary
         run: |
           mkdir -p dist
-          cp target/aarch64-apple-darwin/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64
+          cp target/release/rivetr dist/rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64
           cd dist
           shasum -a 256 rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64 > rivetr-${{ steps.version.outputs.VERSION }}-macos-aarch64.sha256
 

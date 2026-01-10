@@ -23,8 +23,8 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 # Docker
 bollard = "0.18"
 
-# Git
-git2 = "0.19"
+# Git (vendored-openssl for cross-compilation support)
+git2 = { version = "0.19", features = ["vendored-openssl"] }
 
 # Proxy & HTTP
 hyper = { version = "1", features = ["full"] }
