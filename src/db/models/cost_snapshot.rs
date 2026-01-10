@@ -136,16 +136,17 @@ impl CostSnapshot {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
+        // Cast to REAL to avoid SQLite returning INTEGER for empty results
         let result: Option<(f64, f64, f64, f64, f64, f64, f64, i64)> = sqlx::query_as(
             r#"
             SELECT
-                COALESCE(SUM(cpu_cost), 0),
-                COALESCE(SUM(memory_cost), 0),
-                COALESCE(SUM(disk_cost), 0),
-                COALESCE(SUM(total_cost), 0),
-                COALESCE(AVG(avg_cpu_cores), 0),
-                COALESCE(AVG(avg_memory_gb), 0),
-                COALESCE(AVG(avg_disk_gb), 0),
+                CAST(COALESCE(SUM(cpu_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(memory_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(disk_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(total_cost), 0) AS REAL),
+                CAST(COALESCE(AVG(avg_cpu_cores), 0) AS REAL),
+                CAST(COALESCE(AVG(avg_memory_gb), 0) AS REAL),
+                CAST(COALESCE(AVG(avg_disk_gb), 0) AS REAL),
                 COUNT(*)
             FROM cost_snapshots
             WHERE app_id = ? AND snapshot_date >= ?
@@ -190,16 +191,17 @@ impl CostSnapshot {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
+        // Cast to REAL to avoid SQLite returning INTEGER for empty results
         let result: Option<(f64, f64, f64, f64, f64, f64, f64, i64)> = sqlx::query_as(
             r#"
             SELECT
-                COALESCE(SUM(cs.cpu_cost), 0),
-                COALESCE(SUM(cs.memory_cost), 0),
-                COALESCE(SUM(cs.disk_cost), 0),
-                COALESCE(SUM(cs.total_cost), 0),
-                COALESCE(AVG(cs.avg_cpu_cores), 0),
-                COALESCE(AVG(cs.avg_memory_gb), 0),
-                COALESCE(AVG(cs.avg_disk_gb), 0),
+                CAST(COALESCE(SUM(cs.cpu_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.memory_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.disk_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.total_cost), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_cpu_cores), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_memory_gb), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_disk_gb), 0) AS REAL),
                 COUNT(DISTINCT cs.snapshot_date)
             FROM cost_snapshots cs
             INNER JOIN apps a ON cs.app_id = a.id
@@ -244,16 +246,17 @@ impl CostSnapshot {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
+        // Cast to REAL to avoid SQLite returning INTEGER for empty results
         let result: Option<(f64, f64, f64, f64, f64, f64, f64, i64)> = sqlx::query_as(
             r#"
             SELECT
-                COALESCE(SUM(cs.cpu_cost), 0),
-                COALESCE(SUM(cs.memory_cost), 0),
-                COALESCE(SUM(cs.disk_cost), 0),
-                COALESCE(SUM(cs.total_cost), 0),
-                COALESCE(AVG(cs.avg_cpu_cores), 0),
-                COALESCE(AVG(cs.avg_memory_gb), 0),
-                COALESCE(AVG(cs.avg_disk_gb), 0),
+                CAST(COALESCE(SUM(cs.cpu_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.memory_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.disk_cost), 0) AS REAL),
+                CAST(COALESCE(SUM(cs.total_cost), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_cpu_cores), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_memory_gb), 0) AS REAL),
+                CAST(COALESCE(AVG(cs.avg_disk_gb), 0) AS REAL),
                 COUNT(DISTINCT cs.snapshot_date)
             FROM cost_snapshots cs
             INNER JOIN apps a ON cs.app_id = a.id
@@ -298,15 +301,16 @@ impl CostSnapshot {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
+        // Cast to REAL to avoid SQLite returning INTEGER for empty results
         sqlx::query_as(
             r#"
             SELECT
                 a.id as app_id,
                 a.name as app_name,
-                COALESCE(SUM(cs.cpu_cost), 0) as cpu_cost,
-                COALESCE(SUM(cs.memory_cost), 0) as memory_cost,
-                COALESCE(SUM(cs.disk_cost), 0) as disk_cost,
-                COALESCE(SUM(cs.total_cost), 0) as total_cost
+                CAST(COALESCE(SUM(cs.cpu_cost), 0) AS REAL) as cpu_cost,
+                CAST(COALESCE(SUM(cs.memory_cost), 0) AS REAL) as memory_cost,
+                CAST(COALESCE(SUM(cs.disk_cost), 0) AS REAL) as disk_cost,
+                CAST(COALESCE(SUM(cs.total_cost), 0) AS REAL) as total_cost
             FROM apps a
             LEFT JOIN cost_snapshots cs ON cs.app_id = a.id AND cs.snapshot_date >= ?
             WHERE a.project_id = ?
@@ -329,15 +333,16 @@ impl CostSnapshot {
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
         let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
+        // Cast to REAL to avoid SQLite returning INTEGER for empty results
         sqlx::query_as(
             r#"
             SELECT
                 a.id as app_id,
                 a.name as app_name,
-                COALESCE(SUM(cs.cpu_cost), 0) as cpu_cost,
-                COALESCE(SUM(cs.memory_cost), 0) as memory_cost,
-                COALESCE(SUM(cs.disk_cost), 0) as disk_cost,
-                COALESCE(SUM(cs.total_cost), 0) as total_cost
+                CAST(COALESCE(SUM(cs.cpu_cost), 0) AS REAL) as cpu_cost,
+                CAST(COALESCE(SUM(cs.memory_cost), 0) AS REAL) as memory_cost,
+                CAST(COALESCE(SUM(cs.disk_cost), 0) AS REAL) as disk_cost,
+                CAST(COALESCE(SUM(cs.total_cost), 0) AS REAL) as total_cost
             FROM apps a
             LEFT JOIN cost_snapshots cs ON cs.app_id = a.id AND cs.snapshot_date >= ?
             WHERE a.team_id = ?

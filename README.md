@@ -63,7 +63,7 @@ Service Logs:   sudo journalctl -u rivetr -f
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RIVETR_VERSION` | `v0.2.4` | Version to install (or `latest`) |
+| `RIVETR_VERSION` | `v0.2.5` | Version to install (or `latest`) |
 | `INSTALL_DIR` | `/opt/rivetr` | Binary installation directory |
 | `DATA_DIR` | `/var/lib/rivetr` | Data storage directory |
 
@@ -253,7 +253,7 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 To update to a newer version:
 ```bash
 sudo systemctl stop rivetr
-RIVETR_VERSION=v0.2.4 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+RIVETR_VERSION=v0.2.5 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
 ```
 
 The install script preserves your existing configuration.
