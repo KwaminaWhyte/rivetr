@@ -672,8 +672,10 @@ export default function TeamDetailPage() {
                                 </SelectContent>
                               </Select>
                             ) : null}
-                            {/* Remove button */}
-                            {member.role !== "owner" && (
+                            {/* Remove button - show for members current user can remove */}
+                            {/* Owners can remove anyone (backend validates last owner); Admins can remove developers/viewers */}
+                            {(currentUserRole === "owner" ||
+                              (currentUserRole === "admin" && (member.role === "developer" || member.role === "viewer"))) && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -681,6 +683,7 @@ export default function TeamDetailPage() {
                                   setSelectedMember(member);
                                   setShowRemoveMemberDialog(true);
                                 }}
+                                title="Remove member"
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
