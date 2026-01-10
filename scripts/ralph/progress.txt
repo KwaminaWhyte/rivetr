@@ -684,3 +684,35 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - npm run build --prefix frontend works from project root
 ---
 
+
+## 01/10/2026 - US-021
+- E2E tested team switcher functionality using Playwright MCP
+- Test flow:
+  1. Navigated to http://localhost:8080 dashboard
+  2. Verified team switcher visible in sidebar ("test team", "1 member", "TT" initials)
+  3. Clicked team switcher - verified dropdown shows:
+     - Workspaces section with "Personal (default)"
+     - Teams section with "test team" (owner, Active) and "E2E Test Team" (developer)
+     - "Create Team" option at bottom
+  4. Switched to "E2E Test Team" - verified:
+     - Team name updated to "E2E Test Team"
+     - Initials changed from "TT" to "ET"
+     - Member count shows "2 members"
+  5. Navigated to Projects - verified "All (0)" (empty for this team)
+  6. Switched back to "test team" - verified:
+     - Projects now shows "All (1)" with "first project"
+     - Team switcher reverted to "test team" with "TT" initials
+- Screenshots saved to .playwright-mcp/e2e-screenshots/:
+  - 01-dashboard-team-switcher-visible.png
+  - 02-team-dropdown-open.png
+  - 03-team-dropdown-with-multiple-teams.png
+  - 04-after-team-switch.png
+  - 05-projects-filtered-by-team.png
+  - 06-projects-after-switch-back.png
+- Test data setup: Added test user to "E2E Test Team" as developer
+- **Learnings for future iterations:**
+  - Browser session persists from previous E2E tests (US-020)
+  - Team membership changes require page refresh or dropdown open to show in team list
+  - Playwright MCP provides refs for accessibility tree elements (use for reliable clicking)
+  - E2E screenshots require creating the directory first with mkdir -p
+---

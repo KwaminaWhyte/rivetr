@@ -362,8 +362,8 @@
         "Take screenshots of key states to .playwright-mcp/e2e-screenshots/"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. E2E test performed using Playwright MCP: navigated to dashboard, verified team switcher visible, tested dropdown shows teams with role badges, switched between 'test team' and 'E2E Test Team', verified projects list updated (1 to 0 projects), verified team name and initials update in switcher. Screenshots saved to .playwright-mcp/e2e-screenshots/ (6 screenshots)."
     },
     {
       "id": "US-022",
