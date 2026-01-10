@@ -37,6 +37,16 @@ Rivetr is a **single-binary PaaS** that lets you deploy applications from Git wi
 **Linux/macOS:**
 
 ```bash
+# One-liner install (Linux)
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+
+# Or build from source
+git clone https://github.com/KwaminaWhyte/rivetr.git
+cd rivetr
+cargo build --release
+./target/release/rivetr --config rivetr.toml
+
+
 git clone https://github.com/Kwaminawhyte/rivetr.git
 cd rivetr
 chmod +x scripts/setup.sh

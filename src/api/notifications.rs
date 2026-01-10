@@ -81,9 +81,8 @@ pub async fn create_channel(
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let config_json = serde_json::to_string(&req.config).map_err(|_| {
-        ApiError::validation_field("config", "Invalid configuration format")
-    })?;
+    let config_json = serde_json::to_string(&req.config)
+        .map_err(|_| ApiError::validation_field("config", "Invalid configuration format"))?;
 
     sqlx::query(
         r#"
@@ -155,12 +154,14 @@ pub async fn update_channel(
     let now = chrono::Utc::now().to_rfc3339();
     let name = req.name.unwrap_or(existing.name);
     let config_json = match req.config {
-        Some(config) => serde_json::to_string(&config).map_err(|_| {
-            ApiError::validation_field("config", "Invalid configuration format")
-        })?,
+        Some(config) => serde_json::to_string(&config)
+            .map_err(|_| ApiError::validation_field("config", "Invalid configuration format"))?,
         None => existing.config,
     };
-    let enabled = req.enabled.map(|e| if e { 1 } else { 0 }).unwrap_or(existing.enabled);
+    let enabled = req
+        .enabled
+        .map(|e| if e { 1 } else { 0 })
+        .unwrap_or(existing.enabled);
 
     sqlx::query(
         r#"

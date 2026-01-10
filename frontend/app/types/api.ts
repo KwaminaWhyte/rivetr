@@ -925,6 +925,7 @@ export interface ManagedDatabase {
   external_connection_string: string | null;
   error_message: string | null;
   project_id: string | null;
+  team_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -946,6 +947,7 @@ export interface CreateManagedDatabaseRequest {
   memory_limit?: string;
   cpu_limit?: string;
   project_id?: string;
+  team_id?: string;
 }
 
 /** Request to update a managed database */

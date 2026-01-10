@@ -112,7 +112,10 @@ pub fn get_config(db_type: &DatabaseType) -> DatabaseTypeConfig {
 }
 
 /// Generate environment variables for container deployment
-pub fn generate_env_vars(db_type: &DatabaseType, credentials: &DatabaseCredentials) -> Vec<(String, String)> {
+pub fn generate_env_vars(
+    db_type: &DatabaseType,
+    credentials: &DatabaseCredentials,
+) -> Vec<(String, String)> {
     let config = get_config(db_type);
     let mut env = Vec::new();
 

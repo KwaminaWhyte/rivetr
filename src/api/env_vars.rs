@@ -190,14 +190,19 @@ pub async fn update_env_var(
 
     // Get the new plaintext value (either from request or existing)
     let new_plaintext_value = req.value.unwrap_or(existing_decrypted.clone());
-    let new_is_secret = req.is_secret.map(|b| if b { 1 } else { 0 }).unwrap_or(existing.is_secret);
+    let new_is_secret = req
+        .is_secret
+        .map(|b| if b { 1 } else { 0 })
+        .unwrap_or(existing.is_secret);
 
     // Encrypt the new value for storage
-    let stored_value = crypto::encrypt_if_key_available(&new_plaintext_value, encryption_key.as_ref())
-        .map_err(|e| {
-            tracing::error!("Failed to encrypt env var value: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let stored_value =
+        crypto::encrypt_if_key_available(&new_plaintext_value, encryption_key.as_ref()).map_err(
+            |e| {
+                tracing::error!("Failed to encrypt env var value: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
 
     sqlx::query(
         r#"
@@ -326,9 +331,9 @@ mod tests {
     #[test]
     fn test_invalid_env_keys() {
         assert!(!is_valid_env_key(""));
-        assert!(!is_valid_env_key("123_VAR"));  // starts with number
-        assert!(!is_valid_env_key("MY-VAR"));   // contains hyphen
-        assert!(!is_valid_env_key("MY VAR"));   // contains space
-        assert!(!is_valid_env_key("MY.VAR"));   // contains period
+        assert!(!is_valid_env_key("123_VAR")); // starts with number
+        assert!(!is_valid_env_key("MY-VAR")); // contains hyphen
+        assert!(!is_valid_env_key("MY VAR")); // contains space
+        assert!(!is_valid_env_key("MY.VAR")); // contains period
     }
 }

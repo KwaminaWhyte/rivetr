@@ -97,8 +97,8 @@ impl NotificationPayload {
             NotificationEventType::DeploymentSuccess | NotificationEventType::AppStarted => {
                 "#2ecc71"
             } // Green
-            NotificationEventType::DeploymentFailed => "#e74c3c", // Red
-            NotificationEventType::AppStopped => "#f39c12",       // Orange
+            NotificationEventType::DeploymentFailed => "#e74c3c",  // Red
+            NotificationEventType::AppStopped => "#f39c12",        // Orange
         }
     }
 
@@ -263,7 +263,11 @@ impl NotificationService {
     }
 
     /// Send a Slack notification
-    pub async fn send_slack(&self, config: &SlackConfig, payload: &NotificationPayload) -> Result<()> {
+    pub async fn send_slack(
+        &self,
+        config: &SlackConfig,
+        payload: &NotificationPayload,
+    ) -> Result<()> {
         let mut fields = vec![
             json!({
                 "title": "Application",
@@ -377,7 +381,11 @@ impl NotificationService {
     }
 
     /// Send an email notification
-    pub async fn send_email(&self, config: &EmailConfig, payload: &NotificationPayload) -> Result<()> {
+    pub async fn send_email(
+        &self,
+        config: &EmailConfig,
+        payload: &NotificationPayload,
+    ) -> Result<()> {
         let from: Mailbox = config.from_address.parse()?;
 
         // Build HTML content
@@ -506,8 +514,13 @@ impl NotificationService {
     }
 
     /// Send a test notification
-    pub async fn send_test(&self, channel: &NotificationChannel, message: Option<String>) -> Result<()> {
-        let test_message = message.unwrap_or_else(|| "This is a test notification from Rivetr.".to_string());
+    pub async fn send_test(
+        &self,
+        channel: &NotificationChannel,
+        message: Option<String>,
+    ) -> Result<()> {
+        let test_message =
+            message.unwrap_or_else(|| "This is a test notification from Rivetr.".to_string());
 
         let payload = NotificationPayload {
             event_type: NotificationEventType::DeploymentSuccess,

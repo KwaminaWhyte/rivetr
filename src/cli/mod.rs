@@ -258,7 +258,15 @@ async fn cmd_status(cli: &Cli) -> Result<()> {
     // Version and health
     let health_icon = if health.healthy { "[OK]" } else { "[!!]" };
     println!("Version:    v{}", health.version);
-    println!("Status:     {} {}", health_icon, if health.healthy { "Healthy" } else { "Unhealthy" });
+    println!(
+        "Status:     {} {}",
+        health_icon,
+        if health.healthy {
+            "Healthy"
+        } else {
+            "Unhealthy"
+        }
+    );
 
     // Component health
     println!();
@@ -284,20 +292,14 @@ async fn cmd_status(cli: &Cli) -> Result<()> {
             stats.running_services_count, stats.total_services_count
         );
         println!();
-        println!(
-            "  CPU:        {:.1}%",
-            stats.total_cpu_percent
-        );
+        println!("  CPU:        {:.1}%", stats.total_cpu_percent);
         println!(
             "  Memory:     {} / {} ({:.1}%)",
             format_bytes(stats.memory_used_bytes),
             format_bytes(stats.memory_total_bytes),
             (stats.memory_used_bytes as f64 / stats.memory_total_bytes as f64) * 100.0
         );
-        println!(
-            "  Uptime:     {}",
-            format_duration(stats.uptime_seconds)
-        );
+        println!("  Uptime:     {}", format_duration(stats.uptime_seconds));
     }
 
     // Individual checks if not all passed
@@ -306,7 +308,11 @@ async fn cmd_status(cli: &Cli) -> Result<()> {
         println!("Check Details:");
         for check in &health.checks {
             if !check.passed {
-                let severity = if check.critical { "CRITICAL" } else { "WARNING" };
+                let severity = if check.critical {
+                    "CRITICAL"
+                } else {
+                    "WARNING"
+                };
                 println!("  [{}] {}: {}", severity, check.name, check.message);
                 if let Some(details) = &check.details {
                     println!("           {}", details);
@@ -340,7 +346,9 @@ async fn cmd_apps_list(cli: &Cli) -> Result<()> {
     if !response.status().is_success() {
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
-            anyhow::bail!("Authentication required. Use --token or set RIVETR_TOKEN environment variable.");
+            anyhow::bail!(
+                "Authentication required. Use --token or set RIVETR_TOKEN environment variable."
+            );
         }
         let body = response.text().await.unwrap_or_default();
         anyhow::bail!("Server returned error {}: {}", status, body);
@@ -433,7 +441,9 @@ async fn cmd_deploy(cli: &Cli, app_identifier: &str) -> Result<()> {
     if !response.status().is_success() {
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
-            anyhow::bail!("Authentication required. Use --token or set RIVETR_TOKEN environment variable.");
+            anyhow::bail!(
+                "Authentication required. Use --token or set RIVETR_TOKEN environment variable."
+            );
         }
         let body = response.text().await.unwrap_or_default();
         anyhow::bail!("Failed to trigger deployment: {} - {}", status, body);
@@ -451,7 +461,10 @@ async fn cmd_deploy(cli: &Cli, app_identifier: &str) -> Result<()> {
     println!("Status:        {}", deployment.status);
     println!("Started:       {}", deployment.started_at);
     println!();
-    println!("Use 'rivetr logs {}' to view deployment progress.", app.name);
+    println!(
+        "Use 'rivetr logs {}' to view deployment progress.",
+        app.name
+    );
     println!();
 
     Ok(())
@@ -467,7 +480,10 @@ async fn cmd_logs(cli: &Cli, app_identifier: &str, _lines: u32, follow: bool) ->
 
     if follow {
         // Stream logs via SSE
-        println!("Streaming logs for app: {} (press Ctrl+C to stop)", app.name);
+        println!(
+            "Streaming logs for app: {} (press Ctrl+C to stop)",
+            app.name
+        );
         println!();
 
         let url = format!("{}/api/apps/{}/logs/stream", base_url, app.id);
@@ -520,7 +536,10 @@ async fn cmd_logs(cli: &Cli, app_identifier: &str, _lines: u32, follow: bool) ->
                                     match event.event_type.as_str() {
                                         "connected" => {
                                             if let Some(cid) = event.container_id {
-                                                println!("--- Connected to container {} ---", &cid[..12.min(cid.len())]);
+                                                println!(
+                                                    "--- Connected to container {} ---",
+                                                    &cid[..12.min(cid.len())]
+                                                );
                                             }
                                         }
                                         "log" => {
@@ -560,7 +579,10 @@ async fn cmd_logs(cli: &Cli, app_identifier: &str, _lines: u32, follow: bool) ->
         }
     } else {
         // Non-follow mode: just indicate how to use follow mode
-        println!("Use 'rivetr logs {} --follow' to stream live logs.", app.name);
+        println!(
+            "Use 'rivetr logs {} --follow' to stream live logs.",
+            app.name
+        );
         println!();
         println!("Alternatively, view logs in the Rivetr dashboard.");
     }
@@ -578,7 +600,10 @@ async fn cmd_config_check(cli: &Cli) -> Result<()> {
     println!();
 
     if !config_path.exists() {
-        println!("[!!] Configuration file not found: {}", config_path.display());
+        println!(
+            "[!!] Configuration file not found: {}",
+            config_path.display()
+        );
         println!();
         println!("A default configuration will be used when starting the server.");
         println!("To create a custom configuration, copy rivetr.example.toml to rivetr.toml");
@@ -605,28 +630,73 @@ async fn cmd_config_check(cli: &Cli) -> Result<()> {
             println!("  Build Memory: {}", config.runtime.build_memory_limit);
             println!();
             println!("Security:");
-            println!("  Rate Limiting: {}", if config.rate_limit.enabled { "Enabled" } else { "Disabled" });
-            println!("  Encryption:   {}", if config.auth.encryption_key.is_some() { "Enabled" } else { "Disabled (env vars stored in plaintext)" });
+            println!(
+                "  Rate Limiting: {}",
+                if config.rate_limit.enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
+            println!(
+                "  Encryption:   {}",
+                if config.auth.encryption_key.is_some() {
+                    "Enabled"
+                } else {
+                    "Disabled (env vars stored in plaintext)"
+                }
+            );
             println!();
             println!("Features:");
-            println!("  ACME (SSL):   {}", if config.proxy.acme_enabled { "Enabled" } else { "Disabled" });
-            println!("  Cleanup:      {}", if config.cleanup.enabled { "Enabled" } else { "Disabled" });
-            println!("  Disk Monitor: {}", if config.disk_monitor.enabled { "Enabled" } else { "Disabled" });
-            println!("  Backups:      {}", if config.database_backup.enabled { "Enabled" } else { "Disabled" });
+            println!(
+                "  ACME (SSL):   {}",
+                if config.proxy.acme_enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
+            println!(
+                "  Cleanup:      {}",
+                if config.cleanup.enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
+            println!(
+                "  Disk Monitor: {}",
+                if config.disk_monitor.enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
+            println!(
+                "  Backups:      {}",
+                if config.database_backup.enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
             println!();
 
             // Warnings
             let mut warnings = Vec::new();
 
             if config.auth.encryption_key.is_none() {
-                warnings.push("No encryption key set - environment variables will be stored in plaintext");
+                warnings.push(
+                    "No encryption key set - environment variables will be stored in plaintext",
+                );
             }
 
             if config.webhooks.github_secret.is_none()
                 && config.webhooks.gitlab_token.is_none()
                 && config.webhooks.gitea_secret.is_none()
             {
-                warnings.push("No webhook secrets configured - webhooks will accept unsigned requests");
+                warnings
+                    .push("No webhook secrets configured - webhooks will accept unsigned requests");
             }
 
             if !warnings.is_empty() {
@@ -681,7 +751,9 @@ async fn find_app(client: &Client, base_url: &str, identifier: &str) -> Result<A
         .context("Failed to fetch apps list")?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        anyhow::bail!("Authentication required. Use --token or set RIVETR_TOKEN environment variable.");
+        anyhow::bail!(
+            "Authentication required. Use --token or set RIVETR_TOKEN environment variable."
+        );
     }
 
     if !response.status().is_success() {

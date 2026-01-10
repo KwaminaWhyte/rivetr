@@ -186,9 +186,13 @@ pub trait ContainerRuntime: Send + Sync {
     async fn start(&self, container_id: &str) -> Result<()>;
     async fn stop(&self, container_id: &str) -> Result<()>;
     async fn remove(&self, container_id: &str) -> Result<()>;
-    async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
+    async fn logs(&self, container_id: &str)
+        -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
     /// Stream logs from a container in real-time (follow mode)
-    async fn logs_stream(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
+    async fn logs_stream(
+        &self,
+        container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
     async fn inspect(&self, container_id: &str) -> Result<ContainerInfo>;
     async fn is_available(&self) -> bool;
     /// List running containers with names matching the given prefix
@@ -232,10 +236,16 @@ impl ContainerRuntime for NoopRuntime {
     async fn remove(&self, _container_id: &str) -> Result<()> {
         anyhow::bail!("No container runtime available")
     }
-    async fn logs(&self, _container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+    async fn logs(
+        &self,
+        _container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         anyhow::bail!("No container runtime available")
     }
-    async fn logs_stream(&self, _container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
+    async fn logs_stream(
+        &self,
+        _container_id: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
         anyhow::bail!("No container runtime available")
     }
     async fn inspect(&self, _container_id: &str) -> Result<ContainerInfo> {
@@ -270,17 +280,20 @@ impl ContainerRuntime for NoopRuntime {
     }
 }
 
-pub async fn detect_runtime(config: &crate::config::RuntimeConfig) -> Result<Arc<dyn ContainerRuntime>> {
+pub async fn detect_runtime(
+    config: &crate::config::RuntimeConfig,
+) -> Result<Arc<dyn ContainerRuntime>> {
     match config.runtime_type {
-        RuntimeType::Docker => {
-            match DockerRuntime::new(&config.docker_socket) {
-                Ok(runtime) => Ok(Arc::new(runtime)),
-                Err(e) => {
-                    tracing::warn!("Failed to connect to Docker: {}. Deployments will not work.", e);
-                    Ok(Arc::new(NoopRuntime))
-                }
+        RuntimeType::Docker => match DockerRuntime::new(&config.docker_socket) {
+            Ok(runtime) => Ok(Arc::new(runtime)),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to connect to Docker: {}. Deployments will not work.",
+                    e
+                );
+                Ok(Arc::new(NoopRuntime))
             }
-        }
+        },
         RuntimeType::Podman => {
             let runtime = PodmanRuntime::new();
             Ok(Arc::new(runtime))

@@ -23,7 +23,11 @@ pub struct DeploymentCleanup {
 
 impl DeploymentCleanup {
     pub fn new(db: DbPool, runtime: Arc<dyn ContainerRuntime>, config: CleanupConfig) -> Self {
-        Self { db, runtime, config }
+        Self {
+            db,
+            runtime,
+            config,
+        }
     }
 
     /// Run a single cleanup cycle
@@ -38,11 +42,9 @@ impl DeploymentCleanup {
         tracing::info!("Starting deployment cleanup cycle");
 
         // Get all apps
-        let apps: Vec<(String, String)> = sqlx::query_as(
-            "SELECT id, name FROM apps"
-        )
-        .fetch_all(&self.db)
-        .await?;
+        let apps: Vec<(String, String)> = sqlx::query_as("SELECT id, name FROM apps")
+            .fetch_all(&self.db)
+            .await?;
 
         for (app_id, app_name) in apps {
             match self.cleanup_app_deployments(&app_id, &app_name).await {
@@ -214,11 +216,7 @@ pub struct CleanupStats {
 }
 
 /// Spawn the background cleanup task
-pub fn spawn_cleanup_task(
-    db: DbPool,
-    runtime: Arc<dyn ContainerRuntime>,
-    config: CleanupConfig,
-) {
+pub fn spawn_cleanup_task(db: DbPool, runtime: Arc<dyn ContainerRuntime>, config: CleanupConfig) {
     if !config.enabled {
         tracing::info!("Deployment cleanup is disabled");
         return;

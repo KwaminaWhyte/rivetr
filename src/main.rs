@@ -9,7 +9,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
-use rivetr::engine::{spawn_cleanup_task as spawn_deployment_cleanup_task, spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task, spawn_stats_history_task, spawn_stats_retention_task, reconcile_container_status, BuildLimits, DeploymentEngine};
+use rivetr::engine::{
+    reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
+    spawn_container_monitor_task, spawn_disk_monitor_task, spawn_stats_collector_task,
+    spawn_stats_history_task, spawn_stats_retention_task, BuildLimits, DeploymentEngine,
+};
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -64,9 +68,7 @@ async fn main() -> Result<()> {
         let check_report = run_startup_checks(&config, &db).await;
 
         if !check_report.all_critical_passed {
-            tracing::error!(
-                "Critical startup checks failed. Server cannot start safely."
-            );
+            tracing::error!("Critical startup checks failed. Server cannot start safely.");
             for check in &check_report.checks {
                 if check.critical && !check.passed {
                     tracing::error!(
@@ -111,8 +113,14 @@ async fn main() -> Result<()> {
 
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(
-        AppState::new(config.clone(), db.clone(), deploy_tx, runtime.clone(), routes.clone())
-            .with_metrics(metrics_handle)
+        AppState::new(
+            config.clone(),
+            db.clone(),
+            deploy_tx,
+            runtime.clone(),
+            routes.clone(),
+        )
+        .with_metrics(metrics_handle),
     );
 
     // Start rate limiter cleanup task
@@ -134,23 +142,23 @@ async fn main() -> Result<()> {
         config.runtime.build_cpu_limit,
         config.runtime.build_memory_limit
     );
-    let engine = DeploymentEngine::new(db.clone(), runtime.clone(), routes.clone(), deploy_rx, build_limits, &config.auth);
+    let engine = DeploymentEngine::new(
+        db.clone(),
+        runtime.clone(),
+        routes.clone(),
+        deploy_rx,
+        build_limits,
+        &config.auth,
+    );
     tokio::spawn(async move {
         engine.run().await;
     });
 
     // Start deployment cleanup task
-    spawn_deployment_cleanup_task(
-        db.clone(),
-        runtime.clone(),
-        config.cleanup.clone(),
-    );
+    spawn_deployment_cleanup_task(db.clone(), runtime.clone(), config.cleanup.clone());
 
     // Start disk space monitoring task
-    spawn_disk_monitor_task(
-        config.server.data_dir.clone(),
-        config.disk_monitor.clone(),
-    );
+    spawn_disk_monitor_task(config.server.data_dir.clone(), config.disk_monitor.clone());
 
     // Start container stats collection task
     spawn_stats_collector_task(runtime.clone());
@@ -245,12 +253,15 @@ async fn restore_routes(
 ) -> Result<()> {
     // Get all apps with domains from the database
     let apps: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT name, domain, healthcheck FROM apps WHERE domain IS NOT NULL AND domain != ''"
+        "SELECT name, domain, healthcheck FROM apps WHERE domain IS NOT NULL AND domain != ''",
     )
     .fetch_all(db)
     .await?;
 
-    tracing::info!("Checking {} apps with domains for running containers", apps.len());
+    tracing::info!(
+        "Checking {} apps with domains for running containers",
+        apps.len()
+    );
 
     // List all running rivetr containers
     let containers = runtime.list_containers("rivetr-").await?;
@@ -261,12 +272,8 @@ async fn restore_routes(
         // Find the running container for this app
         if let Some(container) = containers.iter().find(|c| c.name == container_name) {
             if let Some(port) = container.port {
-                let backend = Backend::new(
-                    container.id.clone(),
-                    "127.0.0.1".to_string(),
-                    port,
-                )
-                .with_healthcheck(healthcheck);
+                let backend = Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
+                    .with_healthcheck(healthcheck);
 
                 routes.load().add_route(domain.clone(), backend);
                 tracing::info!(

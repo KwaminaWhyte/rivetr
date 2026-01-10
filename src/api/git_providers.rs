@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
-    GitProvider, GitProviderResponse, GitProviderType, GitRepository,
-    OAuthAuthorizationResponse, OAuthCallbackRequest,
+    GitProvider, GitProviderResponse, GitProviderType, GitRepository, OAuthAuthorizationResponse,
+    OAuthCallbackRequest,
 };
 use crate::AppState;
 
@@ -55,15 +55,17 @@ pub async fn list_providers(
     // For now, we use a fixed user_id since multi-user is not fully implemented
     let user_id = "admin";
 
-    let providers: Vec<GitProvider> = sqlx::query_as(
-        "SELECT * FROM git_providers WHERE user_id = ? ORDER BY created_at DESC"
-    )
-    .bind(user_id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let providers: Vec<GitProvider> =
+        sqlx::query_as("SELECT * FROM git_providers WHERE user_id = ? ORDER BY created_at DESC")
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let responses: Vec<GitProviderResponse> = providers.into_iter().map(GitProviderResponse::from).collect();
+    let responses: Vec<GitProviderResponse> = providers
+        .into_iter()
+        .map(GitProviderResponse::from)
+        .collect();
     Ok(Json(responses))
 }
 
@@ -72,14 +74,12 @@ pub async fn get_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let provider: GitProvider = sqlx::query_as(
-        "SELECT * FROM git_providers WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+    let provider: GitProvider = sqlx::query_as("SELECT * FROM git_providers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
 
     let response: GitProviderResponse = provider.into();
     Ok(Json(response))
@@ -108,14 +108,17 @@ pub async fn add_token_provider(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AddTokenProviderRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let provider_type: GitProviderType = req.provider.parse()
+    let provider_type: GitProviderType = req
+        .provider
+        .parse()
         .map_err(|e: String| (StatusCode::BAD_REQUEST, e))?;
 
     // GitHub should use GitHub Apps, not PAT
     if matches!(provider_type, GitProviderType::Github) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "GitHub integration uses GitHub Apps. Please use the GitHub Apps flow instead.".to_string()
+            "GitHub integration uses GitHub Apps. Please use the GitHub Apps flow instead."
+                .to_string(),
         ));
     }
 
@@ -126,7 +129,7 @@ pub async fn add_token_provider(
         GitProviderType::Bitbucket => {
             let username = req.username.ok_or((
                 StatusCode::BAD_REQUEST,
-                "Username is required for Bitbucket App Password".to_string()
+                "Username is required for Bitbucket App Password".to_string(),
             ))?;
             validate_bitbucket_app_password(&username, &req.token).await?
         }
@@ -199,18 +202,33 @@ async fn validate_gitlab_token(token: &str) -> Result<ProviderUserInfo, (StatusC
         .header("PRIVATE-TOKEN", token)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to validate token: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to validate token: {}", e),
+            )
+        })?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid GitLab Personal Access Token".to_string()));
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Invalid GitLab Personal Access Token".to_string(),
+        ));
     }
 
     if !response.status().is_success() {
-        return Err((StatusCode::BAD_GATEWAY, format!("GitLab API error: {}", response.status())));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("GitLab API error: {}", response.status()),
+        ));
     }
 
-    let user: GitLabUser = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+    let user: GitLabUser = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse user info: {}", e),
+        )
+    })?;
 
     Ok(ProviderUserInfo {
         provider_user_id: user.id.to_string(),
@@ -223,7 +241,10 @@ async fn validate_gitlab_token(token: &str) -> Result<ProviderUserInfo, (StatusC
 }
 
 /// Validate a Bitbucket App Password and get user info
-async fn validate_bitbucket_app_password(username: &str, app_password: &str) -> Result<ProviderUserInfo, (StatusCode, String)> {
+async fn validate_bitbucket_app_password(
+    username: &str,
+    app_password: &str,
+) -> Result<ProviderUserInfo, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -249,18 +270,33 @@ async fn validate_bitbucket_app_password(username: &str, app_password: &str) -> 
         .basic_auth(username, Some(app_password))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to validate credentials: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to validate credentials: {}", e),
+            )
+        })?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid Bitbucket username or App Password".to_string()));
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Invalid Bitbucket username or App Password".to_string(),
+        ));
     }
 
     if !response.status().is_success() {
-        return Err((StatusCode::BAD_GATEWAY, format!("Bitbucket API error: {}", response.status())));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Bitbucket API error: {}", response.status()),
+        ));
     }
 
-    let user: BitbucketUser = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+    let user: BitbucketUser = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse user info: {}", e),
+        )
+    })?;
 
     Ok(ProviderUserInfo {
         provider_user_id: user.uuid,
@@ -273,7 +309,11 @@ async fn validate_bitbucket_app_password(username: &str, app_password: &str) -> 
 }
 
 /// Fetch GitLab repos using Personal Access Token
-pub async fn fetch_gitlab_repos_with_pat(access_token: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+pub async fn fetch_gitlab_repos_with_pat(
+    access_token: &str,
+    page: u32,
+    per_page: u32,
+) -> Result<Vec<GitRepository>, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -302,25 +342,37 @@ pub async fn fetch_gitlab_repos_with_pat(access_token: &str, page: u32, per_page
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
 
-    let repos: Vec<GitLabProject> = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+    let repos: Vec<GitLabProject> = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse repos: {}", e),
+        )
+    })?;
 
-    Ok(repos.into_iter().map(|r| GitRepository {
-        id: r.id.to_string(),
-        name: r.name,
-        full_name: r.path_with_namespace,
-        description: r.description,
-        html_url: r.web_url,
-        clone_url: r.http_url_to_repo,
-        ssh_url: r.ssh_url_to_repo,
-        default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
-        private: r.visibility != "public",
-        owner: r.namespace.name,
-    }).collect())
+    Ok(repos
+        .into_iter()
+        .map(|r| GitRepository {
+            id: r.id.to_string(),
+            name: r.name,
+            full_name: r.path_with_namespace,
+            description: r.description,
+            html_url: r.web_url,
+            clone_url: r.http_url_to_repo,
+            ssh_url: r.ssh_url_to_repo,
+            default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
+            private: r.visibility != "public",
+            owner: r.namespace.name,
+        })
+        .collect())
 }
 
 /// Fetch Bitbucket repos using App Password
-pub async fn fetch_bitbucket_repos_with_app_password(username: &str, app_password: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+pub async fn fetch_bitbucket_repos_with_app_password(
+    username: &str,
+    app_password: &str,
+    page: u32,
+    per_page: u32,
+) -> Result<Vec<GitRepository>, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -368,32 +420,63 @@ pub async fn fetch_bitbucket_repos_with_app_password(username: &str, app_passwor
     }
 
     let response = client
-        .get(format!("https://api.bitbucket.org/2.0/repositories/{}?page={}&pagelen={}", username, page, per_page))
+        .get(format!(
+            "https://api.bitbucket.org/2.0/repositories/{}?page={}&pagelen={}",
+            username, page, per_page
+        ))
         .basic_auth(username, Some(app_password))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch repos: {}", e),
+            )
+        })?;
 
-    let repos: BitbucketResponse = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+    let repos: BitbucketResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse repos: {}", e),
+        )
+    })?;
 
-    Ok(repos.values.into_iter().map(|r| {
-        let https_url = r.links.clone.iter().find(|c| c.name == "https").map(|c| c.href.clone()).unwrap_or_default();
-        let ssh_url = r.links.clone.iter().find(|c| c.name == "ssh").map(|c| c.href.clone()).unwrap_or_default();
+    Ok(repos
+        .values
+        .into_iter()
+        .map(|r| {
+            let https_url = r
+                .links
+                .clone
+                .iter()
+                .find(|c| c.name == "https")
+                .map(|c| c.href.clone())
+                .unwrap_or_default();
+            let ssh_url = r
+                .links
+                .clone
+                .iter()
+                .find(|c| c.name == "ssh")
+                .map(|c| c.href.clone())
+                .unwrap_or_default();
 
-        GitRepository {
-            id: r.uuid,
-            name: r.name,
-            full_name: r.full_name,
-            description: r.description,
-            html_url: r.links.html.href,
-            clone_url: https_url,
-            ssh_url,
-            default_branch: r.mainbranch.map(|b| b.name).unwrap_or_else(|| "main".to_string()),
-            private: r.is_private,
-            owner: r.owner.username,
-        }
-    }).collect())
+            GitRepository {
+                id: r.uuid,
+                name: r.name,
+                full_name: r.full_name,
+                description: r.description,
+                html_url: r.links.html.href,
+                clone_url: https_url,
+                ssh_url,
+                default_branch: r
+                    .mainbranch
+                    .map(|b| b.name)
+                    .unwrap_or_else(|| "main".to_string()),
+                private: r.is_private,
+                owner: r.owner.username,
+            }
+        })
+        .collect())
 }
 
 /// Get OAuth authorization URL for a provider
@@ -401,7 +484,8 @@ pub async fn get_auth_url(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let provider_type: GitProviderType = provider.parse()
+    let provider_type: GitProviderType = provider
+        .parse()
         .map_err(|e: String| (StatusCode::BAD_REQUEST, e))?;
 
     let oauth_config = match provider_type {
@@ -412,7 +496,7 @@ pub async fn get_auth_url(
 
     let oauth = oauth_config.ok_or((
         StatusCode::NOT_FOUND,
-        format!("{} OAuth is not configured", provider_type)
+        format!("{} OAuth is not configured", provider_type),
     ))?;
 
     // Generate a random state for CSRF protection
@@ -420,8 +504,9 @@ pub async fn get_auth_url(
 
     let authorization_url = match provider_type {
         GitProviderType::Github => {
-            let redirect_uri = oauth.redirect_uri.clone()
-                .unwrap_or_else(|| format!("{}/api/auth/oauth/github/callback", "http://localhost:8080"));
+            let redirect_uri = oauth.redirect_uri.clone().unwrap_or_else(|| {
+                format!("{}/api/auth/oauth/github/callback", "http://localhost:8080")
+            });
             format!(
                 "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope={}&state={}",
                 oauth.client_id,
@@ -431,8 +516,9 @@ pub async fn get_auth_url(
             )
         }
         GitProviderType::Gitlab => {
-            let redirect_uri = oauth.redirect_uri.clone()
-                .unwrap_or_else(|| format!("{}/api/auth/oauth/gitlab/callback", "http://localhost:8080"));
+            let redirect_uri = oauth.redirect_uri.clone().unwrap_or_else(|| {
+                format!("{}/api/auth/oauth/gitlab/callback", "http://localhost:8080")
+            });
             format!(
                 "https://gitlab.com/oauth/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&state={}",
                 oauth.client_id,
@@ -442,8 +528,12 @@ pub async fn get_auth_url(
             )
         }
         GitProviderType::Bitbucket => {
-            let redirect_uri = oauth.redirect_uri.clone()
-                .unwrap_or_else(|| format!("{}/api/auth/oauth/bitbucket/callback", "http://localhost:8080"));
+            let redirect_uri = oauth.redirect_uri.clone().unwrap_or_else(|| {
+                format!(
+                    "{}/api/auth/oauth/bitbucket/callback",
+                    "http://localhost:8080"
+                )
+            });
             format!(
                 "https://bitbucket.org/site/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&state={}",
                 oauth.client_id,
@@ -466,7 +556,8 @@ pub async fn oauth_callback(
     Path(provider): Path<String>,
     Query(params): Query<OAuthCallbackRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let provider_type: GitProviderType = provider.parse()
+    let provider_type: GitProviderType = provider
+        .parse()
         .map_err(|e: String| (StatusCode::BAD_REQUEST, e))?;
 
     let oauth_config = match provider_type {
@@ -477,14 +568,26 @@ pub async fn oauth_callback(
 
     let oauth = oauth_config.ok_or((
         StatusCode::NOT_FOUND,
-        format!("{} OAuth is not configured", provider_type)
+        format!("{} OAuth is not configured", provider_type),
     ))?;
 
     // Exchange code for access token
     let (access_token, refresh_token, expires_at) = match provider_type {
-        GitProviderType::Github => exchange_github_token(&oauth.client_id, &oauth.client_secret, &params.code).await?,
-        GitProviderType::Gitlab => exchange_gitlab_token(&oauth.client_id, &oauth.client_secret, &params.code, oauth.redirect_uri.as_deref()).await?,
-        GitProviderType::Bitbucket => exchange_bitbucket_token(&oauth.client_id, &oauth.client_secret, &params.code).await?,
+        GitProviderType::Github => {
+            exchange_github_token(&oauth.client_id, &oauth.client_secret, &params.code).await?
+        }
+        GitProviderType::Gitlab => {
+            exchange_gitlab_token(
+                &oauth.client_id,
+                &oauth.client_secret,
+                &params.code,
+                oauth.redirect_uri.as_deref(),
+            )
+            .await?
+        }
+        GitProviderType::Bitbucket => {
+            exchange_bitbucket_token(&oauth.client_id, &oauth.client_secret, &params.code).await?
+        }
     };
 
     // Get user info from provider
@@ -536,7 +639,9 @@ pub async fn oauth_callback(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Redirect to settings page with success message
-    Ok(axum::response::Redirect::to("/settings/git-providers?connected=true"))
+    Ok(axum::response::Redirect::to(
+        "/settings/git-providers?connected=true",
+    ))
 }
 
 /// List repositories from a connected Git provider
@@ -545,22 +650,28 @@ pub async fn list_repos(
     Path(id): Path<String>,
     Query(params): Query<ListReposParams>,
 ) -> Result<Json<Vec<GitRepository>>, (StatusCode, String)> {
-    let provider: GitProvider = sqlx::query_as(
-        "SELECT * FROM git_providers WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+    let provider: GitProvider = sqlx::query_as("SELECT * FROM git_providers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
 
-    let provider_type: GitProviderType = provider.provider.parse()
+    let provider_type: GitProviderType = provider
+        .provider
+        .parse()
         .map_err(|e: String| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let repos: Vec<GitRepository> = match provider_type {
-        GitProviderType::Github => fetch_github_repos(&provider.access_token, params.page, params.per_page).await?,
-        GitProviderType::Gitlab => fetch_gitlab_repos(&provider.access_token, params.page, params.per_page).await?,
-        GitProviderType::Bitbucket => fetch_bitbucket_repos(&provider.access_token, params.page, params.per_page).await?,
+        GitProviderType::Github => {
+            fetch_github_repos(&provider.access_token, params.page, params.per_page).await?
+        }
+        GitProviderType::Gitlab => {
+            fetch_gitlab_repos(&provider.access_token, params.page, params.per_page).await?
+        }
+        GitProviderType::Bitbucket => {
+            fetch_bitbucket_repos(&provider.access_token, params.page, params.per_page).await?
+        }
     };
 
     Ok(Json(repos))
@@ -574,8 +685,12 @@ pub struct ListReposParams {
     per_page: u32,
 }
 
-fn default_page() -> u32 { 1 }
-fn default_per_page() -> u32 { 30 }
+fn default_page() -> u32 {
+    1
+}
+fn default_per_page() -> u32 {
+    30
+}
 
 // Helper structs for OAuth responses
 #[derive(Debug, Deserialize)]
@@ -612,7 +727,11 @@ struct ProviderUserInfo {
 }
 
 // GitHub OAuth functions
-async fn exchange_github_token(client_id: &str, client_secret: &str, code: &str) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
+async fn exchange_github_token(
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
     let client = reqwest::Client::new();
     let response = client
         .post("https://github.com/login/oauth/access_token")
@@ -624,10 +743,19 @@ async fn exchange_github_token(client_id: &str, client_secret: &str, code: &str)
         ])
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to exchange token: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to exchange token: {}", e),
+            )
+        })?;
 
-    let token_response: GitHubTokenResponse = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse token response: {}", e)))?;
+    let token_response: GitHubTokenResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse token response: {}", e),
+        )
+    })?;
 
     Ok((token_response.access_token, None, None))
 }
@@ -650,10 +778,19 @@ async fn get_github_user(access_token: &str) -> Result<ProviderUserInfo, (Status
         .header("User-Agent", "Rivetr")
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get user info: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to get user info: {}", e),
+            )
+        })?;
 
-    let user: GitHubUser = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+    let user: GitHubUser = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse user info: {}", e),
+        )
+    })?;
 
     Ok(ProviderUserInfo {
         provider_user_id: user.id.to_string(),
@@ -665,7 +802,11 @@ async fn get_github_user(access_token: &str) -> Result<ProviderUserInfo, (Status
     })
 }
 
-async fn fetch_github_repos(access_token: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+async fn fetch_github_repos(
+    access_token: &str,
+    page: u32,
+    per_page: u32,
+) -> Result<Vec<GitRepository>, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -688,32 +829,52 @@ async fn fetch_github_repos(access_token: &str, page: u32, per_page: u32) -> Res
     }
 
     let response = client
-        .get(format!("https://api.github.com/user/repos?page={}&per_page={}&sort=updated", page, per_page))
+        .get(format!(
+            "https://api.github.com/user/repos?page={}&per_page={}&sort=updated",
+            page, per_page
+        ))
         .header("Authorization", format!("Bearer {}", access_token))
         .header("User-Agent", "Rivetr")
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch repos: {}", e),
+            )
+        })?;
 
-    let repos: Vec<GitHubRepo> = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+    let repos: Vec<GitHubRepo> = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse repos: {}", e),
+        )
+    })?;
 
-    Ok(repos.into_iter().map(|r| GitRepository {
-        id: r.id.to_string(),
-        name: r.name,
-        full_name: r.full_name,
-        description: r.description,
-        html_url: r.html_url,
-        clone_url: r.clone_url,
-        ssh_url: r.ssh_url,
-        default_branch: r.default_branch,
-        private: r.private,
-        owner: r.owner.login,
-    }).collect())
+    Ok(repos
+        .into_iter()
+        .map(|r| GitRepository {
+            id: r.id.to_string(),
+            name: r.name,
+            full_name: r.full_name,
+            description: r.description,
+            html_url: r.html_url,
+            clone_url: r.clone_url,
+            ssh_url: r.ssh_url,
+            default_branch: r.default_branch,
+            private: r.private,
+            owner: r.owner.login,
+        })
+        .collect())
 }
 
 // GitLab OAuth functions
-async fn exchange_gitlab_token(client_id: &str, client_secret: &str, code: &str, redirect_uri: Option<&str>) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
+async fn exchange_gitlab_token(
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+    redirect_uri: Option<&str>,
+) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
     let client = reqwest::Client::new();
     let redirect = redirect_uri.unwrap_or("http://localhost:8080/api/auth/oauth/gitlab/callback");
 
@@ -728,18 +889,32 @@ async fn exchange_gitlab_token(client_id: &str, client_secret: &str, code: &str,
         ])
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to exchange token: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to exchange token: {}", e),
+            )
+        })?;
 
-    let token_response: GitLabTokenResponse = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse token response: {}", e)))?;
+    let token_response: GitLabTokenResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse token response: {}", e),
+        )
+    })?;
 
     let expires_at = token_response.expires_in.map(|e| {
-        chrono::Utc::now().checked_add_signed(chrono::Duration::seconds(e))
+        chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::seconds(e))
             .map(|t| t.to_rfc3339())
             .unwrap_or_default()
     });
 
-    Ok((token_response.access_token, token_response.refresh_token, expires_at))
+    Ok((
+        token_response.access_token,
+        token_response.refresh_token,
+        expires_at,
+    ))
 }
 
 async fn get_gitlab_user(access_token: &str) -> Result<ProviderUserInfo, (StatusCode, String)> {
@@ -759,10 +934,19 @@ async fn get_gitlab_user(access_token: &str) -> Result<ProviderUserInfo, (Status
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get user info: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to get user info: {}", e),
+            )
+        })?;
 
-    let user: GitLabUser = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+    let user: GitLabUser = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse user info: {}", e),
+        )
+    })?;
 
     Ok(ProviderUserInfo {
         provider_user_id: user.id.to_string(),
@@ -774,7 +958,11 @@ async fn get_gitlab_user(access_token: &str) -> Result<ProviderUserInfo, (Status
     })
 }
 
-async fn fetch_gitlab_repos(access_token: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+async fn fetch_gitlab_repos(
+    access_token: &str,
+    page: u32,
+    per_page: u32,
+) -> Result<Vec<GitRepository>, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -803,48 +991,70 @@ async fn fetch_gitlab_repos(access_token: &str, page: u32, per_page: u32) -> Res
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
 
-    let repos: Vec<GitLabProject> = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+    let repos: Vec<GitLabProject> = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse repos: {}", e),
+        )
+    })?;
 
-    Ok(repos.into_iter().map(|r| GitRepository {
-        id: r.id.to_string(),
-        name: r.name,
-        full_name: r.path_with_namespace,
-        description: r.description,
-        html_url: r.web_url,
-        clone_url: r.http_url_to_repo,
-        ssh_url: r.ssh_url_to_repo,
-        default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
-        private: r.visibility != "public",
-        owner: r.namespace.name,
-    }).collect())
+    Ok(repos
+        .into_iter()
+        .map(|r| GitRepository {
+            id: r.id.to_string(),
+            name: r.name,
+            full_name: r.path_with_namespace,
+            description: r.description,
+            html_url: r.web_url,
+            clone_url: r.http_url_to_repo,
+            ssh_url: r.ssh_url_to_repo,
+            default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
+            private: r.visibility != "public",
+            owner: r.namespace.name,
+        })
+        .collect())
 }
 
 // Bitbucket OAuth functions (simplified)
-async fn exchange_bitbucket_token(client_id: &str, client_secret: &str, code: &str) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
+async fn exchange_bitbucket_token(
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+) -> Result<(String, Option<String>, Option<String>), (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     let response = client
         .post("https://bitbucket.org/site/oauth2/access_token")
         .basic_auth(client_id, Some(client_secret))
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", code),
-        ])
+        .form(&[("grant_type", "authorization_code"), ("code", code)])
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to exchange token: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to exchange token: {}", e),
+            )
+        })?;
 
-    let token_response: BitbucketTokenResponse = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse token response: {}", e)))?;
+    let token_response: BitbucketTokenResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse token response: {}", e),
+        )
+    })?;
 
     let expires_at = token_response.expires_in.map(|e| {
-        chrono::Utc::now().checked_add_signed(chrono::Duration::seconds(e))
+        chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::seconds(e))
             .map(|t| t.to_rfc3339())
             .unwrap_or_default()
     });
 
-    Ok((token_response.access_token, token_response.refresh_token, expires_at))
+    Ok((
+        token_response.access_token,
+        token_response.refresh_token,
+        expires_at,
+    ))
 }
 
 async fn get_bitbucket_user(access_token: &str) -> Result<ProviderUserInfo, (StatusCode, String)> {
@@ -873,10 +1083,19 @@ async fn get_bitbucket_user(access_token: &str) -> Result<ProviderUserInfo, (Sta
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get user info: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to get user info: {}", e),
+            )
+        })?;
 
-    let user: BitbucketUser = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse user info: {}", e)))?;
+    let user: BitbucketUser = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse user info: {}", e),
+        )
+    })?;
 
     Ok(ProviderUserInfo {
         provider_user_id: user.uuid,
@@ -888,7 +1107,11 @@ async fn get_bitbucket_user(access_token: &str) -> Result<ProviderUserInfo, (Sta
     })
 }
 
-async fn fetch_bitbucket_repos(access_token: &str, page: u32, per_page: u32) -> Result<Vec<GitRepository>, (StatusCode, String)> {
+async fn fetch_bitbucket_repos(
+    access_token: &str,
+    page: u32,
+    per_page: u32,
+) -> Result<Vec<GitRepository>, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -936,30 +1159,61 @@ async fn fetch_bitbucket_repos(access_token: &str, page: u32, per_page: u32) -> 
     }
 
     let response = client
-        .get(format!("https://api.bitbucket.org/2.0/repositories?role=member&page={}&pagelen={}", page, per_page))
+        .get(format!(
+            "https://api.bitbucket.org/2.0/repositories?role=member&page={}&pagelen={}",
+            page, per_page
+        ))
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to fetch repos: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch repos: {}", e),
+            )
+        })?;
 
-    let repos: BitbucketResponse = response.json().await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse repos: {}", e)))?;
+    let repos: BitbucketResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse repos: {}", e),
+        )
+    })?;
 
-    Ok(repos.values.into_iter().map(|r| {
-        let https_url = r.links.clone.iter().find(|c| c.name == "https").map(|c| c.href.clone()).unwrap_or_default();
-        let ssh_url = r.links.clone.iter().find(|c| c.name == "ssh").map(|c| c.href.clone()).unwrap_or_default();
+    Ok(repos
+        .values
+        .into_iter()
+        .map(|r| {
+            let https_url = r
+                .links
+                .clone
+                .iter()
+                .find(|c| c.name == "https")
+                .map(|c| c.href.clone())
+                .unwrap_or_default();
+            let ssh_url = r
+                .links
+                .clone
+                .iter()
+                .find(|c| c.name == "ssh")
+                .map(|c| c.href.clone())
+                .unwrap_or_default();
 
-        GitRepository {
-            id: r.uuid,
-            name: r.name,
-            full_name: r.full_name,
-            description: r.description,
-            html_url: r.links.html.href,
-            clone_url: https_url,
-            ssh_url,
-            default_branch: r.mainbranch.map(|b| b.name).unwrap_or_else(|| "main".to_string()),
-            private: r.is_private,
-            owner: r.owner.username,
-        }
-    }).collect())
+            GitRepository {
+                id: r.uuid,
+                name: r.name,
+                full_name: r.full_name,
+                description: r.description,
+                html_url: r.links.html.href,
+                clone_url: https_url,
+                ssh_url,
+                default_branch: r
+                    .mainbranch
+                    .map(|b| b.name)
+                    .unwrap_or_else(|| "main".to_string()),
+                private: r.is_private,
+                owner: r.owner.username,
+            }
+        })
+        .collect())
 }

@@ -183,12 +183,17 @@ pub async fn redeploy_preview(
     }
 
     // Reset status to pending
-    update_preview_status(&state.db, &preview.id, PreviewDeploymentStatus::Pending, None)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to update preview status: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    update_preview_status(
+        &state.db,
+        &preview.id,
+        PreviewDeploymentStatus::Pending,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update preview status: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Run preview deployment in background
     let db = state.db.clone();
@@ -257,7 +262,9 @@ pub async fn list_previews_by_status(
     Path(status): Path<String>,
 ) -> Result<Json<Vec<PreviewDeploymentResponse>>, StatusCode> {
     // Validate status
-    let valid_statuses = ["pending", "cloning", "building", "starting", "running", "failed", "closed"];
+    let valid_statuses = [
+        "pending", "cloning", "building", "starting", "running", "failed", "closed",
+    ];
     if !valid_statuses.contains(&status.as_str()) {
         return Err(StatusCode::BAD_REQUEST);
     }

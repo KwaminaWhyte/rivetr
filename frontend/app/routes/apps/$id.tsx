@@ -38,7 +38,15 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { api } from "@/lib/api";
-import type { App, AppEnvironment, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse, UpdateAppRequest } from "@/types/api";
+import type {
+  App,
+  AppEnvironment,
+  Deployment,
+  DeploymentStatus,
+  DeploymentLog,
+  DeploymentListResponse,
+  UpdateAppRequest,
+} from "@/types/api";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
@@ -52,7 +60,13 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "production", label: "Production" },
 ];
 
-const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
+const ACTIVE_STATUSES: DeploymentStatus[] = [
+  "pending",
+  "cloning",
+  "building",
+  "starting",
+  "checking",
+];
 
 function isActiveDeployment(status: DeploymentStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
@@ -67,6 +81,7 @@ const statusColors: Record<DeploymentStatus, string> = {
   running: "bg-green-500",
   failed: "bg-red-500",
   stopped: "bg-gray-500",
+  replaced: "bg-gray-400",
 };
 
 function formatDate(dateStr: string): string {
@@ -81,9 +96,13 @@ export default function AppDetailPage() {
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
-  const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [selectedDeploymentId, setSelectedDeploymentId] = useState<
+    string | null
+  >(null);
   const [editFormData, setEditFormData] = useState<UpdateAppRequest>({});
-  const [deploymentView, setDeploymentView] = useState<"timeline" | "table">("timeline");
+  const [deploymentView, setDeploymentView] = useState<"timeline" | "table">(
+    "timeline",
+  );
 
   // Use React Query to fetch data client-side
   const { data: app, isLoading: appLoading } = useQuery<App>({
@@ -99,7 +118,9 @@ export default function AppDetailPage() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data || data.items.length === 0) return 5000;
-      const hasActive = data.items.some((d: Deployment) => isActiveDeployment(d.status));
+      const hasActive = data.items.some((d: Deployment) =>
+        isActiveDeployment(d.status),
+      );
       return hasActive ? 2000 : 30000;
     },
     refetchIntervalInBackground: false,
@@ -108,7 +129,9 @@ export default function AppDetailPage() {
   const deployments = deploymentsData?.items ?? [];
 
   // Fetch build logs for selected deployment
-  const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
+  const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<
+    DeploymentLog[]
+  >({
     queryKey: ["deployment-logs", selectedDeploymentId],
     queryFn: () => api.getDeploymentLogs(selectedDeploymentId!),
     enabled: !!selectedDeploymentId && showBuildLogsDialog,
@@ -195,8 +218,10 @@ export default function AppDetailPage() {
     }
   };
 
-
-  const handleEditChange = (field: keyof UpdateAppRequest, value: string | number | undefined) => {
+  const handleEditChange = (
+    field: keyof UpdateAppRequest,
+    value: string | number | undefined,
+  ) => {
     setEditFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -217,7 +242,8 @@ export default function AppDetailPage() {
         <h1 className="text-3xl font-bold">Application Not Found</h1>
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            The application you're looking for doesn't exist or has been deleted.
+            The application you're looking for doesn't exist or has been
+            deleted.
           </CardContent>
         </Card>
       </div>
@@ -279,10 +305,14 @@ export default function AppDetailPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">CPU Limit</div>
-                <div className="font-medium">{app.cpu_limit ? `${app.cpu_limit} cores` : "-"}</div>
+                <div className="font-medium">
+                  {app.cpu_limit ? `${app.cpu_limit} cores` : "-"}
+                </div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Memory Limit</div>
+                <div className="text-sm text-muted-foreground">
+                  Memory Limit
+                </div>
                 <div className="font-medium">{app.memory_limit || "-"}</div>
               </div>
             </div>
@@ -336,7 +366,9 @@ export default function AppDetailPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant={deploymentView === "timeline" ? "secondary" : "ghost"}
+                      variant={
+                        deploymentView === "timeline" ? "secondary" : "ghost"
+                      }
                       size="sm"
                       className="h-8 px-3"
                       onClick={() => setDeploymentView("timeline")}
@@ -351,7 +383,9 @@ export default function AppDetailPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      variant={deploymentView === "table" ? "secondary" : "ghost"}
+                      variant={
+                        deploymentView === "table" ? "secondary" : "ghost"
+                      }
                       size="sm"
                       className="h-8 px-3"
                       onClick={() => setDeploymentView("table")}
@@ -401,7 +435,9 @@ export default function AppDetailPage() {
                   <TableRow key={deploy.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge className={`${statusColors[deploy.status]} text-white`}>
+                        <Badge
+                          className={`${statusColors[deploy.status]} text-white`}
+                        >
                           {deploy.status}
                         </Badge>
                         {deploy.status === "failed" && deploy.error_message && (
@@ -411,8 +447,12 @@ export default function AppDetailPage() {
                                 <AlertCircle className="h-4 w-4 text-red-500 cursor-help" />
                               </TooltipTrigger>
                               <TooltipContent side="right" className="max-w-sm">
-                                <p className="font-medium text-red-500 mb-1">Error</p>
-                                <p className="text-sm whitespace-pre-wrap">{deploy.error_message}</p>
+                                <p className="font-medium text-red-500 mb-1">
+                                  Error
+                                </p>
+                                <p className="text-sm whitespace-pre-wrap">
+                                  {deploy.error_message}
+                                </p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -429,7 +469,9 @@ export default function AppDetailPage() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-sm">
-                              <p className="text-sm">{deploy.commit_message || "No commit message"}</p>
+                              <p className="text-sm">
+                                {deploy.commit_message || "No commit message"}
+                              </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -441,7 +483,9 @@ export default function AppDetailPage() {
                     <TableCell>
                       {(() => {
                         const start = new Date(deploy.started_at).getTime();
-                        const end = deploy.finished_at ? new Date(deploy.finished_at).getTime() : Date.now();
+                        const end = deploy.finished_at
+                          ? new Date(deploy.finished_at).getTime()
+                          : Date.now();
                         const durationMs = end - start;
                         const seconds = Math.floor(durationMs / 1000);
                         const minutes = Math.floor(seconds / 60);
@@ -507,7 +551,8 @@ export default function AppDetailPage() {
             <DialogHeader>
               <DialogTitle>Edit Application</DialogTitle>
               <DialogDescription>
-                Update your application settings. Changes will take effect on the next deployment.
+                Update your application settings. Changes will take effect on
+                the next deployment.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -525,7 +570,9 @@ export default function AppDetailPage() {
                   <Input
                     id="edit-git_url"
                     value={editFormData.git_url || ""}
-                    onChange={(e) => handleEditChange("git_url", e.target.value)}
+                    onChange={(e) =>
+                      handleEditChange("git_url", e.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -544,7 +591,12 @@ export default function AppDetailPage() {
                     id="edit-port"
                     type="number"
                     value={editFormData.port || ""}
-                    onChange={(e) => handleEditChange("port", parseInt(e.target.value) || undefined)}
+                    onChange={(e) =>
+                      handleEditChange(
+                        "port",
+                        parseInt(e.target.value) || undefined,
+                      )
+                    }
                   />
                 </div>
               </div>
@@ -554,7 +606,9 @@ export default function AppDetailPage() {
                   <Input
                     id="edit-dockerfile"
                     value={editFormData.dockerfile || ""}
-                    onChange={(e) => handleEditChange("dockerfile", e.target.value)}
+                    onChange={(e) =>
+                      handleEditChange("dockerfile", e.target.value)
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -563,7 +617,9 @@ export default function AppDetailPage() {
                     id="edit-domain"
                     placeholder="app.example.com"
                     value={editFormData.domain || ""}
-                    onChange={(e) => handleEditChange("domain", e.target.value || undefined)}
+                    onChange={(e) =>
+                      handleEditChange("domain", e.target.value || undefined)
+                    }
                   />
                 </div>
               </div>
@@ -574,14 +630,21 @@ export default function AppDetailPage() {
                     id="edit-healthcheck"
                     placeholder="/health"
                     value={editFormData.healthcheck || ""}
-                    onChange={(e) => handleEditChange("healthcheck", e.target.value || undefined)}
+                    onChange={(e) =>
+                      handleEditChange(
+                        "healthcheck",
+                        e.target.value || undefined,
+                      )
+                    }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-environment">Environment</Label>
                   <Select
                     value={editFormData.environment || "development"}
-                    onValueChange={(value) => handleEditChange("environment", value)}
+                    onValueChange={(value) =>
+                      handleEditChange("environment", value)
+                    }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select environment" />
@@ -598,7 +661,11 @@ export default function AppDetailPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowEditDialog(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
@@ -616,7 +683,8 @@ export default function AppDetailPage() {
             <DialogTitle>Rollback Deployment</DialogTitle>
             <DialogDescription>
               This will start a new deployment using the image from the selected
-              previous deployment. The current running container will be replaced.
+              previous deployment. The current running container will be
+              replaced.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -637,10 +705,13 @@ export default function AppDetailPage() {
       </Dialog>
 
       {/* Build logs dialog */}
-      <Dialog open={showBuildLogsDialog} onOpenChange={(open) => {
-        setShowBuildLogsDialog(open);
-        if (!open) setSelectedDeploymentId(null);
-      }}>
+      <Dialog
+        open={showBuildLogsDialog}
+        onOpenChange={(open) => {
+          setShowBuildLogsDialog(open);
+          if (!open) setSelectedDeploymentId(null);
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>Build Logs</DialogTitle>
@@ -650,9 +721,13 @@ export default function AppDetailPage() {
           </DialogHeader>
           <div className="bg-gray-900 rounded-lg p-4 max-h-[50vh] overflow-y-auto font-mono text-sm">
             {buildLogsLoading ? (
-              <div className="text-gray-500 text-center py-4">Loading logs...</div>
+              <div className="text-gray-500 text-center py-4">
+                Loading logs...
+              </div>
             ) : buildLogs.length === 0 ? (
-              <div className="text-gray-500 text-center py-4">No logs available</div>
+              <div className="text-gray-500 text-center py-4">
+                No logs available
+              </div>
             ) : (
               <div className="space-y-1">
                 {buildLogs.map((log) => (
@@ -662,9 +737,13 @@ export default function AppDetailPage() {
                     </span>
                     <span
                       className={`px-1.5 py-0.5 rounded text-xs text-white flex-shrink-0 ${
-                        log.level === "error" ? "bg-red-500" :
-                        log.level === "warn" ? "bg-yellow-500" :
-                        log.level === "info" ? "bg-blue-500" : "bg-gray-500"
+                        log.level === "error"
+                          ? "bg-red-500"
+                          : log.level === "warn"
+                            ? "bg-yellow-500"
+                            : log.level === "info"
+                              ? "bg-blue-500"
+                              : "bg-gray-500"
                       }`}
                     >
                       {log.level.toUpperCase()}
@@ -678,10 +757,13 @@ export default function AppDetailPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setShowBuildLogsDialog(false);
-              setSelectedDeploymentId(null);
-            }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowBuildLogsDialog(false);
+                setSelectedDeploymentId(null);
+              }}
+            >
               Close
             </Button>
           </DialogFooter>

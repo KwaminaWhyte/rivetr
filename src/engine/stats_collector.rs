@@ -21,7 +21,10 @@ use crate::api::metrics::{
     set_container_network_rx_bytes, set_container_network_tx_bytes,
 };
 use crate::config::StatsRetentionConfig;
-use crate::db::{Deployment, ManagedDatabase, Service, StatsRetention, StatsRetentionConfig as DbStatsRetentionConfig};
+use crate::db::{
+    Deployment, ManagedDatabase, Service, StatsRetention,
+    StatsRetentionConfig as DbStatsRetentionConfig,
+};
 use crate::runtime::ContainerRuntime;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -208,29 +211,26 @@ async fn record_stats_snapshot(
     runtime: &Arc<dyn ContainerRuntime>,
 ) -> anyhow::Result<()> {
     // Get running deployments count
-    let running_deployments: Vec<Deployment> = sqlx::query_as(
-        "SELECT * FROM deployments WHERE status = 'running'"
-    )
-    .fetch_all(db)
-    .await?;
+    let running_deployments: Vec<Deployment> =
+        sqlx::query_as("SELECT * FROM deployments WHERE status = 'running'")
+            .fetch_all(db)
+            .await?;
 
     let running_apps = running_deployments.len() as i64;
 
     // Get running databases count
-    let running_databases: Vec<ManagedDatabase> = sqlx::query_as(
-        "SELECT * FROM databases WHERE status = 'running'"
-    )
-    .fetch_all(db)
-    .await?;
+    let running_databases: Vec<ManagedDatabase> =
+        sqlx::query_as("SELECT * FROM databases WHERE status = 'running'")
+            .fetch_all(db)
+            .await?;
 
     let running_dbs = running_databases.len() as i64;
 
     // Get running services count
-    let running_services: Vec<Service> = sqlx::query_as(
-        "SELECT * FROM services WHERE status = 'running'"
-    )
-    .fetch_all(db)
-    .await?;
+    let running_services: Vec<Service> =
+        sqlx::query_as("SELECT * FROM services WHERE status = 'running'")
+            .fetch_all(db)
+            .await?;
 
     let running_svcs = running_services.len() as i64;
 
@@ -438,7 +438,12 @@ async fn run_stats_retention(db: &SqlitePool, config: &StatsRetentionConfig) -> 
     let elapsed = start.elapsed();
 
     // Only log if something was done
-    if hourly_aggregated > 0 || daily_aggregated > 0 || raw_deleted > 0 || hourly_deleted > 0 || daily_deleted > 0 {
+    if hourly_aggregated > 0
+        || daily_aggregated > 0
+        || raw_deleted > 0
+        || hourly_deleted > 0
+        || daily_deleted > 0
+    {
         tracing::info!(
             hourly_aggregated = hourly_aggregated,
             daily_aggregated = daily_aggregated,

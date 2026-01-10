@@ -329,8 +329,12 @@ impl AcmeClient {
         let key_bytes = self.key_pair.read().await;
         let key_bytes = key_bytes.as_ref().context("No key pair")?;
 
-        let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, key_bytes, &SystemRandom::new())
-            .map_err(|e| anyhow::anyhow!("Failed to load key pair: {}", e))?;
+        let key_pair = EcdsaKeyPair::from_pkcs8(
+            &ECDSA_P256_SHA256_FIXED_SIGNING,
+            key_bytes,
+            &SystemRandom::new(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to load key pair: {}", e))?;
 
         // Build protected header
         let mut protected = serde_json::json!({
@@ -400,8 +404,12 @@ impl AcmeClient {
 
     /// Get the JWK thumbprint for key authorization
     fn jwk_thumbprint(&self, key_bytes: &[u8]) -> Result<String> {
-        let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, key_bytes, &SystemRandom::new())
-            .map_err(|e| anyhow::anyhow!("Failed to load key pair: {}", e))?;
+        let key_pair = EcdsaKeyPair::from_pkcs8(
+            &ECDSA_P256_SHA256_FIXED_SIGNING,
+            key_bytes,
+            &SystemRandom::new(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to load key pair: {}", e))?;
 
         let public_key = key_pair.public_key().as_ref();
         let x = &public_key[1..33];
@@ -446,7 +454,9 @@ impl AcmeClient {
             "identifiers": identifiers
         });
 
-        let (response, _) = self.signed_request(&new_order_url, Some(payload), false).await?;
+        let (response, _) = self
+            .signed_request(&new_order_url, Some(payload), false)
+            .await?;
 
         let order_url = response
             .headers()
@@ -476,7 +486,9 @@ impl AcmeClient {
             "csr": csr_b64
         });
 
-        let (response, _) = self.signed_request(&order.finalize, Some(payload), false).await?;
+        let (response, _) = self
+            .signed_request(&order.finalize, Some(payload), false)
+            .await?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -512,7 +524,10 @@ impl AcmeClient {
     /// Process a single authorization
     async fn process_authorization(&self, auth_url: &str) -> Result<()> {
         let (response, _) = self.signed_request(auth_url, None, false).await?;
-        let auth: Authorization = response.json().await.context("Failed to parse authorization")?;
+        let auth: Authorization = response
+            .json()
+            .await
+            .context("Failed to parse authorization")?;
 
         let domain = &auth.identifier.value;
         debug!(domain = %domain, status = %auth.status, "Processing authorization");
@@ -850,10 +865,7 @@ mod tests {
         let challenges = AcmeChallenges::new();
 
         challenges.add("test-token", "test-auth");
-        assert_eq!(
-            challenges.get("test-token"),
-            Some("test-auth".to_string())
-        );
+        assert_eq!(challenges.get("test-token"), Some("test-auth".to_string()));
 
         challenges.remove("test-token");
         assert!(challenges.get("test-token").is_none());

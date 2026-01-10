@@ -351,9 +351,18 @@ export const api = {
     apiRequest<void>(`/volumes/${volumeId}`, token, { method: "DELETE" }),
 
   // Managed Databases
-  getDatabases: (token: string, reveal = false) => {
-    const params = reveal ? "?reveal=true" : "";
-    return apiRequest<ManagedDatabase[]>(`/databases${params}`, token);
+  getDatabases: (
+    token: string,
+    options: { reveal?: boolean; teamId?: string } = {}
+  ) => {
+    const params = new URLSearchParams();
+    if (options.reveal) params.append("reveal", "true");
+    if (options.teamId) params.append("team_id", options.teamId);
+    const queryString = params.toString();
+    return apiRequest<ManagedDatabase[]>(
+      `/databases${queryString ? `?${queryString}` : ""}`,
+      token
+    );
   },
   getDatabase: (token: string, id: string, reveal = false) => {
     const params = reveal ? "?reveal=true" : "";

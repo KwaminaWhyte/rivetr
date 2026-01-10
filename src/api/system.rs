@@ -2,7 +2,10 @@
 //!
 //! Provides aggregate system stats, disk stats, and recent events for the dashboard.
 
-use axum::{extract::{Query, State}, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -129,11 +132,7 @@ pub async fn get_system_stats(
                     }
                 }
                 Err(e) => {
-                    tracing::debug!(
-                        "Could not get stats for container {}: {}",
-                        container_id,
-                        e
-                    );
+                    tracing::debug!("Could not get stats for container {}: {}", container_id, e);
                 }
             }
         }
@@ -164,10 +163,8 @@ pub async fn get_system_stats(
     }
 
     // Stats from running services (Docker Compose)
-    let running_services: Vec<&Service> = services
-        .iter()
-        .filter(|s| s.status == "running")
-        .collect();
+    let running_services: Vec<&Service> =
+        services.iter().filter(|s| s.status == "running").collect();
 
     for service in &running_services {
         // Get compose project name for this service (e.g., "rivetr-svc-myservice")
@@ -534,7 +531,7 @@ pub async fn get_stats_history(
         h if h <= 6 => 6,
         h if h <= 24 => 24,
         h if h <= 168 => 168, // 7 days
-        _ => 720, // 30 days
+        _ => 720,             // 30 days
     };
 
     // For time ranges > 24 hours, use aggregated hourly data for efficiency

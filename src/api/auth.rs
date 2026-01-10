@@ -94,8 +94,14 @@ fn validate_password_strength(password: &str) -> Option<String> {
 
     // Check for common weak passwords
     let common_passwords = [
-        "password123!", "Password123!", "Admin123!@#", "Welcome123!",
-        "Qwerty123!@#", "Changeme123!", "Letmein123!@", "123456789Ab!",
+        "password123!",
+        "Password123!",
+        "Admin123!@#",
+        "Welcome123!",
+        "Qwerty123!@#",
+        "Changeme123!",
+        "Letmein123!@",
+        "123456789Ab!",
     ];
     let lower = password.to_lowercase();
     for common in common_passwords {
@@ -138,16 +144,14 @@ pub async fn login(
 
     // Create session
     let session_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&session_id)
-    .bind(&user.id)
-    .bind(&token_hash)
-    .bind(&expires_at)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(&session_id)
+        .bind(&user.id)
+        .bind(&token_hash)
+        .bind(&expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(LoginResponse {
         token,
@@ -206,7 +210,11 @@ pub async fn auth_middleware(
         } else {
             header.to_string()
         }
-    } else if let Some(api_key) = request.headers().get("X-API-Key").and_then(|h| h.to_str().ok()) {
+    } else if let Some(api_key) = request
+        .headers()
+        .get("X-API-Key")
+        .and_then(|h| h.to_str().ok())
+    {
         // Try X-API-Key header
         api_key.to_string()
     } else {
@@ -216,17 +224,16 @@ pub async fn auth_middleware(
             .query()
             .and_then(|q| {
                 // Simple query string parsing: find token=value
-                q.split('&')
-                    .find_map(|pair| {
-                        let mut parts = pair.splitn(2, '=');
-                        let key = parts.next()?;
-                        let value = parts.next()?;
-                        if key == "token" {
-                            Some(value.to_string())
-                        } else {
-                            None
-                        }
-                    })
+                q.split('&').find_map(|pair| {
+                    let mut parts = pair.splitn(2, '=');
+                    let key = parts.next()?;
+                    let value = parts.next()?;
+                    if key == "token" {
+                        Some(value.to_string())
+                    } else {
+                        None
+                    }
+                })
             })
             .ok_or(StatusCode::UNAUTHORIZED)?
     };
@@ -239,9 +246,7 @@ pub async fn auth_middleware(
     let provided_token = token.as_bytes();
 
     // Only compare if lengths match (constant-time check)
-    if admin_token.len() == provided_token.len()
-        && admin_token.ct_eq(provided_token).into()
-    {
+    if admin_token.len() == provided_token.len() && admin_token.ct_eq(provided_token).into() {
         return Ok(next.run(request).await);
     }
 
@@ -262,9 +267,7 @@ pub async fn auth_middleware(
 }
 
 /// Check if initial setup is needed (no users exist)
-pub async fn setup_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<SetupStatusResponse> {
+pub async fn setup_status(State(state): State<Arc<AppState>>) -> Json<SetupStatusResponse> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(&state.db)
         .await
@@ -306,20 +309,22 @@ pub async fn setup(
 
     // Create the admin user
     let id = uuid::Uuid::new_v4().to_string();
-    let password_hash = hash_password(&request.password)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to hash password: {}", e)))?;
+    let password_hash = hash_password(&request.password).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to hash password: {}", e),
+        )
+    })?;
 
-    sqlx::query(
-        "INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&request.email)
-    .bind(&password_hash)
-    .bind(&request.name)
-    .bind("admin")
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&request.email)
+        .bind(&password_hash)
+        .bind(&request.name)
+        .bind("admin")
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     tracing::info!("Created admin user during setup: {}", request.email);
 
@@ -332,16 +337,14 @@ pub async fn setup(
         .to_rfc3339();
 
     let session_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&session_id)
-    .bind(&id)
-    .bind(&token_hash)
-    .bind(&expires_at)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(&session_id)
+        .bind(&id)
+        .bind(&token_hash)
+        .bind(&expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(LoginResponse {
         token,

@@ -124,7 +124,9 @@ pub struct NotificationChannel {
 impl NotificationChannel {
     /// Get the channel type enum
     pub fn get_channel_type(&self) -> NotificationChannelType {
-        self.channel_type.parse().unwrap_or(NotificationChannelType::Slack)
+        self.channel_type
+            .parse()
+            .unwrap_or(NotificationChannelType::Slack)
     }
 
     /// Check if the channel is enabled
@@ -163,8 +165,8 @@ pub struct NotificationChannelResponse {
 impl From<NotificationChannel> for NotificationChannelResponse {
     fn from(channel: NotificationChannel) -> Self {
         // Parse and sanitize the config (mask passwords)
-        let config: serde_json::Value = serde_json::from_str(&channel.config)
-            .unwrap_or(serde_json::Value::Null);
+        let config: serde_json::Value =
+            serde_json::from_str(&channel.config).unwrap_or(serde_json::Value::Null);
 
         // For email config, mask the password
         let sanitized_config = if channel.channel_type == "email" {
@@ -205,7 +207,9 @@ pub struct NotificationSubscription {
 impl NotificationSubscription {
     /// Get the event type enum
     pub fn get_event_type(&self) -> NotificationEventType {
-        self.event_type.parse().unwrap_or(NotificationEventType::DeploymentStarted)
+        self.event_type
+            .parse()
+            .unwrap_or(NotificationEventType::DeploymentStarted)
     }
 }
 

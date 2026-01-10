@@ -32,7 +32,11 @@ async fn execute_deployment_commands(
         db,
         deployment_id,
         "info",
-        &format!("Executing {} deployment commands ({} total)", phase, commands.len()),
+        &format!(
+            "Executing {} deployment commands ({} total)",
+            phase,
+            commands.len()
+        ),
     )
     .await?;
 
@@ -57,8 +61,13 @@ async fn execute_deployment_commands(
             } else {
                 result.stdout.clone()
             };
-            add_deployment_log(db, deployment_id, "info", &format!("Output: {}", stdout.trim()))
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                &format!("Output: {}", stdout.trim()),
+            )
+            .await?;
         }
 
         if !result.stderr.is_empty() {
@@ -67,8 +76,13 @@ async fn execute_deployment_commands(
             } else {
                 result.stderr.clone()
             };
-            add_deployment_log(db, deployment_id, "warn", &format!("Stderr: {}", stderr.trim()))
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "warn",
+                &format!("Stderr: {}", stderr.trim()),
+            )
+            .await?;
         }
 
         // Check exit code
@@ -95,7 +109,11 @@ async fn execute_deployment_commands(
             db,
             deployment_id,
             "info",
-            &format!("[{}/{}] Command completed successfully", i + 1, commands.len()),
+            &format!(
+                "[{}/{}] Command completed successfully",
+                i + 1,
+                commands.len()
+            ),
         )
         .await?;
     }
@@ -192,13 +210,7 @@ async fn run_upload_deployment(
 ) -> Result<String> {
     let work_dir = PathBuf::from(source_path);
 
-    add_deployment_log(
-        db,
-        deployment_id,
-        "info",
-        "Using uploaded source files...",
-    )
-    .await?;
+    add_deployment_log(db, deployment_id, "info", "Using uploaded source files...").await?;
     update_deployment_status(db, deployment_id, "building", None).await?;
 
     // Determine the actual build path (consider base_directory)
@@ -251,17 +263,17 @@ async fn run_upload_deployment(
             .await
             .unwrap_or_default();
 
-            nixpacks::build_image(
-                &build_path,
-                &image_tag,
-                nixpacks_config.as_ref(),
-                &env_vars,
-            )
-            .await
-            .context("Nixpacks build failed")?;
+            nixpacks::build_image(&build_path, &image_tag, nixpacks_config.as_ref(), &env_vars)
+                .await
+                .context("Nixpacks build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Nixpacks build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Nixpacks build completed successfully",
+            )
+            .await?;
         }
         "staticsite" => {
             add_deployment_log(
@@ -330,8 +342,13 @@ async fn run_upload_deployment(
                 .await
                 .context("Static site build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Static site build completed successfully",
+            )
+            .await?;
         }
         "railpack" => {
             add_deployment_log(
@@ -370,8 +387,13 @@ async fn run_upload_deployment(
                 .await
                 .context("Railpack build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Railpack build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Railpack build completed successfully",
+            )
+            .await?;
         }
         "cnb" | "paketo" | "heroku-cnb" => {
             add_deployment_log(
@@ -425,11 +447,22 @@ async fn run_upload_deployment(
                 .await
                 .context("Pack CLI build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Cloud Native Buildpacks build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Cloud Native Buildpacks build completed successfully",
+            )
+            .await?;
         }
         _ => {
-            add_deployment_log(db, deployment_id, "info", "Building uploaded project with Dockerfile...").await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Building uploaded project with Dockerfile...",
+            )
+            .await?;
 
             let dockerfile = app
                 .dockerfile_path
@@ -555,17 +588,17 @@ async fn run_git_deployment(
             .unwrap_or_default();
 
             // Build with Nixpacks
-            nixpacks::build_image(
-                &build_path,
-                &image_tag,
-                nixpacks_config.as_ref(),
-                &env_vars,
-            )
-            .await
-            .context("Nixpacks build failed")?;
+            nixpacks::build_image(&build_path, &image_tag, nixpacks_config.as_ref(), &env_vars)
+                .await
+                .context("Nixpacks build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Nixpacks build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Nixpacks build completed successfully",
+            )
+            .await?;
         }
         "staticsite" => {
             // Static site build using NGINX-based container
@@ -639,8 +672,13 @@ async fn run_git_deployment(
                 .await
                 .context("Static site build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Static site build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Static site build completed successfully",
+            )
+            .await?;
         }
         "railpack" => {
             // Railpack build (Railway's Nixpacks successor)
@@ -684,8 +722,13 @@ async fn run_git_deployment(
                 .await
                 .context("Railpack build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Railpack build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Railpack build completed successfully",
+            )
+            .await?;
         }
         "cnb" | "paketo" | "heroku-cnb" => {
             // Cloud Native Buildpacks build (Paketo/Heroku via pack CLI)
@@ -745,8 +788,13 @@ async fn run_git_deployment(
                 .await
                 .context("Pack CLI build failed")?;
 
-            add_deployment_log(db, deployment_id, "info", "Cloud Native Buildpacks build completed successfully")
-                .await?;
+            add_deployment_log(
+                db,
+                deployment_id,
+                "info",
+                "Cloud Native Buildpacks build completed successfully",
+            )
+            .await?;
         }
         _ => {
             // Default: Dockerfile build
@@ -842,12 +890,11 @@ pub async fn run_deployment(
 ) -> Result<DeploymentResult> {
     // Check if this is an upload-based deployment by looking at the deployment record
     // Upload deployments store the source path in commit_sha, or existing image_tag for restart
-    let deployment: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT commit_sha, image_tag FROM deployments WHERE id = ?"
-    )
-    .bind(deployment_id)
-    .fetch_optional(db)
-    .await?;
+    let deployment: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT commit_sha, image_tag FROM deployments WHERE id = ?")
+            .bind(deployment_id)
+            .fetch_optional(db)
+            .await?;
 
     let (upload_source_path, existing_image_tag) = deployment
         .map(|(commit_sha, image_tag)| {
@@ -862,13 +909,33 @@ pub async fn run_deployment(
         run_registry_deployment(db, runtime.clone(), deployment_id, app).await?
     } else if let Some(ref existing_tag) = existing_image_tag {
         // Restart from existing image (for upload apps without source)
-        add_deployment_log(db, deployment_id, "info", &format!("Restarting from existing image: {}", existing_tag)).await?;
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("Restarting from existing image: {}", existing_tag),
+        )
+        .await?;
         update_deployment_status(db, deployment_id, "building", None).await?;
-        add_deployment_log(db, deployment_id, "info", "Skipping build - using existing image").await?;
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            "Skipping build - using existing image",
+        )
+        .await?;
         existing_tag.clone()
     } else if let Some(source_path) = upload_source_path {
         // Upload-based deployment: use pre-extracted source
-        run_upload_deployment(db, runtime.clone(), deployment_id, app, &source_path, build_limits).await?
+        run_upload_deployment(
+            db,
+            runtime.clone(),
+            deployment_id,
+            app,
+            &source_path,
+            build_limits,
+        )
+        .await?
     } else {
         // Git-based deployment: clone and build
         run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?
@@ -884,20 +951,19 @@ pub async fn run_deployment(
     update_deployment_status(db, deployment_id, "starting", None).await?;
 
     // Get env vars from database
-    let raw_env_vars = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value FROM env_vars WHERE app_id = ?",
-    )
-    .bind(&app.id)
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    let raw_env_vars =
+        sqlx::query_as::<_, (String, String)>("SELECT key, value FROM env_vars WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
 
     // Decrypt env var values if encryption is enabled
     let env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
-            let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
-                .unwrap_or_else(|e| {
+            let decrypted =
+                crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
                     tracing::warn!("Failed to decrypt env var {}: {}", key, e);
                     value
                 });
@@ -942,7 +1008,10 @@ pub async fn run_deployment(
         binds,
     };
 
-    let container_id = runtime.run(&run_config).await.context("Failed to start container")?;
+    let container_id = runtime
+        .run(&run_config)
+        .await
+        .context("Failed to start container")?;
 
     // Update deployment with container ID and image tag
     sqlx::query("UPDATE deployments SET container_id = ?, image_tag = ? WHERE id = ?")
@@ -1032,7 +1101,15 @@ pub async fn run_deployment(
                     .await?;
 
                     // Try to trigger auto-rollback
-                    match trigger_auto_rollback(db, runtime.clone(), deployment_id, app, encryption_key).await {
+                    match trigger_auto_rollback(
+                        db,
+                        runtime.clone(),
+                        deployment_id,
+                        app,
+                        encryption_key,
+                    )
+                    .await
+                    {
                         Ok(rollback_info) => {
                             add_deployment_log(
                                 db,
@@ -1099,7 +1176,13 @@ pub async fn run_deployment(
     let final_info = runtime.inspect(&container_id).await?;
 
     // Step 9: Done
-    add_deployment_log(db, deployment_id, "info", "Deployment completed successfully").await?;
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        "Deployment completed successfully",
+    )
+    .await?;
     update_deployment_status(db, deployment_id, "running", None).await?;
 
     Ok(DeploymentResult {
@@ -1270,7 +1353,10 @@ pub async fn run_rollback(
         db,
         rollback_deployment_id,
         "info",
-        &format!("Rolling back to deployment {} with image {}", target_deployment.id, image_tag),
+        &format!(
+            "Rolling back to deployment {} with image {}",
+            target_deployment.id, image_tag
+        ),
     )
     .await?;
     update_deployment_status(db, rollback_deployment_id, "starting", None).await?;
@@ -1281,20 +1367,19 @@ pub async fn run_rollback(
     let _ = runtime.remove(&container_name).await;
 
     // Get env vars from database
-    let raw_env_vars = sqlx::query_as::<_, (String, String)>(
-        "SELECT key, value FROM env_vars WHERE app_id = ?",
-    )
-    .bind(&app.id)
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    let raw_env_vars =
+        sqlx::query_as::<_, (String, String)>("SELECT key, value FROM env_vars WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
 
     // Decrypt env var values if encryption is enabled
     let env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
-            let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
-                .unwrap_or_else(|e| {
+            let decrypted =
+                crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
                     tracing::warn!("Failed to decrypt env var {}: {}", key, e);
                     value
                 });
@@ -1339,7 +1424,13 @@ pub async fn run_rollback(
         binds,
     };
 
-    add_deployment_log(db, rollback_deployment_id, "info", "Starting rollback container...").await?;
+    add_deployment_log(
+        db,
+        rollback_deployment_id,
+        "info",
+        "Starting rollback container...",
+    )
+    .await?;
     let container_id = runtime
         .run(&run_config)
         .await
@@ -1355,7 +1446,13 @@ pub async fn run_rollback(
 
     // Health check
     if let Some(healthcheck) = &app.healthcheck {
-        add_deployment_log(db, rollback_deployment_id, "info", "Running health check...").await?;
+        add_deployment_log(
+            db,
+            rollback_deployment_id,
+            "info",
+            "Running health check...",
+        )
+        .await?;
         update_deployment_status(db, rollback_deployment_id, "checking", None).await?;
 
         let info = runtime.inspect(&container_id).await?;
@@ -1405,7 +1502,13 @@ pub async fn run_rollback(
     // Get final container info
     let final_info = runtime.inspect(&container_id).await?;
 
-    add_deployment_log(db, rollback_deployment_id, "info", "Rollback completed successfully").await?;
+    add_deployment_log(
+        db,
+        rollback_deployment_id,
+        "info",
+        "Rollback completed successfully",
+    )
+    .await?;
     update_deployment_status(db, rollback_deployment_id, "running", None).await?;
 
     Ok(DeploymentResult {
@@ -1444,8 +1547,9 @@ async fn trigger_auto_rollback(
     .fetch_optional(db)
     .await?;
 
-    let target = target_deployment
-        .ok_or_else(|| anyhow::anyhow!("No previous deployment with image found for auto-rollback"))?;
+    let target = target_deployment.ok_or_else(|| {
+        anyhow::anyhow!("No previous deployment with image found for auto-rollback")
+    })?;
 
     // Create a new deployment record for the auto-rollback
     let rollback_deployment_id = uuid::Uuid::new_v4().to_string();
@@ -1477,7 +1581,16 @@ async fn trigger_auto_rollback(
     .await?;
 
     // Execute the rollback
-    match run_rollback(db, runtime, &rollback_deployment_id, &target, app, encryption_key).await {
+    match run_rollback(
+        db,
+        runtime,
+        &rollback_deployment_id,
+        &target,
+        app,
+        encryption_key,
+    )
+    .await
+    {
         Ok(result) => {
             // Update the result to include auto-rollback info
             tracing::info!(
@@ -1495,7 +1608,13 @@ async fn trigger_auto_rollback(
         }
         Err(e) => {
             // Update rollback deployment as failed
-            let _ = update_deployment_status(db, &rollback_deployment_id, "failed", Some(&e.to_string())).await;
+            let _ = update_deployment_status(
+                db,
+                &rollback_deployment_id,
+                "failed",
+                Some(&e.to_string()),
+            )
+            .await;
             Err(anyhow::anyhow!("Auto-rollback execution failed: {}", e))
         }
     }

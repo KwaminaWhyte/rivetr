@@ -195,9 +195,7 @@ impl DiskMonitor {
             0
         };
 
-        let last_threshold = self
-            .last_warning_threshold
-            .load(Ordering::Relaxed);
+        let last_threshold = self.last_warning_threshold.load(Ordering::Relaxed);
 
         // Only log if we've crossed into a new threshold level
         if current_threshold > last_threshold {
@@ -286,7 +284,10 @@ mod tests {
     fn test_disk_stats_current_dir() {
         let stats = DiskStats::for_path(&PathBuf::from(".")).unwrap();
 
-        assert!(stats.total_bytes > 0, "Total bytes should be greater than 0");
+        assert!(
+            stats.total_bytes > 0,
+            "Total bytes should be greater than 0"
+        );
         assert!(
             stats.free_bytes <= stats.total_bytes,
             "Free bytes should not exceed total"

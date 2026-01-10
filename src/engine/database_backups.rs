@@ -112,13 +112,11 @@ impl DatabaseBackupTask {
     /// Run a scheduled backup for a database
     async fn run_scheduled_backup(&self, schedule: &DatabaseBackupSchedule) -> Result<()> {
         // Get the database
-        let database: ManagedDatabase = sqlx::query_as(
-            "SELECT * FROM databases WHERE id = ?",
-        )
-        .bind(&schedule.database_id)
-        .fetch_optional(&self.db)
-        .await?
-        .context("Database not found")?;
+        let database: ManagedDatabase = sqlx::query_as("SELECT * FROM databases WHERE id = ?")
+            .bind(&schedule.database_id)
+            .fetch_optional(&self.db)
+            .await?
+            .context("Database not found")?;
 
         // Check if database is running
         if database.status != "running" {
@@ -133,7 +131,8 @@ impl DatabaseBackupTask {
         }
 
         // Run the backup
-        self.backup_database(&database, BackupType::Scheduled).await?;
+        self.backup_database(&database, BackupType::Scheduled)
+            .await?;
 
         // Update the schedule's next run time
         self.update_schedule_next_run(&schedule.id).await?;
@@ -173,18 +172,23 @@ impl DatabaseBackupTask {
 
         // Update status to running
         let started_at = chrono::Utc::now().to_rfc3339();
-        sqlx::query("UPDATE database_backups SET status = ?, started_at = ?, updated_at = ? WHERE id = ?")
-            .bind(BackupStatus::Running.to_string())
-            .bind(&started_at)
-            .bind(&started_at)
-            .bind(&backup.id)
-            .execute(&self.db)
-            .await?;
+        sqlx::query(
+            "UPDATE database_backups SET status = ?, started_at = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(BackupStatus::Running.to_string())
+        .bind(&started_at)
+        .bind(&started_at)
+        .bind(&backup.id)
+        .execute(&self.db)
+        .await?;
         backup.status = BackupStatus::Running.to_string();
         backup.started_at = Some(started_at);
 
         // Create backup directory
-        let backup_dir = self.data_dir.join(&self.config.backup_dir).join(&database.id);
+        let backup_dir = self
+            .data_dir
+            .join(&self.config.backup_dir)
+            .join(&database.id);
         tokio::fs::create_dir_all(&backup_dir).await?;
 
         // Generate backup filename
@@ -210,15 +214,16 @@ impl DatabaseBackupTask {
                 self.backup_postgres(container_id, &creds, &backup_path)
                     .await
             }
-            "mysql" => {
-                self.backup_mysql(container_id, &creds, &backup_path).await
-            }
+            "mysql" => self.backup_mysql(container_id, &creds, &backup_path).await,
             "mongodb" => {
                 self.backup_mongodb(container_id, &creds, &backup_path)
                     .await
             }
             "redis" => self.backup_redis(container_id, &backup_path).await,
-            _ => Err(anyhow::anyhow!("Unsupported database type: {}", database.db_type)),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported database type: {}",
+                database.db_type
+            )),
         };
 
         let completed_at = chrono::Utc::now().to_rfc3339();
@@ -304,7 +309,10 @@ impl DatabaseBackupTask {
             "-U".to_string(),
             creds.username.clone(),
             "-d".to_string(),
-            creds.database.clone().unwrap_or_else(|| "postgres".to_string()),
+            creds
+                .database
+                .clone()
+                .unwrap_or_else(|| "postgres".to_string()),
             "-f".to_string(),
             "/tmp/backup.sql".to_string(),
         ];
@@ -313,11 +321,7 @@ impl DatabaseBackupTask {
         let full_cmd = vec![
             "sh".to_string(),
             "-c".to_string(),
-            format!(
-                "PGPASSWORD='{}' {}",
-                creds.password,
-                cmd.join(" ")
-            ),
+            format!("PGPASSWORD='{}' {}", creds.password, cmd.join(" ")),
         ];
 
         let result = self.runtime.run_command(container_id, full_cmd).await?;
@@ -337,7 +341,14 @@ impl DatabaseBackupTask {
         // Clean up temp file in container
         let _ = self
             .runtime
-            .run_command(container_id, vec!["rm".to_string(), "-f".to_string(), "/tmp/backup.sql".to_string()])
+            .run_command(
+                container_id,
+                vec![
+                    "rm".to_string(),
+                    "-f".to_string(),
+                    "/tmp/backup.sql".to_string(),
+                ],
+            )
             .await;
 
         Ok(())
@@ -350,8 +361,14 @@ impl DatabaseBackupTask {
         creds: &DatabaseCredentials,
         backup_path: &PathBuf,
     ) -> Result<()> {
-        let database = creds.database.clone().unwrap_or_else(|| creds.username.clone());
-        let password = creds.root_password.clone().unwrap_or_else(|| creds.password.clone());
+        let database = creds
+            .database
+            .clone()
+            .unwrap_or_else(|| creds.username.clone());
+        let password = creds
+            .root_password
+            .clone()
+            .unwrap_or_else(|| creds.password.clone());
 
         let cmd = vec![
             "sh".to_string(),
@@ -379,7 +396,14 @@ impl DatabaseBackupTask {
         // Clean up temp file in container
         let _ = self
             .runtime
-            .run_command(container_id, vec!["rm".to_string(), "-f".to_string(), "/tmp/backup.sql".to_string()])
+            .run_command(
+                container_id,
+                vec![
+                    "rm".to_string(),
+                    "-f".to_string(),
+                    "/tmp/backup.sql".to_string(),
+                ],
+            )
             .await;
 
         Ok(())
@@ -392,7 +416,10 @@ impl DatabaseBackupTask {
         creds: &DatabaseCredentials,
         backup_path: &PathBuf,
     ) -> Result<()> {
-        let database = creds.database.clone().unwrap_or_else(|| "admin".to_string());
+        let database = creds
+            .database
+            .clone()
+            .unwrap_or_else(|| "admin".to_string());
 
         let cmd = vec![
             "sh".to_string(),
@@ -422,7 +449,11 @@ impl DatabaseBackupTask {
             .runtime
             .run_command(
                 container_id,
-                vec!["rm".to_string(), "-f".to_string(), "/tmp/backup.archive".to_string()],
+                vec![
+                    "rm".to_string(),
+                    "-f".to_string(),
+                    "/tmp/backup.archive".to_string(),
+                ],
             )
             .await;
 
@@ -469,10 +500,7 @@ impl DatabaseBackupTask {
         host_path: &PathBuf,
     ) -> Result<()> {
         // Use cat to read the file and pipe to host
-        let cmd = vec![
-            "cat".to_string(),
-            container_path.to_string(),
-        ];
+        let cmd = vec!["cat".to_string(), container_path.to_string()];
 
         let result = self.runtime.run_command(container_id, cmd).await?;
 
@@ -491,12 +519,11 @@ impl DatabaseBackupTask {
 
     /// Update schedule's next run time
     async fn update_schedule_next_run(&self, schedule_id: &str) -> Result<()> {
-        let schedule: DatabaseBackupSchedule = sqlx::query_as(
-            "SELECT * FROM database_backup_schedules WHERE id = ?",
-        )
-        .bind(schedule_id)
-        .fetch_one(&self.db)
-        .await?;
+        let schedule: DatabaseBackupSchedule =
+            sqlx::query_as("SELECT * FROM database_backup_schedules WHERE id = ?")
+                .bind(schedule_id)
+                .fetch_one(&self.db)
+                .await?;
 
         let mut schedule = schedule;
         schedule.update_next_run();
@@ -519,7 +546,11 @@ impl DatabaseBackupTask {
     }
 
     /// Cleanup old backups based on retention policy
-    pub async fn cleanup_old_backups(&self, database_id: &str, retention_count: usize) -> Result<u64> {
+    pub async fn cleanup_old_backups(
+        &self,
+        database_id: &str,
+        retention_count: usize,
+    ) -> Result<u64> {
         // Get all completed backups for this database, ordered by creation date
         let backups: Vec<DatabaseBackup> = sqlx::query_as(
             r#"

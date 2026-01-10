@@ -91,7 +91,7 @@ export default function ProjectsPage() {
 
   const { data: databases = [] } = useQuery<ManagedDatabase[]>({
     queryKey: ["databases", currentTeamId],
-    queryFn: () => api.getDatabases(),
+    queryFn: () => api.getDatabases({ teamId: currentTeamId ?? undefined }),
     enabled: currentTeamId !== null,
   });
 

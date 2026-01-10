@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -12,7 +18,7 @@ import type { UpdateBasicAuthRequest } from "@/types/api";
 
 interface BasicAuthCardProps {
   appId: string;
-  token: string;
+  token?: string;
 }
 
 export function BasicAuthCard({ appId, token }: BasicAuthCardProps) {
@@ -42,7 +48,8 @@ export function BasicAuthCard({ appId, token }: BasicAuthCardProps) {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateBasicAuthRequest) => api.updateBasicAuth(appId, data, token),
+    mutationFn: (data: UpdateBasicAuthRequest) =>
+      api.updateBasicAuth(appId, data, token),
     onSuccess: () => {
       toast.success("Basic auth settings updated");
       queryClient.invalidateQueries({ queryKey: ["basic-auth", appId] });
@@ -149,8 +156,9 @@ export function BasicAuthCard({ appId, token }: BasicAuthCardProps) {
             <div className="text-sm text-amber-800 dark:text-amber-200">
               <p className="font-medium">Protect sensitive applications</p>
               <p className="mt-1 text-amber-700 dark:text-amber-300">
-                Enable basic auth to add a layer of protection for staging environments,
-                admin panels, or any application that should not be publicly accessible.
+                Enable basic auth to add a layer of protection for staging
+                environments, admin panels, or any application that should not
+                be publicly accessible.
               </p>
             </div>
           </div>
@@ -196,7 +204,9 @@ export function BasicAuthCard({ appId, token }: BasicAuthCardProps) {
 
             <div className="space-y-2">
               <Label htmlFor="basic-auth-password">
-                {basicAuth?.enabled ? "New Password (leave blank to keep current)" : "Password"}
+                {basicAuth?.enabled
+                  ? "New Password (leave blank to keep current)"
+                  : "Password"}
               </Label>
               <div className="relative">
                 <Input
@@ -207,7 +217,11 @@ export function BasicAuthCard({ appId, token }: BasicAuthCardProps) {
                     setPassword(e.target.value);
                     setIsDirty(true);
                   }}
-                  placeholder={basicAuth?.enabled ? "Leave blank to keep current" : "Enter password"}
+                  placeholder={
+                    basicAuth?.enabled
+                      ? "Leave blank to keep current"
+                      : "Enter password"
+                  }
                   autoComplete="new-password"
                 />
                 <Button

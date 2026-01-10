@@ -171,10 +171,7 @@ impl ProxyHandler {
                     Ok(response) => Ok(response),
                     Err(e) => {
                         error!(error = %e, backend = %backend.addr(), "Backend request failed");
-                        Ok(self.error_response(
-                            StatusCode::BAD_GATEWAY,
-                            "Backend unavailable",
-                        ))
+                        Ok(self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable"))
                     }
                 }
             }
@@ -232,10 +229,7 @@ impl ProxyHandler {
             Ok(response) => Ok(response),
             Err(e) => {
                 error!(error = %e, "WebSocket upgrade failed");
-                Ok(self.error_response(
-                    StatusCode::BAD_GATEWAY,
-                    "WebSocket upgrade failed",
-                ))
+                Ok(self.error_response(StatusCode::BAD_GATEWAY, "WebSocket upgrade failed"))
             }
         }
     }
@@ -254,7 +248,11 @@ impl ProxyHandler {
             return Some(
                 Response::builder()
                     .status(StatusCode::BAD_REQUEST)
-                    .body(Full::new(Bytes::from("Missing token")).map_err(|e| match e {}).boxed())
+                    .body(
+                        Full::new(Bytes::from("Missing token"))
+                            .map_err(|e| match e {})
+                            .boxed(),
+                    )
                     .unwrap(),
             );
         }
@@ -269,7 +267,11 @@ impl ProxyHandler {
                     Response::builder()
                         .status(StatusCode::OK)
                         .header("Content-Type", "text/plain")
-                        .body(Full::new(Bytes::from(key_auth)).map_err(|e| match e {}).boxed())
+                        .body(
+                            Full::new(Bytes::from(key_auth))
+                                .map_err(|e| match e {})
+                                .boxed(),
+                        )
                         .unwrap(),
                 )
             }
@@ -278,7 +280,11 @@ impl ProxyHandler {
                 Some(
                     Response::builder()
                         .status(StatusCode::NOT_FOUND)
-                        .body(Full::new(Bytes::from("Challenge not found")).map_err(|e| match e {}).boxed())
+                        .body(
+                            Full::new(Bytes::from("Challenge not found"))
+                                .map_err(|e| match e {})
+                                .boxed(),
+                        )
                         .unwrap(),
                 )
             }
@@ -306,7 +312,10 @@ impl ProxyHandler {
         backend: &Backend,
     ) -> Result<(), Response<BoxBody<Bytes, hyper::Error>>> {
         // Get Authorization header
-        let auth_header = req.headers().get(AUTHORIZATION).and_then(|h| h.to_str().ok());
+        let auth_header = req
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|h| h.to_str().ok());
 
         let credentials = match auth_header {
             Some(header) if header.starts_with("Basic ") => {

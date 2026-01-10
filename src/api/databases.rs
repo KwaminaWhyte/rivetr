@@ -14,7 +14,9 @@ use crate::db::{
     actions, resource_types, CreateManagedDatabaseRequest, DatabaseCredentials, DatabaseStatus,
     DatabaseType, ManagedDatabase, ManagedDatabaseResponse, User,
 };
-use crate::engine::database_config::{generate_env_vars, generate_password, generate_username, get_config};
+use crate::engine::database_config::{
+    generate_env_vars, generate_password, generate_username, get_config,
+};
 use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
@@ -24,6 +26,8 @@ use super::audit::{audit_log, extract_client_ip};
 pub struct ListQuery {
     #[serde(default)]
     pub reveal: bool,
+    /// Filter by team ID
+    pub team_id: Option<String>,
 }
 
 /// List all managed databases
@@ -31,11 +35,29 @@ pub async fn list_databases(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ManagedDatabaseResponse>>, StatusCode> {
-    let databases = sqlx::query_as::<_, ManagedDatabase>(
-        "SELECT * FROM databases ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
+    let databases = if let Some(team_id) = &query.team_id {
+        // Filter by team_id
+        // Also include databases with NULL team_id if team_id is empty (for backward compatibility)
+        if team_id.is_empty() {
+            sqlx::query_as::<_, ManagedDatabase>(
+                "SELECT * FROM databases WHERE team_id IS NULL ORDER BY created_at DESC",
+            )
+            .fetch_all(&state.db)
+            .await
+        } else {
+            sqlx::query_as::<_, ManagedDatabase>(
+                "SELECT * FROM databases WHERE team_id = ? ORDER BY created_at DESC",
+            )
+            .bind(team_id)
+            .fetch_all(&state.db)
+            .await
+        }
+    } else {
+        // No filter, return all databases
+        sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
+    }
     .map_err(|e| {
         tracing::error!("Failed to list databases: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -130,7 +152,11 @@ pub async fn create_database(
 
     // Build absolute volume path for Docker compatibility
     let volume_path = std::fs::canonicalize(&state.config.server.data_dir)
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(&state.config.server.data_dir))
+        .unwrap_or_else(|_| {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join(&state.config.server.data_dir)
+        })
         .join("databases")
         .join(&req.name)
         .to_string_lossy()
@@ -144,8 +170,8 @@ pub async fn create_database(
         INSERT INTO databases (
             id, name, db_type, version, status, internal_port, external_port,
             public_access, credentials, volume_name, volume_path, memory_limit,
-            cpu_limit, project_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cpu_limit, project_id, team_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -162,6 +188,7 @@ pub async fn create_database(
     .bind(req.memory_limit.as_deref().unwrap_or("512mb"))
     .bind(req.cpu_limit.as_deref().unwrap_or("0.5"))
     .bind(&req.project_id)
+    .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -455,7 +482,10 @@ pub async fn get_database_logs(
     match state.runtime.inspect(&container_id).await {
         Ok(info) => {
             if !info.running {
-                tracing::info!("Database {} container exists but is not running", database.name);
+                tracing::info!(
+                    "Database {} container exists but is not running",
+                    database.name
+                );
                 return Err((
                     StatusCode::NOT_FOUND,
                     Json(serde_json::json!({
@@ -466,7 +496,11 @@ pub async fn get_database_logs(
             }
         }
         Err(e) => {
-            tracing::warn!("Failed to inspect container for database {}: {}", database.name, e);
+            tracing::warn!(
+                "Failed to inspect container for database {}: {}",
+                database.name,
+                e
+            );
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(serde_json::json!({
@@ -645,8 +679,8 @@ pub async fn update_database(
         })?;
 
     // Check if public_access is changing
-    let public_access_changed = req.public_access.is_some()
-        && req.public_access.unwrap() != database.is_public();
+    let public_access_changed =
+        req.public_access.is_some() && req.public_access.unwrap() != database.is_public();
 
     // Validate external port if provided
     if let Some(port) = req.external_port {
@@ -694,10 +728,7 @@ pub async fn update_database(
     updates.push("updated_at = datetime('now')");
 
     // Execute the update using direct bindings
-    let update_sql = format!(
-        "UPDATE databases SET {} WHERE id = ?",
-        updates.join(", ")
-    );
+    let update_sql = format!("UPDATE databases SET {} WHERE id = ?", updates.join(", "));
 
     // Build and execute the query manually since we have dynamic bindings
     let mut query = sqlx::query(&update_sql);
@@ -813,7 +844,11 @@ pub async fn get_database_stats(
 
     // Check if database is running
     if database.status != "running" {
-        tracing::warn!("Database {} is not running (status: {})", id, database.status);
+        tracing::warn!(
+            "Database {} is not running (status: {})",
+            id,
+            database.status
+        );
         return Err(StatusCode::NOT_FOUND);
     }
 
@@ -824,14 +859,10 @@ pub async fn get_database_stats(
     })?;
 
     // Get stats from the container runtime
-    let stats = state
-        .runtime
-        .stats(&container_id)
-        .await
-        .map_err(|e| {
-            tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let stats = state.runtime.stats(&container_id).await.map_err(|e| {
+        tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(stats))
 }

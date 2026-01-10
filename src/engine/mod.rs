@@ -24,7 +24,6 @@ pub use static_builder::*;
 pub use stats_collector::*;
 pub use zip_extract::*;
 
-use arc_swap::ArcSwap;
 use crate::api::metrics::{record_deployment_failed, record_deployment_success};
 use crate::config::{AuthConfig, RuntimeConfig};
 use crate::crypto;
@@ -33,6 +32,7 @@ use crate::notifications::{NotificationPayload, NotificationService};
 use crate::proxy::{Backend, BasicAuthConfig, RouteTable};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
+use arc_swap::ArcSwap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -81,7 +81,14 @@ impl DeploymentEngine {
             .as_ref()
             .map(|secret| crypto::derive_key(secret));
 
-        Self { db, runtime, routes, rx, build_limits, encryption_key }
+        Self {
+            db,
+            runtime,
+            routes,
+            rx,
+            build_limits,
+            encryption_key,
+        }
     }
 
     pub async fn run(mut self) {
@@ -117,7 +124,16 @@ impl DeploymentEngine {
                     tracing::warn!(error = %e, "Failed to send deployment_started notification");
                 }
 
-                match run_deployment(&db, runtime.clone(), &deployment_id, &app, &build_limits, encryption_key.as_ref()).await {
+                match run_deployment(
+                    &db,
+                    runtime.clone(),
+                    &deployment_id,
+                    &app,
+                    &build_limits,
+                    encryption_key.as_ref(),
+                )
+                .await
+                {
                     Ok(container_info) => {
                         // Record successful deployment metric
                         record_deployment_success();
@@ -139,7 +155,7 @@ impl DeploymentEngine {
                         // Mark all previous "running" deployments for this app as "replaced"
                         let _ = sqlx::query(
                             "UPDATE deployments SET status = 'replaced', finished_at = ?
-                             WHERE app_id = ? AND status = 'running' AND id != ?"
+                             WHERE app_id = ? AND status = 'running' AND id != ?",
                         )
                         .bind(chrono::Utc::now().to_rfc3339())
                         .bind(&app.id)
@@ -238,16 +254,21 @@ impl DeploymentEngine {
                                 &db,
                                 &deployment_id,
                                 "failed",
-                                Some(&format!("Health check failed. Auto-rollback triggered to {}", auto_rollback.target_deployment_id))
-                            ).await;
+                                Some(&format!(
+                                    "Health check failed. Auto-rollback triggered to {}",
+                                    auto_rollback.target_deployment_id
+                                )),
+                            )
+                            .await;
 
                             // Get the rollback deployment info to update routes
-                            if let Ok(Some(rollback_deployment)) = sqlx::query_as::<_, crate::db::Deployment>(
-                                "SELECT * FROM deployments WHERE id = ?"
-                            )
-                            .bind(&auto_rollback.rollback_deployment_id)
-                            .fetch_optional(&db)
-                            .await
+                            if let Ok(Some(rollback_deployment)) =
+                                sqlx::query_as::<_, crate::db::Deployment>(
+                                    "SELECT * FROM deployments WHERE id = ?",
+                                )
+                                .bind(&auto_rollback.rollback_deployment_id)
+                                .fetch_optional(&db)
+                                .await
                             {
                                 if let Some(ref container_id) = rollback_deployment.container_id {
                                     // Get container port and update routes
@@ -265,20 +286,24 @@ impl DeploymentEngine {
                                                 .with_healthcheck(app.healthcheck.clone());
 
                                                 if app.basic_auth_enabled != 0 {
-                                                    if let (Some(username), Some(password_hash)) =
-                                                        (&app.basic_auth_username, &app.basic_auth_password_hash)
-                                                    {
-                                                        backend.set_basic_auth(BasicAuthConfig::new(
-                                                            username.clone(),
-                                                            password_hash.clone(),
-                                                        ));
+                                                    if let (Some(username), Some(password_hash)) = (
+                                                        &app.basic_auth_username,
+                                                        &app.basic_auth_password_hash,
+                                                    ) {
+                                                        backend.set_basic_auth(
+                                                            BasicAuthConfig::new(
+                                                                username.clone(),
+                                                                password_hash.clone(),
+                                                            ),
+                                                        );
                                                     }
                                                 }
                                                 backend
                                             };
 
                                             for domain in &all_domains {
-                                                route_table.add_route(domain.clone(), create_backend());
+                                                route_table
+                                                    .add_route(domain.clone(), create_backend());
                                             }
 
                                             tracing::info!(
@@ -295,7 +320,7 @@ impl DeploymentEngine {
                             // Mark previous running deployments as replaced (except the rollback)
                             let _ = sqlx::query(
                                 "UPDATE deployments SET status = 'replaced', finished_at = ?
-                                 WHERE app_id = ? AND status = 'running' AND id != ?"
+                                 WHERE app_id = ? AND status = 'running' AND id != ?",
                             )
                             .bind(chrono::Utc::now().to_rfc3339())
                             .bind(&app.id)
@@ -319,7 +344,9 @@ impl DeploymentEngine {
                                     auto_rollback.target_deployment_id
                                 )),
                             );
-                            if let Err(notify_err) = notification_service.send(&rollback_payload).await {
+                            if let Err(notify_err) =
+                                notification_service.send(&rollback_payload).await
+                            {
                                 tracing::warn!(error = %notify_err, "Failed to send auto-rollback notification");
                             }
                         } else {
@@ -327,7 +354,13 @@ impl DeploymentEngine {
                             record_deployment_failed();
 
                             tracing::error!("Deployment {} failed: {}", deployment_id, e);
-                            let _ = update_deployment_status(&db, &deployment_id, "failed", Some(&e.to_string())).await;
+                            let _ = update_deployment_status(
+                                &db,
+                                &deployment_id,
+                                "failed",
+                                Some(&e.to_string()),
+                            )
+                            .await;
 
                             // Send deployment_failed notification
                             let failed_payload = NotificationPayload::deployment_event(
@@ -339,7 +372,9 @@ impl DeploymentEngine {
                                 format!("Deployment failed for {}", app.name),
                                 Some(e.to_string()),
                             );
-                            if let Err(notify_err) = notification_service.send(&failed_payload).await {
+                            if let Err(notify_err) =
+                                notification_service.send(&failed_payload).await
+                            {
                                 tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
                             }
                         }
@@ -386,14 +421,12 @@ async fn add_deployment_log(
     level: &str,
     message: &str,
 ) -> anyhow::Result<()> {
-    sqlx::query(
-        "INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)",
-    )
-    .bind(deployment_id)
-    .bind(level)
-    .bind(message)
-    .execute(db)
-    .await?;
+    sqlx::query("INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)")
+        .bind(deployment_id)
+        .bind(level)
+        .bind(message)
+        .execute(db)
+        .await?;
 
     Ok(())
 }

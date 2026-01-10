@@ -213,13 +213,15 @@ pub fn record_deployment_failed() {
 
 /// Record a successful health check.
 pub fn record_health_check_success(domain: &str, duration_secs: f64) {
-    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "success").increment(1);
+    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "success")
+        .increment(1);
     histogram!(HEALTH_CHECK_DURATION_SECONDS, "domain" => domain.to_string()).record(duration_secs);
 }
 
 /// Record a failed health check.
 pub fn record_health_check_failure(domain: &str, duration_secs: f64) {
-    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "failure").increment(1);
+    counter!(HEALTH_CHECK_TOTAL, "domain" => domain.to_string(), "result" => "failure")
+        .increment(1);
     histogram!(HEALTH_CHECK_DURATION_SECONDS, "domain" => domain.to_string()).record(duration_secs);
 }
 
@@ -245,7 +247,8 @@ pub fn set_container_memory_bytes(app_name: &str, memory_bytes: u64) {
 
 /// Update container memory limit metric.
 pub fn set_container_memory_limit_bytes(app_name: &str, memory_limit_bytes: u64) {
-    gauge!(CONTAINER_MEMORY_LIMIT_BYTES, "app_name" => app_name.to_string()).set(memory_limit_bytes as f64);
+    gauge!(CONTAINER_MEMORY_LIMIT_BYTES, "app_name" => app_name.to_string())
+        .set(memory_limit_bytes as f64);
 }
 
 /// Update container network RX bytes metric.

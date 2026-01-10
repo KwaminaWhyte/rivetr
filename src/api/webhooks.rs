@@ -153,16 +153,12 @@ pub async fn github_webhook(
 }
 
 /// Handle GitHub push events (regular deployments)
-async fn handle_github_push(
-    state: Arc<AppState>,
-    body: &[u8],
-) -> Result<StatusCode, StatusCode> {
+async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCode, StatusCode> {
     // Parse the JSON payload
-    let payload: GitHubPushEvent = serde_json::from_slice(body)
-        .map_err(|e| {
-            tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
-            StatusCode::BAD_REQUEST
-        })?;
+    let payload: GitHubPushEvent = serde_json::from_slice(body).map_err(|e| {
+        tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
 
     // Extract branch from ref (refs/heads/main -> main)
     let branch = payload
@@ -213,7 +209,11 @@ async fn handle_github_push(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+        if let Err(e) = state
+            .deploy_tx
+            .send((deployment_id.clone(), app.clone()))
+            .await
+        {
             tracing::error!("Failed to queue deployment: {}", e);
         }
 
@@ -229,11 +229,10 @@ async fn handle_github_pull_request(
     body: &[u8],
 ) -> Result<StatusCode, StatusCode> {
     // Parse the JSON payload
-    let payload: GitHubPullRequestEvent = serde_json::from_slice(body)
-        .map_err(|e| {
-            tracing::error!("Failed to parse GitHub PR webhook payload: {}", e);
-            StatusCode::BAD_REQUEST
-        })?;
+    let payload: GitHubPullRequestEvent = serde_json::from_slice(body).map_err(|e| {
+        tracing::error!("Failed to parse GitHub PR webhook payload: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
 
     tracing::info!(
         "GitHub PR webhook received: {} PR #{} action={}",
@@ -366,14 +365,13 @@ async fn handle_preview_cleanup(
     payload: &GitHubPullRequestEvent,
 ) -> Result<(), StatusCode> {
     // Find the preview deployment
-    let preview: Option<PreviewDeployment> = sqlx::query_as(
-        "SELECT * FROM preview_deployments WHERE app_id = ? AND pr_number = ?",
-    )
-    .bind(&app.id)
-    .bind(payload.number)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let preview: Option<PreviewDeployment> =
+        sqlx::query_as("SELECT * FROM preview_deployments WHERE app_id = ? AND pr_number = ?")
+            .bind(&app.id)
+            .bind(payload.number)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(preview) = preview {
         tracing::info!(
@@ -453,11 +451,10 @@ pub async fn gitlab_webhook(
     }
 
     // Parse the JSON payload
-    let payload: GitLabPushEvent = serde_json::from_slice(&body)
-        .map_err(|e| {
-            tracing::error!("Failed to parse GitLab webhook payload: {}", e);
-            StatusCode::BAD_REQUEST
-        })?;
+    let payload: GitLabPushEvent = serde_json::from_slice(&body).map_err(|e| {
+        tracing::error!("Failed to parse GitLab webhook payload: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
 
     let branch = payload
         .git_ref
@@ -554,11 +551,10 @@ pub async fn gitea_webhook(
     }
 
     // Parse the JSON payload
-    let payload: GiteaPushEvent = serde_json::from_slice(&body)
-        .map_err(|e| {
-            tracing::error!("Failed to parse Gitea webhook payload: {}", e);
-            StatusCode::BAD_REQUEST
-        })?;
+    let payload: GiteaPushEvent = serde_json::from_slice(&body).map_err(|e| {
+        tracing::error!("Failed to parse Gitea webhook payload: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
 
     let branch = payload
         .git_ref

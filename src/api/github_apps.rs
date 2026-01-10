@@ -50,17 +50,12 @@ pub async fn create_manifest(
 
     // Build the callback URL (where GitHub will redirect after registration)
     // Use external_url if configured (for ngrok/tunnels), otherwise build from host:port
-    let api_host = state
-        .config
-        .server
-        .external_url
-        .clone()
-        .unwrap_or_else(|| {
-            format!(
-                "http://{}:{}",
-                state.config.server.host, state.config.server.api_port
-            )
-        });
+    let api_host = state.config.server.external_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.config.server.host, state.config.server.api_port
+        )
+    });
     let callback_url = format!("{}/api/auth/github-apps/callback", api_host);
     let setup_url = format!("{}/api/auth/github-apps/installation/callback", api_host);
 
@@ -141,10 +136,12 @@ pub async fn manifest_callback(
         ));
     }
 
-    let github_response: GitHubManifestCallbackResponse = response
-        .json()
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to parse response: {}", e)))?;
+    let github_response: GitHubManifestCallbackResponse = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse response: {}", e),
+        )
+    })?;
 
     // Parse state to get metadata
     let (is_system_wide, team_id) = if let Some(state_str) = &params.state {
@@ -167,13 +164,21 @@ pub async fn manifest_callback(
     };
 
     // Encrypt sensitive fields
-    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
-    let encrypted_client_secret = crypto::encrypt_if_key_available(&github_response.client_secret, encryption_key.as_ref())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let encrypted_private_key = crypto::encrypt_if_key_available(&github_response.pem, encryption_key.as_ref())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let encrypted_webhook_secret = crypto::encrypt_if_key_available(&github_response.webhook_secret, encryption_key.as_ref())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
+    let encrypted_client_secret =
+        crypto::encrypt_if_key_available(&github_response.client_secret, encryption_key.as_ref())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let encrypted_private_key =
+        crypto::encrypt_if_key_available(&github_response.pem, encryption_key.as_ref())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let encrypted_webhook_secret =
+        crypto::encrypt_if_key_available(&github_response.webhook_secret, encryption_key.as_ref())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Create the GitHub App record
     let id = uuid::Uuid::new_v4().to_string();
@@ -223,12 +228,10 @@ pub async fn list_apps(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // For now, return all apps (in production, filter by team membership)
-    let apps: Vec<GitHubApp> = sqlx::query_as(
-        "SELECT * FROM github_apps ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let apps: Vec<GitHubApp> = sqlx::query_as("SELECT * FROM github_apps ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let responses: Vec<GitHubAppResponse> = apps.into_iter().map(GitHubAppResponse::from).collect();
     Ok(Json(responses))
@@ -265,7 +268,10 @@ pub async fn get_install_url(
     let install_url = if let Some(slug) = &app.slug {
         format!("https://github.com/apps/{}/installations/new", slug)
     } else {
-        format!("https://github.com/settings/apps/{}/installations", app.name)
+        format!(
+            "https://github.com/settings/apps/{}/installations",
+            app.name
+        )
     };
 
     Ok(Json(InstallUrlResponse { install_url }))
@@ -285,7 +291,12 @@ pub async fn installation_callback(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
 
     // Try to find the app that owns this installation
     let mut found_app: Option<GitHubApp> = None;
@@ -297,7 +308,8 @@ pub async fn installation_callback(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         // Get an installation token using the app JWT
-        let token_result = get_installation_token(app.app_id, &private_key, params.installation_id).await;
+        let token_result =
+            get_installation_token(app.app_id, &private_key, params.installation_id).await;
 
         if let Ok(token_response) = token_result {
             // This app owns the installation
@@ -308,8 +320,9 @@ pub async fn installation_callback(
             found_app = Some(app);
 
             // Store the access token (for future use in caching)
-            let _encrypted_token = crypto::encrypt_if_key_available(&token_response.token, encryption_key.as_ref())
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let _encrypted_token =
+                crypto::encrypt_if_key_available(&token_response.token, encryption_key.as_ref())
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             // We need to get installation details from GitHub
             // Using the app JWT to list installations
@@ -325,7 +338,9 @@ pub async fn installation_callback(
                             account_type: repo.owner.owner_type.clone(),
                             avatar_url: None,
                         },
-                        repository_selection: token_response.repository_selection.unwrap_or_else(|| "all".to_string()),
+                        repository_selection: token_response
+                            .repository_selection
+                            .unwrap_or_else(|| "all".to_string()),
                         access_tokens_url: String::new(),
                         repositories_url: String::new(),
                         html_url: String::new(),
@@ -344,7 +359,10 @@ pub async fn installation_callback(
         }
     }
 
-    let app = found_app.ok_or((StatusCode::NOT_FOUND, "No registered app owns this installation".to_string()))?;
+    let app = found_app.ok_or((
+        StatusCode::NOT_FOUND,
+        "No registered app owns this installation".to_string(),
+    ))?;
 
     // Create the installation record
     let installation_id_uuid = uuid::Uuid::new_v4().to_string();
@@ -361,7 +379,13 @@ pub async fn installation_callback(
                 Some(serde_json::to_string(&info.permissions).unwrap_or_default()),
             )
         } else {
-            ("unknown".to_string(), "unknown".to_string(), 0i64, None, None)
+            (
+                "unknown".to_string(),
+                "unknown".to_string(),
+                0i64,
+                None,
+                None,
+            )
         };
 
     sqlx::query(
@@ -455,14 +479,13 @@ pub async fn list_repo_branches(
     Path((installation_id, owner, repo)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Get the installation
-    let installation: GitHubAppInstallation = sqlx::query_as(
-        "SELECT * FROM github_app_installations WHERE id = ?",
-    )
-    .bind(&installation_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
+    let installation: GitHubAppInstallation =
+        sqlx::query_as("SELECT * FROM github_app_installations WHERE id = ?")
+            .bind(&installation_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
 
     // Get the associated GitHub App
     let app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
@@ -473,21 +496,34 @@ pub async fn list_repo_branches(
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
     // Decrypt the private key
-    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
     let private_key = crypto::decrypt_if_encrypted(&app.private_key, encryption_key.as_ref())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Get an installation access token
-    let token_response = get_installation_token(app.app_id, &private_key, installation.installation_id)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get installation token: {}", e)))?;
+    let token_response =
+        get_installation_token(app.app_id, &private_key, installation.installation_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to get installation token: {}", e),
+                )
+            })?;
 
     // List branches
     let client = GitHubClient::new(token_response.token);
-    let branches = client
-        .list_branches(&owner, &repo)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to list branches: {}", e)))?;
+    let branches = client.list_branches(&owner, &repo).await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to list branches: {}", e),
+        )
+    })?;
 
     Ok(Json(branches))
 }
@@ -502,14 +538,13 @@ pub async fn list_repos_by_installation(
     Query(params): Query<ListReposParams>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Get the installation
-    let installation: GitHubAppInstallation = sqlx::query_as(
-        "SELECT * FROM github_app_installations WHERE id = ?",
-    )
-    .bind(&installation_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
+    let installation: GitHubAppInstallation =
+        sqlx::query_as("SELECT * FROM github_app_installations WHERE id = ?")
+            .bind(&installation_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
 
     // Get the associated GitHub App
     let app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
@@ -520,21 +555,37 @@ pub async fn list_repos_by_installation(
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
     // Decrypt the private key
-    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
     let private_key = crypto::decrypt_if_encrypted(&app.private_key, encryption_key.as_ref())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Get an installation access token
-    let token_response = get_installation_token(app.app_id, &private_key, installation.installation_id)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get installation token: {}", e)))?;
+    let token_response =
+        get_installation_token(app.app_id, &private_key, installation.installation_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to get installation token: {}", e),
+                )
+            })?;
 
     // List repositories
     let client = GitHubClient::new(token_response.token);
     let repos = client
         .list_repos(params.per_page, params.page)
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to list repos: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to list repos: {}", e),
+            )
+        })?;
 
     Ok(Json(repos))
 }
@@ -554,32 +605,47 @@ pub async fn list_installation_repos(
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
     // Get the installation
-    let installation: GitHubAppInstallation = sqlx::query_as(
-        "SELECT * FROM github_app_installations WHERE id = ? AND github_app_id = ?",
-    )
-    .bind(&installation_id)
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
+    let installation: GitHubAppInstallation =
+        sqlx::query_as("SELECT * FROM github_app_installations WHERE id = ? AND github_app_id = ?")
+            .bind(&installation_id)
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((StatusCode::NOT_FOUND, "Installation not found".to_string()))?;
 
     // Decrypt the private key
-    let encryption_key = state.config.auth.encryption_key.as_ref().map(|k| crypto::derive_key(k));
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
     let private_key = crypto::decrypt_if_encrypted(&app.private_key, encryption_key.as_ref())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Get an installation access token
-    let token_response = get_installation_token(app.app_id, &private_key, installation.installation_id)
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to get installation token: {}", e)))?;
+    let token_response =
+        get_installation_token(app.app_id, &private_key, installation.installation_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to get installation token: {}", e),
+                )
+            })?;
 
     // List repositories
     let client = GitHubClient::new(token_response.token);
     let repos = client
         .list_repos(params.per_page, params.page)
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to list repos: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to list repos: {}", e),
+            )
+        })?;
 
     Ok(Json(repos))
 }

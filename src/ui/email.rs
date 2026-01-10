@@ -18,23 +18,21 @@ impl DeploymentEmailTemplate {
             _ => "📦",
         };
 
-        let commit_info = self.commit_sha
+        let commit_info = self
+            .commit_sha
             .as_ref()
             .map(|sha| format!("\nCommit: {}", &sha[..7.min(sha.len())]))
             .unwrap_or_default();
 
-        let error_info = self.error_message
+        let error_info = self
+            .error_message
             .as_ref()
             .map(|e| format!("\n\nError: {}", e))
             .unwrap_or_default();
 
         format!(
             "{} Deployment Update: {}\n\nStatus: {}{}{}",
-            status_emoji,
-            self.app_name,
-            self.status,
-            commit_info,
-            error_info
+            status_emoji, self.app_name, self.status, commit_info, error_info
         )
     }
 }
