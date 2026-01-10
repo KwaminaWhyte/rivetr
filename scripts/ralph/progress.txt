@@ -100,3 +100,40 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - React Query keys should include team_id to trigger refetch on team switch
   - enabled: currentTeamId !== null prevents queries before team loads
 ---
+
+## 01/10/2026 - US-004
+- Added team_id field to Rust Project models (src/db/models/project.rs)
+  - Added team_id to Project struct
+  - Added team_id to ProjectWithAppCount DTO
+  - Added team_id to ProjectWithApps DTO
+  - Added team_id to CreateProjectRequest DTO
+- Modified GET /api/projects endpoint (src/api/projects.rs)
+  - Added ListProjectsQuery struct with optional team_id parameter
+  - Filter by team_id when provided
+  - Return all projects when no team_id filter (backward compatibility)
+  - Support empty string team_id to get legacy/unassigned projects
+- Updated project creation INSERT query to include team_id column
+- Updated frontend API (frontend/app/lib/api/projects.ts)
+  - Modified getProjects to accept optional teamId parameter
+  - Pass team_id as query parameter
+- Updated frontend pages to pass team context:
+  - projects/_index.tsx - passes currentTeamId to getProjects and createProject
+  - projects/$project-id.apps.new.tsx - filters projects by current team for dropdown
+- Updated frontend types (frontend/app/types/api.ts)
+  - Added team_id to Project interface
+  - Added team_id to CreateProjectRequest interface
+- Updated server-side API (frontend/app/lib/api.server.ts)
+  - Added optional teamId parameter to getProjects
+- Files changed:
+  - src/api/projects.rs
+  - src/db/models/project.rs
+  - frontend/app/lib/api/projects.ts
+  - frontend/app/lib/api.server.ts
+  - frontend/app/routes/projects/_index.tsx
+  - frontend/app/routes/projects/$project-id.apps.new.tsx
+  - frontend/app/types/api.ts
+- **Learnings for future iterations:**
+  - Projects table already has team_id column from migration 015_teams.sql (same as apps)
+  - Pattern for team filtering is consistent: add ListXxxQuery struct, optional team_id, use match expression
+  - Frontend pattern: add teamId param to API function, include in query key, set enabled: currentTeamId !== null
+---
