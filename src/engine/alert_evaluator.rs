@@ -9,9 +9,12 @@
 //! - Hysteresis: Only triggers alerts after 2 consecutive threshold breaches
 //! - Duplicate prevention: 15-minute window between notifications for same alert
 //! - Automatically resolves alerts when metrics return to normal
+//! - Sends email notifications when alerts fire or resolve
 
 use crate::db::{AlertBreachCount, AlertConfig, AlertEvent, ResourceMetric};
+use crate::notifications::AlertNotificationService;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 
 /// Minimum consecutive breaches required before triggering an alert
 const HYSTERESIS_THRESHOLD: i64 = 2;
@@ -32,12 +35,33 @@ pub struct AlertEvaluationResult {
 /// Alert evaluation service
 pub struct AlertEvaluator {
     db: SqlitePool,
+    /// Optional notification service for sending email alerts
+    notification_service: Option<Arc<AlertNotificationService>>,
+    /// Optional dashboard URL for building links in notifications
+    dashboard_url: Option<String>,
 }
 
 impl AlertEvaluator {
     /// Create a new alert evaluator
     pub fn new(db: SqlitePool) -> Self {
-        Self { db }
+        Self {
+            db,
+            notification_service: None,
+            dashboard_url: None,
+        }
+    }
+
+    /// Create a new alert evaluator with notification service
+    pub fn with_notifications(
+        db: SqlitePool,
+        notification_service: Arc<AlertNotificationService>,
+        dashboard_url: Option<String>,
+    ) -> Self {
+        Self {
+            db,
+            notification_service: Some(notification_service),
+            dashboard_url,
+        }
     }
 
     /// Evaluate alerts for a single app based on the latest metric
@@ -177,14 +201,25 @@ impl AlertEvaluator {
         match active_alert {
             Some(alert) => {
                 // Update existing alert with new value
-                AlertEvent::update_value(&self.db, &alert.id, current_value, consecutive_count)
-                    .await?;
+                let updated_alert =
+                    AlertEvent::update_value(&self.db, &alert.id, current_value, consecutive_count)
+                        .await?;
+
+                // Check if we should send a re-notification (15-minute window)
+                if updated_alert.should_notify() {
+                    self.send_alert_notification(&updated_alert).await;
+                    // Mark as notified
+                    if let Err(e) = AlertEvent::set_notified(&self.db, &updated_alert.id).await {
+                        tracing::warn!(error = %e, "Failed to update notification timestamp");
+                    }
+                }
+
                 Ok(AlertAction::Updated)
             }
             None => {
                 // Only trigger new alert if hysteresis threshold is met
                 if consecutive_count >= HYSTERESIS_THRESHOLD {
-                    AlertEvent::create(
+                    let alert = AlertEvent::create(
                         &self.db,
                         app_id,
                         metric_type,
@@ -203,6 +238,13 @@ impl AlertEvaluator {
                         consecutive_count
                     );
 
+                    // Send notification for new alert
+                    self.send_alert_notification(&alert).await;
+                    // Mark as notified
+                    if let Err(e) = AlertEvent::set_notified(&self.db, &alert.id).await {
+                        tracing::warn!(error = %e, "Failed to update notification timestamp");
+                    }
+
                     Ok(AlertAction::NewAlert)
                 } else {
                     tracing::debug!(
@@ -218,6 +260,34 @@ impl AlertEvaluator {
         }
     }
 
+    /// Send notification for an alert (fires or resolved)
+    async fn send_alert_notification(&self, alert: &AlertEvent) {
+        if let Some(ref notification_service) = self.notification_service {
+            let dashboard_url = self.dashboard_url.as_deref();
+            let result = notification_service
+                .notify_alert_triggered(alert, dashboard_url)
+                .await;
+            match result {
+                Ok(count) => {
+                    if count > 0 {
+                        tracing::debug!(
+                            alert_id = %alert.id,
+                            channels = count,
+                            "Queued alert notifications"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        alert_id = %alert.id,
+                        error = %e,
+                        "Failed to queue alert notifications"
+                    );
+                }
+            }
+        }
+    }
+
     /// Resolve an active alert if one exists
     async fn resolve_alert_if_active(
         &self,
@@ -227,7 +297,7 @@ impl AlertEvaluator {
         if let Some(alert) =
             AlertEvent::get_active_for_app_metric(&self.db, app_id, metric_type).await?
         {
-            AlertEvent::resolve(&self.db, &alert.id).await?;
+            let resolved_alert = AlertEvent::resolve(&self.db, &alert.id).await?;
 
             tracing::info!(
                 app_id = %app_id,
@@ -235,6 +305,9 @@ impl AlertEvaluator {
                 alert_id = %alert.id,
                 "Alert resolved"
             );
+
+            // Send resolution notification
+            self.send_alert_notification(&resolved_alert).await;
 
             Ok(true)
         } else {

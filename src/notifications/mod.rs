@@ -3,6 +3,12 @@
 //! This module provides a unified interface for sending notifications
 //! on deployment events and app state changes.
 
+pub mod alert_notifications;
+
+pub use alert_notifications::{
+    spawn_alert_notification_worker, AlertNotificationPayload, AlertNotificationService,
+};
+
 use anyhow::Result;
 use lettre::{
     message::{header::ContentType, Mailbox, MultiPart, SinglePart},

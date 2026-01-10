@@ -19,6 +19,9 @@ Started: Resource Alerts & Cost Estimation
 - Hysteresis pattern: Use AlertBreachCount table to track consecutive threshold breaches
 - Team notification channels: /api/teams/{id}/notification-channels endpoints, require_team_role() for access control
 - Webhook config: WebhookConfig in src/db/models/notification.rs with URL, headers, payload_template
+- Alert email notifications: AlertNotificationService in src/notifications/alert_notifications.rs
+- Email queue pattern: Use tokio mpsc channel to prevent blocking (see spawn_alert_notification_worker)
+- Dashboard URL for emails: config.server.external_url (Option<String>)
 
 ---
 
@@ -91,6 +94,25 @@ Started: Resource Alerts & Cost Estimation
   - Custom templates support variable substitution: {{app_name}}, {{metric_type}}, {{value}}, etc.
   - Sensitive headers (containing auth/secret/token/key) are masked in API responses
   - Use require_team_role() helper for team permission checks (pattern from teams.rs)
+  - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
+---
+
+## 2026-01-10 - US-005
+- What was implemented: Email notification sender for resource alerts
+- Files changed:
+  - src/notifications/alert_notifications.rs (new AlertNotificationService with email queue)
+  - src/notifications/mod.rs (module export)
+  - src/engine/alert_evaluator.rs (integrated notification service, added with_notifications constructor)
+  - src/engine/resource_metrics_collector.rs (spawns notification worker, passes dashboard_url)
+  - src/main.rs (updated to use spawn_resource_metrics_collector_task_with_notifications)
+- **Learnings for future iterations:**
+  - Alert emails use existing SMTP infrastructure from notification channels (EmailConfig)
+  - AlertNotificationPayload wraps AlertEvent with app_name and dashboard_url for templates
+  - Email queue uses tokio mpsc channel (capacity 100) to prevent blocking alert evaluation
+  - spawn_alert_notification_worker runs in background processing queued emails
+  - HTML email template includes severity-based colors (critical=red, warning=orange, info=blue, resolved=green)
+  - Dashboard link uses config.server.external_url when configured
+  - Re-notifications sent for ongoing alerts after 15-minute window (checked by should_notify())
   - 2 pre-existing test failures in pack_builder and preview modules (unrelated)
 ---
 

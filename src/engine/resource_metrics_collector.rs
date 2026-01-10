@@ -9,10 +9,14 @@
 
 use crate::db::{AlertEvent, CreateResourceMetric, Deployment, ResourceMetric};
 use crate::engine::AlertEvaluator;
+use crate::notifications::{spawn_alert_notification_worker, AlertNotificationService};
 use crate::runtime::ContainerRuntime;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+
+/// Default queue capacity for alert notifications
+const DEFAULT_NOTIFICATION_QUEUE_CAPACITY: usize = 100;
 
 /// Default interval for collecting per-app resource metrics (in seconds)
 const DEFAULT_RESOURCE_METRICS_INTERVAL_SECS: u64 = 60;
@@ -176,11 +180,21 @@ pub struct ResourceMetricsCollectionResult {
 
 /// Spawn the background resource metrics collection task
 pub fn spawn_resource_metrics_collector_task(db: SqlitePool, runtime: Arc<dyn ContainerRuntime>) {
-    spawn_resource_metrics_collector_task_with_config(
+    spawn_resource_metrics_collector_task_with_notifications(db, runtime, None);
+}
+
+/// Spawn the background resource metrics collection task with email notifications enabled
+pub fn spawn_resource_metrics_collector_task_with_notifications(
+    db: SqlitePool,
+    runtime: Arc<dyn ContainerRuntime>,
+    dashboard_url: Option<String>,
+) {
+    spawn_resource_metrics_collector_task_full(
         db,
         runtime,
         DEFAULT_RESOURCE_METRICS_INTERVAL_SECS,
         DEFAULT_RESOURCE_METRICS_RETENTION_HOURS,
+        dashboard_url,
     );
 }
 
@@ -191,13 +205,35 @@ pub fn spawn_resource_metrics_collector_task_with_config(
     interval_secs: u64,
     retention_hours: i64,
 ) {
+    spawn_resource_metrics_collector_task_full(db, runtime, interval_secs, retention_hours, None);
+}
+
+/// Spawn the background resource metrics collection task with full configuration
+pub fn spawn_resource_metrics_collector_task_full(
+    db: SqlitePool,
+    runtime: Arc<dyn ContainerRuntime>,
+    interval_secs: u64,
+    retention_hours: i64,
+    dashboard_url: Option<String>,
+) {
     tracing::info!(
         interval_secs = interval_secs,
         retention_hours = retention_hours,
+        notifications_enabled = dashboard_url.is_some(),
         "Starting per-app resource metrics collection task"
     );
 
-    let alert_evaluator = AlertEvaluator::new(db.clone());
+    // Create the notification service and worker
+    let (notification_service, notification_rx) =
+        AlertNotificationService::new(db.clone(), DEFAULT_NOTIFICATION_QUEUE_CAPACITY);
+    let notification_service = Arc::new(notification_service);
+
+    // Spawn the notification worker
+    spawn_alert_notification_worker(notification_rx);
+
+    // Create the alert evaluator with notifications
+    let alert_evaluator =
+        AlertEvaluator::with_notifications(db.clone(), notification_service, dashboard_url);
 
     let collector =
         ResourceMetricsCollector::with_config(db, runtime, interval_secs, retention_hours);

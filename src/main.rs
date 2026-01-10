@@ -11,9 +11,9 @@ use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
 use rivetr::engine::{
     reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
-    spawn_container_monitor_task, spawn_disk_monitor_task, spawn_resource_metrics_collector_task,
-    spawn_stats_collector_task, spawn_stats_history_task, spawn_stats_retention_task, BuildLimits,
-    DeploymentEngine,
+    spawn_container_monitor_task, spawn_disk_monitor_task,
+    spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
+    spawn_stats_history_task, spawn_stats_retention_task, BuildLimits, DeploymentEngine,
 };
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
@@ -186,8 +186,13 @@ async fn main() -> Result<()> {
     // Start stats retention and aggregation task
     spawn_stats_retention_task(db.clone(), config.stats_retention.clone());
 
-    // Start per-app resource metrics collection task
-    spawn_resource_metrics_collector_task(db.clone(), runtime.clone());
+    // Start per-app resource metrics collection task with alert email notifications
+    // The external_url is used for building dashboard links in alert emails
+    spawn_resource_metrics_collector_task_with_notifications(
+        db.clone(),
+        runtime.clone(),
+        config.server.external_url.clone(),
+    );
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
