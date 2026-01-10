@@ -311,8 +311,8 @@
         "cargo test passes"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added SystemStatsQuery with team_id parameter to GET /api/system/stats. Filters apps, deployments, databases, and services by team_id when provided. Frontend getSystemStats accepts teamId option. Dashboard and monitoring pages pass currentTeamId to stats queries and refresh on team switch. Cost summary feature doesn't exist yet so not applicable. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-019",

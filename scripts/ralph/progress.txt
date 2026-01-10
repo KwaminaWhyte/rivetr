@@ -604,3 +604,34 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Role hierarchy for removals: owners can remove anyone, admins can only remove lower roles
   - Existing confirmation dialog pattern works well - shows member name and warns about access loss
 ---
+
+## 01/10/2026 - US-018
+- Added team_id parameter to GET /api/system/stats endpoint (src/api/system.rs)
+  - Created SystemStatsQuery struct with optional team_id
+  - Filters apps by team_id when provided
+  - Filters deployments by joining with apps table filtered by team_id
+  - Filters databases by team_id when provided
+  - Filters services by team_id when provided
+  - Returns system-wide stats when no team_id filter
+- Updated frontend system API (frontend/app/lib/api/system.ts)
+  - Added GetSystemStatsOptions interface with optional teamId
+  - Modified getSystemStats to build query string with team_id parameter
+- Updated dashboard page (frontend/app/routes/_index.tsx)
+  - Added useTeamContext hook
+  - Pass currentTeamId to getSystemStats query
+  - Added currentTeamId to query key for cache invalidation
+  - Set enabled: currentTeamId !== null to prevent queries before team loads
+- Updated monitoring page (frontend/app/routes/monitoring.tsx)
+  - Same changes as dashboard page
+- Files changed:
+  - src/api/system.rs
+  - frontend/app/lib/api/system.ts
+  - frontend/app/routes/_index.tsx
+  - frontend/app/routes/monitoring.tsx
+- **Learnings for future iterations:**
+  - Dashboard stats now team-scoped - switching teams updates all stat counts
+  - Cost summary doesn't exist yet - acceptance criteria item not applicable
+  - Container stats (CPU, memory) aggregate across team's resources
+  - Query key pattern includes currentTeamId for proper cache invalidation
+---
+
