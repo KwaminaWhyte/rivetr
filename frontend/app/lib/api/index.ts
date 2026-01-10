@@ -186,6 +186,9 @@ export const api = {
   getSystemHealth: systemApi.getSystemHealth,
   getRecentEvents: systemApi.getRecentEvents,
   getDashboardCosts: systemApi.getDashboardCosts,
+  getTeamCosts: systemApi.getTeamCosts,
+  getProjectCosts: systemApi.getProjectCosts,
+  getAppCosts: systemApi.getAppCosts,
 
   // Audit Logs
   getAuditLogs: systemApi.getAuditLogs,

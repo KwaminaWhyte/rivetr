@@ -12,6 +12,7 @@ import type {
   AuditLogListResponse,
   AuditLogQuery,
   DashboardCostResponse,
+  CostResponse,
 } from "@/types/api";
 
 export const systemApi = {
@@ -77,4 +78,16 @@ export const systemApi = {
   /** Get dashboard cost summary with top apps and trend data */
   getDashboardCosts: (period: "7d" | "30d" | "90d" = "30d", token?: string) =>
     apiRequest<DashboardCostResponse>(`/system/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific team */
+  getTeamCosts: (teamId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/teams/${teamId}/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific project */
+  getProjectCosts: (projectId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/projects/${projectId}/costs?period=${period}`, {}, token),
+
+  /** Get cost data for a specific app */
+  getAppCosts: (appId: string, period: "7d" | "30d" | "90d" = "30d", token?: string) =>
+    apiRequest<CostResponse>(`/apps/${appId}/costs?period=${period}`, {}, token),
 };
