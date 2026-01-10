@@ -178,3 +178,44 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - getDatabases needed signature change from (reveal, token) to (options, token) to add teamId
   - Pattern is consistent with apps/projects: ListQuery struct, filter by team_id, frontend passes currentTeamId
 ---
+
+## 01/10/2026 - US-006
+- Created migration 033_services_team.sql
+  - Added team_id column to services table
+  - Created index idx_services_team_id for faster lookups
+- Added team_id field to Rust Service model (src/db/models/service.rs)
+  - Added team_id to Service struct
+  - Added team_id to ServiceResponse DTO
+  - Added team_id to CreateServiceRequest DTO
+  - Updated From<Service> for ServiceResponse implementation
+- Modified GET /api/services endpoint (src/api/services.rs)
+  - Added ListServicesQuery struct with optional team_id parameter
+  - Filter by team_id when provided
+  - Return all services when no team_id filter (backward compatibility)
+  - Support empty string team_id to get legacy/unassigned services
+- Updated service creation INSERT query to include team_id column
+- Updated frontend API (frontend/app/lib/api/services.ts)
+  - Added GetServicesOptions interface with optional teamId
+  - Modified getServices to accept options object and pass team_id query param
+- Updated frontend page to pass team context:
+  - services/_index.tsx - uses currentTeamId from useTeamContext
+  - Passes currentTeamId to getServices query
+  - Passes team_id in createService mutation
+- Updated frontend types (frontend/app/types/api.ts)
+  - Added team_id to Service interface
+  - Added team_id to CreateServiceRequest interface
+- Updated server-side API (frontend/app/lib/api.server.ts)
+  - Modified getServices to accept options object with teamId
+- Files changed:
+  - migrations/033_services_team.sql (new)
+  - src/api/services.rs
+  - src/db/models/service.rs
+  - frontend/app/lib/api/services.ts
+  - frontend/app/lib/api.server.ts
+  - frontend/app/routes/services/_index.tsx
+  - frontend/app/types/api.ts
+- **Learnings for future iterations:**
+  - Services table did NOT have team_id column - required new migration (same as databases)
+  - Pattern is fully consistent: ListXxxQuery struct, filter by team_id, frontend uses currentTeamId
+  - Services follow exact same pattern as apps, projects, and databases for team filtering
+---

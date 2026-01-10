@@ -101,8 +101,8 @@
         "cargo test passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added team_id to Service struct, ServiceResponse DTO, and CreateServiceRequest. Created migration 033_services_team.sql. GET /api/services accepts team_id query param. Frontend passes currentTeamId to getServices and includes team_id in createService. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-007",
