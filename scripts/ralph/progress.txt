@@ -485,3 +485,33 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - Date inputs need conversion to ISO 8601 for API (new Date(date).toISOString())
   - Audit log details are shown as key-value pairs, filtering out IDs for cleaner display
 ---
+
+## 01/10/2026 - US-014
+- Created migration 036_app_shares.sql
+  - app_shares table with id, app_id, shared_with_team_id, permission, created_at, created_by
+  - Unique index on (app_id, shared_with_team_id) to prevent duplicate shares
+  - Foreign keys to apps, teams, and users tables with CASCADE delete
+- Added app sharing models to src/db/models/app.rs
+  - AppShare: Raw database model
+  - AppShareResponse: DTO with team name and creator name
+  - CreateAppShareRequest: Request DTO for creating shares
+  - AppWithSharing: App with is_shared flag and owner_team_name
+- Added sharing endpoints to src/api/apps.rs
+  - list_app_shares: GET /api/apps/:id/shares - list teams app is shared with
+  - create_app_share: POST /api/apps/:id/shares - share app with a team
+  - delete_app_share: DELETE /api/apps/:id/shares/:team_id - remove sharing
+  - list_apps_with_sharing: GET /api/apps/with-sharing?team_id=xxx - list owned + shared apps
+- Added routes to src/api/mod.rs
+- Includes audit logging for share/unshare operations
+- Files changed:
+  - migrations/036_app_shares.sql (new)
+  - src/api/apps.rs
+  - src/api/mod.rs
+  - src/db/mod.rs
+  - src/db/models/app.rs
+- **Learnings for future iterations:**
+  - SQLx FromRow doesn't support tuples with > 16 elements - use multiple queries instead
+  - App shares use "view" permission by default (only option currently supported)
+  - list_apps_with_sharing is useful for frontend to get owned + shared apps in one call
+  - Audit logs use AppUpdated action for share/unshare with "action" field in details JSON
+---
