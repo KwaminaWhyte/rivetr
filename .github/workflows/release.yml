@@ -275,64 +275,6 @@ jobs:
           path: dist/*
           retention-days: 1
 
-  build-windows-x86_64:
-    name: Build Windows x86_64
-    needs: build-frontend
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download frontend build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: static/dist
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: windows-x86_64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            windows-x86_64-cargo-registry-
-
-      - name: Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: windows-x86_64-cargo-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            windows-x86_64-cargo-build-
-
-      - name: Build release binary
-        run: cargo build --release
-
-      - name: Get version
-        id: version
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Package binary
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist
-          Copy-Item target/release/rivetr.exe dist/rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe
-          cd dist
-          Get-FileHash rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe" } | Out-File -Encoding utf8 rivetr-${{ steps.version.outputs.VERSION }}-windows-x86_64.exe.sha256
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rivetr-windows-x86_64
-          path: dist/*
-          retention-days: 1
-
   create-release:
     name: Create Release
     needs:
@@ -340,7 +282,6 @@ jobs:
       - build-linux-aarch64
       - build-macos-x86_64
       - build-macos-aarch64
-      - build-windows-x86_64
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
