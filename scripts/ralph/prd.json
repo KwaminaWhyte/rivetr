@@ -33,8 +33,8 @@
         "npm run build passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added role badges with variant styling (owner=default, admin=secondary, others=outline). Added Create Team option that navigates to /settings/teams?create=true and auto-opens the create dialog."
     },
     {
       "id": "US-003",
@@ -50,8 +50,8 @@
         "cargo test passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed. Added team_id to App model, AppResponse DTO, and CreateAppRequest. GET /api/apps accepts team_id query param. Frontend passes currentTeamId to all apps queries. Apps without team_id are returned when team_id is empty string. Note: 2 pre-existing test failures in pack_builder and preview modules are unrelated."
     },
     {
       "id": "US-004",

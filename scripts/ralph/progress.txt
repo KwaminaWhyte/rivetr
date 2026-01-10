@@ -14,6 +14,8 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
 - Use anyhow::Result for error handling in Rust code
 - State management uses AppState in src/lib.rs with ArcSwap for lock-free updates
 - 2 pre-existing test failures in pack_builder and preview modules are unrelated to new work
+- Frontend has no "lint" script - use "npm run build" for quality checks
+- To auto-open dialogs from URL, use useSearchParams with ?create=true pattern
 
 ---
 
@@ -33,4 +35,68 @@ Started: 01/10/2026 11:27:17 (Team Flow PRD)
   - TeamSwitcher component already existed and was well-designed
   - Pre-existing test failures in pack_builder and preview modules
   - Frontend uses React Query with query invalidation on context changes
+---
+
+## 01/10/2026 - US-002
+- Enhanced TeamSwitcher component (frontend/app/components/team-switcher.tsx)
+  - Added role badges next to team names with variant styling:
+    - owner: "default" variant (primary color)
+    - admin: "secondary" variant
+    - developer/viewer: "outline" variant
+  - Added "Create Team" option at bottom of dropdown
+  - Uses Badge component from shadcn/ui
+- Updated teams settings page (frontend/app/routes/settings/teams.tsx)
+  - Added ?create=true query parameter handling
+  - Auto-opens create dialog when navigating from team switcher
+  - Uses useSearchParams hook from react-router
+- Files changed:
+  - frontend/app/components/team-switcher.tsx
+  - frontend/app/routes/settings/teams.tsx
+- **Learnings for future iterations:**
+  - TeamWithMemberCount type already includes user_role field
+  - Frontend has no "lint" script - use "typecheck" or "build" instead
+  - Pre-existing TypeScript errors in github-repo-picker.tsx don't break build
+  - Badge component supports "default", "secondary", "outline" variants
+---
+
+## 01/10/2026 - US-003
+- Added team_id field to Rust App model (src/db/models/app.rs)
+  - Added team_id to App struct
+  - Added team_id to AppResponse DTO
+  - Added team_id to CreateAppRequest DTO
+  - Updated From<App> for AppResponse implementation
+- Modified GET /api/apps endpoint (src/api/apps.rs)
+  - Added ListAppsQuery struct with optional team_id parameter
+  - Filter by team_id when provided
+  - Return all apps when no team_id filter (backward compatibility)
+  - Support empty string team_id to get legacy/unassigned apps
+- Updated app creation INSERT query to include team_id column
+- Updated frontend API (frontend/app/lib/api/apps.ts)
+  - Modified getApps to accept optional teamId parameter
+  - Pass team_id as query parameter
+- Updated frontend components to pass team context:
+  - nav-apps.tsx - uses currentTeamId from useTeamContext
+  - projects/_index.tsx - filters apps by current team
+  - projects/$id.tsx - filters allApps by current team
+  - settings/notifications.tsx - filters apps for subscription
+- Updated frontend types (frontend/app/types/api.ts)
+  - Added team_id to App interface
+  - Added team_id to CreateAppRequest interface
+- Updated server-side API (frontend/app/lib/api.server.ts)
+  - Added optional teamId parameter to getApps
+- Files changed:
+  - src/api/apps.rs
+  - src/db/models/app.rs
+  - frontend/app/components/nav-apps.tsx
+  - frontend/app/lib/api/apps.ts
+  - frontend/app/lib/api.server.ts
+  - frontend/app/routes/projects/_index.tsx
+  - frontend/app/routes/projects/$id.tsx
+  - frontend/app/routes/settings/notifications.tsx
+  - frontend/app/types/api.ts
+- **Learnings for future iterations:**
+  - Apps table already has team_id column from migration 015_teams.sql
+  - Query extractor requires explicit serde::Deserialize derive on query structs
+  - React Query keys should include team_id to trigger refetch on team switch
+  - enabled: currentTeamId !== null prevents queries before team loads
 ---
