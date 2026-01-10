@@ -9,7 +9,6 @@ import {
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
-import { NavBrand } from "@/components/nav-brand";
 import { TeamSwitcher } from "@/components/team-switcher";
 import {
   Sidebar,
@@ -64,7 +63,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <NavBrand />
         <TeamSwitcher
           teams={teams}
           currentTeamId={currentTeamId}
