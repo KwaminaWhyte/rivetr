@@ -15,13 +15,27 @@ import type {
   DeployTemplateResponse,
 } from "@/types/api";
 
+/** Options for listing services */
+export interface GetServicesOptions {
+  /** Filter by team ID (optional) */
+  teamId?: string;
+}
+
 export const servicesApi = {
   // -------------------------------------------------------------------------
   // Docker Compose Services
   // -------------------------------------------------------------------------
 
   /** List all services */
-  getServices: (token?: string) => apiRequest<Service[]>("/services", {}, token),
+  getServices: (options?: GetServicesOptions, token?: string) => {
+    const params = new URLSearchParams();
+    if (options?.teamId !== undefined) {
+      params.set("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    const url = queryString ? `/services?${queryString}` : "/services";
+    return apiRequest<Service[]>(url, {}, token);
+  },
 
   /** Get a single service by ID */
   getService: (id: string, token?: string) =>

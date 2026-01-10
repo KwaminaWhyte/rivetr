@@ -385,7 +385,15 @@ export const api = {
     }),
 
   // Docker Compose Services
-  getServices: (token: string) => apiRequest<Service[]>("/services", token),
+  getServices: (options: { teamId?: string }, token: string) => {
+    const params = new URLSearchParams();
+    if (options.teamId !== undefined) {
+      params.set("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    const url = queryString ? `/services?${queryString}` : "/services";
+    return apiRequest<Service[]>(url, token);
+  },
   getService: (token: string, id: string) =>
     apiRequest<Service>(`/services/${id}`, token),
   createService: (token: string, data: CreateServiceRequest) =>

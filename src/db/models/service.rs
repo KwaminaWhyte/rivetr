@@ -50,6 +50,7 @@ pub struct Service {
     pub id: String,
     pub name: String,
     pub project_id: Option<String>,
+    pub team_id: Option<String>,
     pub compose_content: String,
     pub status: String,
     pub error_message: Option<String>,
@@ -80,6 +81,7 @@ pub struct ServiceResponse {
     pub id: String,
     pub name: String,
     pub project_id: Option<String>,
+    pub team_id: Option<String>,
     pub compose_content: String,
     pub status: String,
     pub error_message: Option<String>,
@@ -93,6 +95,7 @@ impl From<Service> for ServiceResponse {
             id: service.id,
             name: service.name,
             project_id: service.project_id,
+            team_id: service.team_id,
             compose_content: service.compose_content,
             status: service.status,
             error_message: service.error_message,
@@ -110,6 +113,8 @@ pub struct CreateServiceRequest {
     pub compose_content: String,
     /// Associated project ID (optional)
     pub project_id: Option<String>,
+    /// Associated team ID (optional)
+    pub team_id: Option<String>,
 }
 
 /// Request to update a Docker Compose service

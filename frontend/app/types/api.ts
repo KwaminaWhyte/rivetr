@@ -1040,6 +1040,7 @@ export interface Service {
   id: string;
   name: string;
   project_id: string | null;
+  team_id: string | null;
   compose_content: string;
   status: ServiceStatus;
   error_message: string | null;
@@ -1052,6 +1053,7 @@ export interface CreateServiceRequest {
   name: string;
   compose_content: string;
   project_id?: string;
+  team_id?: string;
 }
 
 /** Request to update a service */
