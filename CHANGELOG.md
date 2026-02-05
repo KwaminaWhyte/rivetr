@@ -10,12 +10,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Preview deployments for pull requests
 - S3 backup integration
-- **Self-Update System** - In-app updates with version checking:
-  - Version check against GitHub releases on startup
-  - Subtle update notification badge in sidebar
-  - One-click update button to download and install new version
-  - Auto-update option in Settings (configurable interval)
-  - Pre-update backup of database and configuration
+
+---
+
+## [0.2.11] - 2025-02-05
+
+### Added
+- **Auto-Update System** - Automatic version checking and update management:
+  - Background update checker with configurable interval (default: 6 hours)
+  - API endpoints for version info, update check, download, and apply
+  - `GET /api/system/version` - Current version and update status
+  - `POST /api/system/update/check` - Trigger immediate update check
+  - `POST /api/system/update/download` - Download update binary
+  - `POST /api/system/update/apply` - Apply downloaded update
+  - Configuration via `[auto_update]` section in rivetr.toml
+  - Optional auto-apply mode for fully automated updates
+
+### Changed
+- Comprehensive testing documentation in `live-testing/` directory
+
+---
+
+## [0.2.10] - 2025-02-05
+
+### Fixed
+- **PORT Environment Variable** - Automatically inject `PORT` env var into containers:
+  - Apps that expect PORT (like Heroku apps) now work correctly out of the box
+  - PORT is set to the configured container port if not already set by user
+  - Applied to main deployments, rollbacks, and preview deployments
+
+---
+
+## [0.2.9] - 2025-02-05
+
+### Changed
+- Version bump for release pipeline
+
+---
+
+## [0.2.8] - 2025-02-04
+
+### Fixed
+- **Container Monitor** - Added missing `team_id` column to services SELECT query
+  - Fixed SQL error when container monitor tried to restart crashed services
+
+---
+
+## [0.2.7] - 2025-02-04
+
+### Added
+- **Personal Team Auto-Creation** - Automatically create "Personal" team for users without teams
+  - New users get a Personal team created on first login
+  - Existing users without teams get one created when needed
+
+---
+
+## [0.2.6] - 2025-02-04
+
+### Fixed
+- **Frontend API URL** - Use `window.location.hostname` instead of hardcoded `localhost`
+  - Dashboard now works correctly when accessed via IP address or custom domain
+
+---
+
+## [0.2.5] - 2025-02-04
+
+### Fixed
+- **Systemd Service** - Multiple fixes for Docker/Podman compatibility:
+  - Changed `ProtectHome=read-only` instead of `true` for Docker Compose access
+  - Added `/home/rivetr` to systemd `ReadWritePaths` for Docker config
+  - Create rivetr user home directory during installation
+
+- **Install Script** - Auto-detect external_url from server IP
+- **Cost API** - Fixed SQL type mismatch in cost calculations
 
 ---
 
@@ -183,6 +250,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.11 | 2025-02-05 | Auto-update system with API endpoints |
+| 0.2.10 | 2025-02-05 | Auto-inject PORT env var for containers |
+| 0.2.9 | 2025-02-05 | Release pipeline update |
+| 0.2.8 | 2025-02-04 | Container monitor team_id fix |
+| 0.2.7 | 2025-02-04 | Personal team auto-creation |
+| 0.2.6 | 2025-02-04 | Frontend dynamic hostname |
+| 0.2.5 | 2025-02-04 | Systemd and install script fixes |
 | 0.2.4 | 2025-01-10 | Team collaboration, resource alerts, cost estimation |
 | 0.2.3 | 2025-01-10 | macOS runner update |
 | 0.2.2 | 2025-01-10 | OpenSSL vendoring fix |
@@ -214,7 +288,14 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.10...v0.2.11
+[0.2.10]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.9...v0.2.10
+[0.2.9]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.8...v0.2.9
+[0.2.8]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.7...v0.2.8
+[0.2.7]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.1...v0.2.2

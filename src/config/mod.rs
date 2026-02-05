@@ -34,6 +34,8 @@ pub struct Config {
     pub stats_retention: StatsRetentionConfig,
     #[serde(default)]
     pub email: EmailConfig,
+    #[serde(default)]
+    pub auto_update: AutoUpdateConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -702,6 +704,51 @@ impl EmailConfig {
     }
 }
 
+/// Auto-update configuration
+#[derive(Debug, Clone, Deserialize)]
+pub struct AutoUpdateConfig {
+    /// Enable update checking (default: true)
+    #[serde(default = "default_update_check_enabled")]
+    pub enabled: bool,
+    /// Automatically download and apply updates (default: false)
+    /// When false, updates are only detected and reported via API
+    #[serde(default)]
+    pub auto_apply: bool,
+    /// Interval between update checks in hours (default: 6)
+    #[serde(default = "default_update_check_interval_hours")]
+    pub check_interval_hours: u64,
+    /// GitHub repository for updates (default: "KwaminaWhyte/rivetr")
+    #[serde(default = "default_github_repo")]
+    pub github_repo: String,
+    /// Include pre-release versions (default: false)
+    #[serde(default)]
+    pub include_prereleases: bool,
+}
+
+fn default_update_check_enabled() -> bool {
+    true
+}
+
+fn default_update_check_interval_hours() -> u64 {
+    6
+}
+
+fn default_github_repo() -> String {
+    "KwaminaWhyte/rivetr".to_string()
+}
+
+impl Default for AutoUpdateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_update_check_enabled(),
+            auto_apply: false,
+            check_interval_hours: default_update_check_interval_hours(),
+            github_repo: default_github_repo(),
+            include_prereleases: false,
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -733,6 +780,7 @@ impl Config {
             database_backup: DatabaseBackupConfig::default(),
             stats_retention: StatsRetentionConfig::default(),
             email: EmailConfig::default(),
+            auto_update: AutoUpdateConfig::default(),
         }
     }
 }

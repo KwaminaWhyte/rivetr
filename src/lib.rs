@@ -22,6 +22,7 @@ use tokio::sync::mpsc;
 
 use crate::api::rate_limit::RateLimiter;
 use crate::db::App;
+use crate::engine::updater::UpdateChecker;
 use crate::proxy::RouteTable;
 use crate::runtime::ContainerRuntime;
 
@@ -33,6 +34,7 @@ pub struct AppState {
     pub routes: Arc<ArcSwap<RouteTable>>,
     pub rate_limiter: Arc<RateLimiter>,
     pub metrics_handle: Option<PrometheusHandle>,
+    pub update_checker: Arc<UpdateChecker>,
 }
 
 impl AppState {
@@ -42,6 +44,7 @@ impl AppState {
         deploy_tx: mpsc::Sender<(String, App)>,
         runtime: Arc<dyn ContainerRuntime>,
         routes: Arc<ArcSwap<RouteTable>>,
+        update_checker: Arc<UpdateChecker>,
     ) -> Self {
         let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit.clone()));
         Self {
@@ -52,6 +55,7 @@ impl AppState {
             routes,
             rate_limiter,
             metrics_handle: None,
+            update_checker,
         }
     }
 

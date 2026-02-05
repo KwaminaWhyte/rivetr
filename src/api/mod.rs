@@ -349,6 +349,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/health", get(system::get_detailed_health))
         .route("/system/costs", get(costs::get_dashboard_costs))
         .route("/events/recent", get(system::get_recent_events))
+        // Version and updates
+        .route("/system/version", get(system::get_version_info))
+        .route("/system/update/check", post(system::check_for_updates))
+        .route("/system/update/download", post(system::download_update))
+        .route("/system/update/apply", post(system::apply_update))
         // Audit logs
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))

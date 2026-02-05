@@ -15,7 +15,7 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-RIVETR_VERSION="${RIVETR_VERSION:-v0.2.10}"
+RIVETR_VERSION="${RIVETR_VERSION:-v0.2.11}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/rivetr}"
 DATA_DIR="${DATA_DIR:-/var/lib/rivetr}"
 CONFIG_FILE="$INSTALL_DIR/rivetr.toml"
@@ -550,6 +550,15 @@ restart_window_seconds = 300
 enabled = true
 check_interval_seconds = 3600
 retention_days = 30
+
+[auto_update]
+# Auto-update checking
+enabled = true
+# Set to true to automatically download and apply updates
+# When false, updates are detected and reported via dashboard/API
+auto_apply = false
+# How often to check for updates (in hours)
+check_interval_hours = 6
 EOF
 
     chmod 600 "$CONFIG_FILE"

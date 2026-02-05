@@ -14,6 +14,7 @@ pub mod railpack;
 mod resource_metrics_collector;
 pub mod static_builder;
 mod stats_collector;
+pub mod updater;
 pub mod zip_extract;
 
 pub use alert_evaluator::*;

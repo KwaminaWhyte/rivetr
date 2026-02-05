@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "rivetr"
-version = "0.2.8"
+version = "0.2.11"
 dependencies = [
  "aes-gcm",
  "anyhow",

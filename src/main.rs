@@ -13,7 +13,7 @@ use rivetr::engine::{
     reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
     spawn_container_monitor_task, spawn_cost_calculator_task, spawn_disk_monitor_task,
     spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
-    spawn_stats_history_task, spawn_stats_retention_task, BuildLimits, DeploymentEngine,
+    spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
 use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
@@ -112,6 +112,16 @@ async fn main() -> Result<()> {
     // This updates database records for containers that stopped while server was down
     reconcile_container_status(&db, &runtime).await;
 
+    // Start auto-update checker
+    let update_checker = updater::start_update_checker(config.auto_update.clone());
+    if config.auto_update.enabled {
+        tracing::info!(
+            "Auto-update checker enabled (interval: {} hours, auto-apply: {})",
+            config.auto_update.check_interval_hours,
+            config.auto_update.auto_apply
+        );
+    }
+
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(
         AppState::new(
@@ -120,6 +130,7 @@ async fn main() -> Result<()> {
             deploy_tx,
             runtime.clone(),
             routes.clone(),
+            update_checker,
         )
         .with_metrics(metrics_handle),
     );
