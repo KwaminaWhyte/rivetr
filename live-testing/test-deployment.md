@@ -12,12 +12,35 @@ This document guides live testing sessions for the Rivetr deployment platform. F
 3. **Direct upload for fast testing** - Build locally and SCP to server instead of waiting for GitHub Actions
 
 ### Fast Testing Workflow (Skip GitHub Actions)
-```bash
-# Build locally
-cargo build --release
 
-# Upload and deploy directly
-scp target/release/rivetr root@167.71.46.193:/opt/rivetr/rivetr.new
+**IMPORTANT: Do NOT build locally on macOS!**
+The server runs Linux x86_64. Building on macOS produces incompatible binaries.
+Always push changes to server and build there.
+
+```bash
+# Push code changes to GitHub (or directly to server)
+git push origin main
+
+# SSH to server and build there
+ssh root@167.71.46.193 << 'EOF'
+cd /tmp && rm -rf rivetr
+git clone --depth 1 https://github.com/KwaminaWhyte/rivetr.git
+cd rivetr
+cargo build --release
+systemctl stop rivetr
+cp target/release/rivetr /opt/rivetr/rivetr
+chmod +x /opt/rivetr/rivetr
+chown rivetr:rivetr /opt/rivetr/rivetr
+setcap 'cap_net_bind_service=+ep' /opt/rivetr/rivetr
+systemctl start rivetr
+EOF
+```
+
+Alternative: Use cross-compilation with cargo-zigbuild (if installed):
+```bash
+# On macOS with cargo-zigbuild and zig installed
+cargo zigbuild --release --target x86_64-unknown-linux-gnu
+scp target/x86_64-unknown-linux-gnu/release/rivetr root@167.71.46.193:/opt/rivetr/rivetr.new
 ssh root@167.71.46.193 "systemctl stop rivetr && mv /opt/rivetr/rivetr.new /opt/rivetr/rivetr && chmod +x /opt/rivetr/rivetr && chown rivetr:rivetr /opt/rivetr/rivetr && setcap 'cap_net_bind_service=+ep' /opt/rivetr/rivetr && systemctl start rivetr"
 ```
 

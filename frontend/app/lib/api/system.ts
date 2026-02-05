@@ -16,6 +16,7 @@ import type {
   GlobalAlertDefaultsResponse,
   UpdateGlobalAlertDefaultsRequest,
   AlertStatsResponse,
+  UpdateStatus,
 } from "@/types/api";
 
 /** Options for getting system stats */
@@ -128,4 +129,30 @@ export const systemApi = {
   /** Get alert configuration statistics */
   getAlertStats: (token?: string) =>
     apiRequest<AlertStatsResponse>("/settings/alert-stats", {}, token),
+
+  // -------------------------------------------------------------------------
+  // Auto-Update
+  // -------------------------------------------------------------------------
+
+  /** Get current version and update status */
+  getVersionInfo: (token?: string) =>
+    apiRequest<UpdateStatus>("/system/version", {}, token),
+
+  /** Check for available updates */
+  checkForUpdate: (token?: string) =>
+    apiRequest<UpdateStatus>("/system/update/check", {
+      method: "POST",
+    }, token),
+
+  /** Download the latest update */
+  downloadUpdate: (token?: string) =>
+    apiRequest<{ message: string; version: string }>("/system/update/download", {
+      method: "POST",
+    }, token),
+
+  /** Apply a downloaded update (will restart the server) */
+  applyUpdate: (token?: string) =>
+    apiRequest<{ message: string }>("/system/update/apply", {
+      method: "POST",
+    }, token),
 };

@@ -680,6 +680,34 @@ export interface SystemHealthStatus {
 }
 
 // -------------------------------------------------------------------------
+// Auto-Update types
+// -------------------------------------------------------------------------
+
+/** Update status information */
+export interface UpdateStatus {
+  /** Current running version */
+  current_version: string;
+  /** Latest available version (null if check failed or up-to-date) */
+  latest_version: string | null;
+  /** Whether an update is available */
+  update_available: boolean;
+  /** URL to download the update */
+  download_url: string | null;
+  /** Release notes/changelog */
+  release_notes: string | null;
+  /** Release page URL */
+  release_url: string | null;
+  /** When the last check was performed (ISO 8601) */
+  last_checked: string | null;
+  /** Error message if the last check failed */
+  last_error: string | null;
+  /** Whether auto-update is enabled */
+  auto_update_enabled: boolean;
+  /** Whether auto-apply is enabled */
+  auto_apply_enabled: boolean;
+}
+
+// -------------------------------------------------------------------------
 // Notification types
 // -------------------------------------------------------------------------
 

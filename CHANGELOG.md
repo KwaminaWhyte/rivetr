@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.13] - 2025-02-05
+
+### Fixed
+- **Teams API Panic** - Fixed string slicing panic when creating Personal team
+  - User IDs shorter than 8 characters (e.g., "system") no longer cause panic
+  - Uses safe character iteration instead of byte slicing for slug generation
+
+---
+
 ## [0.2.12] - 2025-02-05
 
 ### Fixed
@@ -258,6 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.13 | 2025-02-05 | Teams API panic fix for short user IDs |
 | 0.2.12 | 2025-02-05 | Dashboard stats chart auth fix |
 | 0.2.11 | 2025-02-05 | Auto-update system with API endpoints |
 | 0.2.10 | 2025-02-05 | Auto-inject PORT env var for containers |
@@ -297,7 +307,8 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.13...HEAD
+[0.2.13]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.9...v0.2.10
