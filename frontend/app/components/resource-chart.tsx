@@ -40,7 +40,7 @@ const TIME_RANGES = [
 async function fetchStatsHistory(hours: number): Promise<DataPoint[]> {
   try {
     // Get auth token from localStorage
-    const token = localStorage.getItem("rivetr_token");
+    const token = localStorage.getItem("rivetr_auth_token");
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };

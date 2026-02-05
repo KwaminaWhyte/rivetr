@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.12] - 2025-02-05
+
+### Fixed
+- **Dashboard Stats Chart** - Fixed authentication token key mismatch in resource chart component
+  - Stats history API now correctly receives auth token on dashboard and monitoring pages
+
+---
+
 ## [0.2.11] - 2025-02-05
 
 ### Added
@@ -250,6 +258,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.12 | 2025-02-05 | Dashboard stats chart auth fix |
 | 0.2.11 | 2025-02-05 | Auto-update system with API endpoints |
 | 0.2.10 | 2025-02-05 | Auto-inject PORT env var for containers |
 | 0.2.9 | 2025-02-05 | Release pipeline update |
@@ -288,7 +297,8 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.12...HEAD
+[0.2.12]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.8...v0.2.9
