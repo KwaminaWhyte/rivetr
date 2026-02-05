@@ -77,6 +77,7 @@ export default [
       route("teams/:id", "routes/settings/teams/$id.tsx"),
       route("audit", "routes/settings/audit.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
+      route("auto-update", "routes/settings/auto-update.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

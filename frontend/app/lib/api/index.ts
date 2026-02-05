@@ -212,6 +212,12 @@ export const api = {
   updateAlertDefaults: systemApi.updateAlertDefaults,
   getAlertStats: systemApi.getAlertStats,
 
+  // Auto-Update
+  getVersionInfo: systemApi.getVersionInfo,
+  checkForUpdate: systemApi.checkForUpdate,
+  downloadUpdate: systemApi.downloadUpdate,
+  applyUpdate: systemApi.applyUpdate,
+
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,
   getPreview: previewsApi.getPreview,
