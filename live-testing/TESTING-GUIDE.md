@@ -655,12 +655,12 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/audit
 ### Critical Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
-| | | | |
+| | No critical issues found | N/A | |
 
 ### High Priority Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
-| | | | |
+| H1 | Stats history chart 401 Unauthorized - wrong localStorage key | Fixed | v0.2.12 |
 
 ### Medium Priority Issues
 | ID | Description | Status | Fix Version |
@@ -670,26 +670,28 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/audit
 ### Low Priority Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
-| | | | |
+| L1 | Console warning: Pattern attribute regex error | Open | |
 
 ---
 
 ## Testing Checklist Summary
 
+**Last tested: 2026-02-05 | Version: v0.2.12 | Server: 167.71.46.193**
+
 ### Core Functionality
-- [ ] Installation complete and service running
-- [ ] User authentication working
-- [ ] Team/project management working
-- [ ] App deployment (all build types)
-- [ ] Environment variables working
-- [ ] Managed databases working
-- [ ] Docker Compose services working
+- [x] Installation complete and service running
+- [x] User authentication working
+- [x] Team/project management working
+- [x] App deployment (Nixpacks tested)
+- [x] Environment variables working (PORT auto-injection verified)
+- [x] Managed databases working (PostgreSQL 16 tested)
+- [x] Docker Compose services working (Uptime Kuma template deployed)
 
 ### Advanced Features
 - [ ] Volumes and persistence
 - [ ] Alerting and notifications
 - [ ] Preview deployments
-- [ ] System monitoring
+- [x] System monitoring (all health checks passing)
 - [ ] Proxy and routing
 - [ ] Security features
 
@@ -699,9 +701,10 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/audit
 - [ ] SSL/TLS certificates
 
 ### WebSocket/Real-time
-- [ ] Build log streaming
-- [ ] Container terminal
-- [ ] Stats history charts
+- [x] Build log streaming
+- [x] Container terminal (commands execute successfully)
+- [x] Stats history charts (fixed in v0.2.12)
+- [x] Runtime log streaming (SSE working)
 
 ---
 
