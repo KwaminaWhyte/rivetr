@@ -959,7 +959,7 @@ pub async fn run_deployment(
             .unwrap_or_default();
 
     // Decrypt env var values if encryption is enabled
-    let env_vars: Vec<(String, String)> = raw_env_vars
+    let mut env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
             let decrypted =
@@ -970,6 +970,12 @@ pub async fn run_deployment(
             (key, decrypted)
         })
         .collect();
+
+    // Automatically set PORT environment variable if not already set
+    // This is a common pattern in PaaS systems (Heroku, Railway, etc.)
+    if !env_vars.iter().any(|(k, _)| k == "PORT") {
+        env_vars.push(("PORT".to_string(), app.port.to_string()));
+    }
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
@@ -1375,7 +1381,7 @@ pub async fn run_rollback(
             .unwrap_or_default();
 
     // Decrypt env var values if encryption is enabled
-    let env_vars: Vec<(String, String)> = raw_env_vars
+    let mut env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
             let decrypted =
@@ -1386,6 +1392,12 @@ pub async fn run_rollback(
             (key, decrypted)
         })
         .collect();
+
+    // Automatically set PORT environment variable if not already set
+    // This is a common pattern in PaaS systems (Heroku, Railway, etc.)
+    if !env_vars.iter().any(|(k, _)| k == "PORT") {
+        env_vars.push(("PORT".to_string(), app.port.to_string()));
+    }
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(

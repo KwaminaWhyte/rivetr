@@ -238,7 +238,7 @@ pub async fn run_preview_deployment(
             .unwrap_or_default();
 
     // Decrypt env var values
-    let env_vars: Vec<(String, String)> = raw_env_vars
+    let mut env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
             let decrypted =
@@ -249,6 +249,12 @@ pub async fn run_preview_deployment(
             (key, decrypted)
         })
         .collect();
+
+    // Automatically set PORT environment variable if not already set
+    // This is a common pattern in PaaS systems (Heroku, Railway, etc.)
+    if !env_vars.iter().any(|(k, _)| k == "PORT") {
+        env_vars.push(("PORT".to_string(), app.port.to_string()));
+    }
 
     // Use preview-specific resource limits (lower than production)
     let memory_limit = preview
