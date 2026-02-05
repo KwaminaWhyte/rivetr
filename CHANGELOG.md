@@ -13,7 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.2.13] - 2025-02-05
+## [0.2.14] - 2026-02-05
+
+### Fixed
+- **Container Monitor** - Fixed missing `team_id` column in database queries
+  - `check_databases` and `reconcile_databases` queries now include `team_id` field
+  - Eliminates recurring "no column found for name: team_id" warning every 30 seconds
+- **Notification Channels** - Added 'webhook' to CHECK constraint in `notification_channels` table
+  - Migration 038 recreates table with updated constraint allowing webhook channel type
+  - Handles foreign key constraints properly with PRAGMA foreign_keys=OFF
+
+---
+
+## [0.2.13] - 2026-02-05
 
 ### Fixed
 - **Teams API Panic** - Fixed string slicing panic when creating Personal team

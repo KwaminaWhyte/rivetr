@@ -222,7 +222,7 @@ impl ContainerMonitor {
             r#"
             SELECT id, name, db_type, version, container_id, status, internal_port,
                    external_port, public_access, credentials, volume_name, volume_path,
-                   memory_limit, cpu_limit, error_message, project_id, created_at, updated_at
+                   memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at
             FROM databases
             WHERE status = 'running' AND container_id IS NOT NULL
             "#,
@@ -906,7 +906,7 @@ async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -
         r#"
         SELECT id, name, db_type, version, container_id, status, internal_port,
                external_port, public_access, credentials, volume_name, volume_path,
-               memory_limit, cpu_limit, error_message, project_id, created_at, updated_at
+               memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at
         FROM databases
         WHERE status = 'running' AND container_id IS NOT NULL
         "#,

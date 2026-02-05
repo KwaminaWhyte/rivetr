@@ -655,56 +655,104 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/audit
 ### Critical Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
-| | No critical issues found | N/A | |
+| C1 | Teams API panic: `byte index 8 is out of bounds of 'system'` in `teams.rs:253` when user.id is shorter than 8 chars | Fixed | v0.2.13 |
 
 ### High Priority Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
 | H1 | Stats history chart 401 Unauthorized - wrong localStorage key | Fixed | v0.2.12 |
+| H2 | Container monitor: `no column found for name: team_id` - SELECT query missing team_id column | Fixed | v0.2.14 |
+| H3 | Notification channels: CHECK constraint missing 'webhook' type - database migration needed | Fixed | v0.2.14 |
 
 ### Medium Priority Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
-| | | | |
+| M1 | Auto-update settings page had missing route registration in `routes.ts` | Fixed | v0.2.13 |
+| M2 | Auto-update API methods not exported in combined `api` object | Fixed | v0.2.13 |
+| M3 | Migration 038 (webhook type) needs PRAGMA foreign_keys=OFF for table recreation | Fixed | v0.2.14 |
 
 ### Low Priority Issues
 | ID | Description | Status | Fix Version |
 |----|-------------|--------|-------------|
 | L1 | Console warning: Pattern attribute regex error | Open | |
+| L2 | API Tokens page disabled ("coming soon") | Open | |
+| L3 | Notifications page buttons disabled ("coming soon") | Open | |
 
 ---
 
 ## Testing Checklist Summary
 
-**Last tested: 2026-02-05 | Version: v0.2.12 | Server: 167.71.46.193**
+**Last tested: 2026-02-05 | Version: v0.2.14 | Server: 167.71.46.193**
 
 ### Core Functionality
 - [x] Installation complete and service running
-- [x] User authentication working
-- [x] Team/project management working
-- [x] App deployment (Nixpacks tested)
+- [x] User authentication working (login, logout, session persistence)
+- [x] Team/project management working (CRUD, team switcher, audit logs)
+- [x] App deployment (Nixpacks tested with node-js-getting-started)
 - [x] Environment variables working (PORT auto-injection verified)
-- [x] Managed databases working (PostgreSQL 16 tested)
+- [x] Managed databases working (PostgreSQL 16 tested, stats, backups)
 - [x] Docker Compose services working (Uptime Kuma template deployed)
 
 ### Advanced Features
-- [ ] Volumes and persistence
-- [ ] Alerting and notifications
-- [ ] Preview deployments
-- [x] System monitoring (all health checks passing)
-- [ ] Proxy and routing
-- [ ] Security features
+- [x] Volumes API working (create, list, update, delete via API)
+- [x] Alerting working (CPU/memory alerts, alert defaults, alert stats, alert events)
+- [x] Notification channels working (webhook type, test notifications, subscriptions)
+- [ ] Preview deployments (API returns empty, needs GitHub App for PR-based previews)
+- [x] System monitoring (all 4 health checks passing, chart timeframe selector working)
+- [x] Resource charts update with timeframe changes (1h, 6h, 24h, 7d, 30d)
+- [x] Proxy/routes API working (returns empty - no custom domains configured)
+- [x] Rate limiting working (auth: 20/min, hits at request 21)
+
+### Dashboard & UI
+- [x] Dashboard: system stats (CPU, memory, disk, uptime, running services count)
+- [x] Dashboard: running services widget (shows apps, databases, services with CPU/memory)
+- [x] Dashboard: cost summary card with projected monthly cost
+- [x] Dashboard: recent events timeline
+- [x] Monitoring page: system health, all checks, resource chart, disk usage
+- [x] Costs page: cost breakdown, by team, by app, export CSV
+- [x] Templates page: 26 templates across 7 categories with Deploy buttons
+- [x] Settings: General, Auto Updates, Alert Defaults, Teams, Notifications, Git, SSH, Webhooks, Tokens, Audit
+- [x] Audit log: full history with timestamps, actions, resources, users
+- [x] Auto-update settings page: version info, check/download/apply buttons
 
 ### Integrations
-- [ ] GitHub App integration
-- [ ] Webhook deployments
-- [ ] SSL/TLS certificates
+- [ ] GitHub App integration (UI ready, needs GitHub App setup)
+- [ ] Webhook deployments (endpoints exist, needs connected repo)
+- [ ] SSL/TLS certificates (needs custom domain)
 
 ### WebSocket/Real-time
 - [x] Build log streaming
 - [x] Container terminal (commands execute successfully)
-- [x] Stats history charts (fixed in v0.2.12)
+- [x] Stats history charts (fixed in v0.2.12, timeframe selection verified)
 - [x] Runtime log streaming (SSE working)
+
+### API Endpoints Verified
+- [x] `/api/system/stats` - System stats
+- [x] `/api/system/disk` - Disk stats
+- [x] `/api/system/health` - Health checks (4 checks all passing)
+- [x] `/api/system/stats/history?hours=N` - Stats history (31 entries for 24h)
+- [x] `/api/apps` - List apps
+- [x] `/api/apps/:id/stats` - App resource stats
+- [x] `/api/apps/:id/alerts` - Alert configs (create, list)
+- [x] `/api/apps/:id/alert-events` - Alert events
+- [x] `/api/apps/:id/volumes` - Volume management
+- [x] `/api/apps/:id/previews` - Preview deployments list
+- [x] `/api/databases` - List databases
+- [x] `/api/databases/:id/stats` - Database resource stats
+- [x] `/api/databases/:id/backups` - Create/list/download backups
+- [x] `/api/services` - List services
+- [x] `/api/templates` - Service templates
+- [x] `/api/notification-channels` - Notification channel CRUD
+- [x] `/api/notification-channels/:id/test` - Test notification (200 OK)
+- [x] `/api/notification-channels/:id/subscriptions` - Subscription management
+- [x] `/api/settings/alert-defaults` - Global alert thresholds
+- [x] `/api/settings/alert-stats` - Alert configuration stats
+- [x] `/api/routes` - Proxy routes
+- [x] `/api/audit` - Audit logs
+- [x] `/api/ssh-keys` - SSH key management
+- [x] `/api/costs/dashboard` - Cost overview
+- [x] `/api/system/version` - Version info / auto-update
+- [x] `/metrics` - Prometheus metrics
 
 ---
 

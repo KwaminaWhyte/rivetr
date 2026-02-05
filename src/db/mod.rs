@@ -512,6 +512,27 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 038: Add 'webhook' to notification_channels channel_type CHECK constraint
+    let check_has_webhook: Option<(String,)> = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='notification_channels' AND sql LIKE '%webhook%'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if check_has_webhook.is_none() {
+        // Disable foreign keys temporarily for table recreation
+        sqlx::query("PRAGMA foreign_keys=OFF")
+            .execute(pool)
+            .await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/038_notification_webhook_type.sql"),
+        )
+        .await?;
+        sqlx::query("PRAGMA foreign_keys=ON")
+            .execute(pool)
+            .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
