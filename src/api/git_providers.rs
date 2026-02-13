@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -8,10 +8,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::{
-    GitProvider, GitProviderResponse, GitProviderType, GitRepository, OAuthAuthorizationResponse,
-    OAuthCallbackRequest,
+    actions, resource_types, GitProvider, GitProviderResponse, GitProviderType, GitRepository,
+    OAuthAuthorizationResponse, OAuthCallbackRequest, User,
 };
 use crate::AppState;
+
+use super::audit::{audit_log, extract_client_ip};
 
 /// Request to add a provider via Personal Access Token
 #[derive(Debug, Deserialize)]
@@ -51,9 +53,9 @@ fn url_encode(s: &str) -> String {
 /// List all connected Git providers for the current user
 pub async fn list_providers(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // For now, we use a fixed user_id since multi-user is not fully implemented
-    let user_id = "admin";
+    let user_id = &user.id;
 
     let providers: Vec<GitProvider> =
         sqlx::query_as("SELECT * FROM git_providers WHERE user_id = ? ORDER BY created_at DESC")
@@ -89,6 +91,8 @@ pub async fn get_provider(
 pub async fn delete_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    user: User,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let result = sqlx::query("DELETE FROM git_providers WHERE id = ?")
         .bind(&id)
@@ -100,12 +104,27 @@ pub async fn delete_provider(
         return Err((StatusCode::NOT_FOUND, "Provider not found".to_string()));
     }
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::GIT_PROVIDER_DELETE,
+        resource_types::GIT_PROVIDER,
+        Some(&id),
+        None,
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Add a Git provider via Personal Access Token (GitLab) or App Password (Bitbucket)
 pub async fn add_token_provider(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<AddTokenProviderRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let provider_type: GitProviderType = req
@@ -136,7 +155,7 @@ pub async fn add_token_provider(
     };
 
     // Store the provider
-    let user_id = "admin"; // For now, we use a fixed user_id
+    let user_id = &user.id;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -174,6 +193,22 @@ pub async fn add_token_provider(
     .execute(&state.db)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::GIT_PROVIDER_ADD,
+        resource_types::GIT_PROVIDER,
+        Some(&id),
+        Some(&req.provider),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "provider": req.provider,
+            "username": &user_info.username,
+        })),
+    )
+    .await;
 
     Ok(Json(TokenProviderResponse {
         id,
@@ -597,8 +632,13 @@ pub async fn oauth_callback(
         GitProviderType::Bitbucket => get_bitbucket_user(&access_token).await?,
     };
 
-    // For now, we use a fixed user_id since multi-user is not fully implemented
-    let user_id = "admin";
+    // Look up the first admin user for the OAuth callback context
+    let admin_user: (String,) = sqlx::query_as("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "No admin user found. Please complete setup first.".to_string()))?;
+    let user_id = &admin_user.0;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 

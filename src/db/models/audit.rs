@@ -106,6 +106,28 @@ pub mod actions {
     pub const AUTH_LOGIN: &str = "auth.login";
     pub const AUTH_LOGOUT: &str = "auth.logout";
     pub const AUTH_SETUP: &str = "auth.setup";
+
+    // Git provider actions
+    pub const GIT_PROVIDER_ADD: &str = "git_provider.add";
+    pub const GIT_PROVIDER_DELETE: &str = "git_provider.delete";
+
+    // SSH key actions
+    pub const SSH_KEY_CREATE: &str = "ssh_key.create";
+    pub const SSH_KEY_UPDATE: &str = "ssh_key.update";
+    pub const SSH_KEY_DELETE: &str = "ssh_key.delete";
+
+    // GitHub App actions
+    pub const GITHUB_APP_CREATE: &str = "github_app.create";
+    pub const GITHUB_APP_DELETE: &str = "github_app.delete";
+
+    // Environment variable actions
+    pub const ENV_VAR_SET: &str = "env_var.set";
+    pub const ENV_VAR_DELETE: &str = "env_var.delete";
+
+    // Notification actions
+    pub const NOTIFICATION_CHANNEL_CREATE: &str = "notification_channel.create";
+    pub const NOTIFICATION_CHANNEL_UPDATE: &str = "notification_channel.update";
+    pub const NOTIFICATION_CHANNEL_DELETE: &str = "notification_channel.delete";
 }
 
 /// Common resource types
@@ -117,6 +139,11 @@ pub mod resource_types {
     pub const TEAM: &str = "team";
     pub const USER: &str = "user";
     pub const DEPLOYMENT: &str = "deployment";
+    pub const GIT_PROVIDER: &str = "git_provider";
+    pub const SSH_KEY: &str = "ssh_key";
+    pub const GITHUB_APP: &str = "github_app";
+    pub const ENV_VAR: &str = "env_var";
+    pub const NOTIFICATION_CHANNEL: &str = "notification_channel";
 }
 
 /// Log an audit event to the database

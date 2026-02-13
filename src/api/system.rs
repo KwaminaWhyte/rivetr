@@ -781,6 +781,7 @@ pub async fn check_for_updates(
 pub struct DownloadUpdateResponse {
     pub success: bool,
     pub message: String,
+    pub version: Option<String>,
     pub download_path: Option<String>,
 }
 
@@ -798,14 +799,18 @@ pub async fn download_update(
         return Ok(Json(DownloadUpdateResponse {
             success: false,
             message: "No update available".to_string(),
+            version: None,
             download_path: None,
         }));
     }
+
+    let version = status.latest_version.clone();
 
     match state.update_checker.download_update().await {
         Ok(path) => Ok(Json(DownloadUpdateResponse {
             success: true,
             message: format!("Update downloaded to {}", path.display()),
+            version,
             download_path: Some(path.display().to_string()),
         })),
         Err(e) => Err(ApiError::internal(format!("Failed to download update: {}", e))),

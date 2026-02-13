@@ -8,7 +8,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -17,12 +17,13 @@ use std::sync::Arc;
 
 use crate::crypto;
 use crate::db::{
-    GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse, GitHubAppResponse,
-    GitHubManifestCallbackResponse, InstallationCallbackQuery, ManifestCallbackQuery,
-    ManifestRequest, ManifestStartResponse,
+    actions, resource_types, GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse,
+    GitHubAppResponse, GitHubManifestCallbackResponse, InstallationCallbackQuery,
+    ManifestCallbackQuery, ManifestRequest, ManifestStartResponse, User,
 };
 use crate::github::{get_installation_token, GitHubClient};
 use crate::AppState;
+use super::audit::{audit_log, extract_client_ip};
 
 /// Default permissions requested for the GitHub App
 const DEFAULT_PERMISSIONS: &str = r#"{
@@ -250,6 +251,50 @@ pub async fn get_app(
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
     Ok(Json(GitHubAppResponse::from(app)))
+}
+
+/// DELETE /api/github-apps/:id - Delete a GitHub App and its installations
+pub async fn delete_app(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    user: User,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Check if app exists
+    let _app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
+
+    // Delete installations first
+    sqlx::query("DELETE FROM github_app_installations WHERE app_id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Delete the app
+    sqlx::query("DELETE FROM github_apps WHERE id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::GITHUB_APP_DELETE,
+        resource_types::GITHUB_APP,
+        Some(&id),
+        Some(&id),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    ).await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET /api/github-apps/:id/install - Get the installation URL for an app

@@ -6,7 +6,7 @@ use axum::{
     async_trait,
     body::Body,
     extract::{FromRequestParts, State},
-    http::{request::Parts, Request, StatusCode},
+    http::{request::Parts, HeaderMap, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -16,9 +16,11 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
-use crate::db::{LoginRequest, LoginResponse, Session, User, UserResponse};
+use crate::db::{actions, resource_types, LoginRequest, LoginResponse, Session, User, UserResponse};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
+
+use super::audit::{audit_log, extract_client_ip};
 
 /// Response for setup status check
 #[derive(Serialize)]
@@ -116,6 +118,7 @@ fn validate_password_strength(password: &str) -> Option<String> {
 /// Login endpoint
 pub async fn login(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     // Find user by email
@@ -152,6 +155,20 @@ pub async fn login(
         .execute(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::AUTH_LOGIN,
+        resource_types::USER,
+        Some(&user.id),
+        Some(&user.email),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     Ok(Json(LoginResponse {
         token,
@@ -281,6 +298,7 @@ pub async fn setup_status(State(state): State<Arc<AppState>>) -> Json<SetupStatu
 /// Initial setup endpoint - creates the first admin user
 pub async fn setup(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<SetupRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     // Check if any user already exists
@@ -359,6 +377,20 @@ pub async fn setup(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     tracing::info!("Created default Personal team for user: {}", request.email);
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::AUTH_SETUP,
+        resource_types::USER,
+        Some(&id),
+        Some(&request.email),
+        Some(&id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     // Auto-login the new user
     let token = generate_token();

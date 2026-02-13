@@ -376,7 +376,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/installations/:installation_id/repos/:owner/:repo/branches",
             get(github_apps::list_repo_branches),
         )
-        .route("/github-apps/:id", get(github_apps::get_app))
+        .route("/github-apps/:id", get(github_apps::get_app).delete(github_apps::delete_app))
         .route(
             "/github-apps/:id/install",
             get(github_apps::get_install_url),

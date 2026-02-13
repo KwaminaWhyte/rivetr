@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.16] - 2026-02-13
+
+### Fixed
+- **Auto-Update Download** - Fixed "Downloaded update undefined" message:
+  - Added `version` field to download response so the frontend displays the actual version
+- **Auto-Update Apply** - Fixed "Failed to create backup of current binary" error:
+  - Binary backup now falls back to temp directory when install dir is read-only (systemd `ProtectSystem=strict`)
+  - Added symlink resolution and proper permission handling after update
+- **Delete GitHub App** - Fixed 405 Method Not Allowed on DELETE `/api/github-apps/:id`:
+  - Added `delete_app` handler that removes the app and its installations
+  - Registered DELETE route in the API router
+- **Git Providers FK Constraint** - Fixed 500 error when adding GitLab/Bitbucket providers:
+  - Replaced hardcoded `user_id = "admin"` with actual authenticated user ID
+  - OAuth callback now queries the first admin user from the database
+
+### Added
+- **Audit Logging** - Extended audit logging to previously unlogged API modules:
+  - Auth: login and initial setup events
+  - SSH Keys: create, update, and delete operations
+  - GitHub Apps: delete operations
+  - Git Providers: add and delete operations
+  - Added new action constants and resource types for all new audit events
+
+---
+
 ## [0.2.15] - 2026-02-13
 
 ### Fixed
@@ -295,6 +320,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.16 | 2026-02-13 | Auto-update fixes, delete GitHub App, git provider FK fix, audit logging |
 | 0.2.15 | 2026-02-13 | Install script download fix, GitHub App callback fix |
 | 0.2.14 | 2026-02-05 | Container monitor and notification webhook fixes |
 | 0.2.13 | 2025-02-05 | Teams API panic fix for short user IDs |
@@ -337,7 +363,8 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.15...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.16...HEAD
+[0.2.16]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.12...v0.2.13

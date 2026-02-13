@@ -1,13 +1,14 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest};
+use crate::db::{actions, resource_types, CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest, User};
 use crate::AppState;
+use super::audit::{audit_log, extract_client_ip};
 
 /// List all SSH keys (returns public info only, not private keys)
 pub async fn list_ssh_keys(
@@ -46,6 +47,8 @@ pub async fn get_ssh_key(
 /// Create a new SSH key
 pub async fn create_ssh_key(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<CreateSshKeyRequest>,
 ) -> Result<(StatusCode, Json<SshKeyResponse>), StatusCode> {
     // Validate the private key format
@@ -97,6 +100,18 @@ pub async fn create_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::SSH_KEY_CREATE,
+        resource_types::SSH_KEY,
+        Some(&id),
+        Some(&req.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    ).await;
+
     Ok((StatusCode::CREATED, Json(SshKeyResponse::from(key))))
 }
 
@@ -104,6 +119,8 @@ pub async fn create_ssh_key(
 pub async fn update_ssh_key(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    user: User,
+    headers: HeaderMap,
     Json(req): Json<UpdateSshKeyRequest>,
 ) -> Result<Json<SshKeyResponse>, StatusCode> {
     // Check if key exists
@@ -155,6 +172,18 @@ pub async fn update_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::SSH_KEY_UPDATE,
+        resource_types::SSH_KEY,
+        Some(&id),
+        Some(&id),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    ).await;
+
     Ok(Json(SshKeyResponse::from(key)))
 }
 
@@ -162,6 +191,8 @@ pub async fn update_ssh_key(
 pub async fn delete_ssh_key(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    user: User,
+    headers: HeaderMap,
 ) -> Result<StatusCode, StatusCode> {
     let result = sqlx::query("DELETE FROM ssh_keys WHERE id = ?")
         .bind(&id)
@@ -175,6 +206,18 @@ pub async fn delete_ssh_key(
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
     }
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::SSH_KEY_DELETE,
+        resource_types::SSH_KEY,
+        Some(&id),
+        Some(&id),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    ).await;
 
     Ok(StatusCode::NO_CONTENT)
 }

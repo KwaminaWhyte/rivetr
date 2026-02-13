@@ -299,19 +299,55 @@ impl UpdateChecker {
     /// Apply an update by replacing the binary
     /// Returns the path to the backup of the old binary
     pub async fn apply_update(&self, new_binary: &std::path::Path) -> Result<std::path::PathBuf> {
-        // Get current executable path
-        let current_exe = std::env::current_exe().context("Failed to get current executable path")?;
+        // Get current executable path - resolve symlinks to get the real path
+        let current_exe = std::env::current_exe()
+            .context("Failed to get current executable path")?;
+        let current_exe = tokio::fs::canonicalize(&current_exe)
+            .await
+            .unwrap_or(current_exe);
 
-        // Create backup
+        info!("Current binary path: {}", current_exe.display());
+
+        // Create backup in the same directory as the binary
         let backup_path = current_exe.with_extension("bak");
-        tokio::fs::copy(&current_exe, &backup_path)
-            .await
-            .context("Failed to create backup of current binary")?;
 
-        // Replace binary
-        tokio::fs::copy(new_binary, &current_exe)
-            .await
-            .context("Failed to replace binary")?;
+        // On Linux with systemd ProtectSystem=strict, the binary directory may
+        // be read-only. Try the binary's directory first, then fall back to temp.
+        let backup_path = match tokio::fs::copy(&current_exe, &backup_path).await {
+            Ok(_) => {
+                info!("Backup created at: {}", backup_path.display());
+                backup_path
+            }
+            Err(e) => {
+                warn!("Cannot backup to {}: {}. Trying temp directory.", backup_path.display(), e);
+                let fallback = std::env::temp_dir().join("rivetr.bak");
+                tokio::fs::copy(&current_exe, &fallback)
+                    .await
+                    .context("Failed to create backup of current binary (tried both install dir and temp dir)")?;
+                info!("Backup created at fallback: {}", fallback.display());
+                fallback
+            }
+        };
+
+        // Replace binary - on some systems we need to remove first then copy
+        // because the running binary may be locked
+        if let Err(_) = tokio::fs::copy(new_binary, &current_exe).await {
+            // Try remove-then-rename approach
+            warn!("Direct copy failed, trying remove-then-rename approach");
+            let _ = tokio::fs::remove_file(&current_exe).await;
+            tokio::fs::copy(new_binary, &current_exe)
+                .await
+                .context("Failed to replace binary")?;
+        }
+
+        // Ensure the new binary is executable
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = tokio::fs::metadata(&current_exe).await?.permissions();
+            perms.set_mode(0o755);
+            tokio::fs::set_permissions(&current_exe, perms).await?;
+        }
 
         info!(
             "Update applied. Backup saved to: {}. Service restart required.",
