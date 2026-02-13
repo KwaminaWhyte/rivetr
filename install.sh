@@ -15,7 +15,7 @@ set -e
 # =============================================================================
 # Configuration
 # =============================================================================
-RIVETR_VERSION="${RIVETR_VERSION:-v0.2.13}"
+RIVETR_VERSION="${RIVETR_VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/rivetr}"
 DATA_DIR="${DATA_DIR:-/var/lib/rivetr}"
 CONFIG_FILE="$INSTALL_DIR/rivetr.toml"
@@ -442,13 +442,13 @@ build_from_source() {
     case "$OS" in
         ubuntu|debian)
             apt-get update -qq
-            apt-get install -y -qq build-essential pkg-config libssl-dev
+            apt-get install -y -qq build-essential pkg-config libssl-dev curl
             ;;
         fedora)
-            dnf install -y gcc pkg-config openssl-devel
+            dnf install -y gcc pkg-config openssl-devel curl
             ;;
         centos|rhel|rocky|almalinux)
-            yum install -y gcc pkg-config openssl-devel
+            yum install -y gcc pkg-config openssl-devel curl
             ;;
     esac
 
@@ -463,6 +463,33 @@ build_from_source() {
     rm -rf "$BUILD_DIR"
     git clone --depth 1 https://github.com/${GITHUB_REPO}.git "$BUILD_DIR"
     cd "$BUILD_DIR"
+
+    # Build frontend (required for RustEmbed static assets)
+    info "Building frontend..."
+    if command_exists node && command_exists npm; then
+        info "Node.js already installed: $(node --version)"
+    else
+        info "Installing Node.js..."
+        if curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null; then
+            apt-get install -y -qq nodejs 2>/dev/null
+        elif curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - 2>/dev/null; then
+            yum install -y nodejs 2>/dev/null || dnf install -y nodejs 2>/dev/null
+        fi
+    fi
+
+    if command_exists npm; then
+        cd frontend
+        npm install --legacy-peer-deps
+        npm run build
+        cd "$BUILD_DIR"
+        success "Frontend built successfully"
+    else
+        # Fallback: create minimal static directory so RustEmbed compiles
+        warn "Node.js not available. Creating minimal frontend placeholder."
+        mkdir -p static/dist/client
+        echo '<!DOCTYPE html><html><body><h1>Rivetr</h1><p>Frontend not built. Please rebuild with Node.js.</p></body></html>' > static/dist/client/index.html
+    fi
+
     cargo build --release
 
     cp target/release/rivetr "$INSTALL_DIR/rivetr"
