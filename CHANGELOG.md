@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.15] - 2026-02-13
+
+### Fixed
+- **Install Script** - Fixed binary download failure causing slow build-from-source fallback:
+  - Default version was hardcoded to `v0.2.13` which was never released (no binary existed)
+  - Changed default to `latest` which auto-fetches the actual latest release from GitHub API
+- **Install Script** - Fixed build-from-source `RustEmbed` compilation error:
+  - Added frontend build step (Node.js install + `npm run build`) before `cargo build`
+  - Falls back to creating minimal placeholder directory if Node.js is unavailable
+  - Resolves `#[derive(RustEmbed)] folder 'static/dist/client' does not exist` error
+- **GitHub App Callback** - Fixed 404 after GitHub App installation:
+  - Backend redirected to `/settings/github-apps` which doesn't exist in the frontend
+  - Corrected redirect to `/settings/git-providers` where the GitHub Apps tab lives
+
+---
+
 ## [0.2.14] - 2026-02-05
 
 ### Fixed
@@ -279,6 +295,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.2.15 | 2026-02-13 | Install script download fix, GitHub App callback fix |
+| 0.2.14 | 2026-02-05 | Container monitor and notification webhook fixes |
 | 0.2.13 | 2025-02-05 | Teams API panic fix for short user IDs |
 | 0.2.12 | 2025-02-05 | Dashboard stats chart auth fix |
 | 0.2.11 | 2025-02-05 | Auto-update system with API endpoints |
@@ -319,7 +337,9 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.15...HEAD
+[0.2.15]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.14...v0.2.15
+[0.2.14]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.10...v0.2.11
