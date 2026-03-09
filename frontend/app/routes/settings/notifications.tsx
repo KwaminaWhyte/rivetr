@@ -41,8 +41,10 @@ import type {
   SlackConfig,
   DiscordConfig,
   EmailConfig,
+  TelegramConfig,
+  TeamsConfig,
 } from "@/types/api";
-import { Loader2, Plus, Trash2, Send, Bell, MessageSquare, Mail, Check, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Send, Bell, MessageSquare, Mail, Check, X, BotMessageSquare, Users } from "lucide-react";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
@@ -56,6 +58,10 @@ function getChannelIcon(type: NotificationChannelType) {
       return <Bell className="h-4 w-4" />;
     case "email":
       return <Mail className="h-4 w-4" />;
+    case "telegram":
+      return <BotMessageSquare className="h-4 w-4" />;
+    case "teams":
+      return <Users className="h-4 w-4" />;
   }
 }
 
@@ -67,6 +73,10 @@ function getChannelBadgeVariant(type: NotificationChannelType): "default" | "sec
       return "secondary";
     case "email":
       return "outline";
+    case "telegram":
+      return "default";
+    case "teams":
+      return "secondary";
   }
 }
 
@@ -106,6 +116,12 @@ export default function SettingsNotificationsPage() {
   const [smtpTls, setSmtpTls] = useState(true);
   const [fromAddress, setFromAddress] = useState("");
   const [toAddresses, setToAddresses] = useState("");
+  // Telegram config state
+  const [botToken, setBotToken] = useState("");
+  const [chatId, setChatId] = useState("");
+  const [topicId, setTopicId] = useState("");
+  // Teams config state
+  const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
 
   // Subscription form state
   const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");
@@ -124,12 +140,20 @@ export default function SettingsNotificationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let config: SlackConfig | DiscordConfig | EmailConfig;
+      let config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig;
 
       if (channelType === "slack") {
         config = { webhook_url: webhookUrl.trim() };
       } else if (channelType === "discord") {
         config = { webhook_url: webhookUrl.trim() };
+      } else if (channelType === "telegram") {
+        config = {
+          bot_token: botToken.trim(),
+          chat_id: chatId.trim(),
+          topic_id: topicId.trim() ? parseInt(topicId.trim(), 10) : undefined,
+        };
+      } else if (channelType === "teams") {
+        config = { webhook_url: teamsWebhookUrl.trim() };
       } else {
         const addresses = toAddresses
           .split(",")
@@ -239,6 +263,10 @@ export default function SettingsNotificationsPage() {
     setSmtpTls(true);
     setFromAddress("");
     setToAddresses("");
+    setBotToken("");
+    setChatId("");
+    setTopicId("");
+    setTeamsWebhookUrl("");
     setChannelType("slack");
   };
 
@@ -270,6 +298,24 @@ export default function SettingsNotificationsPage() {
     if (channelType === "slack" || channelType === "discord") {
       if (!webhookUrl.trim()) {
         toast.error("Webhook URL is required");
+        return;
+      }
+    } else if (channelType === "telegram") {
+      if (!botToken.trim()) {
+        toast.error("Bot token is required");
+        return;
+      }
+      if (!chatId.trim()) {
+        toast.error("Chat ID is required");
+        return;
+      }
+    } else if (channelType === "teams") {
+      if (!teamsWebhookUrl.trim()) {
+        toast.error("Webhook URL is required");
+        return;
+      }
+      if (!teamsWebhookUrl.trim().startsWith("https://")) {
+        toast.error("Webhook URL must use HTTPS");
         return;
       }
     } else if (channelType === "email") {
@@ -332,7 +378,7 @@ export default function SettingsNotificationsPage() {
         <CardHeader>
           <CardTitle>Notification Channels</CardTitle>
           <CardDescription>
-            Send notifications via Slack, Discord, or Email when deployments occur.
+            Send notifications via Slack, Discord, Email, Telegram, or Microsoft Teams when deployments occur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -476,6 +522,18 @@ export default function SettingsNotificationsPage() {
                         Email (SMTP)
                       </span>
                     </SelectItem>
+                    <SelectItem value="telegram">
+                      <span className="flex items-center gap-2">
+                        <BotMessageSquare className="h-4 w-4" />
+                        Telegram
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="teams">
+                      <span className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Microsoft Teams
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -510,6 +568,69 @@ export default function SettingsNotificationsPage() {
                   />
                   <p className="text-xs text-muted-foreground">
                     Get this from your Discord channel's Integrations settings.
+                  </p>
+                </div>
+              )}
+
+              {/* Telegram Config */}
+              {channelType === "telegram" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="bot_token">Bot Token</Label>
+                    <Input
+                      id="bot_token"
+                      type="password"
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
+                      placeholder="123456:ABC-DEF..."
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Get this from @BotFather on Telegram.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="chat_id">Chat ID</Label>
+                    <Input
+                      id="chat_id"
+                      value={chatId}
+                      onChange={(e) => setChatId(e.target.value)}
+                      placeholder="-1001234567890"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      The chat, group, or channel ID. Use @userinfobot to find yours.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="topic_id">Topic ID (optional)</Label>
+                    <Input
+                      id="topic_id"
+                      type="number"
+                      value={topicId}
+                      onChange={(e) => setTopicId(e.target.value)}
+                      placeholder="e.g., 123"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      For forum/topic groups, specify the topic thread ID.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Microsoft Teams Config */}
+              {channelType === "teams" && (
+                <div className="space-y-2">
+                  <Label htmlFor="teams_webhook_url">Webhook URL</Label>
+                  <Input
+                    id="teams_webhook_url"
+                    value={teamsWebhookUrl}
+                    onChange={(e) => setTeamsWebhookUrl(e.target.value)}
+                    placeholder="https://outlook.office.com/webhook/..."
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Create an Incoming Webhook connector in your Teams channel settings.
                   </p>
                 </div>
               )}

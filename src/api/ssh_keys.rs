@@ -6,9 +6,11 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{actions, resource_types, CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest, User};
-use crate::AppState;
 use super::audit::{audit_log, extract_client_ip};
+use crate::db::{
+    actions, resource_types, CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest, User,
+};
+use crate::AppState;
 
 /// List all SSH keys (returns public info only, not private keys)
 pub async fn list_ssh_keys(
@@ -110,7 +112,8 @@ pub async fn create_ssh_key(
         Some(&user.id),
         ip.as_deref(),
         None,
-    ).await;
+    )
+    .await;
 
     Ok((StatusCode::CREATED, Json(SshKeyResponse::from(key))))
 }
@@ -182,7 +185,8 @@ pub async fn update_ssh_key(
         Some(&user.id),
         ip.as_deref(),
         None,
-    ).await;
+    )
+    .await;
 
     Ok(Json(SshKeyResponse::from(key)))
 }
@@ -217,7 +221,8 @@ pub async fn delete_ssh_key(
         Some(&user.id),
         ip.as_deref(),
         None,
-    ).await;
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

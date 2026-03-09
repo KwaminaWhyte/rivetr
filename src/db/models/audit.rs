@@ -106,6 +106,9 @@ pub mod actions {
     pub const AUTH_LOGIN: &str = "auth.login";
     pub const AUTH_LOGOUT: &str = "auth.logout";
     pub const AUTH_SETUP: &str = "auth.setup";
+    pub const AUTH_2FA_ENABLE: &str = "auth.2fa.enable";
+    pub const AUTH_2FA_DISABLE: &str = "auth.2fa.disable";
+    pub const AUTH_2FA_VALIDATE: &str = "auth.2fa.validate";
 
     // Git provider actions
     pub const GIT_PROVIDER_ADD: &str = "git_provider.add";

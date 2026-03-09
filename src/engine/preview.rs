@@ -641,6 +641,193 @@ pub async fn find_or_create_preview(
     Ok(preview)
 }
 
+/// Post or update a GitHub PR comment with the preview deployment URL.
+///
+/// This function:
+/// 1. Finds the GitHub App and installation for the repo
+/// 2. Gets an installation access token
+/// 3. Posts a new comment or updates an existing one
+/// 4. Stores the comment ID in the database for future updates
+pub async fn post_preview_comment(
+    db: &DbPool,
+    preview: &PreviewDeployment,
+    status: &str,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+) -> Result<()> {
+    use crate::crypto;
+    use crate::db::{GitHubApp, GitHubAppInstallation};
+    use crate::github::{get_installation_token, GitHubClient};
+
+    // Only post comments for GitHub provider
+    if preview.provider_type != "github" {
+        return Ok(());
+    }
+
+    // Parse owner/repo from repo_full_name
+    let parts: Vec<&str> = preview.repo_full_name.split('/').collect();
+    if parts.len() != 2 {
+        warn!("Invalid repo_full_name format: {}", preview.repo_full_name);
+        return Ok(());
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+
+    // Find a GitHub App installation that has access to this repo
+    // Try to find an installation whose account matches the repo owner
+    let installation: Option<GitHubAppInstallation> =
+        sqlx::query_as("SELECT * FROM github_app_installations WHERE account_login = ? LIMIT 1")
+            .bind(owner)
+            .fetch_optional(db)
+            .await?;
+
+    let installation = match installation {
+        Some(inst) => inst,
+        None => {
+            info!(
+                "No GitHub App installation found for owner '{}', skipping PR comment",
+                owner
+            );
+            return Ok(());
+        }
+    };
+
+    // Get the parent GitHub App to access its private key
+    let github_app: Option<GitHubApp> = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
+        .bind(&installation.github_app_id)
+        .fetch_optional(db)
+        .await?;
+
+    let github_app = match github_app {
+        Some(app) => app,
+        None => {
+            warn!("GitHub App not found for installation");
+            return Ok(());
+        }
+    };
+
+    // Decrypt the private key
+    let private_key = crypto::decrypt_if_encrypted(&github_app.private_key, encryption_key)
+        .unwrap_or_else(|e| {
+            warn!("Failed to decrypt GitHub App private key: {}", e);
+            github_app.private_key.clone()
+        });
+
+    // Get an installation access token
+    let token_response = get_installation_token(
+        github_app.app_id,
+        &private_key,
+        installation.installation_id,
+    )
+    .await?;
+
+    let client = GitHubClient::new(token_response.token);
+
+    // Build the comment body
+    let comment_body = match status {
+        "running" => {
+            format!(
+                "## Preview Deployment Ready\n\n\
+                 | | |\n\
+                 |---|---|\n\
+                 | **Preview URL** | [https://{}](https://{}) |\n\
+                 | **Branch** | `{}` |\n\
+                 | **Commit** | `{}` |\n\
+                 | **Status** | Running |\n\n\
+                 > Deployed by [Rivetr](https://github.com/KwaminaWhyte/rivetr)",
+                preview.preview_domain,
+                preview.preview_domain,
+                preview.pr_source_branch,
+                preview
+                    .commit_sha
+                    .as_deref()
+                    .unwrap_or("unknown")
+                    .get(..7)
+                    .unwrap_or("unknown"),
+            )
+        }
+        "failed" => {
+            format!(
+                "## Preview Deployment Failed\n\n\
+                 | | |\n\
+                 |---|---|\n\
+                 | **Branch** | `{}` |\n\
+                 | **Commit** | `{}` |\n\
+                 | **Status** | Failed |\n\
+                 | **Error** | {} |\n\n\
+                 > Deployed by [Rivetr](https://github.com/KwaminaWhyte/rivetr)",
+                preview.pr_source_branch,
+                preview
+                    .commit_sha
+                    .as_deref()
+                    .unwrap_or("unknown")
+                    .get(..7)
+                    .unwrap_or("unknown"),
+                preview.error_message.as_deref().unwrap_or("Unknown error"),
+            )
+        }
+        "closed" => {
+            format!(
+                "## Preview Deployment Closed\n\n\
+                 The preview deployment for this PR has been removed.\n\n\
+                 > Deployed by [Rivetr](https://github.com/KwaminaWhyte/rivetr)"
+            )
+        }
+        _ => {
+            format!(
+                "## Preview Deployment\n\n\
+                 | | |\n\
+                 |---|---|\n\
+                 | **Preview URL** | [https://{}](https://{}) |\n\
+                 | **Branch** | `{}` |\n\
+                 | **Status** | {} |\n\n\
+                 > Deployed by [Rivetr](https://github.com/KwaminaWhyte/rivetr)",
+                preview.preview_domain, preview.preview_domain, preview.pr_source_branch, status,
+            )
+        }
+    };
+
+    // Post new comment or update existing one
+    if let Some(comment_id) = preview.github_comment_id {
+        // Update existing comment
+        if let Err(e) = client
+            .update_comment(owner, repo, comment_id as u64, &comment_body)
+            .await
+        {
+            warn!(error = %e, "Failed to update GitHub PR comment, posting new one");
+            // Fall back to posting a new comment
+            let new_comment_id = client
+                .post_comment(owner, repo, preview.pr_number as u64, &comment_body)
+                .await?;
+            // Store the new comment ID
+            sqlx::query("UPDATE preview_deployments SET github_comment_id = ? WHERE id = ?")
+                .bind(new_comment_id as i64)
+                .bind(&preview.id)
+                .execute(db)
+                .await?;
+        }
+    } else {
+        // Post new comment
+        let comment_id = client
+            .post_comment(owner, repo, preview.pr_number as u64, &comment_body)
+            .await?;
+
+        // Store the comment ID for future updates
+        sqlx::query("UPDATE preview_deployments SET github_comment_id = ? WHERE id = ?")
+            .bind(comment_id as i64)
+            .bind(&preview.id)
+            .execute(db)
+            .await?;
+
+        info!(
+            preview_id = %preview.id,
+            comment_id = comment_id,
+            "Posted GitHub PR comment with preview URL"
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,10 +839,10 @@ mod tests {
             "pr-123.my-app.preview.example.com"
         );
 
-        // Test sanitization
+        // Test sanitization (non-alphanumeric chars become hyphens, trailing hyphens trimmed)
         assert_eq!(
             generate_preview_domain("My App!", 42, "preview.example.com"),
-            "pr-42.my-app-.preview.example.com"
+            "pr-42.my-app.preview.example.com"
         );
 
         // Test truncation of long names

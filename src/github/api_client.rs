@@ -190,6 +190,50 @@ impl GitHubClient {
         self.get(url).await
     }
 
+    /// Update an existing comment on an issue or pull request.
+    ///
+    /// # Arguments
+    /// * `owner` - Repository owner
+    /// * `repo` - Repository name
+    /// * `comment_id` - The comment ID to update
+    /// * `body` - New comment body (Markdown supported)
+    pub async fn update_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        comment_id: u64,
+        body: &str,
+    ) -> Result<()> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/issues/comments/{}",
+            owner, repo, comment_id
+        );
+
+        let request_body = CreateCommentRequest {
+            body: body.to_string(),
+        };
+
+        let response = self
+            .client
+            .patch(&url)
+            .header("Authorization", format!("Bearer {}", self.access_token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Rivetr")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .json(&request_body)
+            .send()
+            .await
+            .context("Failed to update GitHub comment")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub API error updating comment: {} - {}", status, body);
+        }
+
+        Ok(())
+    }
+
     /// List installations for the authenticated app.
     /// Note: This requires app JWT authentication, not installation token.
     pub async fn list_installations(&self) -> Result<Vec<Installation>> {

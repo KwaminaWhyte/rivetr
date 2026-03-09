@@ -15,6 +15,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use super::audit::{audit_log, extract_client_ip};
 use crate::crypto;
 use crate::db::{
     actions, resource_types, GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse,
@@ -23,7 +24,6 @@ use crate::db::{
 };
 use crate::github::{get_installation_token, GitHubClient};
 use crate::AppState;
-use super::audit::{audit_log, extract_client_ip};
 
 /// Default permissions requested for the GitHub App
 const DEFAULT_PERMISSIONS: &str = r#"{
@@ -292,7 +292,8 @@ pub async fn delete_app(
         Some(&user.id),
         ip.as_deref(),
         None,
-    ).await;
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

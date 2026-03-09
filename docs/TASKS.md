@@ -623,13 +623,13 @@ Enhanced rollback capabilities with registry integration.
 
 Auto-deploy PRs with unique preview URLs.
 
-- [ ] **T5.3.1** Parse PR events from webhooks (open, sync, close, merge)
-- [ ] **T5.3.2** Create preview deployment with unique subdomain (pr-{number}.{app}.{domain})
-- [ ] **T5.3.3** Add preview deployments list to app detail page
-- [ ] **T5.3.4** Auto-cleanup on PR close/merge
-- [ ] **T5.3.5** Comment preview URL on PR (GitHub API)
-- [ ] **T5.3.6** Support GitLab/Gitea PR/MR previews
-- [ ] **T5.3.7** Preview deployment resource limits (lower than production)
+- [x] **T5.3.1** Parse PR events from webhooks (open, sync, close, merge) ✅ GitHub, GitLab MR, Gitea PR
+- [x] **T5.3.2** Create preview deployment with unique subdomain (pr-{number}.{app}.{domain}) ✅
+- [x] **T5.3.3** Add preview deployments list to app detail page ✅ Previews tab with list/delete/redeploy
+- [x] **T5.3.4** Auto-cleanup on PR close/merge ✅ All 4 providers
+- [x] **T5.3.5** Comment preview URL on PR (GitHub API) ✅ Posts/updates comments via GitHub App
+- [x] **T5.3.6** Support GitLab/Gitea PR/MR previews ✅ Full MR/PR event handling
+- [x] **T5.3.7** Preview deployment resource limits (lower than production) ✅ Default 256m/0.5 CPU
 
 ### 5.4 ZIP File Upload Deployment ✅ COMPLETE
 
@@ -700,55 +700,288 @@ Features that differentiate Rivetr from Coolify/Dokploy.
 
 ---
 
-## Competitive Research: Coolify & Dokploy
+## Phase 7: Competitive Parity - NOT STARTED
 
-Research conducted to identify feature gaps and improvement opportunities.
+Features that both Coolify and Dokploy offer. Required to be competitive in the self-hosted PaaS market.
 
-### Features Rivetr Already Has
+### 7.1 OAuth Login
 
-- [x] Git provider OAuth integration (GitHub, GitLab, Bitbucket)
-- [x] Push-to-deploy via webhooks
-- [x] Dark/Light theme switching
-- [x] Real-time deployment logs
-- [x] SSL/TLS with Let's Encrypt auto-renewal
-- [x] Docker and Podman runtime support
-- [x] Environment variables support
-- [x] Health checks with automatic failover
-- [x] Rollback functionality
+Social/OAuth login support for the dashboard.
 
-### Priority Features to Add (from Coolify/Dokploy)
+- [ ] **T7.1.1** Add OAuth provider configuration table (oauth_providers: id, provider, client_id, client_secret, enabled)
+- [ ] **T7.1.2** Implement GitHub OAuth login flow (authorize → callback → create/link user)
+- [ ] **T7.1.3** Implement Google OAuth login flow
+- [ ] **T7.1.4** Account linking (connect OAuth identity to existing account)
+- [ ] **T7.1.5** OAuth provider configuration UI in Settings
+- [ ] **T7.1.6** Login page with OAuth provider buttons
+- [ ] **T7.1.7** Handle OAuth errors and token refresh
 
-**High Priority:**
+### 7.2 Project Environments
 
-- [x] **Docker Compose support** - Deploy multi-container apps from docker-compose.yml ✅ IMPLEMENTED (Phase 4.2)
-- [x] **One-click templates** - Pre-configured apps (PostgreSQL, Redis, MySQL, MongoDB, etc.) ✅ IMPLEMENTED (Phase 4.3 - 26 templates)
-- [ ] **Pull request preview deployments** - Auto-deploy PRs with unique URLs
-- [x] **Browser terminal** - In-browser shell access to containers (xterm.js) ✅ IMPLEMENTED
-- [ ] **Repository browser** - Select repos from connected Git providers in app creation
+Support dev/staging/production environments per project with environment-scoped variables and deployments.
 
-**Medium Priority:**
+- [ ] **T7.2.1** Create `environments` table (id, project_id, name, description, is_default)
+- [ ] **T7.2.2** Create `environment_variables_env` table for environment-scoped env vars
+- [ ] **T7.2.3** Link apps to environments (add environment_id to apps table)
+- [ ] **T7.2.4** Environment CRUD API (GET/POST/PUT/DELETE /api/projects/:id/environments)
+- [ ] **T7.2.5** Environment switching in project UI (tabs or dropdown)
+- [ ] **T7.2.6** Environment-scoped deployments (deploy to specific environment)
+- [ ] **T7.2.7** Predefined system variables per environment (RIVETR_ENV, RIVETR_URL, RIVETR_BRANCH)
+- [ ] **T7.2.8** Default environments created with new projects (production, staging, development)
+- [ ] **T7.2.9** Environment variable inheritance (environment vars override project vars)
 
-- [x] **Build cache control** - Support `--no-cache` in custom docker options to force fresh builds
-- [x] **Resource limits UI** - Set CPU/memory limits per app from dashboard (ResourceLimitsCard.tsx)
-- [ ] **Deployment scheduling** - Schedule deployments for specific times
-- [ ] **S3 backup integration** - Backup volumes and databases to S3
-- [x] **Custom domains per app** - Multiple domains pointing to one app ✅ IMPLEMENTED (Phase 3.14)
+### 7.3 Watch Paths
 
-**Lower Priority:**
+Selective deployment triggering based on which files changed in a push.
 
-- [ ] **Multi-server support** - Deploy to multiple servers from one dashboard
-- [ ] **Service dependencies** - Define app startup order and dependencies
-- [x] **Build from Dockerfile path** - Specify custom Dockerfile location ✅ IMPLEMENTED (Phase 3.10.1)
-- [ ] **Auto-scaling** - Scale containers based on load
+- [x] **T7.3.1** Add `watch_paths` column to apps table (JSON array of glob patterns) ✅ Already existed in migration 009
+- [x] **T7.3.2** Parse changed files from webhook push payload (GitHub, GitLab, Gitea) ✅ ChangedFiles trait
+- [x] **T7.3.3** Match changed files against watch path patterns (glob matching) ✅ glob crate
+- [x] **T7.3.4** Skip deployment if no watched files changed (log reason) ✅ All 3 providers
+- [x] **T7.3.5** Watch paths configuration in app settings UI ✅ WatchPathsCard component
+- [x] **T7.3.6** Support include and exclude patterns ✅ Directory patterns auto-expand with **
 
-### UI/UX Improvements (from Dokploy)
+### 7.4 Bitbucket & DockerHub Webhooks
 
-- [x] **Simplified app creation flow** - Project-centric flow, create apps within projects
-- [ ] **Quick actions menu** - Fast access to common operations
-- [x] **Deployment timeline view** - Visual history of deployments (DeploymentTimeline.tsx with toggle)
-- [x] **App grouping/projects** - Organize related apps together (Projects page with cards, service counts)
-- [x] **Activity feed** - Recent actions across all apps (Recent Events in Dashboard)
-- [x] **Project-centric navigation** - Apps accessed through projects, cleaner sidebar structure
+Expand Git provider support to Bitbucket and DockerHub.
+
+- [x] **T7.4.1** Bitbucket webhook signature verification (HMAC-SHA256) ✅ verify_bitbucket_signature()
+- [x] **T7.4.2** Parse Bitbucket push events (repo:push) ✅ handle_bitbucket_push()
+- [x] **T7.4.3** Parse Bitbucket PR events (pullrequest:created, updated, merged, declined) ✅ handle_bitbucket_pull_request()
+- [x] **T7.4.4** Bitbucket webhook endpoint (POST /api/webhooks/bitbucket) ✅ Route registered
+- [ ] **T7.4.5** DockerHub webhook endpoint (deploy on image push)
+- [ ] **T7.4.6** DockerHub webhook payload parsing and signature verification
+- [x] **T7.4.7** Add Bitbucket tab to Git Providers settings UI ✅ Webhook URL, copy, test connection
+
+### 7.5 Additional Notification Channels
+
+Expand from 4 channels (Slack, Discord, Email, Webhook) to 8+.
+
+- [x] **T7.5.1** Telegram notification provider (Bot API with group/topic support) ✅ telegram.rs with HTML formatting
+- [x] **T7.5.2** Microsoft Teams notification provider (incoming webhooks) ✅ teams.rs with Adaptive Card v1.4
+- [ ] **T7.5.3** Pushover notification provider (multi-device push)
+- [ ] **T7.5.4** Ntfy notification provider (self-hosted push)
+- [x] **T7.5.5** Add new channel types to notification_channels CHECK constraint ✅ Migration 039
+- [x] **T7.5.6** Notification channel configuration UI for each new provider ✅ Telegram + Teams forms
+- [ ] **T7.5.7** Test notification button for each provider
+
+### 7.6 Service Templates Expansion
+
+Expand from 26 to 100+ one-click service templates.
+
+- [ ] **T7.6.1** AI/ML templates: Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB (6)
+- [ ] **T7.6.2** Analytics templates: Plausible, Umami, PostHog, Matomo (4)
+- [ ] **T7.6.3** Automation templates: Activepieces, Windmill, Trigger.dev (3)
+- [ ] **T7.6.4** CMS templates: WordPress, Ghost, Strapi, Directus, Payload CMS (5)
+- [ ] **T7.6.5** Communication templates: Rocket.Chat, Mattermost, Matrix/Synapse (3)
+- [ ] **T7.6.6** Development templates: Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo (6)
+- [ ] **T7.6.7** Documentation templates: BookStack, Wiki.js, Docmost, Outline (if not exists) (4)
+- [ ] **T7.6.8** File/Media templates: Immich, Jellyfin, Navidrome, Seafile (4)
+- [ ] **T7.6.9** Monitoring templates: SigNoz, Beszel, Checkmate, Dozzle (if not exists) (4)
+- [ ] **T7.6.10** Security templates: Authentik, Keycloak, Vaultwarden, Infisical (4)
+- [ ] **T7.6.11** Search templates: Meilisearch, Typesense (2)
+- [ ] **T7.6.12** Project Management templates: Plane, Vikunja, Leantime, Cal.com (4)
+- [ ] **T7.6.13** Other templates: Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF (5)
+- [ ] **T7.6.14** Template category system with filtering in gallery UI
+- [ ] **T7.6.15** Template search functionality
+
+### 7.7 Instance Backup & Restore
+
+Backup the Rivetr instance itself (database, config, certificates) for disaster recovery.
+
+- [x] **T7.7.1** Instance backup command: dump SQLite DB + rivetr.toml + SSL certs to tar.gz ✅ src/backup.rs
+- [ ] **T7.7.2** Scheduled instance backups (configurable cron interval)
+- [x] **T7.7.3** Instance backup API endpoint (POST /api/system/backup) ✅ 5 endpoints (create, list, download, delete, restore)
+- [x] **T7.7.4** Instance restore command (CLI: `rivetr restore <backup.tar.gz>`) ✅ CLI backup + restore
+- [ ] **T7.7.5** Instance backup to S3 (reuse S3 config from Phase 6.5)
+- [x] **T7.7.6** Instance backup management UI in Settings ✅ settings/backup.tsx with download, restore, delete
+
+### 7.8 Scheduled Jobs
+
+Run commands inside containers or on the server on a cron schedule.
+
+- [ ] **T7.8.1** Create `scheduled_jobs` table (id, app_id, name, command, cron_expression, enabled, last_run, next_run)
+- [ ] **T7.8.2** Cron scheduler background task (evaluate job schedules, execute due jobs)
+- [ ] **T7.8.3** Execute commands inside app containers via docker exec / podman exec
+- [ ] **T7.8.4** Job execution history table (scheduled_job_runs: id, job_id, status, output, started_at, finished_at)
+- [ ] **T7.8.5** Scheduled jobs CRUD API (GET/POST/PUT/DELETE /api/apps/:id/jobs)
+- [ ] **T7.8.6** Scheduled jobs management UI (list, create, edit, enable/disable, view history)
+- [ ] **T7.8.7** Job execution notifications (success/failure via existing notification system)
+
+### 7.9 Container Replicas
+
+Run multiple instances of an app with load balancing.
+
+- [ ] **T7.9.1** Add `replicas` column to apps table (default 1)
+- [ ] **T7.9.2** Deploy multiple containers with indexed naming (app-name-1, app-name-2, etc.)
+- [ ] **T7.9.3** Configure proxy to load balance across replica containers
+- [ ] **T7.9.4** Replica health monitoring (track health of each instance)
+- [ ] **T7.9.5** Scale up/down API (PUT /api/apps/:id/scale with replica count)
+- [ ] **T7.9.6** Replica management UI (slider or input to set replica count, view instance status)
+- [ ] **T7.9.7** Graceful scale-down (drain connections before stopping)
+
+### 7.10 Deploy by Commit/Tag
+
+Deploy specific Git commits or tags instead of latest branch HEAD.
+
+- [ ] **T7.10.1** Add optional `commit_sha` and `git_tag` fields to deploy request
+- [ ] **T7.10.2** Checkout specific commit or tag during clone step
+- [ ] **T7.10.3** List commits API (GET /api/apps/:id/commits via GitHub/GitLab API)
+- [ ] **T7.10.4** List tags API (GET /api/apps/:id/tags via GitHub/GitLab API)
+- [ ] **T7.10.5** Commit/tag selector in deploy modal UI
+- [ ] **T7.10.6** Show deployed commit/tag in deployment history
+
+**Phase 7 Checkpoint**: Feature parity with Coolify and Dokploy
+
+---
+
+## Phase 8: Enterprise & Scale - NOT STARTED
+
+Features required for enterprise adoption, high availability, and large-scale deployments.
+
+### 8.1 Multi-Server Support
+
+Deploy and manage applications across multiple remote servers from a single dashboard.
+
+- [ ] **T8.1.1** Create `servers` table (id, name, host, port, ssh_key_id, status, team_id)
+- [ ] **T8.1.2** SSH key management (store, test connection)
+- [ ] **T8.1.3** Server registration API (POST /api/servers with SSH validation)
+- [ ] **T8.1.4** Server health monitoring (periodic SSH ping, Docker status check)
+- [ ] **T8.1.5** Remote Docker/Podman command execution via SSH tunnel
+- [ ] **T8.1.6** Deploy apps to specific server (add server_id to apps table)
+- [ ] **T8.1.7** Remote server resource monitoring (CPU, memory, disk via SSH)
+- [ ] **T8.1.8** Remote server terminal access from dashboard
+- [ ] **T8.1.9** Server management UI (list, add, edit, remove, status indicators)
+- [ ] **T8.1.10** Remote container log streaming via SSH tunnel
+
+### 8.2 SSO / SAML / OIDC
+
+Enterprise single sign-on integration.
+
+- [ ] **T8.2.1** OpenID Connect (OIDC) provider integration
+- [ ] **T8.2.2** SAML 2.0 assertion parsing and validation
+- [ ] **T8.2.3** Auth0 compatibility testing
+- [ ] **T8.2.4** Keycloak compatibility testing
+- [ ] **T8.2.5** Azure AD / Entra ID compatibility testing
+- [ ] **T8.2.6** SSO configuration UI (provider URL, client ID, certificates)
+- [ ] **T8.2.7** Per-team SSO provider settings
+- [ ] **T8.2.8** Auto-provisioning of users from SSO claims
+
+### 8.3 Two-Factor Authentication (2FA)
+
+TOTP-based two-factor authentication for enhanced account security.
+
+- [ ] **T8.3.1** TOTP secret generation and storage (encrypted in DB)
+- [ ] **T8.3.2** 2FA setup flow with QR code generation
+- [ ] **T8.3.3** 2FA verification on login
+- [ ] **T8.3.4** Recovery codes generation and storage
+- [ ] **T8.3.5** 2FA management page (enable, disable, regenerate recovery codes)
+- [ ] **T8.3.6** 2FA enforcement setting per team (require 2FA for all members)
+
+### 8.4 Log Draining
+
+Export application logs to external observability services.
+
+- [ ] **T8.4.1** Log drain configuration table (id, app_id, provider, config_json, enabled)
+- [ ] **T8.4.2** Axiom log drain provider
+- [ ] **T8.4.3** New Relic log drain provider
+- [ ] **T8.4.4** Custom FluentBit configuration support
+- [ ] **T8.4.5** Generic HTTP log drain (POST logs to any endpoint)
+- [ ] **T8.4.6** Per-app log drain configuration
+- [ ] **T8.4.7** Log drain settings UI
+
+### 8.5 Docker Swarm Integration
+
+Multi-node container orchestration for high availability.
+
+- [ ] **T8.5.1** Swarm mode initialization (docker swarm init)
+- [ ] **T8.5.2** Worker node join token management
+- [ ] **T8.5.3** Manager node management UI
+- [ ] **T8.5.4** Deploy apps as Swarm services (docker service create)
+- [ ] **T8.5.5** Service scaling across Swarm nodes
+- [ ] **T8.5.6** Overlay networking configuration
+- [ ] **T8.5.7** Rolling update configuration (parallelism, delay, failure action)
+- [ ] **T8.5.8** Swarm node health monitoring
+
+### 8.6 Build Servers
+
+Offload builds to dedicated build servers to reduce production server load.
+
+- [ ] **T8.6.1** Build server registration (SSH connection + Docker availability check)
+- [ ] **T8.6.2** Build server selection logic (round-robin or least-loaded)
+- [ ] **T8.6.3** Remote build execution via SSH (clone + build on build server)
+- [ ] **T8.6.4** Push built image to registry from build server
+- [ ] **T8.6.5** Pull and deploy image on production server
+- [ ] **T8.6.6** Build server health monitoring
+- [ ] **T8.6.7** Build server management UI
+
+### 8.7 Shared Environment Variables
+
+Hierarchical environment variable inheritance across team, project, and environment levels.
+
+- [ ] **T8.7.1** Team-level shared variables table (team_env_vars)
+- [ ] **T8.7.2** Project-level shared variables table (project_env_vars)
+- [ ] **T8.7.3** Variable inheritance resolution (team → project → environment → app)
+- [ ] **T8.7.4** Override indicators in UI (show where each variable comes from)
+- [ ] **T8.7.5** Shared variable management UI (team settings, project settings)
+
+**Phase 8 Checkpoint**: Enterprise-ready PaaS with multi-server and SSO support
+
+---
+
+## Competitive Research: Coolify & Dokploy (March 2026)
+
+Comprehensive research conducted against both Coolify (280+ templates, 44K+ GitHub stars) and Dokploy (350+ templates, 26K+ GitHub stars).
+
+### Rivetr Advantages (neither competitor has)
+
+- [x] **Single binary (~30MB RAM)** - vs Coolify (~800MB) and Dokploy (~250MB)
+- [x] **Podman runtime support** - neither Coolify nor Dokploy supports Podman
+- [x] **Embedded SQLite** - no external PostgreSQL or Redis needed
+- [x] **Built-in cost estimation** - unique feature
+- [x] **AES-256-GCM env var encryption** - encrypted at rest
+- [x] **Native Prometheus /metrics** - built-in metrics endpoint
+- [x] **Rust performance** - fastest proxy, lowest latency
+
+### Competitive Parity Gaps (Phase 7)
+
+| Feature | Coolify | Dokploy | Rivetr | Phase |
+|---------|---------|---------|--------|-------|
+| OAuth login (GitHub, Google) | Yes | Yes | **No** | 7.1 |
+| Project environments (dev/staging/prod) | Yes | Yes | **No** | 7.2 |
+| Watch paths (selective deploy) | No | Yes | **No** | 7.3 |
+| Bitbucket webhooks | Yes | Yes | **No** | 7.4 |
+| 8+ notification channels | 6 | 11+ | **4** | 7.5 |
+| 100+ service templates | 280+ | 350+ | **26** | 7.6 |
+| Instance backup/restore | Yes | Yes | **No** | 7.7 |
+| Scheduled jobs (cron) | Yes | Yes | **No** | 7.8 |
+| Container replicas | Yes | Yes | **No** | 7.9 |
+| Deploy by commit/tag | Yes | Yes | **No** | 7.10 |
+
+### Enterprise Gaps (Phase 8)
+
+| Feature | Coolify | Dokploy | Rivetr | Phase |
+|---------|---------|---------|--------|-------|
+| Multi-server support | Yes | Yes | **No** | 8.1 |
+| SSO / SAML / OIDC | No | Yes (enterprise) | **No** | 8.2 |
+| Two-factor auth (2FA) | No | Yes | **No** | 8.3 |
+| Log draining (external) | Yes | No | **No** | 8.4 |
+| Docker Swarm | Experimental | Yes | **No** | 8.5 |
+| Build servers | Yes | Yes | **No** | 8.6 |
+| Shared env vars (hierarchy) | Yes | Yes | **No** | 8.7 |
+
+### Previously Completed from Research
+
+- [x] Docker Compose support ✅ (Phase 4.2)
+- [x] One-click templates (26) ✅ (Phase 4.3)
+- [x] Browser terminal ✅ (xterm.js)
+- [x] Build cache control ✅
+- [x] Resource limits UI ✅
+- [x] Custom domains per app ✅ (Phase 3.14)
+- [x] Build from Dockerfile path ✅ (Phase 3.10.1)
+- [x] Project-centric navigation ✅
+- [x] Deployment timeline view ✅
+- [x] Activity feed ✅
 
 ---
 
@@ -761,9 +994,11 @@ Research conducted to identify feature gaps and improvement opportunities.
 | Phase 2   | 39          | 39        | 100%     |
 | Phase 3   | 136         | 130       | 96%      |
 | Phase 4   | 61          | 61        | 100%     |
-| Phase 5   | 30          | 20        | 67%      |
+| Phase 5   | 30          | 27        | 90%      |
 | Phase 6   | 28          | 0         | 0%       |
-| **Total** | **418**     | **372**   | **89%**  |
+| Phase 7   | 100         | 17        | 17%      |
+| Phase 8   | 56          | 0         | 0%       |
+| **Total** | **574**     | **396**   | **69%**  |
 
 ---
 
@@ -775,45 +1010,86 @@ _No active bugs - all recently identified issues have been fixed._
 
 ## Next Priority Tasks
 
-1. **Preview Deployments** (T5.3.1-7)
+### Sprint 1: Quick Wins + Preview Deployments (Parallel)
 
-   - Parse PR events from webhooks
-   - Create preview deployment with unique subdomain
-   - Auto-cleanup on PR close/merge
+**Stream A: Preview Deployments** (T5.3.1-7)
+- Parse PR events from webhooks
+- Create preview deployment with unique subdomain
+- Auto-cleanup on PR close/merge
 
-2. **Advanced Rollbacks** (T5.2.1-6) - ✅ MOSTLY COMPLETE
+**Stream B: Quick Wins** (parallel agents)
+- Watch paths (T7.3.1-6) - Low effort, high value
+- Bitbucket webhooks (T7.4.1-7) - Similar to existing providers
+- Additional notification channels (T7.5.1-7) - Independent per channel
+- Instance backup (T7.7.1-6) - Self-contained
 
-   - ✅ Health-based auto-rollback (T5.2.1) - Tested and working
-   - ✅ Rollback settings UI (T5.2.5) - RollbackSettingsCard in Settings > Security
-   - ⏳ Registry push on deploy (T5.2.3) - Pending
+### Sprint 2: Auth + Environments (Parallel)
 
-3. **Buildpack Support** (T3.8.1-8) - ✅ COMPLETE
-   - ✅ Nixpacks builder
-   - ✅ Railpack builder (src/engine/railpack.rs with BuildKit)
-   - ✅ Heroku/Paketo CNB (src/engine/pack_builder.rs)
+**Stream A: OAuth Login** (T7.1.1-7)
+**Stream B: Project Environments** (T7.2.1-9)
+**Stream C: 2FA** (T8.3.1-6)
+
+### Sprint 3: Templates + Jobs + Deploy Options (Parallel)
+
+**Stream A: Service Templates** (T7.6.1-15) - 50+ new templates
+**Stream B: Scheduled Jobs** (T7.8.1-7)
+**Stream C: Deploy by Commit/Tag** (T7.10.1-6)
+**Stream D: Container Replicas** (T7.9.1-7)
+
+### Sprint 4: S3 + Monitoring (Parallel)
+
+**Stream A: S3 Backup Integration** (T6.5.1-6)
+**Stream B: Advanced Monitoring** (T6.4.1-6)
+**Stream C: Log Draining** (T8.4.1-7)
+
+### Sprint 5: Deployment Enhancements + Bulk Ops (Parallel)
+
+**Stream A: Deployment Enhancements** (T6.2.1-5)
+**Stream B: Bulk Operations** (T6.3.1-6)
+**Stream C: Shared Env Vars** (T8.7.1-5)
+
+### Sprint 6: Enterprise (Sequential - complex)
+
+**Stream A: Multi-Server Support** (T8.1.1-10)
+**Stream B: SSO/SAML/OIDC** (T8.2.1-8)
+**Stream C: Docker Swarm** (T8.5.1-8)
+**Stream D: Build Servers** (T8.6.1-7)
 
 ---
 
-## Backlog Priority Tasks
+## Backlog
 
-**Phase 5 - Advanced CI/CD (NEW from competitor research):**
-
-- **T5.2.1-6** - Advanced Rollbacks ✅ (health-based auto-rollback working, registry push pending)
+**Phase 5 - Advanced CI/CD:**
+- **T5.2.3** - Push built images to Docker registry on deploy
 - **T5.3.1-7** - Preview Deployments (PR auto-deploy with unique URLs)
 
-**Phase 6 - Unique Features (NEW - differentiators):**
-
+**Phase 6 - Unique Features:**
 - **T6.1.1-6** - Resource Alerts & Cost Estimation
-- **T6.2.1-5** - Deployment Enhancements (scheduled, approval workflow, freeze periods)
-- **T6.3.1-6** - Bulk Operations & App Management (cloning, snapshots, maintenance mode)
-- **T6.4.1-6** - Advanced Monitoring (log search, uptime tracking)
+- **T6.2.1-5** - Deployment Enhancements
+- **T6.3.1-6** - Bulk Operations & App Management
+- **T6.4.1-6** - Advanced Monitoring
 - **T6.5.1-6** - S3 Backup Integration
 
-**Phase 2 - Production Ready:**
+**Phase 7 - Competitive Parity:**
+- **T7.1.1-7** - OAuth Login
+- **T7.2.1-9** - Project Environments
+- **T7.3.1-6** - Watch Paths
+- **T7.4.1-7** - Bitbucket & DockerHub Webhooks
+- **T7.5.1-7** - Additional Notification Channels
+- **T7.6.1-15** - Service Templates Expansion (to 100+)
+- **T7.7.1-6** - Instance Backup & Restore
+- **T7.8.1-7** - Scheduled Jobs
+- **T7.9.1-7** - Container Replicas
+- **T7.10.1-6** - Deploy by Commit/Tag
 
-- **T2.2.2** - Add deployment failure recovery
-- **T2.2.5** - Database integrity checks
-- **T2.7.2-3** - Document configuration options and API endpoints
+**Phase 8 - Enterprise & Scale:**
+- **T8.1.1-10** - Multi-Server Support
+- **T8.2.1-8** - SSO/SAML/OIDC
+- **T8.3.1-6** - Two-Factor Authentication
+- **T8.4.1-7** - Log Draining
+- **T8.5.1-8** - Docker Swarm
+- **T8.6.1-7** - Build Servers
+- **T8.7.1-5** - Shared Environment Variables
 
 ### MVP Status
 

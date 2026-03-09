@@ -55,6 +55,10 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Auto Updates" },
   ],
+  "/settings/backup": [
+    { label: "Settings", href: "/settings" },
+    { label: "Backup & Restore" },
+  ],
 };
 
 function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {

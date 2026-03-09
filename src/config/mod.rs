@@ -299,6 +299,8 @@ pub struct WebhookConfig {
     pub gitlab_token: Option<String>,
     /// Secret for verifying Gitea webhook signatures (HMAC-SHA256)
     pub gitea_secret: Option<String>,
+    /// Secret for verifying Bitbucket webhook signatures (HMAC-SHA256)
+    pub bitbucket_secret: Option<String>,
 }
 
 impl Default for WebhookConfig {
@@ -307,6 +309,7 @@ impl Default for WebhookConfig {
             github_secret: None,
             gitlab_token: None,
             gitea_secret: None,
+            bitbucket_secret: None,
         }
     }
 }

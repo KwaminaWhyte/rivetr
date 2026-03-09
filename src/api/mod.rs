@@ -9,11 +9,13 @@ mod database_backups;
 mod databases;
 mod deployments;
 mod env_vars;
+pub mod environments;
 pub mod error;
 mod git_providers;
 mod github_apps;
 pub mod metrics;
 mod notifications;
+pub mod oauth;
 mod previews;
 mod projects;
 pub mod rate_limit;
@@ -23,6 +25,7 @@ mod services;
 mod ssh_keys;
 mod system;
 mod teams;
+mod two_factor;
 mod validation;
 mod volumes;
 mod webhooks;
@@ -70,8 +73,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/installation/callback",
             get(github_apps::installation_callback),
         )
+        // OAuth login routes (public - social login)
+        .route(
+            "/oauth/providers",
+            get(oauth::list_enabled_providers),
+        )
+        .route(
+            "/oauth-login/:provider/authorize",
+            get(oauth::oauth_login_authorize),
+        )
+        .route(
+            "/oauth-login/:provider/callback",
+            get(oauth::oauth_login_callback),
+        )
         // Team invitation validation (public - validate before login)
         .route("/invitations/:token", get(teams::validate_invitation))
+        // 2FA validation (semi-authenticated - uses temporary session token)
+        .route("/2fa/validate", post(two_factor::validate_2fa))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -176,6 +194,40 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id/apps/upload", post(apps::upload_create_app))
         .route("/projects/:id/costs", get(costs::get_project_costs))
         .route("/apps/:id/project", put(projects::assign_app_project))
+        // Project Environments
+        .route(
+            "/projects/:id/environments",
+            get(environments::list_environments),
+        )
+        .route(
+            "/projects/:id/environments",
+            post(environments::create_environment),
+        )
+        .route(
+            "/environments/:id",
+            put(environments::update_environment),
+        )
+        .route(
+            "/environments/:id",
+            delete(environments::delete_environment),
+        )
+        // Environment Env Vars
+        .route(
+            "/environments/:id/env-vars",
+            get(environments::list_env_vars),
+        )
+        .route(
+            "/environments/:id/env-vars",
+            post(environments::create_env_var),
+        )
+        .route(
+            "/environments/:env_id/env-vars/:id",
+            put(environments::update_env_var),
+        )
+        .route(
+            "/environments/:env_id/env-vars/:id",
+            delete(environments::delete_env_var),
+        )
         // Teams
         .route("/teams", get(teams::list_teams))
         .route("/teams", post(teams::create_team))
@@ -332,6 +384,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/templates/:id/deploy",
             post(service_templates::deploy_template),
         )
+        // Two-Factor Authentication (authenticated)
+        .route("/auth/2fa/setup", post(two_factor::setup_2fa))
+        .route("/auth/2fa/verify", post(two_factor::verify_2fa))
+        .route("/auth/2fa/disable", post(two_factor::disable_2fa))
+        .route("/auth/2fa/status", get(two_factor::status_2fa))
         // Settings
         .route("/settings/alert-defaults", get(alerts::get_alert_defaults))
         .route(
@@ -341,6 +398,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/settings/alert-stats", get(alerts::get_alert_stats))
         .route("/settings/cost-rates", get(cost_rates::get_cost_rates))
         .route("/settings/cost-rates", put(cost_rates::update_cost_rates))
+        // OAuth Provider Settings (admin)
+        .route(
+            "/settings/oauth-providers",
+            get(oauth::list_oauth_providers),
+        )
+        .route(
+            "/settings/oauth-providers",
+            post(oauth::create_oauth_provider),
+        )
+        .route(
+            "/settings/oauth-providers/:id",
+            delete(oauth::delete_oauth_provider),
+        )
+        // OAuth Account Connections (user)
+        .route(
+            "/settings/oauth-connections",
+            get(oauth::list_user_connections),
+        )
+        .route(
+            "/settings/oauth-connections/:id",
+            delete(oauth::delete_user_connection),
+        )
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/stats/history", get(system::get_stats_history))
@@ -354,6 +433,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/update/check", post(system::check_for_updates))
         .route("/system/update/download", post(system::download_update))
         .route("/system/update/apply", post(system::apply_update))
+        // Instance backup & restore
+        .route("/system/backup", post(system::create_backup))
+        .route("/system/backups", get(system::list_backups))
+        .route("/system/backups/:name", delete(system::delete_backup))
+        .route(
+            "/system/backups/:name/download",
+            get(system::download_backup),
+        )
+        .route("/system/restore", post(system::restore_backup))
         // Audit logs
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))
@@ -376,7 +464,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/installations/:installation_id/repos/:owner/:repo/branches",
             get(github_apps::list_repo_branches),
         )
-        .route("/github-apps/:id", get(github_apps::get_app).delete(github_apps::delete_app))
+        .route(
+            "/github-apps/:id",
+            get(github_apps::get_app).delete(github_apps::delete_app),
+        )
         .route(
             "/github-apps/:id/install",
             get(github_apps::get_install_url),
@@ -417,6 +508,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/github", post(webhooks::github_webhook))
         .route("/gitlab", post(webhooks::gitlab_webhook))
         .route("/gitea", post(webhooks::gitea_webhook))
+        .route("/bitbucket", post(webhooks::bitbucket_webhook))
         // Apply webhook-tier rate limiting (higher limits for webhooks)
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -120,11 +120,7 @@ impl UpdateChecker {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "GitHub API returned error {}: {}",
-                status,
-                body
-            ));
+            return Err(anyhow!("GitHub API returned error {}: {}", status, body));
         }
 
         let release: GitHubRelease = response
@@ -192,10 +188,7 @@ impl UpdateChecker {
 
         UpdateStatus {
             current_version: format!("v{}", CURRENT_VERSION),
-            latest_version: state
-                .latest_release
-                .as_ref()
-                .map(|r| r.tag_name.clone()),
+            latest_version: state.latest_release.as_ref().map(|r| r.tag_name.clone()),
             update_available,
             download_url: state.latest_release.as_ref().and_then(|r| {
                 r.assets
@@ -203,14 +196,8 @@ impl UpdateChecker {
                     .find(|a| a.name.contains("linux") && a.name.contains("x86_64"))
                     .map(|a| a.browser_download_url.clone())
             }),
-            release_notes: state
-                .latest_release
-                .as_ref()
-                .and_then(|r| r.body.clone()),
-            release_url: state
-                .latest_release
-                .as_ref()
-                .map(|r| r.html_url.clone()),
+            release_notes: state.latest_release.as_ref().and_then(|r| r.body.clone()),
+            release_url: state.latest_release.as_ref().map(|r| r.html_url.clone()),
             last_checked: state
                 .last_checked
                 .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
@@ -275,7 +262,10 @@ impl UpdateChecker {
             ));
         }
 
-        let bytes = response.bytes().await.context("Failed to read update file")?;
+        let bytes = response
+            .bytes()
+            .await
+            .context("Failed to read update file")?;
 
         // Write to temp file
         let temp_path = std::env::temp_dir().join("rivetr-update");
@@ -300,8 +290,8 @@ impl UpdateChecker {
     /// Returns the path to the backup of the old binary
     pub async fn apply_update(&self, new_binary: &std::path::Path) -> Result<std::path::PathBuf> {
         // Get current executable path - resolve symlinks to get the real path
-        let current_exe = std::env::current_exe()
-            .context("Failed to get current executable path")?;
+        let current_exe =
+            std::env::current_exe().context("Failed to get current executable path")?;
         let current_exe = tokio::fs::canonicalize(&current_exe)
             .await
             .unwrap_or(current_exe);
@@ -319,7 +309,11 @@ impl UpdateChecker {
                 backup_path
             }
             Err(e) => {
-                warn!("Cannot backup to {}: {}. Trying temp directory.", backup_path.display(), e);
+                warn!(
+                    "Cannot backup to {}: {}. Trying temp directory.",
+                    backup_path.display(),
+                    e
+                );
                 let fallback = std::env::temp_dir().join("rivetr.bak");
                 tokio::fs::copy(&current_exe, &fallback)
                     .await
@@ -415,10 +409,7 @@ pub fn start_update_checker(config: AutoUpdateConfig) -> Arc<UpdateChecker> {
 /// Compare semantic versions, returns true if v1 > v2
 fn is_newer_version(v1: &str, v2: &str) -> bool {
     let parse_version = |v: &str| -> (u32, u32, u32) {
-        let parts: Vec<u32> = v
-            .split('.')
-            .filter_map(|s| s.parse().ok())
-            .collect();
+        let parts: Vec<u32> = v.split('.').filter_map(|s| s.parse().ok()).collect();
         (
             parts.first().copied().unwrap_or(0),
             parts.get(1).copied().unwrap_or(0),

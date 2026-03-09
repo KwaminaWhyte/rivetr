@@ -520,17 +520,88 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .await?;
     if check_has_webhook.is_none() {
         // Disable foreign keys temporarily for table recreation
-        sqlx::query("PRAGMA foreign_keys=OFF")
-            .execute(pool)
-            .await?;
+        sqlx::query("PRAGMA foreign_keys=OFF").execute(pool).await?;
         execute_sql(
             pool,
             include_str!("../../migrations/038_notification_webhook_type.sql"),
         )
         .await?;
-        sqlx::query("PRAGMA foreign_keys=ON")
-            .execute(pool)
+        sqlx::query("PRAGMA foreign_keys=ON").execute(pool).await?;
+    }
+
+    // Migration 039: Add 'telegram' and 'teams' to notification_channels channel_type CHECK constraint
+    let check_has_telegram: Option<(String,)> = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='notification_channels' AND sql LIKE '%telegram%'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if check_has_telegram.is_none() {
+        // Disable foreign keys temporarily for table recreation
+        sqlx::query("PRAGMA foreign_keys=OFF").execute(pool).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/039_notification_telegram_teams.sql"),
+        )
+        .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(pool).await?;
+    }
+
+    // Migration 040: Add OAuth login providers and user OAuth connections
+    let has_oauth_providers_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='oauth_providers'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_oauth_providers_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/040_oauth_providers.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 041: Add 'pushover' and 'ntfy' to notification_channels channel_type CHECK constraint
+    let check_has_pushover: Option<(String,)> = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='notification_channels' AND sql LIKE '%pushover%'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if check_has_pushover.is_none() {
+        // Disable foreign keys temporarily for table recreation
+        sqlx::query("PRAGMA foreign_keys=OFF").execute(pool).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/041_notification_pushover_ntfy.sql"),
+        )
+        .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(pool).await?;
+    }
+
+    // Migration 042: Add project environments and environment-scoped env vars
+    let has_environments_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='environments'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_environments_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/042_project_environments.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 043: Add two-factor authentication columns to users table
+    let has_totp_enabled: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('users') WHERE name = 'totp_enabled'")
+            .fetch_optional(pool)
             .await?;
+    if has_totp_enabled.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/043_two_factor_auth.sql"),
+        )
+        .await?;
     }
 
     // Seed/update built-in templates (runs on every startup to add new templates)

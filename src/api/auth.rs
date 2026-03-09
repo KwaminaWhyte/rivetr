@@ -16,7 +16,9 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
-use crate::db::{actions, resource_types, LoginRequest, LoginResponse, Session, User, UserResponse};
+use crate::db::{
+    actions, resource_types, LoginRequest, LoginResponse, Session, User, UserResponse,
+};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +69,14 @@ fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// Generate a session token and return (raw_token, token_hash)
+/// Public so it can be used by OAuth login flow
+pub fn generate_session_token() -> (String, String) {
+    let token = generate_token();
+    let hash = hash_token(&token);
+    (token, hash)
 }
 
 /// Validate password strength
@@ -135,6 +145,35 @@ pub async fn login(
         return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
     }
 
+    // Check if 2FA is enabled for this user
+    if user.totp_enabled {
+        // Create a short-lived temporary session (5 minutes) for 2FA validation
+        let temp_token = generate_token();
+        let temp_token_hash = hash_token(&temp_token);
+        let temp_expires_at = chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::minutes(5))
+            .unwrap()
+            .to_rfc3339();
+
+        let temp_session_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(&temp_session_id)
+        .bind(&user.id)
+        .bind(&temp_token_hash)
+        .bind(&temp_expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        return Ok(Json(LoginResponse {
+            token: temp_token,
+            user: UserResponse::from(user),
+            requires_2fa: Some(true),
+        }));
+    }
+
     // Generate token
     let token = generate_token();
     let token_hash = hash_token(&token);
@@ -173,6 +212,7 @@ pub async fn login(
     Ok(Json(LoginResponse {
         token,
         user: UserResponse::from(user),
+        requires_2fa: None,
     }))
 }
 
@@ -417,7 +457,9 @@ pub async fn setup(
             email: request.email,
             name: request.name,
             role: "admin".to_string(),
+            totp_enabled: false,
         },
+        requires_2fa: None,
     }))
 }
 
@@ -454,6 +496,9 @@ pub async fn get_current_user(
             role: "admin".to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
+            totp_secret: None,
+            totp_enabled: false,
+            recovery_codes: None,
         });
     }
 

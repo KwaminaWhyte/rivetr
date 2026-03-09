@@ -5,6 +5,10 @@
 
 pub mod alert_notifications;
 pub mod email;
+pub mod ntfy;
+pub mod pushover;
+pub mod teams;
+pub mod telegram;
 
 pub use alert_notifications::{
     spawn_alert_notification_worker, AlertNotificationPayload, AlertNotificationService,
@@ -264,6 +268,46 @@ impl NotificationService {
                     tracing::warn!(
                         channel_id = %channel.id,
                         "Invalid Webhook config"
+                    );
+                }
+            }
+            NotificationChannelType::Telegram => {
+                if let Some(config) = channel.get_telegram_config() {
+                    telegram::send_telegram(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Telegram config"
+                    );
+                }
+            }
+            NotificationChannelType::Teams => {
+                if let Some(config) = channel.get_teams_config() {
+                    teams::send_teams(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Teams config"
+                    );
+                }
+            }
+            NotificationChannelType::Pushover => {
+                if let Some(config) = channel.get_pushover_config() {
+                    pushover::send_pushover(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Pushover config"
+                    );
+                }
+            }
+            NotificationChannelType::Ntfy => {
+                if let Some(config) = channel.get_ntfy_config() {
+                    ntfy::send_ntfy(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Ntfy config"
                     );
                 }
             }

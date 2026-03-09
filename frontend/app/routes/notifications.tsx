@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bell, Mail, MessageSquare, Webhook } from "lucide-react";
+import { Bell, Mail, MessageSquare, Webhook, BotMessageSquare, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function meta() {
@@ -70,6 +70,40 @@ export default function NotificationsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BotMessageSquare className="h-5 w-5" />
+              <CardTitle className="text-lg">Telegram</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Send notifications via Telegram Bot API
+            </p>
+            <Button variant="outline" disabled>
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              <CardTitle className="text-lg">Microsoft Teams</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Send notifications to Microsoft Teams channels
+            </p>
+            <Button variant="outline" disabled>
+              Connect
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -82,7 +116,7 @@ export default function NotificationsPage() {
             <h3 className="text-lg font-medium">Notifications Coming Soon</h3>
             <p className="text-muted-foreground max-w-sm mt-2">
               Get notified about deployments, failures, and important events
-              via email, Slack, Discord, and custom webhooks.
+              via email, Slack, Discord, Telegram, Microsoft Teams, and custom webhooks.
             </p>
           </div>
         </CardContent>

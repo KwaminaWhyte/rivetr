@@ -218,6 +218,13 @@ export const api = {
   downloadUpdate: systemApi.downloadUpdate,
   applyUpdate: systemApi.applyUpdate,
 
+  // Instance Backup & Restore
+  createBackup: systemApi.createBackup,
+  listBackups: systemApi.listBackups,
+  deleteBackup: systemApi.deleteBackup,
+  downloadBackup: systemApi.downloadBackup,
+  restoreBackup: systemApi.restoreBackup,
+
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,
   getPreview: previewsApi.getPreview,

@@ -243,6 +243,13 @@ pub async fn create_project(
         .fetch_one(&state.db)
         .await?;
 
+    // Auto-create default environments (production, staging, development)
+    if let Err(e) =
+        super::environments::create_default_environments(&state.db, &project.id).await
+    {
+        tracing::warn!("Failed to create default environments for project: {}", e);
+    }
+
     // Log audit event
     let ip = extract_client_ip(&headers, None);
     audit_log(

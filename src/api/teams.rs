@@ -250,7 +250,10 @@ pub async fn list_teams(
         )
         .bind(&team_id)
         .bind("Personal")
-        .bind(format!("personal-{}", &user.id.chars().take(8).collect::<String>()))
+        .bind(format!(
+            "personal-{}",
+            &user.id.chars().take(8).collect::<String>()
+        ))
         .bind(&now)
         .bind(&now)
         .execute(&state.db)

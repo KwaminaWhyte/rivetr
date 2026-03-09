@@ -124,19 +124,18 @@ Run security-reviewer to audit authentication changes
 
 ## Skills
 
-Skills in `.claude/skills/` provide domain-specific knowledge:
+Skills in `.claude/skills/` provide domain-specific knowledge and workflows:
 
-| Skill | Purpose |
-|-------|---------|
-| `rust-review` | Rust idioms and patterns used in Rivetr (error handling, async, traits, Axum patterns) |
-| `api-testing` | curl commands and patterns for testing all REST API endpoints (apps, deployments, databases, services) |
-| `docker-testing` | Container runtime testing, Docker/Podman debugging, Nixpacks, Railpack, and buildpack support |
-| `database-operations` | SQLite database patterns and SQLx usage (queries, migrations, models, debugging) |
-| `deployment-pipeline` | Debug and understand the deployment pipeline (stages, build types, rollbacks, health checks) |
-| `prd` | Generate Product Requirements Documents for new features |
-| `ralph` | Convert PRDs to prd.json format for Ralph autonomous agent execution |
+| Skill | Type | Purpose |
+|-------|------|---------|
+| `api-testing` | Reference | curl commands for testing all REST API endpoints |
+| `docker-testing` | Reference | Container runtime testing, Docker/Podman debugging, build types |
+| `database-operations` | Reference | SQLite/SQLx patterns, queries, migrations, models |
+| `deployment-pipeline` | Reference | Pipeline stages, build types, rollbacks, debugging |
+| `/prd` | Workflow | Generate Product Requirements Documents for new features |
+| `/ralph` | Workflow | Convert PRDs to prd.json format for Ralph autonomous agent execution |
 
-Skills are automatically activated when relevant to the current task.
+Reference skills are auto-loaded by Claude when relevant. Workflow skills (prefixed with `/`) are invoked manually.
 
 ## Ralph (Autonomous Agent Loop)
 
@@ -144,14 +143,14 @@ Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all 
 
 ### Workflow
 
-1. **Create PRD**: Use the `prd` skill to generate requirements
+1. **Create PRD**: Use the `/prd` command to generate requirements
    ```
-   Load the prd skill and create a PRD for [feature description]
+   /prd [feature description]
    ```
 
-2. **Convert to JSON**: Use the `ralph` skill to create prd.json
+2. **Convert to JSON**: Use the `/ralph` command to create prd.json
    ```
-   Load the ralph skill and convert tasks/prd-[feature].md to prd.json
+   /ralph tasks/prd-[feature].md
    ```
 
 3. **Run Ralph**:
@@ -169,14 +168,18 @@ See `scripts/ralph/README.md` for detailed documentation.
 
 ## Development Status
 
-See `plan/TASKS.md` for detailed task tracking. Current status:
+See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` for the parallel execution plan.
+
 - **Phase 0 (Foundation)**: Complete (93%)
 - **Phase 1 (MVP)**: Complete (100%)
-- **Phase 2 (Production Ready)**: In progress (84%)
-- **Phase 3 (Enhanced Features)**: In progress (91%)
+- **Phase 2 (Production Ready)**: Complete (100%)
+- **Phase 3 (Enhanced Features)**: Complete (96%)
 - **Phase 4 (Platform Services)**: Complete (100%)
-- **Phase 5 (Advanced CI/CD)**: In progress (67%)
-- **Overall Progress**: 86% complete (315/368 tasks)
+- **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
+- **Phase 6 (Unique Features)**: Planned (0%)
+- **Phase 7 (Competitive Parity)**: In progress (17%) - Watch paths, Bitbucket, Telegram/Teams, instance backup done
+- **Phase 8 (Enterprise & Scale)**: Planned (0%) - Multi-server, SSO/SAML, 2FA, Docker Swarm, build servers
+- **Overall Progress**: 396/574 tasks (69%)
 
 ## Configuration
 

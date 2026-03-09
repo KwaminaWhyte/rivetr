@@ -50,6 +50,7 @@ import type {
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
+import { WatchPathsCard } from "@/components/watch-paths-card";
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { EnvironmentBadge } from "@/components/environment-badge";
@@ -341,6 +342,8 @@ export default function AppDetailPage() {
       </div>
 
       <ResourceLimitsCard app={app} />
+
+      <WatchPathsCard app={app} />
 
       {runningDeployment && <ResourceMonitor appId={app.id} />}
 

@@ -79,6 +79,19 @@ pub enum Commands {
     /// Database management commands
     #[command(subcommand)]
     Db(DbCommands),
+
+    /// Create a backup of the Rivetr instance
+    Backup {
+        /// Output path for the backup file (default: data/backups/)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Restore from a backup file
+    Restore {
+        /// Path to the backup .tar.gz file
+        backup_file: PathBuf,
+    },
 }
 
 /// Apps subcommands
@@ -228,6 +241,8 @@ pub async fn run_command(cli: &Cli) -> Result<()> {
         Some(Commands::Db(DbCommands::MigrateTeams { execute })) => {
             cmd_migrate_teams(cli, *execute).await
         }
+        Some(Commands::Backup { output }) => cmd_backup(cli, output.as_deref()).await,
+        Some(Commands::Restore { backup_file }) => cmd_restore(cli, backup_file).await,
         None => {
             // No subcommand means start the server - this is handled in main.rs
             Ok(())
@@ -712,6 +727,7 @@ async fn cmd_config_check(cli: &Cli) -> Result<()> {
             if config.webhooks.github_secret.is_none()
                 && config.webhooks.gitlab_token.is_none()
                 && config.webhooks.gitea_secret.is_none()
+                && config.webhooks.bitbucket_secret.is_none()
             {
                 warnings
                     .push("No webhook secrets configured - webhooks will accept unsigned requests");
@@ -1031,6 +1047,127 @@ async fn cmd_migrate_teams(cli: &Cli, execute: bool) -> Result<()> {
         println!("No unassigned resources found. Nothing to migrate.");
         println!();
     }
+
+    Ok(())
+}
+
+/// Create a backup of the Rivetr instance
+async fn cmd_backup(cli: &Cli, output: Option<&std::path::Path>) -> Result<()> {
+    use crate::backup;
+    use crate::config::Config;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let config_path = &cli.config;
+    let config = Config::load(config_path)?;
+
+    // Connect to database directly
+    let db_path = config.server.data_dir.join("rivetr.db");
+    if !db_path.exists() {
+        anyhow::bail!(
+            "Database not found at {}. Is Rivetr initialized?",
+            db_path.display()
+        );
+    }
+
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .context("Failed to connect to database")?;
+
+    println!();
+    println!("=== Rivetr Instance Backup ===");
+    println!();
+    println!("Data directory: {}", config.server.data_dir.display());
+    println!("Config file:    {}", config_path.display());
+    println!("ACME/SSL dir:   {}", config.proxy.acme_cache_dir.display());
+    println!();
+
+    let result = backup::create_backup(
+        &pool,
+        &config.server.data_dir,
+        config_path,
+        &config.proxy.acme_cache_dir,
+        output,
+    )
+    .await
+    .context("Failed to create backup")?;
+
+    println!("[OK] Backup created successfully!");
+    println!();
+    println!("  File: {}", result.path.display());
+    println!("  Size: {}", format_bytes(result.size));
+    println!();
+
+    Ok(())
+}
+
+/// Restore from a backup file
+async fn cmd_restore(cli: &Cli, backup_file: &std::path::Path) -> Result<()> {
+    use crate::backup;
+    use crate::config::Config;
+
+    if !backup_file.exists() {
+        anyhow::bail!("Backup file not found: {}", backup_file.display());
+    }
+
+    let config_path = &cli.config;
+    let config = Config::load(config_path)?;
+
+    println!();
+    println!("=== Rivetr Instance Restore ===");
+    println!();
+    println!("Backup file:    {}", backup_file.display());
+    println!("Data directory: {}", config.server.data_dir.display());
+    println!("Config file:    {}", config_path.display());
+    println!();
+    println!("[WARNING] This will replace the current database and configuration.");
+    println!("          Make sure the Rivetr server is stopped before restoring.");
+    println!();
+
+    // Read the backup file
+    let backup_data = std::fs::read(backup_file).context("Failed to read backup file")?;
+
+    let result = backup::restore_from_backup(
+        &backup_data,
+        &config.server.data_dir,
+        config_path,
+        &config.proxy.acme_cache_dir,
+    )
+    .await
+    .context("Failed to restore backup")?;
+
+    println!("[OK] Restore completed!");
+    println!();
+    println!(
+        "  Database restored: {}",
+        if result.database_restored {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "  Config restored:   {}",
+        if result.config_restored { "Yes" } else { "No" }
+    );
+    println!(
+        "  SSL certs restored: {}",
+        if result.certs_restored { "Yes" } else { "No" }
+    );
+
+    if !result.warnings.is_empty() {
+        println!();
+        println!("Warnings:");
+        for warning in &result.warnings {
+            println!("  [!] {}", warning);
+        }
+    }
+
+    println!();
+    println!("Please restart the Rivetr server to apply the restored data.");
+    println!();
 
     Ok(())
 }

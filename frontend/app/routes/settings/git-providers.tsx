@@ -57,6 +57,8 @@ import {
   Key,
   Link2,
   GitBranch,
+  Copy,
+  Webhook,
 } from "lucide-react";
 
 export function meta() {
@@ -659,6 +661,10 @@ function BitbucketTab() {
   const [username, setUsername] = useState("");
   const [appPassword, setAppPassword] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [webhookCopied, setWebhookCopied] = useState(false);
+
+  const webhookUrl = `${window.location.origin}/webhooks/bitbucket`;
 
   const { data: providers = [], isLoading } = useQuery<GitProvider[]>({
     queryKey: ["gitProviders"],
@@ -666,6 +672,30 @@ function BitbucketTab() {
   });
 
   const bitbucketProvider = providers.find(p => p.provider === "bitbucket");
+
+  const handleCopyWebhookUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setWebhookCopied(true);
+      toast.success("Webhook URL copied to clipboard");
+      setTimeout(() => setWebhookCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy to clipboard");
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!bitbucketProvider) return;
+    setIsTesting(true);
+    try {
+      const repos = await api.getGitProviderRepos(bitbucketProvider.id, 1, 1);
+      toast.success(`Connection successful! Found ${repos.length > 0 ? "repositories" : "no repositories"}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Connection test failed. Check your credentials.");
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteGitProvider(id),
@@ -769,6 +799,56 @@ function BitbucketTab() {
               <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
                 <Key className="h-4 w-4" />
                 Add App Password
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Webhook URL */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Webhook className="h-4 w-4" />
+            Webhook Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure this webhook URL in your Bitbucket repository settings to enable push-to-deploy.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Webhook URL</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                readOnly
+                value={webhookUrl}
+                className="font-mono text-sm"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleCopyWebhookUrl}
+                title="Copy webhook URL"
+              >
+                {webhookCopied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Add this URL as a webhook in your Bitbucket repository under Settings &rarr; Webhooks.
+              Select triggers: <code className="bg-muted px-1 rounded">Repository push</code> and optionally <code className="bg-muted px-1 rounded">Pull request</code> events.
+            </p>
+          </div>
+          {bitbucketProvider && (
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="gap-2"
+              >
+                {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Test Connection
               </Button>
             </div>
           )}

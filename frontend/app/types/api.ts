@@ -712,7 +712,7 @@ export interface UpdateStatus {
 // -------------------------------------------------------------------------
 
 /** Notification channel types */
-export type NotificationChannelType = "slack" | "discord" | "email";
+export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams";
 
 /** Notification event types */
 export type NotificationEventType =
@@ -743,12 +743,24 @@ export interface EmailConfig {
   to_addresses: string[];
 }
 
+/** Telegram Bot API configuration */
+export interface TelegramConfig {
+  bot_token: string;
+  chat_id: string;
+  topic_id?: number;
+}
+
+/** Microsoft Teams Incoming Webhook configuration */
+export interface TeamsConfig {
+  webhook_url: string;
+}
+
 /** Notification channel */
 export interface NotificationChannel {
   id: string;
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | Record<string, unknown>;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -768,14 +780,14 @@ export interface NotificationSubscription {
 export interface CreateNotificationChannelRequest {
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig;
   enabled?: boolean;
 }
 
 /** Request to update a notification channel */
 export interface UpdateNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig;
   enabled?: boolean;
 }
 
@@ -802,12 +814,14 @@ export interface WebhookConfig {
   custom_template?: string;
 }
 
-/** Team notification channel types including webhook */
+/** Team notification channel types including webhook, telegram, and teams */
 export type TeamNotificationChannelType =
   | "slack"
   | "discord"
   | "email"
-  | "webhook";
+  | "webhook"
+  | "telegram"
+  | "teams";
 
 /** Team notification channel */
 export interface TeamNotificationChannel {
@@ -820,6 +834,8 @@ export interface TeamNotificationChannel {
     | DiscordConfig
     | EmailConfig
     | WebhookConfig
+    | TelegramConfig
+    | TeamsConfig
     | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -830,14 +846,14 @@ export interface TeamNotificationChannel {
 export interface CreateTeamNotificationChannelRequest {
   name: string;
   channel_type: TeamNotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig;
   enabled?: boolean;
 }
 
 /** Request to update a team notification channel */
 export interface UpdateTeamNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig;
   enabled?: boolean;
 }
 
@@ -1397,6 +1413,32 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
     icon: "shield",
   },
 ];
+
+// -------------------------------------------------------------------------
+// Instance Backup & Restore types
+// -------------------------------------------------------------------------
+
+/** Information about a backup file */
+export interface BackupInfo {
+  /** Filename of the backup */
+  name: string;
+  /** Size in bytes */
+  size: number;
+  /** ISO 8601 timestamp when the backup was created */
+  created_at: string;
+}
+
+/** Result of a restore operation */
+export interface RestoreResult {
+  /** Whether the database was restored */
+  database_restored: boolean;
+  /** Whether the config was restored */
+  config_restored: boolean;
+  /** Whether SSL certificates were restored */
+  certs_restored: boolean;
+  /** Warning messages */
+  warnings: string[];
+}
 
 // -------------------------------------------------------------------------
 // Audit Log types

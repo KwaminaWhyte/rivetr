@@ -2,11 +2,11 @@
 
 > A fast, lightweight deployment engine built in Rust
 
-This document outlines the planned development roadmap for Rivetr. For detailed task tracking, see [plan/TASKS.md](./plan/TASKS.md).
+This document outlines the planned development roadmap for Rivetr. For detailed task tracking, see [docs/TASKS.md](./docs/TASKS.md).
 
 ## Current Status
 
-**Overall Progress: 89% Complete (372/418 tasks)**
+**Overall Progress: 372/518 tasks complete**
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -15,8 +15,10 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 | Phase 2: Production Ready | Complete | 100% |
 | Phase 3: Enhanced Features | Complete | 96% |
 | Phase 4: Platform Services | Complete | 100% |
-| Phase 5: Advanced CI/CD | In Progress | 67% |
+| Phase 5: Advanced CI/CD | In Progress | 90% |
 | Phase 6: Unique Features | Planned | 0% |
+| Phase 7: Competitive Parity | In Progress | 17% |
+| Phase 8: Enterprise & Scale | Planned | 0% |
 
 ---
 
@@ -35,7 +37,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 - 26 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, etc.)
 - Automated database backup scheduling with retention policies
 
-### Team Collaboration ✅ NEW
+### Team Collaboration
 Full multi-tenant team support with resource isolation.
 
 - **Team Switching** - Switch between teams with persistent context
@@ -70,11 +72,11 @@ Full multi-tenant team support with resource isolation.
 ### Preview Deployments
 Automatic PR preview environments with unique URLs.
 
-- [ ] Parse PR events from webhooks (open, sync, close, merge)
-- [ ] Create preview deployment with unique subdomain (`pr-{number}.{app}.{domain}`)
-- [ ] Auto-cleanup on PR close/merge
-- [ ] Post preview URL as comment on PR (GitHub API)
-- [ ] Support GitLab/Gitea MR previews
+- [x] Parse PR events from webhooks (open, sync, close, merge) ✅
+- [x] Create preview deployment with unique subdomain (`pr-{number}.{app}.{domain}`) ✅
+- [x] Auto-cleanup on PR close/merge ✅
+- [x] Post preview URL as comment on PR (GitHub API) ✅
+- [x] Support GitLab/Gitea MR previews ✅
 
 ### Advanced Rollbacks
 Enhanced rollback with registry integration.
@@ -83,24 +85,12 @@ Enhanced rollback with registry integration.
 - [x] Rollback settings UI
 - [ ] Push built images to Docker registry on deploy
 - [ ] Configure rollback retention policies
-- [ ] Docker Swarm update configuration
-
-### CLI Tool ✅ COMPLETE
-Command-line interface for common operations.
-
-- [x] `rivetr status` - Show server status
-- [x] `rivetr apps list` - List all applications
-- [x] `rivetr deploy <app>` - Trigger deployment
-- [x] `rivetr logs <app>` - Stream application logs
-- [x] `rivetr config check` - Validate configuration
 
 ---
 
-## Planned (v0.4.x+)
+## Planned (v0.4.x - Unique Features)
 
 ### Resource Alerts & Cost Estimation ✅ COMPLETE
-Proactive monitoring and cost visibility.
-
 - [x] CPU/memory threshold alerts
 - [x] Alert channels (email, Slack, Discord, webhooks)
 - [x] Cost estimation based on resource usage
@@ -108,8 +98,6 @@ Proactive monitoring and cost visibility.
 - [x] Team costs API for aggregate reporting
 
 ### Deployment Enhancements
-Advanced deployment workflows.
-
 - [ ] Deployment preview diff (show changes before deploy)
 - [ ] Approval workflow for production deployments
 - [ ] Scheduled deployments (deploy at specific time)
@@ -117,8 +105,6 @@ Advanced deployment workflows.
 - [ ] Zero-downtime indicator (blue/green status)
 
 ### Bulk Operations & App Management
-Efficiency features for managing multiple apps.
-
 - [ ] Bulk start/stop/restart multiple apps
 - [ ] Bulk deploy multiple apps
 - [ ] App cloning (duplicate configuration)
@@ -127,8 +113,6 @@ Efficiency features for managing multiple apps.
 - [ ] Maintenance mode with custom page
 
 ### Advanced Monitoring
-Enhanced observability features.
-
 - [ ] Full-text log search
 - [ ] Configurable log retention policies
 - [ ] Scheduled container restarts
@@ -137,39 +121,159 @@ Enhanced observability features.
 - [ ] Response time monitoring
 
 ### S3 Backup Integration
-Cloud backup for volumes and databases.
-
 - [ ] S3 storage configuration (AWS, MinIO, R2)
 - [ ] Volume backup to S3
 - [ ] Database backup to S3
 - [ ] Scheduled S3 backups
 - [ ] One-click restore from S3
 
-### Self-Update & Version Management
-In-app update system for keeping Rivetr current.
+---
 
-- [ ] Version check on startup (compare with GitHub releases)
-- [ ] Subtle update notification badge in sidebar when new version available
-- [ ] "Update Available" indicator showing current vs latest version
-- [ ] One-click update button in sidebar (downloads and replaces binary)
-- [ ] Update confirmation dialog with changelog preview
-- [ ] Auto-update setting in Settings (off by default)
-- [ ] Configurable update check interval (daily, weekly, manual)
-- [ ] Update history log (track previous versions)
-- [ ] Rollback to previous version if update fails
-- [ ] Pre-update backup of database and configuration
+## Planned (v0.5.x - Competitive Parity)
+
+Features that both Coolify and Dokploy have. Required to compete.
+
+### OAuth Login
+- [ ] GitHub OAuth login
+- [ ] Google OAuth login
+- [ ] OAuth provider configuration in settings UI
+- [ ] Account linking (connect OAuth to existing account)
+
+### Project Environments
+- [ ] Environment model (dev/staging/production per project)
+- [ ] Environment-level environment variables
+- [ ] Environment switching in UI
+- [ ] Environment-scoped deployments
+- [ ] Predefined variables per environment (RIVETR_ENV, RIVETR_URL, etc.)
+
+### Watch Paths ✅ COMPLETE
+- [x] Watch path patterns per app (e.g., `src/*`, `package.json`)
+- [x] Filter webhook deploys by changed files
+- [x] Watch path configuration in app settings UI
+
+### Bitbucket & DockerHub Webhooks
+- [x] Bitbucket webhook signature verification ✅
+- [x] Bitbucket push/PR event parsing ✅
+- [ ] DockerHub webhook (deploy on image push)
+
+### Additional Notification Channels
+- [x] Telegram notifications (bot API) ✅
+- [x] Microsoft Teams notifications (incoming webhooks) ✅
+- [ ] Pushover notifications
+- [ ] Ntfy notifications
+- [x] Notification channel UI for new providers ✅
+
+### Service Templates Expansion
+- [ ] Expand from 26 to 100+ templates
+- [ ] Template categories (AI/ML, Analytics, CMS, Dev Tools, etc.)
+- [ ] Template search and filtering
+- [ ] Community template submissions
+
+### Instance Backup & Restore
+- [x] Full instance backup (SQLite DB + config + SSL certs) ✅
+- [ ] Scheduled instance backups
+- [x] One-click instance restore ✅
+- [ ] Instance backup to S3
+
+### Scheduled Jobs
+- [ ] Cron-based job scheduling per app
+- [ ] Execute commands inside containers on schedule
+- [ ] Server-level scheduled jobs (bash scripts)
+- [ ] Job execution history and logs
+- [ ] Job management UI
+
+### Container Replicas
+- [ ] Configurable replica count per app
+- [ ] Load balancing across replicas
+- [ ] Replica health monitoring
+- [ ] Scale up/down from UI
+
+### Deploy by Commit/Tag
+- [ ] Deploy specific Git commit by SHA
+- [ ] Deploy specific Git tag
+- [ ] Commit/tag selector in deploy UI
+- [ ] API endpoints for commit/tag deploy
+
+---
+
+## Planned (v0.6.x - Enterprise & Scale)
+
+Features required for enterprise adoption and high availability.
+
+### Multi-Server Support
+- [ ] Remote server registration via SSH
+- [ ] Server health monitoring from dashboard
+- [ ] Deploy apps to specific servers
+- [ ] Server-level resource monitoring
+- [ ] Remote server terminal access
+- [ ] File system browser for remote servers
+
+### SSO / SAML / OIDC
+- [ ] OpenID Connect (OIDC) provider integration
+- [ ] SAML 2.0 support
+- [ ] Auth0, Keycloak, Azure AD, Okta compatibility
+- [ ] SSO configuration UI
+- [ ] Per-team SSO provider settings
+
+### Two-Factor Authentication (2FA)
+- [ ] TOTP-based 2FA (Google Authenticator, Authy)
+- [ ] 2FA setup flow with QR code
+- [ ] Recovery codes
+- [ ] 2FA enforcement per team
+
+### Log Draining
+- [ ] Drain logs to Axiom
+- [ ] Drain logs to New Relic
+- [ ] Custom FluentBit configuration
+- [ ] Per-app log drain configuration
+- [ ] Log drain settings UI
+
+### Docker Swarm Integration
+- [ ] Swarm mode initialization
+- [ ] Worker/manager node management
+- [ ] Service scaling across nodes
+- [ ] Overlay networking
+- [ ] Rolling updates with Swarm
+
+### Build Servers
+- [ ] Dedicated build server registration (separate from deploy)
+- [ ] Build on remote server, deploy locally
+- [ ] Build server health monitoring
+- [ ] Build queue management across servers
+
+### Shared Environment Variables
+- [ ] Team-level shared variables
+- [ ] Project-level shared variables
+- [ ] Environment-level shared variables
+- [ ] Variable inheritance hierarchy (team > project > env > app)
+- [ ] Shared variable management UI
 
 ---
 
 ## Future Considerations
 
-These features are under consideration but not yet planned:
-
-- **Multi-server Support** - Deploy to multiple servers from one dashboard
-- **Auto-scaling** - Scale containers based on load
+- **Auto-scaling** - Scale containers based on CPU/memory load
 - **Service Dependencies** - Define app startup order and dependencies
-- **Custom Domains API** - Programmatic domain management
 - **Plugin System** - Extensible architecture for custom builders/runtimes
+- **Kubernetes Support** - K8s as alternative orchestrator
+- **Terraform Provider** - Infrastructure-as-code integration
+- **MCP Server** - AI assistant integration for infrastructure management
+
+---
+
+## Rivetr Advantages (vs Coolify & Dokploy)
+
+| Advantage | Detail |
+|-----------|--------|
+| ~30MB RAM idle | vs Coolify (~800MB) and Dokploy (~250MB) |
+| Single binary | No PostgreSQL, Redis, or Docker Compose stack for the PaaS itself |
+| Podman support | Neither Coolify nor Dokploy supports Podman |
+| Railpack builder | Railway's next-gen builder |
+| Rust performance | Fastest proxy, lowest latency |
+| Embedded SQLite | No external database dependency |
+| Built-in cost estimation | Neither competitor offers this |
+| AES-256-GCM encryption | Env vars encrypted at rest |
+| Native Prometheus /metrics | Built-in metrics endpoint |
 
 ---
 
@@ -180,9 +284,10 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guideline
 ### Priority Areas for Contributors
 
 1. **Preview Deployments** - High impact, well-defined scope
-2. **CLI Tool** - Self-contained, good for newcomers
-3. **Documentation** - Always appreciated
-4. **Testing** - Integration tests for core features
+2. **Service Templates** - Easy to add, high visibility
+3. **OAuth Login** - Standard auth expectation
+4. **Notification Channels** - Low effort, high value
+5. **Documentation** - Always appreciated
 
 ---
 

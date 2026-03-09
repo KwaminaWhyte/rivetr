@@ -47,6 +47,7 @@ const navMain: NavMainItem[] = [
     items: [
       { title: "General", url: "/settings" },
       { title: "Auto Updates", url: "/settings/auto-update" },
+      { title: "Backup & Restore", url: "/settings/backup" },
       { title: "Alert Defaults", url: "/settings/alert-defaults" },
       { title: "Teams", url: "/settings/teams" },
       { title: "Notifications", url: "/settings/notifications" },

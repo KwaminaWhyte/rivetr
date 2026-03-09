@@ -1,4 +1,5 @@
 pub mod api;
+pub mod backup;
 pub mod cli;
 pub mod config;
 pub mod crypto;

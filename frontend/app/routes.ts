@@ -78,6 +78,7 @@ export default [
       route("audit", "routes/settings/audit.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
       route("auto-update", "routes/settings/auto-update.tsx"),
+      route("backup", "routes/settings/backup.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

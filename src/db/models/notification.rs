@@ -11,6 +11,10 @@ pub enum NotificationChannelType {
     Discord,
     Email,
     Webhook,
+    Telegram,
+    Teams,
+    Pushover,
+    Ntfy,
 }
 
 impl std::fmt::Display for NotificationChannelType {
@@ -20,6 +24,10 @@ impl std::fmt::Display for NotificationChannelType {
             Self::Discord => write!(f, "discord"),
             Self::Email => write!(f, "email"),
             Self::Webhook => write!(f, "webhook"),
+            Self::Telegram => write!(f, "telegram"),
+            Self::Teams => write!(f, "teams"),
+            Self::Pushover => write!(f, "pushover"),
+            Self::Ntfy => write!(f, "ntfy"),
         }
     }
 }
@@ -33,6 +41,10 @@ impl std::str::FromStr for NotificationChannelType {
             "discord" => Ok(Self::Discord),
             "email" => Ok(Self::Email),
             "webhook" => Ok(Self::Webhook),
+            "telegram" => Ok(Self::Telegram),
+            "teams" => Ok(Self::Teams),
+            "pushover" => Ok(Self::Pushover),
+            "ntfy" => Ok(Self::Ntfy),
             _ => Err(format!("Unknown channel type: {}", s)),
         }
     }
@@ -112,6 +124,48 @@ pub struct EmailConfig {
     pub to_addresses: Vec<String>,
 }
 
+/// Telegram Bot API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramConfig {
+    pub bot_token: String,
+    pub chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic_id: Option<i64>,
+}
+
+/// Microsoft Teams Incoming Webhook configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamsConfig {
+    pub webhook_url: String,
+}
+
+/// Pushover API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushoverConfig {
+    pub user_key: String,
+    pub app_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// Priority: -2 (silent) to 2 (emergency), default 0
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+}
+
+/// Ntfy notification configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NtfyConfig {
+    /// Server URL, defaults to "https://ntfy.sh" if not set
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_url: Option<String>,
+    pub topic: String,
+    /// Priority: 1 (min) to 5 (max), default 3
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+    /// Comma-separated tags for the notification
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<String>,
+}
+
 /// Generic webhook configuration with headers and payload template
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookConfig {
@@ -178,6 +232,26 @@ impl NotificationChannel {
     pub fn get_webhook_config(&self) -> Option<WebhookConfig> {
         serde_json::from_str(&self.config).ok()
     }
+
+    /// Parse the config as TelegramConfig
+    pub fn get_telegram_config(&self) -> Option<TelegramConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as TeamsConfig
+    pub fn get_teams_config(&self) -> Option<TeamsConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as PushoverConfig
+    pub fn get_pushover_config(&self) -> Option<PushoverConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as NtfyConfig
+    pub fn get_ntfy_config(&self) -> Option<NtfyConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
 }
 
 /// Response DTO for NotificationChannel (masks sensitive config data)
@@ -232,6 +306,26 @@ impl From<NotificationChannel> for NotificationChannelResponse {
                             "headers".to_string(),
                             serde_json::Value::Object(masked_headers),
                         );
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
+                }
+            }
+            "telegram" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    if obj.contains_key("bot_token") {
+                        obj.insert("bot_token".to_string(), serde_json::json!("********"));
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
+                }
+            }
+            "pushover" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    if obj.contains_key("app_token") {
+                        obj.insert("app_token".to_string(), serde_json::json!("********"));
                     }
                     serde_json::Value::Object(obj)
                 } else {

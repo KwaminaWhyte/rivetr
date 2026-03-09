@@ -977,6 +977,42 @@ pub async fn run_deployment(
         env_vars.push(("PORT".to_string(), app.port.to_string()));
     }
 
+    // Inject predefined Rivetr system variables (if not already set by user)
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_ENV") {
+        env_vars.push(("RIVETR_ENV".to_string(), app.environment.clone()));
+    }
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_APP_NAME") {
+        env_vars.push(("RIVETR_APP_NAME".to_string(), app.name.clone()));
+    }
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_URL") {
+        if let Some(domain) = app.get_primary_domain() {
+            env_vars.push(("RIVETR_URL".to_string(), format!("https://{}", domain)));
+        }
+    }
+
+    // Merge environment-scoped env vars (from project environment) if the app has an environment_id
+    if let Some(ref environment_id) = app.environment_id {
+        let env_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM environment_env_vars WHERE environment_id = ?",
+        )
+        .bind(environment_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in env_env_vars {
+            // Only inject if not already set by app-level env vars
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted =
+                    crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
+    }
+
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
         "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
@@ -1397,6 +1433,42 @@ pub async fn run_rollback(
     // This is a common pattern in PaaS systems (Heroku, Railway, etc.)
     if !env_vars.iter().any(|(k, _)| k == "PORT") {
         env_vars.push(("PORT".to_string(), app.port.to_string()));
+    }
+
+    // Inject predefined Rivetr system variables (if not already set by user)
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_ENV") {
+        env_vars.push(("RIVETR_ENV".to_string(), app.environment.clone()));
+    }
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_APP_NAME") {
+        env_vars.push(("RIVETR_APP_NAME".to_string(), app.name.clone()));
+    }
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_URL") {
+        if let Some(domain) = app.get_primary_domain() {
+            env_vars.push(("RIVETR_URL".to_string(), format!("https://{}", domain)));
+        }
+    }
+
+    // Merge environment-scoped env vars (from project environment) if the app has an environment_id
+    if let Some(ref environment_id) = app.environment_id {
+        let env_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM environment_env_vars WHERE environment_id = ?",
+        )
+        .bind(environment_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in env_env_vars {
+            // Only inject if not already set by app-level env vars
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted =
+                    crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
     }
 
     // Get volumes from database

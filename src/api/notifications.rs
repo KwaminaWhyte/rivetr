@@ -509,6 +509,101 @@ fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Re
                 }
             }
         }
+        "telegram" => {
+            let bot_token = config
+                .get("bot_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.bot_token", "Bot token is required")
+                })?;
+
+            if bot_token.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.bot_token",
+                    "Bot token cannot be empty",
+                ));
+            }
+
+            let chat_id = config
+                .get("chat_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.chat_id", "Chat ID is required")
+                })?;
+
+            if chat_id.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.chat_id",
+                    "Chat ID cannot be empty",
+                ));
+            }
+        }
+        "teams" => {
+            let webhook_url = config
+                .get("webhook_url")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.webhook_url", "Webhook URL is required")
+                })?;
+
+            if !webhook_url.starts_with("https://") {
+                return Err(ApiError::validation_field(
+                    "config.webhook_url",
+                    "Teams webhook URL must use HTTPS",
+                ));
+            }
+
+            if reqwest::Url::parse(webhook_url).is_err() {
+                return Err(ApiError::validation_field(
+                    "config.webhook_url",
+                    "Invalid Teams webhook URL format",
+                ));
+            }
+        }
+        "pushover" => {
+            let user_key = config
+                .get("user_key")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.user_key", "User key is required")
+                })?;
+
+            if user_key.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.user_key",
+                    "User key cannot be empty",
+                ));
+            }
+
+            let app_token = config
+                .get("app_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.app_token", "App token is required")
+                })?;
+
+            if app_token.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.app_token",
+                    "App token cannot be empty",
+                ));
+            }
+        }
+        "ntfy" => {
+            let topic = config
+                .get("topic")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.topic", "Topic is required")
+                })?;
+
+            if topic.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.topic",
+                    "Topic cannot be empty",
+                ));
+            }
+        }
         _ => {
             return Err(ApiError::validation_field(
                 "channel_type",

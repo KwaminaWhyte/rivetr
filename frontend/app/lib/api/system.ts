@@ -3,7 +3,7 @@
  * Handles system stats, health, events, audit logs, costs, and settings.
  */
 
-import { apiRequest } from "./core";
+import { apiRequest, apiRawRequest, getStoredToken } from "./core";
 import type {
   SystemStats,
   DiskStats,
@@ -17,6 +17,8 @@ import type {
   UpdateGlobalAlertDefaultsRequest,
   AlertStatsResponse,
   UpdateStatus,
+  BackupInfo,
+  RestoreResult,
 } from "@/types/api";
 
 /** Options for getting system stats */
@@ -155,4 +157,61 @@ export const systemApi = {
     apiRequest<{ message: string }>("/system/update/apply", {
       method: "POST",
     }, token),
+
+  // -------------------------------------------------------------------------
+  // Instance Backup & Restore
+  // -------------------------------------------------------------------------
+
+  /** Create a backup and download it as a .tar.gz file */
+  createBackup: async (token?: string): Promise<Blob> => {
+    const response = await apiRawRequest("/system/backup", {
+      method: "POST",
+    }, token);
+    return response.blob();
+  },
+
+  /** List existing backups */
+  listBackups: (token?: string) =>
+    apiRequest<BackupInfo[]>("/system/backups", {}, token),
+
+  /** Delete a specific backup */
+  deleteBackup: (name: string, token?: string) =>
+    apiRequest<{ message: string }>(`/system/backups/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }, token),
+
+  /** Download a specific backup file */
+  downloadBackup: async (name: string, token?: string): Promise<Blob> => {
+    const response = await apiRawRequest(
+      `/system/backups/${encodeURIComponent(name)}/download`,
+      {},
+      token
+    );
+    return response.blob();
+  },
+
+  /** Restore from a backup file upload */
+  restoreBackup: async (file: File, token?: string): Promise<RestoreResult> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const authToken = token || getStoredToken();
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch("/api/system/restore", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || `API error: ${response.status}`);
+    }
+
+    return response.json();
+  },
 };

@@ -633,11 +633,15 @@ pub async fn oauth_callback(
     };
 
     // Look up the first admin user for the OAuth callback context
-    let admin_user: (String,) = sqlx::query_as("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "No admin user found. Please complete setup first.".to_string()))?;
+    let admin_user: (String,) =
+        sqlx::query_as("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "No admin user found. Please complete setup first.".to_string(),
+            ))?;
     let user_id = &admin_user.0;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();

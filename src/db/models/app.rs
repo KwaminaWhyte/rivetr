@@ -21,6 +21,8 @@ pub struct App {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Environment ID for project environment scoping
+    pub environment_id: Option<String>,
     /// Team ID for multi-tenant scoping (nullable for legacy apps)
     pub team_id: Option<String>,
     // Advanced build options
@@ -108,6 +110,8 @@ pub struct AppResponse {
     pub ssh_key_id: Option<String>,
     pub environment: String,
     pub project_id: Option<String>,
+    /// Environment ID for project environment scoping
+    pub environment_id: Option<String>,
     /// Team ID for multi-tenant scoping
     pub team_id: Option<String>,
     // Advanced build options
@@ -172,6 +176,7 @@ impl From<App> for AppResponse {
             ssh_key_id: app.ssh_key_id,
             environment: app.environment,
             project_id: app.project_id,
+            environment_id: app.environment_id,
             team_id: app.team_id,
             dockerfile_path: app.dockerfile_path,
             base_directory: app.base_directory,
@@ -395,6 +400,14 @@ impl App {
     /// Uses the same registry configured for Docker image pulls
     pub fn get_rollback_registry_url(&self) -> Option<&str> {
         self.registry_url.as_deref().filter(|s| !s.is_empty())
+    }
+
+    /// Parse watch_paths JSON into Vec<String>
+    pub fn get_watch_paths(&self) -> Vec<String> {
+        self.watch_paths
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
     }
 }
 
