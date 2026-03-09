@@ -14,6 +14,10 @@ pub enum TemplateCategory {
     Analytics,
     Networking,
     Security,
+    Ai,
+    Automation,
+    Cms,
+    Communication,
 }
 
 impl std::fmt::Display for TemplateCategory {
@@ -26,6 +30,10 @@ impl std::fmt::Display for TemplateCategory {
             Self::Analytics => write!(f, "analytics"),
             Self::Networking => write!(f, "networking"),
             Self::Security => write!(f, "security"),
+            Self::Ai => write!(f, "ai"),
+            Self::Automation => write!(f, "automation"),
+            Self::Cms => write!(f, "cms"),
+            Self::Communication => write!(f, "communication"),
         }
     }
 }
@@ -42,6 +50,10 @@ impl std::str::FromStr for TemplateCategory {
             "analytics" => Ok(Self::Analytics),
             "networking" => Ok(Self::Networking),
             "security" => Ok(Self::Security),
+            "ai" => Ok(Self::Ai),
+            "automation" => Ok(Self::Automation),
+            "cms" => Ok(Self::Cms),
+            "communication" => Ok(Self::Communication),
             _ => Err(format!("Unknown template category: {}", s)),
         }
     }

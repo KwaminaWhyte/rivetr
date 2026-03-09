@@ -17,6 +17,10 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Brain,
+  Zap,
+  FileText,
+  MessageCircle,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -64,6 +68,14 @@ function getCategoryIcon(category: TemplateCategory) {
       return Network;
     case "security":
       return Shield;
+    case "ai":
+      return Brain;
+    case "automation":
+      return Zap;
+    case "cms":
+      return FileText;
+    case "communication":
+      return MessageCircle;
     default:
       return Layers;
   }
@@ -85,6 +97,14 @@ function getCategoryColor(category: TemplateCategory) {
       return "bg-cyan-500/10 text-cyan-500 border-cyan-500/20";
     case "security":
       return "bg-red-500/10 text-red-500 border-red-500/20";
+    case "ai":
+      return "bg-violet-500/10 text-violet-500 border-violet-500/20";
+    case "automation":
+      return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+    case "cms":
+      return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    case "communication":
+      return "bg-sky-500/10 text-sky-500 border-sky-500/20";
     default:
       return "bg-gray-500/10 text-gray-500 border-gray-500/20";
   }

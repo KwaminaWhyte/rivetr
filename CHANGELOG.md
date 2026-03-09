@@ -8,8 +8,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Preview deployments for pull requests
 - S3 backup integration
+- Container replicas
+- Multi-server support
+- SSO/SAML/OIDC
+- Docker Swarm integration
+- Log draining (Axiom, New Relic)
+- Template search and filtering
+- Deployment enhancements (approval workflow, scheduled deploys, freeze periods)
+- Bulk operations (start/stop/restart/deploy multiple apps)
+- Shared environment variables (team/project/environment inheritance)
+
+---
+
+## [0.3.0] - 2026-03-09
+
+### Added
+
+#### Preview Deployments
+- **PR Preview Environments** - Automatic preview deployments for pull requests with unique subdomains (`pr-{number}.{app}.{domain}`)
+- **GitLab Merge Request Support** - Full MR event handling (open, update, close, merge) triggers preview deploy/cleanup
+- **Gitea Pull Request Support** - Full PR event handling with preview deploy/cleanup
+- **GitHub PR Comments** - Auto-post/update preview URL as comment on GitHub PRs via GitHub App API
+- **Preview Cleanup** - Automatic container and proxy route removal on PR close/merge across all 4 Git providers
+- **Preview Resource Limits** - Default lower limits (256MB memory, 0.5 CPU) for preview containers
+
+#### Watch Paths
+- **Selective Deployment** - Configure glob patterns per app (e.g., `src/*`, `Dockerfile`) to only deploy when matched files change
+- **Webhook Filtering** - GitHub, GitLab, Gitea, and Bitbucket push webhooks now skip deployment when no watched files are modified
+- **Watch Paths UI** - Settings card with add/remove pattern chips and glob documentation
+
+#### Bitbucket Webhooks
+- **Bitbucket Push Events** - `repo:push` webhook handler with HMAC-SHA256 signature verification
+- **Bitbucket PR Events** - `pullrequest:created/updated/fulfilled/rejected` handling with preview deployment support
+- **Bitbucket Config** - `bitbucket_secret` webhook configuration option
+- **Git Providers UI** - Bitbucket tab with webhook URL display, copy button, and connection test
+
+#### Notification Channels (4 New)
+- **Telegram** - Bot API integration with HTML formatting and forum/topic support
+- **Microsoft Teams** - Incoming webhook with Adaptive Card v1.4 rich formatting
+- **Pushover** - Multi-device push notifications with configurable priority (-2 to 2)
+- **Ntfy** - Self-hosted push notification support with configurable server URL, priority, and tags
+- Rivetr now supports **8 notification channels** (Slack, Discord, Email, Webhook, Telegram, MS Teams, Pushover, Ntfy)
+
+#### Instance Backup & Restore
+- **Full Instance Backup** - SQLite WAL checkpoint + database, config, and SSL certificates bundled to tar.gz
+- **Backup API** - 5 endpoints: create, list, download, delete, restore (POST /api/system/backup)
+- **CLI Commands** - `rivetr backup [--output path]` and `rivetr restore <file>`
+- **Backup Settings Page** - Create & download backups, upload restore with confirmation dialog, backup list management
+
+#### OAuth Login
+- **GitHub OAuth** - Full authorization flow with callback, user creation/linking
+- **Google OAuth** - Full authorization flow with callback, user creation/linking
+- **Account Linking** - Connect OAuth identities to existing accounts in settings
+- **OAuth Admin Config** - Provider management page (client ID/secret, enable/disable per provider)
+- **Login Page** - OAuth provider buttons shown conditionally based on enabled providers
+
+#### Project Environments
+- **Environment Model** - dev/staging/production environments per project with auto-creation on project create
+- **Environment-Scoped Variables** - Separate env vars per environment, merged into deployment pipeline
+- **Predefined System Variables** - `RIVETR_ENV`, `RIVETR_APP_NAME`, `RIVETR_URL` injected automatically
+- **Environment Switching** - Dropdown selector in project UI to filter apps by environment
+- **Environments Management Page** - Full CRUD with embedded env var editor per environment
+
+#### Two-Factor Authentication
+- **TOTP 2FA** - Compatible with Google Authenticator, Authy, and other TOTP apps
+- **QR Code Setup** - Guided setup flow with QR code display and verification step
+- **Recovery Codes** - 10 one-time recovery codes (SHA-256 hashed, consumed on use)
+- **Encrypted Secrets** - TOTP secrets encrypted at rest with AES-256-GCM
+- **Login Flow** - Modified to support 2FA: temporary 5-minute session, then TOTP validation
+- **Security Settings** - New settings page for 2FA enable/disable/recovery code management
+
+#### Service Templates Expansion (26 → 74)
+- **AI/ML** - Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB
+- **Analytics** - Plausible, Umami, PostHog, Matomo
+- **Automation** - Activepieces, Windmill, Trigger.dev
+- **CMS** - WordPress, Ghost, Strapi, Directus, Payload CMS
+- **Communication** - Rocket.Chat, Mattermost, Matrix/Synapse
+- **Development** - Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo
+- **Documentation** - BookStack, Wiki.js, Docmost, Outline
+- **File/Media** - Immich, Jellyfin, Navidrome, Seafile
+- **Monitoring** - SigNoz, Beszel, Checkmate
+- **Security** - Authentik, Keycloak, Vaultwarden, Infisical
+- **Search** - Meilisearch, Typesense
+- **Project Management** - Plane, Vikunja, Leantime, Cal.com
+- **Other** - Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF
+- **Template Categories** - New category enum variants (Ai, Automation, Cms, Communication) for gallery organization
+
+#### Scheduled Jobs
+- **Cron Scheduler** - Background cron evaluator with 60-second polling and container exec via Docker/Podman
+- **Job Management API** - 7 CRUD endpoints (GET/POST/PUT/DELETE /api/apps/:id/jobs, run, history)
+- **Execution History** - `scheduled_job_runs` table tracking status, output, duration per execution
+- **Jobs UI** - Full management tab per app: create, edit, enable/disable, cron expression input, run history viewer
+
+#### Deploy by Commit/Tag
+- **Commit/Tag Deploy** - Deploy specific Git commit SHA or tag via API (`commit_sha`/`git_tag` in deploy request)
+- **Git Checkout** - Pipeline clones full history and checks out specific ref during build
+- **Commits/Tags API** - List commits and tags from GitHub API (GET /api/apps/:id/commits, /api/apps/:id/tags)
+- **Deploy Modal** - Commit/tag selector dropdown with SHA preview and tag badges
+- **Deployment History** - Tag badge displayed in deployment timeline for tagged deploys
+
+### Changed
+- **Notification CHECK Constraint** - Migrations 039 and 041 update the channel_type constraint to include all 8 providers
+- **Login Response** - Now includes `requires_2fa` field when 2FA is enabled
+- **Project Creation** - Auto-creates production, staging, and development environments
+- **Deployment Pipeline** - Merges environment-scoped variables and injects system predefined variables; supports commit/tag checkout
+- **Template Gallery** - Now shows 74 templates across 12+ categories (up from 26)
+- **Service Template Model** - Added new category variants: Ai, Automation, Cms, Communication
 
 ---
 

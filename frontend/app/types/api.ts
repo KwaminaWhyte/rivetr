@@ -379,6 +379,27 @@ export interface Deployment {
   error_message: string | null;
   commit_sha: string | null;
   commit_message: string | null;
+  git_tag: string | null;
+}
+
+/** Git commit info from the commits list API */
+export interface GitCommit {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
+/** Git tag info from the tags list API */
+export interface GitTag {
+  name: string;
+  sha: string;
+}
+
+/** Request body for triggering a deployment with optional commit/tag */
+export interface TriggerDeployRequest {
+  commit_sha?: string;
+  git_tag?: string;
 }
 
 /** Paginated response for deployment list */
@@ -1156,6 +1177,55 @@ export function canDeleteTeam(role: TeamRole | null): boolean {
 }
 
 // -------------------------------------------------------------------------
+// Scheduled Job types
+// -------------------------------------------------------------------------
+
+/** Scheduled job that runs a command inside an app container on a cron schedule */
+export interface ScheduledJob {
+  id: string;
+  app_id: string;
+  name: string;
+  command: string;
+  cron_expression: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Scheduled job run status */
+export type ScheduledJobRunStatus = "running" | "success" | "failed";
+
+/** A single execution record of a scheduled job */
+export interface ScheduledJobRun {
+  id: string;
+  job_id: string;
+  status: ScheduledJobRunStatus;
+  output: string | null;
+  error_message: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+/** Request to create a new scheduled job */
+export interface CreateScheduledJobRequest {
+  name: string;
+  command: string;
+  cron_expression: string;
+  enabled?: boolean;
+}
+
+/** Request to update an existing scheduled job */
+export interface UpdateScheduledJobRequest {
+  name?: string;
+  command?: string;
+  cron_expression?: string;
+  enabled?: boolean;
+}
+
+// -------------------------------------------------------------------------
 // Volume types
 // -------------------------------------------------------------------------
 
@@ -1387,7 +1457,11 @@ export type TemplateCategory =
   | "development"
   | "analytics"
   | "networking"
-  | "security";
+  | "security"
+  | "ai"
+  | "automation"
+  | "cms"
+  | "communication";
 
 /** Environment variable schema entry */
 export interface EnvSchemaEntry {
@@ -1478,6 +1552,30 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
     name: "Security",
     description: "Security and authentication",
     icon: "shield",
+  },
+  {
+    id: "ai",
+    name: "AI / ML",
+    description: "Artificial intelligence and machine learning tools",
+    icon: "brain",
+  },
+  {
+    id: "automation",
+    name: "Automation",
+    description: "Workflow automation and orchestration",
+    icon: "zap",
+  },
+  {
+    id: "cms",
+    name: "CMS",
+    description: "Content management systems",
+    icon: "file-text",
+  },
+  {
+    id: "communication",
+    name: "Communication",
+    description: "Team chat and messaging platforms",
+    icon: "message-circle",
   },
 ];
 

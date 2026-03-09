@@ -209,6 +209,9 @@ async fn main() -> Result<()> {
     // This computes daily cost snapshots from resource metrics
     spawn_cost_calculator_task(db.clone());
 
+    // Start scheduled jobs scheduler (cron-based commands in containers)
+    rivetr::engine::scheduler::spawn_scheduler(db.clone(), runtime.clone());
+
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
 

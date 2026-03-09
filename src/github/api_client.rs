@@ -240,6 +240,49 @@ impl GitHubClient {
         let url = "https://api.github.com/app/installations";
         self.get(url).await
     }
+
+    /// List recent commits for a repository.
+    ///
+    /// # Arguments
+    /// * `owner` - Repository owner (user or org)
+    /// * `repo` - Repository name
+    /// * `branch` - Branch name (defaults to default branch)
+    /// * `per_page` - Number of commits to return (max 100)
+    pub async fn list_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: Option<&str>,
+        per_page: u32,
+    ) -> Result<Vec<GitCommitInfo>> {
+        let mut url = format!(
+            "https://api.github.com/repos/{}/{}/commits?per_page={}",
+            owner, repo, per_page
+        );
+        if let Some(sha) = branch {
+            url.push_str(&format!("&sha={}", sha));
+        }
+        self.get(&url).await
+    }
+
+    /// List tags for a repository.
+    ///
+    /// # Arguments
+    /// * `owner` - Repository owner (user or org)
+    /// * `repo` - Repository name
+    /// * `per_page` - Number of tags to return (max 100)
+    pub async fn list_tags(
+        &self,
+        owner: &str,
+        repo: &str,
+        per_page: u32,
+    ) -> Result<Vec<GitTagInfo>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/tags?per_page={}",
+            owner, repo, per_page
+        );
+        self.get(&url).await
+    }
 }
 
 // Response types
@@ -384,4 +427,48 @@ pub struct InstallationAccount {
     #[serde(rename = "type")]
     pub account_type: String,
     pub avatar_url: Option<String>,
+}
+
+// Git commit types
+
+/// A GitHub commit (from the list commits API)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitInfo {
+    pub sha: String,
+    pub commit: GitCommitDetail,
+    pub author: Option<GitCommitAuthor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitDetail {
+    pub message: String,
+    pub author: GitCommitPerson,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitPerson {
+    pub name: String,
+    pub email: String,
+    pub date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitCommitAuthor {
+    pub login: String,
+    pub avatar_url: Option<String>,
+}
+
+// Git tag types
+
+/// A GitHub tag (from the list tags API)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitTagInfo {
+    pub name: String,
+    pub commit: TagCommit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagCommit {
+    pub sha: String,
+    pub url: String,
 }

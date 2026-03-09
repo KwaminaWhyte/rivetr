@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
-import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project } from "@/types/api";
+import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project, GitCommit, GitTag } from "@/types/api";
 import {
   Play,
   Square,
@@ -24,7 +24,11 @@ import {
   Rocket,
   ExternalLink,
   Upload,
+  GitCommitHorizontal,
+  Tag,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,6 +98,7 @@ const tabs = [
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "deployments", label: "Deployments", path: "/deployments" },
   { id: "previews", label: "Previews", path: "/previews" },
+  { id: "jobs", label: "Jobs", path: "/jobs" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "terminal", label: "Terminal", path: "/terminal" },
 ];
@@ -111,6 +116,12 @@ export default function AppDetailLayout() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [detectionResult, setDetectionResult] = useState<BuildDetectionResult | null>(null);
+
+  // Deploy by commit/tag state
+  const [showDeployOptionsDialog, setShowDeployOptionsDialog] = useState(false);
+  const [deployTarget, setDeployTarget] = useState<"latest" | "commit" | "tag">("latest");
+  const [selectedCommitSha, setSelectedCommitSha] = useState<string>("");
+  const [selectedTagName, setSelectedTagName] = useState<string>("");
 
   // Use React Query for app data
   const {
@@ -162,6 +173,20 @@ export default function AppDetailLayout() {
 
   const deployments = deploymentsData?.items ?? [];
 
+  // Fetch commits for deploy-by-commit (only when dialog is open)
+  const { data: commits = [], isLoading: commitsLoading } = useQuery<GitCommit[]>({
+    queryKey: ["commits", id],
+    queryFn: () => api.getCommits(id!, 20),
+    enabled: !!id && showDeployOptionsDialog && deployTarget === "commit",
+  });
+
+  // Fetch tags for deploy-by-tag (only when dialog is open)
+  const { data: tags = [], isLoading: tagsLoading } = useQuery<GitTag[]>({
+    queryKey: ["tags", id],
+    queryFn: () => api.getTags(id!, 20),
+    enabled: !!id && showDeployOptionsDialog && deployTarget === "tag",
+  });
+
   // Query for app status (running/stopped)
   const { data: appStatus, refetch: refetchStatus } = useQuery<AppStatus>({
     queryKey: ["appStatus", id],
@@ -174,12 +199,12 @@ export default function AppDetailLayout() {
     return deployments.some((d) => isActiveDeployment(d.status));
   }, [deployments]);
 
-  // Handle deploy action
-  const handleDeploy = async () => {
+  // Handle deploy action with optional commit/tag targeting
+  const handleDeploy = async (options?: { commit_sha?: string; git_tag?: string }) => {
     if (!id) return;
     setIsSubmitting(true);
     try {
-      await api.triggerDeploy(id);
+      await api.triggerDeploy(id, options);
       toast.success("Deployment started");
       queryClient.invalidateQueries({ queryKey: ["deployments", id] });
     } catch (error) {
@@ -187,6 +212,21 @@ export default function AppDetailLayout() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Handle deploy from the options dialog
+  const handleDeployWithOptions = async () => {
+    if (deployTarget === "commit" && selectedCommitSha) {
+      await handleDeploy({ commit_sha: selectedCommitSha });
+    } else if (deployTarget === "tag" && selectedTagName) {
+      await handleDeploy({ git_tag: selectedTagName });
+    } else {
+      await handleDeploy();
+    }
+    setShowDeployOptionsDialog(false);
+    setDeployTarget("latest");
+    setSelectedCommitSha("");
+    setSelectedTagName("");
   };
 
   // Handle file selection for upload deploy
@@ -378,16 +418,21 @@ export default function AppDetailLayout() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuItem onClick={handleDeploy}>
+              <DropdownMenuItem onClick={() => handleDeploy()}>
                 <Rocket className="h-4 w-4 mr-2" />
                 Redeploy from Git
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={handleDeploy}
+                onClick={() => handleDeploy()}
                 className="text-muted-foreground"
               >
                 <RotateCw className="h-4 w-4 mr-2" />
                 Redeploy (clear cache)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowDeployOptionsDialog(true)}>
+                <GitCommitHorizontal className="h-4 w-4 mr-2" />
+                Deploy specific commit/tag
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowUploadDialog(true)}>
@@ -479,6 +524,164 @@ export default function AppDetailLayout() {
               disabled={!uploadFile || isUploading}
             >
               {isUploading ? "Deploying..." : "Deploy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deploy by Commit/Tag Dialog */}
+      <Dialog
+        open={showDeployOptionsDialog}
+        onOpenChange={(open) => {
+          setShowDeployOptionsDialog(open);
+          if (!open) {
+            setDeployTarget("latest");
+            setSelectedCommitSha("");
+            setSelectedTagName("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Deploy Specific Version</DialogTitle>
+            <DialogDescription>
+              Choose to deploy the latest code, a specific commit, or a tagged release.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Deploy target selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Deploy target</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant={deployTarget === "latest" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDeployTarget("latest")}
+                  className="gap-1.5"
+                >
+                  <Rocket className="h-3.5 w-3.5" />
+                  Latest
+                </Button>
+                <Button
+                  variant={deployTarget === "commit" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDeployTarget("commit")}
+                  className="gap-1.5"
+                >
+                  <GitCommitHorizontal className="h-3.5 w-3.5" />
+                  Specific Commit
+                </Button>
+                <Button
+                  variant={deployTarget === "tag" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDeployTarget("tag")}
+                  className="gap-1.5"
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                  Specific Tag
+                </Button>
+              </div>
+            </div>
+
+            {/* Commit selector */}
+            {deployTarget === "commit" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Select commit</Label>
+                {commitsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <RotateCw className="h-4 w-4 animate-spin" />
+                    Loading commits...
+                  </div>
+                ) : commits.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No commits found. Make sure the app has a GitHub App connection.
+                  </p>
+                ) : (
+                  <Select value={selectedCommitSha} onValueChange={setSelectedCommitSha}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose a commit..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {commits.map((commit) => (
+                        <SelectItem key={commit.sha} value={commit.sha}>
+                          <span className="flex items-center gap-2">
+                            <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
+                              {commit.sha.slice(0, 7)}
+                            </code>
+                            <span className="truncate max-w-[280px]">
+                              {commit.message.split("\n")[0]}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            {/* Tag selector */}
+            {deployTarget === "tag" && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Select tag</Label>
+                {tagsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <RotateCw className="h-4 w-4 animate-spin" />
+                    Loading tags...
+                  </div>
+                ) : tags.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No tags found. Make sure the repository has tagged releases.
+                  </p>
+                ) : (
+                  <Select value={selectedTagName} onValueChange={setSelectedTagName}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose a tag..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tags.map((tag) => (
+                        <SelectItem key={tag.name} value={tag.name}>
+                          <span className="flex items-center gap-2">
+                            <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium">{tag.name}</span>
+                            <code className="text-xs font-mono text-muted-foreground">
+                              {tag.sha.slice(0, 7)}
+                            </code>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeployOptionsDialog(false);
+                setDeployTarget("latest");
+                setSelectedCommitSha("");
+                setSelectedTagName("");
+              }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeployWithOptions}
+              disabled={
+                isSubmitting ||
+                (deployTarget === "commit" && !selectedCommitSha) ||
+                (deployTarget === "tag" && !selectedTagName)
+              }
+              className="gap-2"
+            >
+              <Rocket className="h-4 w-4" />
+              {isSubmitting ? "Deploying..." : "Deploy"}
             </Button>
           </DialogFooter>
         </DialogContent>

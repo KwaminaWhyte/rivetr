@@ -603,6 +603,33 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 044: Add scheduled_jobs and scheduled_job_runs tables
+    let has_scheduled_jobs_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_jobs'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_scheduled_jobs_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/044_scheduled_jobs.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 045: Add git_tag column to deployments for deploy-by-commit/tag
+    let has_git_tag: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('deployments') WHERE name = 'git_tag'")
+            .fetch_optional(pool)
+            .await?;
+    if has_git_tag.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/045_deploy_by_commit_tag.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

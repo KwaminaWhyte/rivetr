@@ -59,6 +59,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 regex = "1"
 lazy_static = "1"
 chrono = { version = "0.4", features = ["serde"] }
+cron = "0.12"
 thiserror = "2"
 anyhow = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

@@ -24,6 +24,7 @@ import {
   FileText,
   RotateCcw,
   AlertCircle,
+  Tag,
 } from "lucide-react";
 import type { Deployment, DeploymentStatus } from "@/types/api";
 
@@ -294,6 +295,12 @@ function TimelineItem({
                           <GitCommit className="w-3 h-3" />
                           {deployment.commit_sha.slice(0, 7)}
                         </span>
+                      )}
+                      {deployment.git_tag && (
+                        <Badge variant="outline" className="text-xs py-0 px-1.5 gap-1 h-5 font-normal">
+                          <Tag className="w-3 h-3" />
+                          {deployment.git_tag}
+                        </Badge>
                       )}
                       <span className="flex items-center gap-1">
                         <GitBranch className="w-3 h-3" />

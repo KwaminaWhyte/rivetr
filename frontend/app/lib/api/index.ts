@@ -20,6 +20,7 @@ export { previewsApi } from "./previews";
 export { oauthApi } from "./oauth";
 export { environmentsApi } from "./environments";
 export { twoFactorApi } from "./two-factor";
+export { jobsApi } from "./jobs";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -34,6 +35,7 @@ import { previewsApi } from "./previews";
 import { oauthApi } from "./oauth";
 import { environmentsApi } from "./environments";
 import { twoFactorApi } from "./two-factor";
+import { jobsApi } from "./jobs";
 
 /**
  * Combined API object for backward compatibility.
@@ -66,6 +68,8 @@ export const api = {
   getDeployments: appsApi.getDeployments,
   getDeploymentLogs: appsApi.getDeploymentLogs,
   triggerDeploy: appsApi.triggerDeploy,
+  getCommits: appsApi.getCommits,
+  getTags: appsApi.getTags,
   rollbackDeployment: appsApi.rollbackDeployment,
   getAppStats: appsApi.getAppStats,
   getEnvVars: appsApi.getEnvVars,
@@ -252,6 +256,15 @@ export const api = {
   disable2FA: twoFactorApi.disable,
   get2FAStatus: twoFactorApi.getStatus,
   validate2FA: twoFactorApi.validate,
+
+  // Scheduled Jobs
+  getJobs: jobsApi.getJobs,
+  getJob: jobsApi.getJob,
+  createJob: jobsApi.createJob,
+  updateJob: jobsApi.updateJob,
+  deleteJob: jobsApi.deleteJob,
+  triggerJobRun: jobsApi.triggerJobRun,
+  getJobRuns: jobsApi.getJobRuns,
 
   // Project Environments
   getEnvironments: environmentsApi.getEnvironments,

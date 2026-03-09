@@ -6,7 +6,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 
 ## Current Status
 
-**Overall Progress: 372/518 tasks complete**
+**Overall Progress: 480/599 tasks complete**
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -17,7 +17,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 | Phase 4: Platform Services | Complete | 100% |
 | Phase 5: Advanced CI/CD | In Progress | 90% |
 | Phase 6: Unique Features | Planned | 0% |
-| Phase 7: Competitive Parity | In Progress | 39% |
+| Phase 7: Competitive Parity | In Progress | 65% |
 | Phase 8: Enterprise & Scale | In Progress | 9% |
 
 ---
@@ -164,8 +164,8 @@ Features that both Coolify and Dokploy have. Required to compete.
 - [x] Notification channel UI for new providers ✅
 
 ### Service Templates Expansion
-- [ ] Expand from 26 to 100+ templates
-- [ ] Template categories (AI/ML, Analytics, CMS, Dev Tools, etc.)
+- [x] Expand from 26 to 74 templates (AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, Media, Monitoring, Security, Search, PM) ✅
+- [x] Template categories (Ai, Analytics, Automation, Cms, Communication, Development, Documentation, Media, Monitoring, Security, Search, ProjectManagement) ✅
 - [ ] Template search and filtering
 - [ ] Community template submissions
 
@@ -175,12 +175,12 @@ Features that both Coolify and Dokploy have. Required to compete.
 - [x] One-click instance restore ✅
 - [ ] Instance backup to S3
 
-### Scheduled Jobs
-- [ ] Cron-based job scheduling per app
-- [ ] Execute commands inside containers on schedule
-- [ ] Server-level scheduled jobs (bash scripts)
-- [ ] Job execution history and logs
-- [ ] Job management UI
+### Scheduled Jobs ✅ COMPLETE
+- [x] Cron-based job scheduling per app ✅
+- [x] Execute commands inside containers on schedule ✅
+- [x] Background cron scheduler with 60-second polling ✅
+- [x] Job execution history and logs ✅
+- [x] Job management UI ✅
 
 ### Container Replicas
 - [ ] Configurable replica count per app
@@ -188,11 +188,11 @@ Features that both Coolify and Dokploy have. Required to compete.
 - [ ] Replica health monitoring
 - [ ] Scale up/down from UI
 
-### Deploy by Commit/Tag
-- [ ] Deploy specific Git commit by SHA
-- [ ] Deploy specific Git tag
-- [ ] Commit/tag selector in deploy UI
-- [ ] API endpoints for commit/tag deploy
+### Deploy by Commit/Tag ✅ COMPLETE
+- [x] Deploy specific Git commit by SHA ✅
+- [x] Deploy specific Git tag ✅
+- [x] Commit/tag selector in deploy UI ✅
+- [x] API endpoints for commit/tag deploy ✅
 
 ---
 

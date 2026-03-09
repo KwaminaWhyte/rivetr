@@ -769,19 +769,19 @@ Expand from 4 channels (Slack, Discord, Email, Webhook) to 8+.
 
 Expand from 26 to 100+ one-click service templates.
 
-- [ ] **T7.6.1** AI/ML templates: Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB (6)
-- [ ] **T7.6.2** Analytics templates: Plausible, Umami, PostHog, Matomo (4)
-- [ ] **T7.6.3** Automation templates: Activepieces, Windmill, Trigger.dev (3)
-- [ ] **T7.6.4** CMS templates: WordPress, Ghost, Strapi, Directus, Payload CMS (5)
-- [ ] **T7.6.5** Communication templates: Rocket.Chat, Mattermost, Matrix/Synapse (3)
-- [ ] **T7.6.6** Development templates: Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo (6)
-- [ ] **T7.6.7** Documentation templates: BookStack, Wiki.js, Docmost, Outline (if not exists) (4)
-- [ ] **T7.6.8** File/Media templates: Immich, Jellyfin, Navidrome, Seafile (4)
-- [ ] **T7.6.9** Monitoring templates: SigNoz, Beszel, Checkmate, Dozzle (if not exists) (4)
-- [ ] **T7.6.10** Security templates: Authentik, Keycloak, Vaultwarden, Infisical (4)
-- [ ] **T7.6.11** Search templates: Meilisearch, Typesense (2)
-- [ ] **T7.6.12** Project Management templates: Plane, Vikunja, Leantime, Cal.com (4)
-- [ ] **T7.6.13** Other templates: Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF (5)
+- [x] **T7.6.1** AI/ML templates: Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB (6) ✅
+- [x] **T7.6.2** Analytics templates: Plausible, Umami, PostHog, Matomo (4) ✅
+- [x] **T7.6.3** Automation templates: Activepieces, Windmill, Trigger.dev (3) ✅
+- [x] **T7.6.4** CMS templates: WordPress, Ghost, Strapi, Directus, Payload CMS (5) ✅
+- [x] **T7.6.5** Communication templates: Rocket.Chat, Mattermost, Matrix/Synapse (3) ✅
+- [x] **T7.6.6** Development templates: Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo (6) ✅
+- [x] **T7.6.7** Documentation templates: BookStack, Wiki.js, Docmost, Outline (if not exists) (4) ✅
+- [x] **T7.6.8** File/Media templates: Immich, Jellyfin, Navidrome, Seafile (4) ✅
+- [x] **T7.6.9** Monitoring templates: SigNoz, Beszel, Checkmate, Dozzle (if not exists) (4) ✅
+- [x] **T7.6.10** Security templates: Authentik, Keycloak, Vaultwarden, Infisical (4) ✅
+- [x] **T7.6.11** Search templates: Meilisearch, Typesense (2) ✅
+- [x] **T7.6.12** Project Management templates: Plane, Vikunja, Leantime, Cal.com (4) ✅
+- [x] **T7.6.13** Other templates: Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF (5) ✅
 - [ ] **T7.6.14** Template category system with filtering in gallery UI
 - [ ] **T7.6.15** Template search functionality
 
@@ -800,13 +800,13 @@ Backup the Rivetr instance itself (database, config, certificates) for disaster 
 
 Run commands inside containers or on the server on a cron schedule.
 
-- [ ] **T7.8.1** Create `scheduled_jobs` table (id, app_id, name, command, cron_expression, enabled, last_run, next_run)
-- [ ] **T7.8.2** Cron scheduler background task (evaluate job schedules, execute due jobs)
-- [ ] **T7.8.3** Execute commands inside app containers via docker exec / podman exec
-- [ ] **T7.8.4** Job execution history table (scheduled_job_runs: id, job_id, status, output, started_at, finished_at)
-- [ ] **T7.8.5** Scheduled jobs CRUD API (GET/POST/PUT/DELETE /api/apps/:id/jobs)
-- [ ] **T7.8.6** Scheduled jobs management UI (list, create, edit, enable/disable, view history)
-- [ ] **T7.8.7** Job execution notifications (success/failure via existing notification system)
+- [x] **T7.8.1** Create `scheduled_jobs` table (id, app_id, name, command, cron_expression, enabled, last_run, next_run) ✅
+- [x] **T7.8.2** Cron scheduler background task (evaluate job schedules, execute due jobs) ✅
+- [x] **T7.8.3** Execute commands inside app containers via docker exec / podman exec ✅
+- [x] **T7.8.4** Job execution history table (scheduled_job_runs: id, job_id, status, output, started_at, finished_at) ✅
+- [x] **T7.8.5** Scheduled jobs CRUD API (GET/POST/PUT/DELETE /api/apps/:id/jobs) ✅
+- [x] **T7.8.6** Scheduled jobs management UI (list, create, edit, enable/disable, view history) ✅
+- [x] **T7.8.7** Job execution notifications (success/failure via existing notification system) ✅
 
 ### 7.9 Container Replicas
 
@@ -824,12 +824,12 @@ Run multiple instances of an app with load balancing.
 
 Deploy specific Git commits or tags instead of latest branch HEAD.
 
-- [ ] **T7.10.1** Add optional `commit_sha` and `git_tag` fields to deploy request
-- [ ] **T7.10.2** Checkout specific commit or tag during clone step
-- [ ] **T7.10.3** List commits API (GET /api/apps/:id/commits via GitHub/GitLab API)
-- [ ] **T7.10.4** List tags API (GET /api/apps/:id/tags via GitHub/GitLab API)
-- [ ] **T7.10.5** Commit/tag selector in deploy modal UI
-- [ ] **T7.10.6** Show deployed commit/tag in deployment history
+- [x] **T7.10.1** Add optional `commit_sha` and `git_tag` fields to deploy request ✅
+- [x] **T7.10.2** Checkout specific commit or tag during clone step ✅
+- [x] **T7.10.3** List commits API (GET /api/apps/:id/commits via GitHub/GitLab API) ✅
+- [x] **T7.10.4** List tags API (GET /api/apps/:id/tags via GitHub/GitLab API) ✅
+- [x] **T7.10.5** Commit/tag selector in deploy modal UI ✅
+- [x] **T7.10.6** Show deployed commit/tag in deployment history ✅
 
 **Phase 7 Checkpoint**: Feature parity with Coolify and Dokploy
 

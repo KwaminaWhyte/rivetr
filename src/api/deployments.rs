@@ -9,12 +9,13 @@ use uuid::Uuid;
 
 use crate::crypto;
 use crate::db::{
-    actions, resource_types, App, Deployment, DeploymentLog, TeamAuditAction,
-    TeamAuditResourceType, User,
+    actions, resource_types, App, Deployment, DeploymentLog, GitHubApp, GitHubAppInstallation,
+    TeamAuditAction, TeamAuditResourceType, User,
 };
 use crate::engine::{
     detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult,
 };
+use crate::github::{get_installation_token, GitHubClient};
 use crate::proxy::Backend;
 use crate::runtime::ContainerStats;
 use crate::AppState;
@@ -71,6 +72,15 @@ pub struct DeploymentListResponse {
     pub total_pages: i64,
 }
 
+/// Request body for deploy trigger with optional commit/tag targeting
+#[derive(Debug, Deserialize, Default)]
+pub struct TriggerDeployRequest {
+    /// Deploy a specific commit SHA instead of branch HEAD
+    pub commit_sha: Option<String>,
+    /// Deploy a specific git tag instead of branch HEAD
+    pub git_tag: Option<String>,
+}
+
 /// Request body for rollback endpoint
 #[derive(Debug, Deserialize)]
 pub struct RollbackRequest {
@@ -84,6 +94,7 @@ pub async fn trigger_deploy(
     user: User,
     headers: HeaderMap,
     Path(app_id): Path<String>,
+    body: Option<Json<TriggerDeployRequest>>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
     // Validate app_id format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
@@ -176,19 +187,32 @@ pub async fn trigger_deploy(
     let deployment_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Extract deploy options from request body
+    let deploy_opts = body.map(|b| b.0).unwrap_or_default();
+
+    // Determine commit_sha and git_tag for the deployment record
+    // For upload apps: commit_sha stores source path, git_tag is unused
+    // For git apps: commit_sha/git_tag store the requested target
+    let (deploy_commit_sha, deploy_git_tag) = if is_upload_app {
+        (upload_source_path, None)
+    } else {
+        (deploy_opts.commit_sha, deploy_opts.git_tag)
+    };
+
     // For upload apps with existing image, store the image tag to reuse
     // commit_sha stores source path for rebuild, image_tag stores image for restart
     sqlx::query(
         r#"
-        INSERT INTO deployments (id, app_id, status, started_at, commit_sha, image_tag)
-        VALUES (?, ?, 'pending', ?, ?, ?)
+        INSERT INTO deployments (id, app_id, status, started_at, commit_sha, image_tag, git_tag)
+        VALUES (?, ?, 'pending', ?, ?, ?, ?)
         "#,
     )
     .bind(&deployment_id)
     .bind(&app_id)
     .bind(&now)
-    .bind(&upload_source_path)
+    .bind(&deploy_commit_sha)
     .bind(&existing_image_tag)
+    .bind(&deploy_git_tag)
     .execute(&state.db)
     .await?;
 
@@ -896,4 +920,200 @@ pub async fn detect_build_type_from_upload(
         result.map_err(|e| ApiError::bad_request(format!("Detection failed: {}", e)))?;
 
     Ok(Json(detection))
+}
+
+// -------------------------------------------------------------------------
+// Git Commits and Tags List API
+// -------------------------------------------------------------------------
+
+/// Query parameters for listing commits or tags
+#[derive(Debug, Deserialize)]
+pub struct CommitsTagsQuery {
+    /// Maximum number of items to return (default: 20, max: 100)
+    #[serde(default = "default_commits_limit")]
+    pub limit: u32,
+}
+
+fn default_commits_limit() -> u32 {
+    20
+}
+
+/// Commit info returned by the API
+#[derive(Debug, Serialize)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    pub date: String,
+}
+
+/// Tag info returned by the API
+#[derive(Debug, Serialize)]
+pub struct TagInfo {
+    pub name: String,
+    pub sha: String,
+}
+
+/// Helper to parse owner/repo from a git URL
+fn parse_owner_repo(git_url: &str) -> Option<(String, String)> {
+    // Handle HTTPS URLs: https://github.com/owner/repo.git
+    if let Some(path) = git_url
+        .strip_prefix("https://github.com/")
+        .or_else(|| git_url.strip_prefix("http://github.com/"))
+    {
+        let path = path.trim_end_matches(".git").trim_end_matches('/');
+        let parts: Vec<&str> = path.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+
+    // Handle SSH URLs: git@github.com:owner/repo.git
+    if let Some(path) = git_url.strip_prefix("git@github.com:") {
+        let path = path.trim_end_matches(".git").trim_end_matches('/');
+        let parts: Vec<&str> = path.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+
+    None
+}
+
+/// Helper to get a GitHub API client for an app's repository
+async fn get_github_client_for_app(state: &AppState, app: &App) -> Result<GitHubClient, ApiError> {
+    let installation_id_str = app
+        .github_app_installation_id
+        .as_ref()
+        .ok_or_else(|| ApiError::bad_request("App has no GitHub App installation configured"))?;
+
+    let installation: GitHubAppInstallation =
+        sqlx::query_as("SELECT * FROM github_app_installations WHERE id = ?")
+            .bind(installation_id_str)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("GitHub App installation not found"))?;
+
+    let github_app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
+        .bind(&installation.github_app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("GitHub App not found"))?;
+
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
+    let private_key =
+        crypto::decrypt_if_encrypted(&github_app.private_key, encryption_key.as_ref())
+            .map_err(|e| ApiError::internal(format!("Failed to decrypt private key: {}", e)))?;
+
+    let token_response = get_installation_token(
+        github_app.app_id,
+        &private_key,
+        installation.installation_id,
+    )
+    .await
+    .map_err(|e| ApiError::internal(format!("Failed to get installation token: {}", e)))?;
+
+    Ok(GitHubClient::new(token_response.token))
+}
+
+/// List recent commits for an app's repository
+/// GET /api/apps/:id/commits?limit=20
+pub async fn list_commits(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+    Query(query): Query<CommitsTagsQuery>,
+) -> Result<Json<Vec<CommitInfo>>, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    let limit = query.limit.min(100);
+
+    // Try GitHub App integration first
+    if app.github_app_installation_id.is_some() {
+        if let Some((owner, repo)) = parse_owner_repo(&app.git_url) {
+            let client = get_github_client_for_app(&state, &app).await?;
+            let commits = client
+                .list_commits(&owner, &repo, Some(&app.branch), limit)
+                .await
+                .map_err(|e| {
+                    ApiError::internal(format!("Failed to fetch commits from GitHub: {}", e))
+                })?;
+
+            let result: Vec<CommitInfo> = commits
+                .into_iter()
+                .map(|c| {
+                    let first_line = c.commit.message.lines().next().unwrap_or("").to_string();
+                    CommitInfo {
+                        sha: c.sha,
+                        message: first_line,
+                        author: c
+                            .author
+                            .map(|a| a.login)
+                            .unwrap_or_else(|| c.commit.author.name),
+                        date: c.commit.author.date,
+                    }
+                })
+                .collect();
+
+            return Ok(Json(result));
+        }
+    }
+
+    // Fallback: return empty list for non-GitHub repos
+    Ok(Json(vec![]))
+}
+
+/// List tags for an app's repository
+/// GET /api/apps/:id/tags?limit=20
+pub async fn list_tags(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+    Query(query): Query<CommitsTagsQuery>,
+) -> Result<Json<Vec<TagInfo>>, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    let limit = query.limit.min(100);
+
+    // Try GitHub App integration first
+    if app.github_app_installation_id.is_some() {
+        if let Some((owner, repo)) = parse_owner_repo(&app.git_url) {
+            let client = get_github_client_for_app(&state, &app).await?;
+            let tags = client.list_tags(&owner, &repo, limit).await.map_err(|e| {
+                ApiError::internal(format!("Failed to fetch tags from GitHub: {}", e))
+            })?;
+
+            let result: Vec<TagInfo> = tags
+                .into_iter()
+                .map(|t| TagInfo {
+                    name: t.name,
+                    sha: t.commit.sha,
+                })
+                .collect();
+
+            return Ok(Json(result));
+        }
+    }
+
+    // Fallback: return empty list for non-GitHub repos
+    Ok(Json(vec![]))
 }

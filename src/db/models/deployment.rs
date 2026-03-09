@@ -64,6 +64,8 @@ pub struct Deployment {
     /// Whether this deployment was an automatic rollback triggered by health check failure
     #[serde(default)]
     pub is_auto_rollback: i32,
+    /// Git tag name when deploying from a specific tag
+    pub git_tag: Option<String>,
 }
 
 impl Deployment {

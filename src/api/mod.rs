@@ -13,6 +13,7 @@ pub mod environments;
 pub mod error;
 mod git_providers;
 mod github_apps;
+mod jobs;
 pub mod metrics;
 mod notifications;
 pub mod oauth;
@@ -121,6 +122,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))
         .route("/apps/:id/deployments", get(deployments::list_deployments))
         .route("/apps/:id/stats", get(deployments::get_app_stats))
+        .route("/apps/:id/commits", get(deployments::list_commits))
+        .route("/apps/:id/tags", get(deployments::list_tags))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
         .route(
@@ -168,6 +171,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/volumes/:id", put(volumes::update_volume))
         .route("/volumes/:id", delete(volumes::delete_volume))
         .route("/volumes/:id/backup", post(volumes::backup_volume))
+        // Scheduled Jobs
+        .route("/apps/:id/jobs", get(jobs::list_jobs))
+        .route("/apps/:id/jobs", post(jobs::create_job))
+        .route("/apps/:id/jobs/:job_id", get(jobs::get_job))
+        .route("/apps/:id/jobs/:job_id", put(jobs::update_job))
+        .route("/apps/:id/jobs/:job_id", delete(jobs::delete_job))
+        .route("/apps/:id/jobs/:job_id/run", post(jobs::trigger_job_run))
+        .route("/apps/:id/jobs/:job_id/runs", get(jobs::list_job_runs))
         // Routes (proxy management)
         .route("/routes", get(routes::list_routes))
         .route("/routes", post(routes::add_route))

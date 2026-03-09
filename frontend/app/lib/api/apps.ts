@@ -32,6 +32,9 @@ import type {
   UpdateAlertConfigRequest,
   AlertEventResponse,
   UploadAppResponse,
+  GitCommit,
+  GitTag,
+  TriggerDeployRequest,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -147,9 +150,24 @@ export const appsApi = {
   getDeploymentLogs: (id: string, token?: string) =>
     apiRequest<DeploymentLog[]>(`/deployments/${id}/logs`, {}, token),
 
-  /** Trigger a new deployment */
-  triggerDeploy: (appId: string, token?: string) =>
-    apiRequest<Deployment>(`/apps/${appId}/deploy`, { method: "POST" }, token),
+  /** Trigger a new deployment, optionally targeting a specific commit or tag */
+  triggerDeploy: (appId: string, options?: TriggerDeployRequest, token?: string) =>
+    apiRequest<Deployment>(
+      `/apps/${appId}/deploy`,
+      {
+        method: "POST",
+        body: options ? JSON.stringify(options) : undefined,
+      },
+      token,
+    ),
+
+  /** Get recent commits for an app's repository */
+  getCommits: (appId: string, limit = 20, token?: string) =>
+    apiRequest<GitCommit[]>(`/apps/${appId}/commits?limit=${limit}`, {}, token),
+
+  /** Get tags for an app's repository */
+  getTags: (appId: string, limit = 20, token?: string) =>
+    apiRequest<GitTag[]>(`/apps/${appId}/tags?limit=${limit}`, {}, token),
 
   /** Rollback to a previous deployment */
   rollbackDeployment: (id: string, token?: string) =>

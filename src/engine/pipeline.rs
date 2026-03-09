@@ -503,6 +503,23 @@ async fn run_git_deployment(
 ) -> Result<String> {
     let work_dir = std::env::temp_dir().join(format!("rivetr-{}", deployment_id));
 
+    // Check if this deployment targets a specific commit or tag
+    let deployment_target: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT commit_sha, git_tag FROM deployments WHERE id = ?")
+            .bind(deployment_id)
+            .fetch_optional(db)
+            .await?;
+
+    let (target_commit_sha, target_git_tag) = deployment_target
+        .map(|(sha, tag)| {
+            // Filter out upload source paths from commit_sha
+            let sha = sha.filter(|s| !s.contains("rivetr-upload-"));
+            (sha, tag)
+        })
+        .unwrap_or((None, None));
+
+    let needs_full_clone = target_commit_sha.is_some() || target_git_tag.is_some();
+
     // Step 1: Clone
     add_deployment_log(
         db,
@@ -516,8 +533,46 @@ async fn run_git_deployment(
     // Get SSH key if configured for this app
     let ssh_key = get_ssh_key_for_app(db, app).await?;
 
-    clone_repository(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+    if needs_full_clone {
+        // Need full clone for specific commit/tag checkout
+        clone_repository_full(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+    } else {
+        clone_repository(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+    }
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
+
+    // Step 1b: Checkout specific commit or tag if requested
+    if let Some(ref sha) = target_commit_sha {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("Checking out commit: {}", sha),
+        )
+        .await?;
+        git_checkout(&work_dir, sha).await?;
+        add_deployment_log(db, deployment_id, "info", "Commit checked out successfully").await?;
+    } else if let Some(ref tag) = target_git_tag {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("Checking out tag: {}", tag),
+        )
+        .await?;
+        git_checkout(&work_dir, &format!("tags/{}", tag)).await?;
+        add_deployment_log(db, deployment_id, "info", "Tag checked out successfully").await?;
+    }
+
+    // Update deployment record with actual commit SHA and message from the checked-out HEAD
+    if let Ok(commit_info) = get_git_commit_info(&work_dir).await {
+        sqlx::query("UPDATE deployments SET commit_sha = ?, commit_message = ? WHERE id = ?")
+            .bind(&commit_info.0)
+            .bind(&commit_info.1)
+            .bind(deployment_id)
+            .execute(db)
+            .await?;
+    }
 
     // Step 2: Build
     update_deployment_status(db, deployment_id, "building", None).await?;
@@ -1374,6 +1429,152 @@ async fn clone_with_ssh_key(
     }
 
     Ok(())
+}
+
+/// Clone a repository without --depth 1 (full history needed for specific commit checkout)
+async fn clone_repository_full(
+    url: &str,
+    branch: &str,
+    dest: &PathBuf,
+    ssh_key: Option<&SshKey>,
+) -> Result<()> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    // Create destination directory
+    tokio::fs::create_dir_all(dest).await?;
+
+    if let Some(key) = ssh_key {
+        if is_ssh_url(url) {
+            return clone_with_ssh_key_full(url, branch, dest, key).await;
+        }
+    }
+
+    let output = Command::new("git")
+        .args(["clone", "--branch", branch, url, &dest.to_string_lossy()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to execute git clone (full)")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Git clone (full) failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Clone a repository with SSH key authentication (full history)
+async fn clone_with_ssh_key_full(
+    url: &str,
+    branch: &str,
+    dest: &PathBuf,
+    ssh_key: &SshKey,
+) -> Result<()> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    let temp_dir = std::env::temp_dir();
+    let key_file = temp_dir.join(format!("rivetr-ssh-{}", uuid::Uuid::new_v4()));
+
+    tokio::fs::write(&key_file, &ssh_key.private_key).await?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = tokio::fs::metadata(&key_file).await?.permissions();
+        perms.set_mode(0o600);
+        tokio::fs::set_permissions(&key_file, perms).await?;
+    }
+
+    let git_ssh_command = format!(
+        "ssh -i {} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null",
+        key_file.display()
+    );
+
+    let output = Command::new("git")
+        .env("GIT_SSH_COMMAND", &git_ssh_command)
+        .args(["clone", "--branch", branch, url, &dest.to_string_lossy()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to execute git clone with SSH key (full)")?;
+
+    let _ = tokio::fs::remove_file(&key_file).await;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Git clone with SSH (full) failed: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Checkout a specific git ref (commit SHA or tag) in a cloned repository
+async fn git_checkout(work_dir: &PathBuf, ref_name: &str) -> Result<()> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    let output = Command::new("git")
+        .args(["checkout", ref_name])
+        .current_dir(work_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to execute git checkout")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Git checkout '{}' failed: {}", ref_name, stderr);
+    }
+
+    Ok(())
+}
+
+/// Get commit SHA and message from HEAD in a git repository
+async fn get_git_commit_info(work_dir: &PathBuf) -> Result<(String, String)> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    let sha_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(work_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to get git commit SHA")?;
+
+    if !sha_output.status.success() {
+        anyhow::bail!("Failed to get commit SHA");
+    }
+
+    let sha = String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string();
+
+    let msg_output = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(work_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to get git commit message")?;
+
+    let message = if msg_output.status.success() {
+        String::from_utf8_lossy(&msg_output.stdout)
+            .trim()
+            .to_string()
+    } else {
+        String::new()
+    };
+
+    Ok((sha, message))
 }
 
 /// Rollback to a previous deployment by restarting with the old image

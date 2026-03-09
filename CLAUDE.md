@@ -177,9 +177,9 @@ See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` fo
 - **Phase 4 (Platform Services)**: Complete (100%)
 - **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
 - **Phase 6 (Unique Features)**: Planned (0%)
-- **Phase 7 (Competitive Parity)**: In progress (39%) - OAuth, environments, watch paths, Bitbucket, notifications done
+- **Phase 7 (Competitive Parity)**: In progress (65%) - OAuth, environments, watch paths, Bitbucket, notifications, 74 templates, scheduled jobs, deploy by commit/tag done
 - **Phase 8 (Enterprise & Scale)**: In progress (9%) - 2FA complete
-- **Overall Progress**: 423/574 tasks (74%)
+- **Overall Progress**: 480/599 tasks (80%)
 
 ## Configuration
 
