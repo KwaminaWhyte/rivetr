@@ -244,9 +244,7 @@ pub async fn create_project(
         .await?;
 
     // Auto-create default environments (production, staging, development)
-    if let Err(e) =
-        super::environments::create_default_environments(&state.db, &project.id).await
-    {
+    if let Err(e) = super::environments::create_default_environments(&state.db, &project.id).await {
         tracing::warn!("Failed to create default environments for project: {}", e);
     }
 

@@ -177,9 +177,9 @@ See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` fo
 - **Phase 4 (Platform Services)**: Complete (100%)
 - **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
 - **Phase 6 (Unique Features)**: Planned (0%)
-- **Phase 7 (Competitive Parity)**: In progress (17%) - Watch paths, Bitbucket, Telegram/Teams, instance backup done
-- **Phase 8 (Enterprise & Scale)**: Planned (0%) - Multi-server, SSO/SAML, 2FA, Docker Swarm, build servers
-- **Overall Progress**: 396/574 tasks (69%)
+- **Phase 7 (Competitive Parity)**: In progress (39%) - OAuth, environments, watch paths, Bitbucket, notifications done
+- **Phase 8 (Enterprise & Scale)**: In progress (9%) - 2FA complete
+- **Overall Progress**: 423/574 tasks (74%)
 
 ## Configuration
 

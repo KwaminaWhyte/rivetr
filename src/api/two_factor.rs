@@ -20,7 +20,7 @@ use crate::AppState;
 use super::audit::{audit_log, extract_client_ip};
 use crate::db::{actions, resource_types};
 
-use super::auth::{hash_password, verify_password};
+use super::auth::verify_password;
 
 // ── Request / Response types ──────────────────────────────────────────────
 
@@ -158,14 +158,13 @@ pub async fn setup_2fa(
 
     // Encrypt and store the secret temporarily (totp_enabled stays false until verified)
     let key = get_encryption_key(&state);
-    let stored_secret = crypto::encrypt_if_key_available(&secret_base32, key.as_ref()).map_err(
-        |e| {
+    let stored_secret =
+        crypto::encrypt_if_key_available(&secret_base32, key.as_ref()).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to encrypt TOTP secret: {}", e),
             )
-        },
-    )?;
+        })?;
 
     sqlx::query("UPDATE users SET totp_secret = ? WHERE id = ?")
         .bind(&stored_secret)
@@ -204,13 +203,12 @@ pub async fn verify_2fa(
     ))?;
 
     let key = get_encryption_key(&state);
-    let secret_base32 =
-        crypto::decrypt_if_encrypted(stored_secret, key.as_ref()).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to decrypt TOTP secret: {}", e),
-            )
-        })?;
+    let secret_base32 = crypto::decrypt_if_encrypted(stored_secret, key.as_ref()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to decrypt TOTP secret: {}", e),
+        )
+    })?;
 
     // Validate the code
     let totp = build_totp(&secret_base32, &user.email)?;
@@ -230,7 +228,10 @@ pub async fn verify_2fa(
 
     // Generate recovery codes
     let recovery_codes = generate_recovery_codes();
-    let hashed_codes: Vec<String> = recovery_codes.iter().map(|c| hash_recovery_code(c)).collect();
+    let hashed_codes: Vec<String> = recovery_codes
+        .iter()
+        .map(|c| hash_recovery_code(c))
+        .collect();
     let recovery_codes_json = serde_json::to_string(&hashed_codes).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

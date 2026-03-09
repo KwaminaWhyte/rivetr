@@ -74,10 +74,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(github_apps::installation_callback),
         )
         // OAuth login routes (public - social login)
-        .route(
-            "/oauth/providers",
-            get(oauth::list_enabled_providers),
-        )
+        .route("/oauth/providers", get(oauth::list_enabled_providers))
         .route(
             "/oauth-login/:provider/authorize",
             get(oauth::oauth_login_authorize),
@@ -203,10 +200,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/projects/:id/environments",
             post(environments::create_environment),
         )
-        .route(
-            "/environments/:id",
-            put(environments::update_environment),
-        )
+        .route("/environments/:id", put(environments::update_environment))
         .route(
             "/environments/:id",
             delete(environments::delete_environment),

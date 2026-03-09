@@ -47,6 +47,10 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Notifications" },
   ],
+  "/settings/oauth": [
+    { label: "Settings", href: "/settings" },
+    { label: "Authentication" },
+  ],
   "/settings/audit": [
     { label: "Settings", href: "/settings" },
     { label: "Audit Log" },
@@ -58,6 +62,10 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/settings/backup": [
     { label: "Settings", href: "/settings" },
     { label: "Backup & Restore" },
+  ],
+  "/settings/security": [
+    { label: "Settings", href: "/settings" },
+    { label: "Security" },
   ],
 };
 

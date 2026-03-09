@@ -77,17 +77,16 @@ pub async fn oauth_login_authorize(
     }
 
     // Look up the provider configuration from the database
-    let oauth_provider: OAuthProvider = sqlx::query_as(
-        "SELECT * FROM oauth_providers WHERE provider = ? AND enabled = 1",
-    )
-    .bind(&provider)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((
-        StatusCode::NOT_FOUND,
-        format!("{} OAuth login is not configured", provider),
-    ))?;
+    let oauth_provider: OAuthProvider =
+        sqlx::query_as("SELECT * FROM oauth_providers WHERE provider = ? AND enabled = 1")
+            .bind(&provider)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((
+                StatusCode::NOT_FOUND,
+                format!("{} OAuth login is not configured", provider),
+            ))?;
 
     // Generate a random state parameter for CSRF protection
     let state_param = uuid::Uuid::new_v4().to_string();
@@ -129,16 +128,14 @@ pub async fn oauth_login_authorize(
         .unwrap()
         .to_rfc3339();
 
-    sqlx::query(
-        "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&state_id)
-    .bind("oauth_state")
-    .bind(&state_param)
-    .bind(&expires_at)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(&state_id)
+        .bind("oauth_state")
+        .bind(&state_param)
+        .bind(&expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(OAuthAuthorizeResponse {
         authorization_url,
@@ -182,17 +179,16 @@ pub async fn oauth_login_callback(
     }
 
     // Look up the provider configuration
-    let oauth_provider: OAuthProvider = sqlx::query_as(
-        "SELECT * FROM oauth_providers WHERE provider = ? AND enabled = 1",
-    )
-    .bind(&provider)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((
-        StatusCode::NOT_FOUND,
-        format!("{} OAuth login is not configured", provider),
-    ))?;
+    let oauth_provider: OAuthProvider =
+        sqlx::query_as("SELECT * FROM oauth_providers WHERE provider = ? AND enabled = 1")
+            .bind(&provider)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((
+                StatusCode::NOT_FOUND,
+                format!("{} OAuth login is not configured", provider),
+            ))?;
 
     let base_url = state
         .config
@@ -206,8 +202,14 @@ pub async fn oauth_login_callback(
     // Decrypt client_secret if encrypted
     let client_secret = if let Some(ref encryption_key) = state.config.auth.encryption_key {
         let key = crate::crypto::derive_key(encryption_key);
-        crate::crypto::decrypt_if_encrypted(&oauth_provider.client_secret, Some(&key))
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Decryption failed: {}", e)))?
+        crate::crypto::decrypt_if_encrypted(&oauth_provider.client_secret, Some(&key)).map_err(
+            |e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Decryption failed: {}", e),
+                )
+            },
+        )?
     } else {
         oauth_provider.client_secret.clone()
     };
@@ -252,12 +254,11 @@ pub async fn oauth_login_callback(
         connection.user_id
     } else {
         // 2. Check if a user exists with the same email
-        let existing_user: Option<User> =
-            sqlx::query_as("SELECT * FROM users WHERE email = ?")
-                .bind(&email)
-                .fetch_optional(&state.db)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let existing_user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+            .bind(&email)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         if let Some(user) = existing_user {
             // Link OAuth connection to existing user
@@ -307,11 +308,7 @@ pub async fn oauth_login_callback(
                 .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            let role = if user_count.0 == 0 {
-                "admin"
-            } else {
-                "member"
-            };
+            let role = if user_count.0 == 0 { "admin" } else { "member" };
 
             sqlx::query(
                 "INSERT INTO users (id, email, password_hash, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -373,11 +370,7 @@ pub async fn oauth_login_callback(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            tracing::info!(
-                "Created new user via OAuth login: {} ({})",
-                email,
-                provider
-            );
+            tracing::info!("Created new user via OAuth login: {} ({})", email, provider);
 
             new_user_id
         }
@@ -439,8 +432,10 @@ pub async fn list_oauth_providers(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let responses: Vec<OAuthProviderResponse> =
-        providers.into_iter().map(OAuthProviderResponse::from).collect();
+    let responses: Vec<OAuthProviderResponse> = providers
+        .into_iter()
+        .map(OAuthProviderResponse::from)
+        .collect();
 
     Ok(Json(responses))
 }
@@ -464,10 +459,26 @@ pub async fn create_oauth_provider(
         ));
     }
 
-    if req.client_id.trim().is_empty() || req.client_secret.trim().is_empty() {
+    if req.client_id.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Client ID is required".to_string()));
+    }
+
+    // Check if this is an update (provider already exists)
+    let existing: Option<OAuthProvider> =
+        sqlx::query_as("SELECT * FROM oauth_providers WHERE provider = ?")
+            .bind(&req.provider)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let is_update = existing.is_some();
+    let secret_unchanged = req.client_secret.trim() == "unchanged";
+
+    // For new providers, client_secret is required
+    if !is_update && (req.client_secret.trim().is_empty() || secret_unchanged) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Client ID and Client Secret are required".to_string(),
+            "Client Secret is required".to_string(),
         ));
     }
 
@@ -475,34 +486,56 @@ pub async fn create_oauth_provider(
     let now = chrono::Utc::now().to_rfc3339();
     let enabled = req.enabled.unwrap_or(true);
 
-    // Encrypt client_secret if encryption key is available
-    let client_secret = if let Some(ref encryption_key) = state.config.auth.encryption_key {
-        let key = crate::crypto::derive_key(encryption_key);
-        crate::crypto::encrypt(&req.client_secret, &key)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Encryption failed: {}", e)))?
+    if is_update && secret_unchanged {
+        // Update without changing the client_secret
+        sqlx::query(
+            r#"UPDATE oauth_providers SET
+                client_id = ?,
+                enabled = ?,
+                updated_at = ?
+            WHERE provider = ?"#,
+        )
+        .bind(&req.client_id)
+        .bind(enabled as i32)
+        .bind(&now)
+        .bind(&req.provider)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     } else {
-        req.client_secret.clone()
-    };
+        // Encrypt client_secret if encryption key is available
+        let client_secret = if let Some(ref encryption_key) = state.config.auth.encryption_key {
+            let key = crate::crypto::derive_key(encryption_key);
+            crate::crypto::encrypt(&req.client_secret, &key).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Encryption failed: {}", e),
+                )
+            })?
+        } else {
+            req.client_secret.clone()
+        };
 
-    sqlx::query(
-        r#"INSERT INTO oauth_providers (id, provider, client_id, client_secret, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(provider) DO UPDATE SET
-            client_id = excluded.client_id,
-            client_secret = excluded.client_secret,
-            enabled = excluded.enabled,
-            updated_at = excluded.updated_at"#,
-    )
-    .bind(&id)
-    .bind(&req.provider)
-    .bind(&req.client_id)
-    .bind(&client_secret)
-    .bind(enabled as i32)
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        sqlx::query(
+            r#"INSERT INTO oauth_providers (id, provider, client_id, client_secret, enabled, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(provider) DO UPDATE SET
+                client_id = excluded.client_id,
+                client_secret = excluded.client_secret,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at"#,
+        )
+        .bind(&id)
+        .bind(&req.provider)
+        .bind(&req.client_id)
+        .bind(&client_secret)
+        .bind(enabled as i32)
+        .bind(&now)
+        .bind(&now)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
 
     let ip = extract_client_ip(&headers, None);
     audit_log(
@@ -518,13 +551,12 @@ pub async fn create_oauth_provider(
     .await;
 
     // Fetch the actual stored record (might be an update)
-    let provider: OAuthProvider = sqlx::query_as(
-        "SELECT * FROM oauth_providers WHERE provider = ?",
-    )
-    .bind(&req.provider)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let provider: OAuthProvider =
+        sqlx::query_as("SELECT * FROM oauth_providers WHERE provider = ?")
+            .bind(&req.provider)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(OAuthProviderResponse::from(provider)))
 }
@@ -547,7 +579,10 @@ pub async fn delete_oauth_provider(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, "OAuth provider not found".to_string()));
+        return Err((
+            StatusCode::NOT_FOUND,
+            "OAuth provider not found".to_string(),
+        ));
     }
 
     let ip = extract_client_ip(&headers, None);
@@ -583,8 +618,10 @@ pub async fn list_user_connections(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let responses: Vec<UserOAuthConnectionResponse> =
-        connections.into_iter().map(UserOAuthConnectionResponse::from).collect();
+    let responses: Vec<UserOAuthConnectionResponse> = connections
+        .into_iter()
+        .map(UserOAuthConnectionResponse::from)
+        .collect();
 
     Ok(Json(responses))
 }
@@ -598,14 +635,12 @@ pub async fn delete_user_connection(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // User always has password (set during account creation), so it's safe to unlink any OAuth connection
 
-    let result = sqlx::query(
-        "DELETE FROM user_oauth_connections WHERE id = ? AND user_id = ?",
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result = sqlx::query("DELETE FROM user_oauth_connections WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&user.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
         return Err((
@@ -685,13 +720,12 @@ async fn exchange_code_for_token(
                     )
                 })?;
 
-            let token_response: GitHubTokenResponse =
-                response.json().await.map_err(|e| {
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        format!("Failed to parse token response: {}", e),
-                    )
-                })?;
+            let token_response: GitHubTokenResponse = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse token response: {}", e),
+                )
+            })?;
 
             Ok((token_response.access_token, None))
         }
@@ -720,18 +754,14 @@ async fn exchange_code_for_token(
                     )
                 })?;
 
-            let token_response: GoogleTokenResponse =
-                response.json().await.map_err(|e| {
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        format!("Failed to parse token response: {}", e),
-                    )
-                })?;
+            let token_response: GoogleTokenResponse = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse token response: {}", e),
+                )
+            })?;
 
-            Ok((
-                token_response.access_token,
-                token_response.refresh_token,
-            ))
+            Ok((token_response.access_token, token_response.refresh_token))
         }
         _ => Err((
             StatusCode::BAD_REQUEST,
@@ -823,9 +853,7 @@ async fn fetch_user_info(
 }
 
 /// Fetch primary email from GitHub (when user profile email is null)
-async fn fetch_github_primary_email(
-    access_token: &str,
-) -> Result<String, (StatusCode, String)> {
+async fn fetch_github_primary_email(access_token: &str) -> Result<String, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]

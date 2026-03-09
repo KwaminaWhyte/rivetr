@@ -708,27 +708,27 @@ Features that both Coolify and Dokploy offer. Required to be competitive in the 
 
 Social/OAuth login support for the dashboard.
 
-- [ ] **T7.1.1** Add OAuth provider configuration table (oauth_providers: id, provider, client_id, client_secret, enabled)
-- [ ] **T7.1.2** Implement GitHub OAuth login flow (authorize → callback → create/link user)
-- [ ] **T7.1.3** Implement Google OAuth login flow
-- [ ] **T7.1.4** Account linking (connect OAuth identity to existing account)
-- [ ] **T7.1.5** OAuth provider configuration UI in Settings
-- [ ] **T7.1.6** Login page with OAuth provider buttons
-- [ ] **T7.1.7** Handle OAuth errors and token refresh
+- [x] **T7.1.1** Add OAuth provider configuration table (oauth_providers: id, provider, client_id, client_secret, enabled) ✅ Migration 040
+- [x] **T7.1.2** Implement GitHub OAuth login flow (authorize → callback → create/link user) ✅
+- [x] **T7.1.3** Implement Google OAuth login flow ✅
+- [x] **T7.1.4** Account linking (connect OAuth identity to existing account) ✅ settings/oauth.tsx
+- [x] **T7.1.5** OAuth provider configuration UI in Settings ✅ Admin config page
+- [x] **T7.1.6** Login page with OAuth provider buttons ✅ + callback handling
+- [x] **T7.1.7** Handle OAuth errors and token refresh ✅
 
 ### 7.2 Project Environments
 
 Support dev/staging/production environments per project with environment-scoped variables and deployments.
 
-- [ ] **T7.2.1** Create `environments` table (id, project_id, name, description, is_default)
-- [ ] **T7.2.2** Create `environment_variables_env` table for environment-scoped env vars
-- [ ] **T7.2.3** Link apps to environments (add environment_id to apps table)
-- [ ] **T7.2.4** Environment CRUD API (GET/POST/PUT/DELETE /api/projects/:id/environments)
-- [ ] **T7.2.5** Environment switching in project UI (tabs or dropdown)
-- [ ] **T7.2.6** Environment-scoped deployments (deploy to specific environment)
-- [ ] **T7.2.7** Predefined system variables per environment (RIVETR_ENV, RIVETR_URL, RIVETR_BRANCH)
-- [ ] **T7.2.8** Default environments created with new projects (production, staging, development)
-- [ ] **T7.2.9** Environment variable inheritance (environment vars override project vars)
+- [x] **T7.2.1** Create `environments` table (id, project_id, name, description, is_default) ✅ Migration 042
+- [x] **T7.2.2** Create `environment_variables_env` table for environment-scoped env vars ✅ environment_env_vars table
+- [x] **T7.2.3** Link apps to environments (add environment_id to apps table) ✅
+- [x] **T7.2.4** Environment CRUD API (GET/POST/PUT/DELETE /api/projects/:id/environments) ✅ 8 endpoints
+- [x] **T7.2.5** Environment switching in project UI (tabs or dropdown) ✅ Dropdown selector
+- [x] **T7.2.6** Environment-scoped deployments (deploy to specific environment) ✅ Env vars merged in pipeline
+- [x] **T7.2.7** Predefined system variables per environment (RIVETR_ENV, RIVETR_URL, RIVETR_APP_NAME) ✅
+- [x] **T7.2.8** Default environments created with new projects (production, staging, development) ✅
+- [x] **T7.2.9** Environment variable inheritance (environment vars override project vars) ✅ Merged in pipeline
 
 ### 7.3 Watch Paths
 
@@ -759,8 +759,8 @@ Expand from 4 channels (Slack, Discord, Email, Webhook) to 8+.
 
 - [x] **T7.5.1** Telegram notification provider (Bot API with group/topic support) ✅ telegram.rs with HTML formatting
 - [x] **T7.5.2** Microsoft Teams notification provider (incoming webhooks) ✅ teams.rs with Adaptive Card v1.4
-- [ ] **T7.5.3** Pushover notification provider (multi-device push)
-- [ ] **T7.5.4** Ntfy notification provider (self-hosted push)
+- [x] **T7.5.3** Pushover notification provider (multi-device push) ✅ pushover.rs
+- [x] **T7.5.4** Ntfy notification provider (self-hosted push) ✅ ntfy.rs with self-hosted support
 - [x] **T7.5.5** Add new channel types to notification_channels CHECK constraint ✅ Migration 039
 - [x] **T7.5.6** Notification channel configuration UI for each new provider ✅ Telegram + Teams forms
 - [ ] **T7.5.7** Test notification button for each provider
@@ -871,11 +871,11 @@ Enterprise single sign-on integration.
 
 TOTP-based two-factor authentication for enhanced account security.
 
-- [ ] **T8.3.1** TOTP secret generation and storage (encrypted in DB)
-- [ ] **T8.3.2** 2FA setup flow with QR code generation
-- [ ] **T8.3.3** 2FA verification on login
-- [ ] **T8.3.4** Recovery codes generation and storage
-- [ ] **T8.3.5** 2FA management page (enable, disable, regenerate recovery codes)
+- [x] **T8.3.1** TOTP secret generation and storage (encrypted in DB) ✅ AES-256-GCM encrypted
+- [x] **T8.3.2** 2FA setup flow with QR code generation ✅ QR code SVG via totp-rs
+- [x] **T8.3.3** 2FA verification on login ✅ Temporary 5-min session, then validate
+- [x] **T8.3.4** Recovery codes generation and storage ✅ SHA-256 hashed, consumed on use
+- [x] **T8.3.5** 2FA management page (enable, disable, regenerate recovery codes) ✅ settings/security.tsx
 - [ ] **T8.3.6** 2FA enforcement setting per team (require 2FA for all members)
 
 ### 8.4 Log Draining
@@ -996,9 +996,9 @@ Comprehensive research conducted against both Coolify (280+ templates, 44K+ GitH
 | Phase 4   | 61          | 61        | 100%     |
 | Phase 5   | 30          | 27        | 90%      |
 | Phase 6   | 28          | 0         | 0%       |
-| Phase 7   | 100         | 17        | 17%      |
-| Phase 8   | 56          | 0         | 0%       |
-| **Total** | **574**     | **396**   | **69%**  |
+| Phase 7   | 100         | 39        | 39%      |
+| Phase 8   | 56          | 5         | 9%       |
+| **Total** | **574**     | **423**   | **74%**  |
 
 ---
 

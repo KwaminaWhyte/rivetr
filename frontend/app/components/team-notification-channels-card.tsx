@@ -47,6 +47,8 @@ import type {
   WebhookConfig,
   TelegramConfig,
   TeamsConfig,
+  PushoverConfig,
+  NtfyConfig,
 } from "@/types/api";
 import {
   Loader2,
@@ -54,6 +56,7 @@ import {
   Trash2,
   Send,
   Bell,
+  BellRing,
   MessageSquare,
   Mail,
   Webhook,
@@ -85,6 +88,10 @@ function getChannelIcon(type: TeamNotificationChannelType) {
       return <BotMessageSquare className="h-4 w-4" />;
     case "teams":
       return <Users className="h-4 w-4" />;
+    case "pushover":
+      return <Bell className="h-4 w-4" />;
+    case "ntfy":
+      return <BellRing className="h-4 w-4" />;
   }
 }
 
@@ -103,6 +110,10 @@ function getChannelBadgeVariant(
     case "telegram":
       return "default";
     case "teams":
+      return "secondary";
+    case "pushover":
+      return "default";
+    case "ntfy":
       return "secondary";
   }
 }
@@ -149,6 +160,16 @@ export function TeamNotificationChannelsCard({
   const [topicId, setTopicId] = useState("");
   // Teams-specific state
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
+  // Pushover-specific state
+  const [pushoverUserKey, setPushoverUserKey] = useState("");
+  const [pushoverAppToken, setPushoverAppToken] = useState("");
+  const [pushoverDevice, setPushoverDevice] = useState("");
+  const [pushoverPriority, setPushoverPriority] = useState("0");
+  // Ntfy-specific state
+  const [ntfyTopic, setNtfyTopic] = useState("");
+  const [ntfyServerUrl, setNtfyServerUrl] = useState("");
+  const [ntfyPriority, setNtfyPriority] = useState("3");
+  const [ntfyTags, setNtfyTags] = useState("");
   // Webhook-specific state
   const [payloadTemplate, setPayloadTemplate] = useState<
     "json" | "slack" | "discord" | "custom"
@@ -164,7 +185,7 @@ export function TeamNotificationChannelsCard({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig;
+      let config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
 
       if (channelType === "slack") {
         config = { webhook_url: webhookUrl.trim() };
@@ -178,6 +199,20 @@ export function TeamNotificationChannelsCard({
         };
       } else if (channelType === "teams") {
         config = { webhook_url: teamsWebhookUrl.trim() };
+      } else if (channelType === "pushover") {
+        config = {
+          user_key: pushoverUserKey.trim(),
+          app_token: pushoverAppToken.trim(),
+          device: pushoverDevice.trim() || undefined,
+          priority: parseInt(pushoverPriority, 10),
+        };
+      } else if (channelType === "ntfy") {
+        config = {
+          topic: ntfyTopic.trim(),
+          server_url: ntfyServerUrl.trim() || undefined,
+          priority: parseInt(ntfyPriority, 10),
+          tags: ntfyTags.trim() || undefined,
+        };
       } else if (channelType === "webhook") {
         config = {
           url: webhookUrl.trim(),
@@ -291,6 +326,14 @@ export function TeamNotificationChannelsCard({
     setChatId("");
     setTopicId("");
     setTeamsWebhookUrl("");
+    setPushoverUserKey("");
+    setPushoverAppToken("");
+    setPushoverDevice("");
+    setPushoverPriority("0");
+    setNtfyTopic("");
+    setNtfyServerUrl("");
+    setNtfyPriority("3");
+    setNtfyTags("");
     setPayloadTemplate("json");
     setCustomTemplate("");
     setChannelType("slack");
@@ -332,6 +375,20 @@ export function TeamNotificationChannelsCard({
       }
       if (!teamsWebhookUrl.trim().startsWith("https://")) {
         toast.error("Webhook URL must use HTTPS");
+        return;
+      }
+    } else if (channelType === "pushover") {
+      if (!pushoverUserKey.trim()) {
+        toast.error("User key is required");
+        return;
+      }
+      if (!pushoverAppToken.trim()) {
+        toast.error("App token is required");
+        return;
+      }
+    } else if (channelType === "ntfy") {
+      if (!ntfyTopic.trim()) {
+        toast.error("Topic is required");
         return;
       }
     } else if (channelType === "email") {
@@ -379,7 +436,7 @@ export function TeamNotificationChannelsCard({
               </CardTitle>
               <CardDescription>
                 Configure alert notifications for this team via Slack, Discord,
-                Email, Webhook, Telegram, or Microsoft Teams.
+                Email, Webhook, Telegram, Microsoft Teams, Pushover, or ntfy.
               </CardDescription>
             </div>
             <Button onClick={() => setShowCreateDialog(true)}>
@@ -557,6 +614,18 @@ export function TeamNotificationChannelsCard({
                         Microsoft Teams
                       </span>
                     </SelectItem>
+                    <SelectItem value="pushover">
+                      <span className="flex items-center gap-2">
+                        <Bell className="h-4 w-4" />
+                        Pushover
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="ntfy">
+                      <span className="flex items-center gap-2">
+                        <BellRing className="h-4 w-4" />
+                        ntfy
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -718,6 +787,135 @@ export function TeamNotificationChannelsCard({
                     settings.
                   </p>
                 </div>
+              )}
+
+              {/* Pushover Config */}
+              {channelType === "pushover" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="pushover_user_key">User Key</Label>
+                    <Input
+                      id="pushover_user_key"
+                      value={pushoverUserKey}
+                      onChange={(e) => setPushoverUserKey(e.target.value)}
+                      placeholder="Your Pushover user key"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Find this in your Pushover dashboard settings.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pushover_app_token">App Token</Label>
+                    <Input
+                      id="pushover_app_token"
+                      type="password"
+                      value={pushoverAppToken}
+                      onChange={(e) => setPushoverAppToken(e.target.value)}
+                      placeholder="Your Pushover application API token"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Create an application at pushover.net to get an API token.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pushover_device">Device (optional)</Label>
+                    <Input
+                      id="pushover_device"
+                      value={pushoverDevice}
+                      onChange={(e) => setPushoverDevice(e.target.value)}
+                      placeholder="e.g., iphone, desktop"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Send to a specific device instead of all devices.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pushover_priority">Priority</Label>
+                    <Select
+                      value={pushoverPriority}
+                      onValueChange={setPushoverPriority}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="-2">-2 (Silent)</SelectItem>
+                        <SelectItem value="-1">-1 (Quiet)</SelectItem>
+                        <SelectItem value="0">0 (Normal)</SelectItem>
+                        <SelectItem value="1">1 (High)</SelectItem>
+                        <SelectItem value="2">2 (Emergency)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {/* Ntfy Config */}
+              {channelType === "ntfy" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="ntfy_topic">Topic</Label>
+                    <Input
+                      id="ntfy_topic"
+                      value={ntfyTopic}
+                      onChange={(e) => setNtfyTopic(e.target.value)}
+                      placeholder="rivetr-alerts"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      The ntfy topic to publish to. Choose a unique,
+                      hard-to-guess name.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ntfy_server_url">
+                      Server URL (optional)
+                    </Label>
+                    <Input
+                      id="ntfy_server_url"
+                      value={ntfyServerUrl}
+                      onChange={(e) => setNtfyServerUrl(e.target.value)}
+                      placeholder="https://ntfy.sh"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty to use the default ntfy.sh server, or enter
+                      your self-hosted instance URL.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ntfy_priority">Priority</Label>
+                    <Select
+                      value={ntfyPriority}
+                      onValueChange={setNtfyPriority}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 (Min)</SelectItem>
+                        <SelectItem value="2">2 (Low)</SelectItem>
+                        <SelectItem value="3">3 (Default)</SelectItem>
+                        <SelectItem value="4">4 (High)</SelectItem>
+                        <SelectItem value="5">5 (Max/Urgent)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ntfy_tags">Tags (optional)</Label>
+                    <Input
+                      id="ntfy_tags"
+                      value={ntfyTags}
+                      onChange={(e) => setNtfyTags(e.target.value)}
+                      placeholder="warning,server"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Comma-separated tags/emojis for the notification (e.g.,
+                      warning,server).
+                    </p>
+                  </div>
+                </>
               )}
 
               {/* Email Config */}

@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Search,
   Rocket,
+  Settings2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
@@ -83,6 +84,7 @@ import type {
   DatabaseType,
   Service,
   ServiceTemplate,
+  ProjectEnvironment,
 } from "@/types/api";
 import { DATABASE_TYPES } from "@/types/api";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -193,6 +195,9 @@ export default function ProjectDetailPage() {
   const [templateEnvVars, setTemplateEnvVars] = useState<Record<string, string>>({});
   const [showTemplateSecrets, setShowTemplateSecrets] = useState<Record<string, boolean>>({});
 
+  // Environment state
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>("all");
+
   // Form state for database creation
   const [dbName, setDbName] = useState("");
   const [dbVersion, setDbVersion] = useState("latest");
@@ -217,6 +222,12 @@ services:
     queryKey: ["project", id],
     queryFn: () => api.getProject(id!),
     refetchInterval: 5000, // Poll for database status updates
+  });
+
+  const { data: environments = [] } = useQuery<ProjectEnvironment[]>({
+    queryKey: ["environments", id],
+    queryFn: () => api.getEnvironments(id!),
+    enabled: !!id,
   });
 
   const { data: allApps = [] } = useQuery<App[]>({
@@ -269,6 +280,15 @@ services:
       return matchesSearch && matchesCategory;
     });
   }, [templates, templateSearch, selectedCategory]);
+
+  // Filter apps by selected environment
+  const filteredApps = useMemo(() => {
+    if (!project) return [];
+    if (selectedEnvironmentId === "all") return project.apps;
+    return project.apps.filter(
+      (app) => app.environment_id === selectedEnvironmentId
+    );
+  }, [project, selectedEnvironmentId]);
 
   // Apps available to add (not in this project)
   const availableApps = useMemo(() => {
@@ -629,8 +649,39 @@ services:
       {/* Apps Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Applications</CardTitle>
+          <div className="flex items-center gap-4">
+            <CardTitle>Applications</CardTitle>
+            {environments.length > 0 && (
+              <Select
+                value={selectedEnvironmentId}
+                onValueChange={setSelectedEnvironmentId}
+              >
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue placeholder="All environments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Environments</SelectItem>
+                  {environments.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                      {env.is_default && " (default)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+            >
+              <Link to={`/projects/${project.id}/environments`}>
+                <Settings2 className="mr-2 h-4 w-4" />
+                Environments
+              </Link>
+            </Button>
             <Button
               variant="outline"
               onClick={() => setIsAddAppDialogOpen(true)}
@@ -647,7 +698,7 @@ services:
           </div>
         </CardHeader>
         <CardContent>
-          {project.apps.length === 0 ? (
+          {filteredApps.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-muted-foreground mb-4">
                 No applications in this project yet.
@@ -670,7 +721,7 @@ services:
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {project.apps.map((app) => {
+              {filteredApps.map((app) => {
                 const status = appStatuses?.[app.id] || "stopped";
                 return (
                   <Card

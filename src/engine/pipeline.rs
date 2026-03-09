@@ -1003,8 +1003,8 @@ pub async fn run_deployment(
         for (key, value) in env_env_vars {
             // Only inject if not already set by app-level env vars
             if !env_vars.iter().any(|(k, _)| k == &key) {
-                let decrypted =
-                    crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
                         value
                     });
@@ -1461,8 +1461,8 @@ pub async fn run_rollback(
         for (key, value) in env_env_vars {
             // Only inject if not already set by app-level env vars
             if !env_vars.iter().any(|(k, _)| k == &key) {
-                let decrypted =
-                    crypto::decrypt_if_encrypted(&value, encryption_key).unwrap_or_else(|e| {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
                         value
                     });

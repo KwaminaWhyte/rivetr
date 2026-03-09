@@ -593,9 +593,7 @@ fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Re
             let topic = config
                 .get("topic")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    ApiError::validation_field("config.topic", "Topic is required")
-                })?;
+                .ok_or_else(|| ApiError::validation_field("config.topic", "Topic is required"))?;
 
             if topic.is_empty() {
                 return Err(ApiError::validation_field(

@@ -17,8 +17,8 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 | Phase 4: Platform Services | Complete | 100% |
 | Phase 5: Advanced CI/CD | In Progress | 90% |
 | Phase 6: Unique Features | Planned | 0% |
-| Phase 7: Competitive Parity | In Progress | 17% |
-| Phase 8: Enterprise & Scale | Planned | 0% |
+| Phase 7: Competitive Parity | In Progress | 39% |
+| Phase 8: Enterprise & Scale | In Progress | 9% |
 
 ---
 
@@ -133,18 +133,18 @@ Enhanced rollback with registry integration.
 
 Features that both Coolify and Dokploy have. Required to compete.
 
-### OAuth Login
-- [ ] GitHub OAuth login
-- [ ] Google OAuth login
-- [ ] OAuth provider configuration in settings UI
-- [ ] Account linking (connect OAuth to existing account)
+### OAuth Login ✅ COMPLETE
+- [x] GitHub OAuth login
+- [x] Google OAuth login
+- [x] OAuth provider configuration in settings UI
+- [x] Account linking (connect OAuth to existing account)
 
-### Project Environments
-- [ ] Environment model (dev/staging/production per project)
-- [ ] Environment-level environment variables
-- [ ] Environment switching in UI
-- [ ] Environment-scoped deployments
-- [ ] Predefined variables per environment (RIVETR_ENV, RIVETR_URL, etc.)
+### Project Environments ✅ COMPLETE
+- [x] Environment model (dev/staging/production per project)
+- [x] Environment-level environment variables
+- [x] Environment switching in UI
+- [x] Environment-scoped deployments
+- [x] Predefined variables per environment (RIVETR_ENV, RIVETR_URL, etc.)
 
 ### Watch Paths ✅ COMPLETE
 - [x] Watch path patterns per app (e.g., `src/*`, `package.json`)
@@ -159,8 +159,8 @@ Features that both Coolify and Dokploy have. Required to compete.
 ### Additional Notification Channels
 - [x] Telegram notifications (bot API) ✅
 - [x] Microsoft Teams notifications (incoming webhooks) ✅
-- [ ] Pushover notifications
-- [ ] Ntfy notifications
+- [x] Pushover notifications ✅
+- [x] Ntfy notifications ✅
 - [x] Notification channel UI for new providers ✅
 
 ### Service Templates Expansion
@@ -216,9 +216,9 @@ Features required for enterprise adoption and high availability.
 - [ ] Per-team SSO provider settings
 
 ### Two-Factor Authentication (2FA)
-- [ ] TOTP-based 2FA (Google Authenticator, Authy)
-- [ ] 2FA setup flow with QR code
-- [ ] Recovery codes
+- [x] TOTP-based 2FA (Google Authenticator, Authy) ✅
+- [x] 2FA setup flow with QR code ✅
+- [x] Recovery codes ✅
 - [ ] 2FA enforcement per team
 
 ### Log Draining

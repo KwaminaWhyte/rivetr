@@ -209,6 +209,8 @@ export interface App {
   cpu_limit: string | null;
   environment: AppEnvironment;
   project_id: string | null;
+  /** Environment ID for project environment scoping */
+  environment_id: string | null;
   /** Team ID for multi-tenant scoping (null for legacy/unassigned apps) */
   team_id: string | null;
   // Advanced build options
@@ -324,6 +326,47 @@ export interface CreateProjectRequest {
 export interface UpdateProjectRequest {
   name?: string;
   description?: string;
+}
+
+// Project Environment types
+export interface ProjectEnvironment {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEnvironmentRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateEnvironmentRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface EnvironmentEnvVar {
+  id: string;
+  environment_id: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+  created_at: string;
+}
+
+export interface CreateEnvironmentEnvVarRequest {
+  key: string;
+  value: string;
+  is_secret?: boolean;
+}
+
+export interface UpdateEnvironmentEnvVarRequest {
+  value?: string;
+  is_secret?: boolean;
 }
 
 export interface Deployment {
@@ -712,7 +755,7 @@ export interface UpdateStatus {
 // -------------------------------------------------------------------------
 
 /** Notification channel types */
-export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams";
+export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams" | "pushover" | "ntfy";
 
 /** Notification event types */
 export type NotificationEventType =
@@ -755,12 +798,32 @@ export interface TeamsConfig {
   webhook_url: string;
 }
 
+/** Pushover API configuration */
+export interface PushoverConfig {
+  user_key: string;
+  app_token: string;
+  device?: string;
+  /** Priority: -2 (silent) to 2 (emergency), default 0 */
+  priority?: number;
+}
+
+/** Ntfy notification configuration */
+export interface NtfyConfig {
+  /** Server URL, defaults to "https://ntfy.sh" if not set */
+  server_url?: string;
+  topic: string;
+  /** Priority: 1 (min) to 5 (max), default 3 */
+  priority?: number;
+  /** Comma-separated tags for the notification */
+  tags?: string;
+}
+
 /** Notification channel */
 export interface NotificationChannel {
   id: string;
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | Record<string, unknown>;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -780,14 +843,14 @@ export interface NotificationSubscription {
 export interface CreateNotificationChannelRequest {
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
   enabled?: boolean;
 }
 
 /** Request to update a notification channel */
 export interface UpdateNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
   enabled?: boolean;
 }
 
@@ -814,14 +877,16 @@ export interface WebhookConfig {
   custom_template?: string;
 }
 
-/** Team notification channel types including webhook, telegram, and teams */
+/** Team notification channel types including webhook, telegram, teams, pushover, and ntfy */
 export type TeamNotificationChannelType =
   | "slack"
   | "discord"
   | "email"
   | "webhook"
   | "telegram"
-  | "teams";
+  | "teams"
+  | "pushover"
+  | "ntfy";
 
 /** Team notification channel */
 export interface TeamNotificationChannel {
@@ -836,6 +901,8 @@ export interface TeamNotificationChannel {
     | WebhookConfig
     | TelegramConfig
     | TeamsConfig
+    | PushoverConfig
+    | NtfyConfig
     | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -846,14 +913,14 @@ export interface TeamNotificationChannel {
 export interface CreateTeamNotificationChannelRequest {
   name: string;
   channel_type: TeamNotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
   enabled?: boolean;
 }
 
 /** Request to update a team notification channel */
 export interface UpdateTeamNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
   enabled?: boolean;
 }
 

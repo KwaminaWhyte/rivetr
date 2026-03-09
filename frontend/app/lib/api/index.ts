@@ -17,6 +17,9 @@ export { notificationsApi } from "./notifications";
 export { gitApi } from "./git";
 export { systemApi } from "./system";
 export { previewsApi } from "./previews";
+export { oauthApi } from "./oauth";
+export { environmentsApi } from "./environments";
+export { twoFactorApi } from "./two-factor";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -28,6 +31,9 @@ import { notificationsApi } from "./notifications";
 import { gitApi } from "./git";
 import { systemApi } from "./system";
 import { previewsApi } from "./previews";
+import { oauthApi } from "./oauth";
+import { environmentsApi } from "./environments";
+import { twoFactorApi } from "./two-factor";
 
 /**
  * Combined API object for backward compatibility.
@@ -230,6 +236,32 @@ export const api = {
   getPreview: previewsApi.getPreview,
   deletePreview: previewsApi.deletePreview,
   redeployPreview: previewsApi.redeployPreview,
+
+  // OAuth Login Providers
+  getEnabledOAuthProviders: oauthApi.getEnabledProviders,
+  getOAuthLoginAuthorizeUrl: oauthApi.getLoginAuthorizeUrl,
+  getOAuthProviders: oauthApi.getOAuthProviders,
+  createOAuthProvider: oauthApi.createOAuthProvider,
+  deleteOAuthProvider: oauthApi.deleteOAuthProvider,
+  getOAuthConnections: oauthApi.getOAuthConnections,
+  deleteOAuthConnection: oauthApi.deleteOAuthConnection,
+
+  // Two-Factor Authentication
+  setup2FA: twoFactorApi.setup,
+  verify2FA: twoFactorApi.verify,
+  disable2FA: twoFactorApi.disable,
+  get2FAStatus: twoFactorApi.getStatus,
+  validate2FA: twoFactorApi.validate,
+
+  // Project Environments
+  getEnvironments: environmentsApi.getEnvironments,
+  createEnvironment: environmentsApi.createEnvironment,
+  updateEnvironment: environmentsApi.updateEnvironment,
+  deleteEnvironment: environmentsApi.deleteEnvironment,
+  getEnvironmentEnvVars: environmentsApi.getEnvironmentEnvVars,
+  createEnvironmentEnvVar: environmentsApi.createEnvironmentEnvVar,
+  updateEnvironmentEnvVar: environmentsApi.updateEnvironmentEnvVar,
+  deleteEnvironmentEnvVar: environmentsApi.deleteEnvironmentEnvVar,
 };
 
 export default api;

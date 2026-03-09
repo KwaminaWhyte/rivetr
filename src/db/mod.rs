@@ -578,11 +578,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 042: Add project environments and environment-scoped env vars
-    let has_environments_table: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='environments'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_environments_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='environments'")
+            .fetch_optional(pool)
+            .await?;
     if has_environments_table.is_none() {
         execute_sql(
             pool,

@@ -15,8 +15,8 @@ use uuid::Uuid;
 use crate::crypto;
 use crate::db::{
     CreateEnvironmentEnvVarRequest, CreateEnvironmentRequest, EnvironmentEnvVar,
-    EnvironmentEnvVarResponse, EnvironmentResponse, ProjectEnvironment, UpdateEnvironmentEnvVarRequest,
-    UpdateEnvironmentRequest,
+    EnvironmentEnvVarResponse, EnvironmentResponse, ProjectEnvironment,
+    UpdateEnvironmentEnvVarRequest, UpdateEnvironmentRequest,
 };
 use crate::AppState;
 
@@ -57,11 +57,10 @@ pub async fn list_environments(
     }
 
     // Verify project exists
-    let project_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
-            .bind(&project_id)
-            .fetch_one(&state.db)
-            .await?;
+    let project_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
+        .bind(&project_id)
+        .fetch_one(&state.db)
+        .await?;
     if project_exists == 0 {
         return Err(ApiError::not_found("Project not found"));
     }
@@ -73,7 +72,8 @@ pub async fn list_environments(
     .fetch_all(&state.db)
     .await?;
 
-    let responses: Vec<EnvironmentResponse> = environments.iter().map(|e| e.to_response()).collect();
+    let responses: Vec<EnvironmentResponse> =
+        environments.iter().map(|e| e.to_response()).collect();
 
     Ok(Json(responses))
 }
@@ -103,11 +103,10 @@ pub async fn create_environment(
     }
 
     // Verify project exists
-    let project_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
-            .bind(&project_id)
-            .fetch_one(&state.db)
-            .await?;
+    let project_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
+        .bind(&project_id)
+        .fetch_one(&state.db)
+        .await?;
     if project_exists == 0 {
         return Err(ApiError::not_found("Project not found"));
     }
@@ -181,9 +180,7 @@ pub async fn update_environment(
 
     // Prevent renaming default environments
     if existing.is_default != 0 && req.name.is_some() {
-        return Err(ApiError::bad_request(
-            "Cannot rename a default environment",
-        ));
+        return Err(ApiError::bad_request("Cannot rename a default environment"));
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -266,11 +263,10 @@ pub async fn list_env_vars(
     }
 
     // Verify environment exists
-    let env_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM environments WHERE id = ?")
-            .bind(&env_id)
-            .fetch_one(&state.db)
-            .await?;
+    let env_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM environments WHERE id = ?")
+        .bind(&env_id)
+        .fetch_one(&state.db)
+        .await?;
     if env_exists == 0 {
         return Err(ApiError::not_found("Environment not found"));
     }
@@ -326,11 +322,10 @@ pub async fn create_env_var(
     }
 
     // Verify environment exists
-    let env_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM environments WHERE id = ?")
-            .bind(&env_id)
-            .fetch_one(&state.db)
-            .await?;
+    let env_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM environments WHERE id = ?")
+        .bind(&env_id)
+        .fetch_one(&state.db)
+        .await?;
     if env_exists == 0 {
         return Err(ApiError::not_found("Environment not found"));
     }
@@ -370,19 +365,20 @@ pub async fn create_env_var(
     .await
     .map_err(|e| {
         if e.to_string().contains("UNIQUE constraint failed") {
-            ApiError::conflict("An environment variable with this key already exists in this environment")
+            ApiError::conflict(
+                "An environment variable with this key already exists in this environment",
+            )
         } else {
             tracing::error!("Failed to create env var: {}", e);
             ApiError::database("Failed to create environment variable")
         }
     })?;
 
-    let var = sqlx::query_as::<_, EnvironmentEnvVar>(
-        "SELECT * FROM environment_env_vars WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await?;
+    let var =
+        sqlx::query_as::<_, EnvironmentEnvVar>("SELECT * FROM environment_env_vars WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await?;
 
     // Return with original plaintext value
     let response_var = EnvironmentEnvVar {
@@ -455,12 +451,11 @@ pub async fn update_env_var(
         ApiError::database("Failed to update environment variable")
     })?;
 
-    let var = sqlx::query_as::<_, EnvironmentEnvVar>(
-        "SELECT * FROM environment_env_vars WHERE id = ?",
-    )
-    .bind(&var_id)
-    .fetch_one(&state.db)
-    .await?;
+    let var =
+        sqlx::query_as::<_, EnvironmentEnvVar>("SELECT * FROM environment_env_vars WHERE id = ?")
+            .bind(&var_id)
+            .fetch_one(&state.db)
+            .await?;
 
     // Return plaintext value
     let response_var = EnvironmentEnvVar {
