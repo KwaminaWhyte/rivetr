@@ -295,12 +295,23 @@ impl ProxyServer {
         self.routes.clone()
     }
 
-    /// Start the proxy server (HTTP)
-    pub async fn run(self) -> anyhow::Result<()> {
+    /// Start the proxy server (HTTP), optionally redirecting to HTTPS
+    pub async fn run_with_options(
+        self,
+        acme_challenges: Option<AcmeChallenges>,
+        https_redirect: bool,
+        https_port: u16,
+    ) -> anyhow::Result<()> {
         let listener = TcpListener::bind(self.bind_addr).await?;
         info!("Proxy server listening on http://{}", self.bind_addr);
 
-        let handler = ProxyHandler::new(self.routes.clone());
+        let mut handler = ProxyHandler::new(self.routes.clone());
+        if let Some(challenges) = acme_challenges {
+            handler = handler.with_acme(challenges);
+        }
+        if https_redirect {
+            handler = handler.with_https_redirect(https_port);
+        }
 
         loop {
             match listener.accept().await {
@@ -317,6 +328,11 @@ impl ProxyServer {
                 }
             }
         }
+    }
+
+    /// Start the proxy server (HTTP)
+    pub async fn run(self) -> anyhow::Result<()> {
+        self.run_with_options(None, false, 443).await
     }
 }
 

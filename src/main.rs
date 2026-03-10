@@ -15,7 +15,10 @@ use rivetr::engine::{
     spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
     spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
-use rivetr::proxy::{Backend, HealthChecker, HealthCheckerConfig, ProxyServer, RouteTable};
+use rivetr::proxy::{
+    AcmeClient, AcmeConfig, Backend, CertificateRenewalManager, HealthChecker, HealthCheckerConfig,
+    HttpsProxyServer, ProxyServer, RouteTable,
+};
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
 use rivetr::AppState;
@@ -248,11 +251,103 @@ async fn main() -> Result<()> {
 
     let app = api_router;
 
-    tokio::spawn(async move {
-        if let Err(e) = proxy_server.run().await {
-            tracing::error!(error = %e, "Proxy server error");
+    // Start HTTPS proxy + ACME if configured
+    let https_port = config.server.proxy_https_port;
+    let acme_enabled = config.proxy.acme_enabled
+        && config.proxy.acme_email.is_some()
+        && config.proxy.instance_domain.is_some();
+
+    if acme_enabled {
+        let acme_email = config.proxy.acme_email.clone().unwrap();
+        let instance_domain = config.proxy.instance_domain.clone().unwrap();
+        let acme_cfg = AcmeConfig {
+            email: acme_email,
+            cache_dir: config.proxy.acme_cache_dir.clone(),
+            staging: config.proxy.acme_staging,
+        };
+
+        match AcmeClient::new(acme_cfg).await {
+            Ok(acme_client) => {
+                let acme_client = std::sync::Arc::new(acme_client);
+                let acme_challenges = acme_client.challenges();
+
+                // Request initial cert for instance_domain if not cached
+                let domains = vec![instance_domain.clone()];
+                let cert_dir = acme_client.cert_dir(&instance_domain);
+                let tls_config = if cert_dir.join("fullchain.pem").exists() {
+                    AcmeClient::load_certificate(&cert_dir).await.ok()
+                } else {
+                    tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
+                    match acme_client.request_certificate(&domains).await {
+                        Ok(result) => {
+                            let _ = acme_client.save_certificate(&result).await;
+                            rivetr::proxy::TlsConfig::from_pem(
+                                &result.certificate_chain_pem,
+                                &result.private_key_pem,
+                            ).ok()
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to get Let's Encrypt certificate");
+                            None
+                        }
+                    }
+                };
+
+                if let Some(tls_config) = tls_config {
+                    let https_addr: SocketAddr =
+                        format!("{}:{}", config.server.host, https_port)
+                            .parse()
+                            .expect("Invalid HTTPS proxy address");
+                    let https_server =
+                        HttpsProxyServer::new(https_addr, routes.clone(), tls_config);
+                    tokio::spawn(async move {
+                        if let Err(e) = https_server.run().await {
+                            tracing::error!(error = %e, "HTTPS proxy server error");
+                        }
+                    });
+                    tracing::info!("HTTPS proxy listening on https://{}", https_addr);
+
+                    // Start certificate renewal manager
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client);
+                    tokio::spawn(async move { renewal_mgr.run().await });
+
+                    // HTTP proxy redirects to HTTPS (ACME challenges bypass redirect)
+                    tokio::spawn(async move {
+                        if let Err(e) = proxy_server
+                            .run_with_options(Some(acme_challenges), true, https_port)
+                            .await
+                        {
+                            tracing::error!(error = %e, "HTTP proxy server error");
+                        }
+                    });
+                } else {
+                    tracing::warn!("Could not get TLS cert, starting HTTP-only proxy");
+                    tokio::spawn(async move {
+                        if let Err(e) = proxy_server
+                            .run_with_options(Some(acme_challenges), false, https_port)
+                            .await
+                        {
+                            tracing::error!(error = %e, "Proxy server error");
+                        }
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to initialize ACME client, starting HTTP-only");
+                tokio::spawn(async move {
+                    if let Err(e) = proxy_server.run().await {
+                        tracing::error!(error = %e, "Proxy server error");
+                    }
+                });
+            }
         }
-    });
+    } else {
+        tokio::spawn(async move {
+            if let Err(e) = proxy_server.run().await {
+                tracing::error!(error = %e, "Proxy server error");
+            }
+        });
+    }
 
     // Start health checker for backend health monitoring
     let health_config = HealthCheckerConfig::from_proxy_config(&config.proxy);

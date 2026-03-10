@@ -32,6 +32,8 @@ pub struct ProxyHandler {
     routes: Arc<ArcSwap<RouteTable>>,
     proxy_service: ProxyService,
     acme_challenges: Option<AcmeChallenges>,
+    /// If set, redirect HTTP to HTTPS on this port
+    https_redirect_port: Option<u16>,
 }
 
 impl ProxyHandler {
@@ -40,12 +42,19 @@ impl ProxyHandler {
             routes,
             proxy_service: ProxyService::new(),
             acme_challenges: None,
+            https_redirect_port: None,
         }
     }
 
     /// Create a new handler with ACME challenge support
     pub fn with_acme(mut self, challenges: AcmeChallenges) -> Self {
         self.acme_challenges = Some(challenges);
+        self
+    }
+
+    /// Redirect all HTTP traffic to HTTPS
+    pub fn with_https_redirect(mut self, https_port: u16) -> Self {
+        self.https_redirect_port = Some(https_port);
         self
     }
 
@@ -105,8 +114,32 @@ impl ProxyHandler {
         let uri = req.uri().clone();
         let path = uri.path();
 
-        // Check for ACME HTTP-01 challenge
+        // Check for ACME HTTP-01 challenge (must happen before HTTPS redirect)
         if let Some(response) = self.handle_acme_challenge(path) {
+            return Ok(response);
+        }
+
+        // Redirect HTTP → HTTPS if configured
+        if let Some(https_port) = self.https_redirect_port {
+            let host_header = req
+                .headers()
+                .get(hyper::header::HOST)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            // Strip existing port from host header, add https port if non-standard
+            let host_without_port = host_header.split(':').next().unwrap_or(host_header);
+            let redirect_host = if https_port == 443 {
+                host_without_port.to_string()
+            } else {
+                format!("{}:{}", host_without_port, https_port)
+            };
+            let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+            let location = format!("https://{}{}{}", redirect_host, path, query);
+            let response = Response::builder()
+                .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                .header(hyper::header::LOCATION, location)
+                .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
+                .unwrap();
             return Ok(response);
         }
 
