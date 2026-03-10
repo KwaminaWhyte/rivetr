@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.1] - 2026-03-10
+
+### Fixed
+- **PackConfig Default** — `trust_builder` now correctly defaults to `true` in Rust's `Default` impl (was `false` due to `#[derive(Default)]`), fixing the `test_empty_config` test
+- **Frontend TypeScript** — Fixed `running-services-card.tsx` passing raw `string` instead of `{ teamId }` option objects to `api.getApps/getDatabases/getServices`; removed reference to non-existent `app.current_deployment` field
+- **servers.tsx** — Replaced `require("react")` inside component body with proper top-level imports (`useEffect`, `useRef`)
+- **Cargo.toml** — Bumped version to `0.10.1` and fixed repository URL to `KwaminaWhyte/rivetr`
+- **install.sh** — Fixed Railpack download URL (uses `-musl` not `-gnu`, includes version tag from GitHub API)
+
+---
+
 ## [0.10.0] - 2026-03-10
 
 ### Added
