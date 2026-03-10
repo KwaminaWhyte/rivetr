@@ -170,7 +170,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(deployments::create_freeze_window),
         )
         .route(
-            "/freeze-windows/:id",
+            "/apps/:id/freeze-windows/:window_id",
             delete(deployments::delete_freeze_window),
         )
         // Build detection
