@@ -54,11 +54,19 @@ pub async fn approve_deployment(
 
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Use NULL for approved_by when using the admin API token (synthetic "system" user
+    // has no row in the users table and would violate the FK constraint).
+    let approver_id: Option<&str> = if user.id == "system" {
+        None
+    } else {
+        Some(&user.id)
+    };
+
     // Update approval status
     sqlx::query(
         "UPDATE deployments SET approval_status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?",
     )
-    .bind(&user.id)
+    .bind(approver_id)
     .bind(&now)
     .bind(&deployment_id)
     .execute(&state.db)
@@ -126,6 +134,12 @@ pub async fn reject_deployment(
 
     let now = chrono::Utc::now().to_rfc3339();
 
+    let approver_id: Option<&str> = if user.id == "system" {
+        None
+    } else {
+        Some(&user.id)
+    };
+
     sqlx::query(
         r#"UPDATE deployments
            SET approval_status = 'rejected',
@@ -137,7 +151,7 @@ pub async fn reject_deployment(
                finished_at = ?
            WHERE id = ?"#,
     )
-    .bind(&user.id)
+    .bind(approver_id)
     .bind(&now)
     .bind(&reason)
     .bind(format!("Deployment rejected: {}", reason))
