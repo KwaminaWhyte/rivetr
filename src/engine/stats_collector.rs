@@ -237,7 +237,6 @@ async fn record_stats_snapshot(
     // Collect aggregate stats from all running containers
     let mut total_cpu = 0.0;
     let mut total_memory_used: i64 = 0;
-    let mut total_memory_limit: i64 = 0;
 
     // Stats from app deployments
     for deployment in &running_deployments {
@@ -245,7 +244,6 @@ async fn record_stats_snapshot(
             if let Ok(stats) = runtime.stats(container_id).await {
                 total_cpu += stats.cpu_percent;
                 total_memory_used += stats.memory_usage as i64;
-                total_memory_limit += stats.memory_limit as i64;
             }
         }
     }
@@ -256,7 +254,6 @@ async fn record_stats_snapshot(
             if let Ok(stats) = runtime.stats(container_id).await {
                 total_cpu += stats.cpu_percent;
                 total_memory_used += stats.memory_usage as i64;
-                total_memory_limit += stats.memory_limit as i64;
             }
         }
     }
@@ -269,16 +266,13 @@ async fn record_stats_snapshot(
                 if let Ok(stats) = runtime.stats(&container.id).await {
                     total_cpu += stats.cpu_percent;
                     total_memory_used += stats.memory_usage as i64;
-                    total_memory_limit += stats.memory_limit as i64;
                 }
             }
         }
     }
 
-    // Use system memory if no limit set
-    if total_memory_limit == 0 {
-        total_memory_limit = get_system_memory() as i64;
-    }
+    // Always use actual system RAM — container cgroup limits are not the server total.
+    let total_memory_limit = get_system_memory() as i64;
 
     // Insert stats record
     sqlx::query(

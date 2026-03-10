@@ -275,8 +275,6 @@ pub async fn get_system_stats(
     // Aggregate container stats for running apps and databases
     let mut total_cpu_percent = 0.0;
     let mut memory_used_bytes: u64 = 0;
-    let mut memory_total_bytes: u64 = 0;
-    let mut has_unlimited_container = false;
 
     // Stats from running app deployments
     for deployment in &running_deployments {
@@ -285,12 +283,6 @@ pub async fn get_system_stats(
                 Ok(stats) => {
                     total_cpu_percent += stats.cpu_percent;
                     memory_used_bytes += stats.memory_usage;
-                    // memory_limit of 0 means unlimited (use system memory)
-                    if stats.memory_limit == 0 {
-                        has_unlimited_container = true;
-                    } else {
-                        memory_total_bytes += stats.memory_limit;
-                    }
                 }
                 Err(e) => {
                     tracing::debug!("Could not get stats for container {}: {}", container_id, e);
@@ -306,11 +298,6 @@ pub async fn get_system_stats(
                 Ok(stats) => {
                     total_cpu_percent += stats.cpu_percent;
                     memory_used_bytes += stats.memory_usage;
-                    if stats.memory_limit == 0 {
-                        has_unlimited_container = true;
-                    } else {
-                        memory_total_bytes += stats.memory_limit;
-                    }
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -339,11 +326,6 @@ pub async fn get_system_stats(
                         Ok(stats) => {
                             total_cpu_percent += stats.cpu_percent;
                             memory_used_bytes += stats.memory_usage;
-                            if stats.memory_limit == 0 {
-                                has_unlimited_container = true;
-                            } else {
-                                memory_total_bytes += stats.memory_limit;
-                            }
                         }
                         Err(e) => {
                             tracing::debug!(
@@ -365,10 +347,9 @@ pub async fn get_system_stats(
         }
     }
 
-    // If any container has no memory limit, use system memory as total
-    if has_unlimited_container || memory_total_bytes == 0 {
-        memory_total_bytes = get_system_memory();
-    }
+    // Always use actual system memory as the total — container cgroup limits
+    // are not the server's total RAM.
+    let memory_total_bytes = get_system_memory();
 
     // Calculate server uptime using std::time
     // For now, use a static uptime value based on process start
