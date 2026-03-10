@@ -493,28 +493,26 @@ export default function AppDetailLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Open App button - show if running and has either domain or host_port */}
-          {appStatus?.running && (app.domain || appStatus.host_port) && (
-            <Button variant="outline" asChild className="gap-2">
-              <a
-                href={
-                  app.domain
-                    ? `https://${app.domain}`
-                    : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${appStatus.host_port}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open App
-                {!app.domain && appStatus.host_port && (
-                  <span className="text-xs text-muted-foreground">
-                    :{appStatus.host_port}
-                  </span>
-                )}
-              </a>
-            </Button>
-          )}
+          {/* Open App button - prefer domain > auto_subdomain > host_port */}
+          {appStatus?.running && (app.domain || app.auto_subdomain || appStatus.host_port) && (() => {
+            const primaryDomain = app.domain || app.auto_subdomain;
+            const href = primaryDomain
+              ? `http://${primaryDomain}`
+              : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${appStatus.host_port}`;
+            return (
+              <Button variant="outline" asChild className="gap-2">
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open App
+                  {!primaryDomain && appStatus.host_port && (
+                    <span className="text-xs text-muted-foreground">
+                      :{appStatus.host_port}
+                    </span>
+                  )}
+                </a>
+              </Button>
+            );
+          })()}
           {/* More actions dropdown: Clone + Maintenance */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

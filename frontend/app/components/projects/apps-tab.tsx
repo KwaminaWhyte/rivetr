@@ -380,10 +380,10 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                       </CardHeader>
                       <CardContent className="pt-0 pb-4">
                         <div className="space-y-2 text-sm text-muted-foreground">
-                          {app.domain && (
+                          {(app.domain || app.auto_subdomain) && (
                             <div className="flex items-center gap-2 truncate">
                               <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{app.domain}</span>
+                              <span className="truncate">{app.domain || app.auto_subdomain}</span>
                             </div>
                           )}
                           {app.git_url && (

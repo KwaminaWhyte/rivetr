@@ -112,10 +112,10 @@ export function NavApps() {
                         </DropdownMenuItem>
                       </>
                     )}
-                    {app.domain && (
+                    {(app.domain || app.auto_subdomain) && (
                       <DropdownMenuItem asChild>
                         <a
-                          href={`http://${app.domain}`}
+                          href={`http://${app.domain || app.auto_subdomain}`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
