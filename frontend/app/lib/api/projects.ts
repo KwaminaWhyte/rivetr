@@ -9,6 +9,9 @@ import type {
   ProjectWithApps,
   CreateProjectRequest,
   UpdateProjectRequest,
+  DependencyGraph,
+  AddDependencyRequest,
+  AddDependencyResponse,
 } from "@/types/api";
 
 export const projectsApi = {
@@ -58,5 +61,26 @@ export const projectsApi = {
         method: "DELETE",
       },
       token
+    ),
+
+  /** Get dependency graph for a project */
+  getDependencyGraph: (projectId: string) =>
+    apiRequest<DependencyGraph>(`/projects/${projectId}/dependency-graph`),
+
+  /** Add a dependency to an app */
+  addDependency: (appId: string, data: AddDependencyRequest) =>
+    apiRequest<AddDependencyResponse>(
+      `/apps/${appId}/dependencies`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+
+  /** Remove a dependency from an app */
+  deleteDependency: (appId: string, depId: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/dependencies/${depId}`,
+      { method: "DELETE" }
     ),
 };

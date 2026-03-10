@@ -685,6 +685,49 @@ export interface AppStatus {
   status: "running" | "stopped" | "not_deployed" | "no_container" | "not_found";
   /** The host port the container is accessible on (for "Open App" functionality) */
   host_port: number | null;
+  /** Blue/green deployment phase */
+  deployment_phase: "stable" | "deploying" | "health_checking" | "switching";
+  /** ID of the currently active deployment */
+  active_deployment_id: string | null;
+  /** Seconds the active deployment has been running */
+  uptime_seconds: number | null;
+}
+
+// -------------------------------------------------------------------------
+// Dependency Graph types
+// -------------------------------------------------------------------------
+
+export interface DependencyNode {
+  id: string;
+  type: "app" | "database" | "service";
+  name: string;
+  status: string | null;
+}
+
+export interface DependencyEdge {
+  from: string;
+  to: string;
+  label: string;
+}
+
+export interface DependencyGraph {
+  nodes: DependencyNode[];
+  edges: DependencyEdge[];
+}
+
+export interface AddDependencyRequest {
+  depends_on_app_id?: string;
+  depends_on_database_id?: string;
+  depends_on_service_id?: string;
+}
+
+export interface AddDependencyResponse {
+  id: string;
+  app_id: string;
+  depends_on_app_id: string | null;
+  depends_on_database_id: string | null;
+  depends_on_service_id: string | null;
+  created_at: string;
 }
 
 // Recent event for dashboard feed

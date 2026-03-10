@@ -8,15 +8,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Container replicas
-- Multi-server support
-- SSO/SAML/OIDC
 - Docker Swarm integration
-- Scheduled S3 backups
-- Template search and filtering
-- Deployment enhancements (approval workflow, scheduled deploys, freeze periods)
-- Bulk operations (start/stop/restart/deploy multiple apps)
-- Shared environment variables (team/project/environment inheritance)
+- Build servers (dedicated remote build nodes)
+- SAML 2.0 support
+
+---
+
+## [0.8.0] - 2026-03-10
+
+### Added
+
+#### DockerHub Webhook
+- **DockerHub Integration** — Deploy apps automatically when a Docker image is pushed to DockerHub; apps with matching `docker_image` field are triggered; supports `callback_url` acknowledgement
+
+#### Scheduled Backups
+- **Backup Schedules** — Cron-based scheduling for instance and S3 backups; configurable retention days; background scheduler runs every 60s
+- **Backup Schedule API** — CRUD endpoints for managing backup schedules with enable/disable toggle
+
+#### 2FA Enforcement Per Team
+- **Team-level 2FA Requirement** — Owners can mandate that all team members have 2FA enabled; users without TOTP are blocked from team resources
+- **Security Tab** — New owner-only Security tab in team settings with 2FA enforcement toggle and warning banner
+
+#### Template Search & Filtering
+- **Template Search** — Backend `search` query param filters templates by name/description; frontend shows result count and scrollable category pills for all 12+ categories
+
+#### Service Dependency Graph
+- **Dependency Visualization** — Projects show a dependency graph of apps, databases, and services with colored node labels and edge arrows
+- **Dependency API** — `GET /api/projects/:id/dependency-graph`, `POST /api/apps/:id/dependencies`, `DELETE /api/apps/:id/dependencies/:dep_id`
+- **service_dependencies table** — Track inter-service dependencies with referential integrity
+
+#### Zero-Downtime Indicator
+- **Deployment Phase Banner** — Deployments tab shows real-time phase indicator: Stable (green), Deploying (blue pulsing), Health Checking (yellow), Switching Traffic (orange spinning)
+- **Extended App Status** — `GET /api/apps/:id/status` now returns `deployment_phase`, `active_deployment_id`, and `uptime_seconds`
+
+#### Multi-Server Support
+- **SSH Server Registration** — Register remote servers with SSH credentials (encrypted); health check gathers CPU/memory/disk/OS/Docker stats
+- **Servers Management Page** — Settings page with server status indicators and "Check Now" per server
+
+#### SSO/OIDC
+- **OpenID Connect** — Full OIDC auth flow with provider management; supports Auth0, Keycloak, Google, Azure AD, Okta with quick-fill presets
+- **SSO Auth Flow** — `/auth/sso/:id/login` initiates OIDC redirect; `/auth/sso/:id/callback` exchanges code, creates or links user account
+
+#### Container Replicas
+- **Replica Scaling** — Set replica count 1–10 per app; pipeline starts N containers on deploy; proxy does round-robin across all backends
+- **Round-Robin Load Balancer** — Proxy layer updated with `RoundRobinBackend` and atomic counter for lock-free selection
+
+### Refactored
+- All Rust files >1000 lines split into organized subdirectory modules (pipeline, container_monitor, docker, git_providers, deployments, validation, services, system, alert_notifications, cli)
+- Frontend `types/api.ts` split into 7 domain files (apps, deployments, databases, services, teams, notifications, system) — all imports unchanged via barrel re-export
+- Frontend `projects/$id.tsx` (2103→275 lines) — extracted apps/databases/services tabs into components
+- Frontend `teams/$id.tsx` (1327→641 lines) — extracted members/invitations/audit tabs into components
+- Frontend notifications split into shared `channel-config-fields.tsx` component
 
 ---
 

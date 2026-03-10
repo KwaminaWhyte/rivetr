@@ -5,7 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -18,6 +18,64 @@ use crate::AppState;
 
 use super::audit::{audit_log, extract_client_ip};
 use super::error::{ApiError, ValidationErrorBuilder};
+
+// -------------------------------------------------------------------------
+// Dependency graph types
+// -------------------------------------------------------------------------
+
+/// A node in the dependency graph (app, database, or service)
+#[derive(Debug, Serialize)]
+pub struct DependencyNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    pub name: String,
+    pub status: Option<String>,
+}
+
+/// An edge in the dependency graph (depends-on relationship)
+#[derive(Debug, Serialize)]
+pub struct DependencyEdge {
+    pub from: String,
+    pub to: String,
+    pub label: String,
+}
+
+/// Full dependency graph for a project
+#[derive(Debug, Serialize)]
+pub struct DependencyGraph {
+    pub nodes: Vec<DependencyNode>,
+    pub edges: Vec<DependencyEdge>,
+}
+
+/// Raw row from service_dependencies table
+#[derive(Debug, sqlx::FromRow)]
+struct DependencyRow {
+    id: String,
+    app_id: String,
+    depends_on_app_id: Option<String>,
+    depends_on_database_id: Option<String>,
+    depends_on_service_id: Option<String>,
+}
+
+/// Request to add a dependency
+#[derive(Debug, Deserialize)]
+pub struct AddDependencyRequest {
+    pub depends_on_app_id: Option<String>,
+    pub depends_on_database_id: Option<String>,
+    pub depends_on_service_id: Option<String>,
+}
+
+/// Response after adding a dependency
+#[derive(Debug, Serialize)]
+pub struct AddDependencyResponse {
+    pub id: String,
+    pub app_id: String,
+    pub depends_on_app_id: Option<String>,
+    pub depends_on_database_id: Option<String>,
+    pub depends_on_service_id: Option<String>,
+    pub created_at: String,
+}
 use super::teams::log_team_audit;
 use super::validation::validate_uuid;
 
@@ -481,4 +539,201 @@ pub async fn assign_app_project(
         .await?;
 
     Ok(Json(app))
+}
+
+/// GET /api/projects/:id/dependency-graph
+/// Returns a full dependency graph for all resources in a project.
+pub async fn get_dependency_graph(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<DependencyGraph>, ApiError> {
+    if let Err(e) = validate_uuid(&id, "project_id") {
+        return Err(ApiError::validation_field("project_id", e));
+    }
+
+    // Verify project exists
+    let _project = sqlx::query_as::<_, Project>("SELECT * FROM projects WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Project not found"))?;
+
+    // Fetch all apps in the project
+    let apps = sqlx::query_as::<_, App>(
+        "SELECT * FROM apps WHERE project_id = ? ORDER BY created_at DESC",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    // Fetch all databases in the project
+    let databases = sqlx::query_as::<_, ManagedDatabase>(
+        "SELECT * FROM databases WHERE project_id = ? ORDER BY created_at DESC",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    // Fetch all services in the project
+    let services = sqlx::query_as::<_, Service>(
+        "SELECT * FROM services WHERE project_id = ? ORDER BY created_at DESC",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await?;
+
+    // Build node list
+    let mut nodes: Vec<DependencyNode> = Vec::new();
+
+    for app in &apps {
+        nodes.push(DependencyNode {
+            id: app.id.clone(),
+            node_type: "app".to_string(),
+            name: app.name.clone(),
+            status: Some(app.environment.clone()),
+        });
+    }
+
+    for db in &databases {
+        nodes.push(DependencyNode {
+            id: db.id.clone(),
+            node_type: "database".to_string(),
+            name: db.name.clone(),
+            status: Some(db.status.clone()),
+        });
+    }
+
+    for svc in &services {
+        nodes.push(DependencyNode {
+            id: svc.id.clone(),
+            node_type: "service".to_string(),
+            name: svc.name.clone(),
+            status: Some(svc.status.clone()),
+        });
+    }
+
+    // Fetch dependencies for all apps in the project
+    let app_ids: Vec<String> = apps.iter().map(|a| a.id.clone()).collect();
+    let mut edges: Vec<DependencyEdge> = Vec::new();
+
+    if !app_ids.is_empty() {
+        // Fetch all dependencies for these apps
+        let deps = sqlx::query_as::<_, DependencyRow>(
+            "SELECT id, app_id, depends_on_app_id, depends_on_database_id, depends_on_service_id
+             FROM service_dependencies
+             WHERE app_id IN (SELECT id FROM apps WHERE project_id = ?)",
+        )
+        .bind(&id)
+        .fetch_all(&state.db)
+        .await?;
+
+        for dep in deps {
+            let to = dep
+                .depends_on_app_id
+                .or(dep.depends_on_database_id)
+                .or(dep.depends_on_service_id);
+            if let Some(target_id) = to {
+                edges.push(DependencyEdge {
+                    from: dep.app_id,
+                    to: target_id,
+                    label: "depends on".to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(DependencyGraph { nodes, edges }))
+}
+
+/// POST /api/apps/:id/dependencies
+/// Add a dependency for an app.
+pub async fn add_dependency(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+    Json(req): Json<AddDependencyRequest>,
+) -> Result<(StatusCode, Json<AddDependencyResponse>), ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Verify app exists
+    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Validate that exactly one target is specified
+    let count = [
+        req.depends_on_app_id.is_some(),
+        req.depends_on_database_id.is_some(),
+        req.depends_on_service_id.is_some(),
+    ]
+    .iter()
+    .filter(|&&v| v)
+    .count();
+
+    if count != 1 {
+        return Err(ApiError::bad_request(
+            "Exactly one of depends_on_app_id, depends_on_database_id, or depends_on_service_id must be provided",
+        ));
+    }
+
+    let dep_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO service_dependencies (id, app_id, depends_on_app_id, depends_on_database_id, depends_on_service_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&dep_id)
+    .bind(&app_id)
+    .bind(&req.depends_on_app_id)
+    .bind(&req.depends_on_database_id)
+    .bind(&req.depends_on_service_id)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to add dependency: {}", e);
+        ApiError::database("Failed to add dependency")
+    })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(AddDependencyResponse {
+            id: dep_id,
+            app_id,
+            depends_on_app_id: req.depends_on_app_id,
+            depends_on_database_id: req.depends_on_database_id,
+            depends_on_service_id: req.depends_on_service_id,
+            created_at: now,
+        }),
+    ))
+}
+
+/// DELETE /api/apps/:id/dependencies/:dep_id
+/// Remove a dependency from an app.
+pub async fn delete_dependency(
+    State(state): State<Arc<AppState>>,
+    Path((app_id, dep_id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let result =
+        sqlx::query("DELETE FROM service_dependencies WHERE id = ? AND app_id = ?")
+            .bind(&dep_id)
+            .bind(&app_id)
+            .execute(&state.db)
+            .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("Dependency not found"));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

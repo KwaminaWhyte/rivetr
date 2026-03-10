@@ -752,6 +752,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, "ALTER TABLE users ADD COLUMN oidc_provider_id TEXT REFERENCES oidc_providers(id) ON DELETE SET NULL").await?;
     }
 
+    // Migration 057: Add service_dependencies table for dependency graph visualization
+    let has_service_dependencies_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='service_dependencies'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_service_dependencies_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/057_service_dependencies.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

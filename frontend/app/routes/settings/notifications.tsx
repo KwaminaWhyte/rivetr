@@ -3,10 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -30,6 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import type {
@@ -46,7 +45,29 @@ import type {
   PushoverConfig,
   NtfyConfig,
 } from "@/types/api";
-import { Loader2, Plus, Trash2, Send, Bell, BellRing, MessageSquare, Mail, Check, X, BotMessageSquare, Users } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Trash2,
+  Send,
+  Bell,
+  BellRing,
+  MessageSquare,
+  Mail,
+  Check,
+  X,
+  BotMessageSquare,
+  Users,
+} from "lucide-react";
+import {
+  SlackConfigFields,
+  DiscordConfigFields,
+  TelegramConfigFields,
+  TeamsConfigFields,
+  PushoverConfigFields,
+  NtfyConfigFields,
+  EmailConfigFields,
+} from "@/components/notifications/channel-config-fields";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
@@ -126,18 +147,14 @@ export default function SettingsNotificationsPage() {
   const [smtpTls, setSmtpTls] = useState(true);
   const [fromAddress, setFromAddress] = useState("");
   const [toAddresses, setToAddresses] = useState("");
-  // Telegram config state
   const [botToken, setBotToken] = useState("");
   const [chatId, setChatId] = useState("");
   const [topicId, setTopicId] = useState("");
-  // Teams config state
   const [teamsWebhookUrl, setTeamsWebhookUrl] = useState("");
-  // Pushover config state
   const [pushoverUserKey, setPushoverUserKey] = useState("");
   const [pushoverAppToken, setPushoverAppToken] = useState("");
   const [pushoverDevice, setPushoverDevice] = useState("");
   const [pushoverPriority, setPushoverPriority] = useState("0");
-  // Ntfy config state
   const [ntfyTopic, setNtfyTopic] = useState("");
   const [ntfyServerUrl, setNtfyServerUrl] = useState("");
   const [ntfyPriority, setNtfyPriority] = useState("3");
@@ -258,7 +275,15 @@ export default function SettingsNotificationsPage() {
   });
 
   const addSubscriptionMutation = useMutation({
-    mutationFn: ({ channelId, eventType, appId }: { channelId: string; eventType: NotificationEventType; appId?: string }) =>
+    mutationFn: ({
+      channelId,
+      eventType,
+      appId,
+    }: {
+      channelId: string;
+      eventType: NotificationEventType;
+      appId?: string;
+    }) =>
       api.createNotificationSubscription(channelId, {
         event_type: eventType,
         app_id: appId,
@@ -413,7 +438,11 @@ export default function SettingsNotificationsPage() {
     setSubAppId("__all__");
   };
 
-  const isSubmitting = createMutation.isPending || deleteMutation.isPending || toggleMutation.isPending || testMutation.isPending;
+  const isSubmitting =
+    createMutation.isPending ||
+    deleteMutation.isPending ||
+    toggleMutation.isPending ||
+    testMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -434,7 +463,8 @@ export default function SettingsNotificationsPage() {
         <CardHeader>
           <CardTitle>Notification Channels</CardTitle>
           <CardDescription>
-            Send notifications via Slack, Discord, Email, Telegram, Microsoft Teams, Pushover, or ntfy when deployments occur.
+            Send notifications via Slack, Discord, Email, Telegram, Microsoft Teams, Pushover, or
+            ntfy when deployments occur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -465,7 +495,8 @@ export default function SettingsNotificationsPage() {
                       <Badge variant={getChannelBadgeVariant(channel.channel_type)}>
                         <span className="flex items-center gap-1">
                           {getChannelIcon(channel.channel_type)}
-                          {channel.channel_type.charAt(0).toUpperCase() + channel.channel_type.slice(1)}
+                          {channel.channel_type.charAt(0).toUpperCase() +
+                            channel.channel_type.slice(1)}
                         </span>
                       </Badge>
                     </TableCell>
@@ -475,7 +506,12 @@ export default function SettingsNotificationsPage() {
                         size="sm"
                         className="p-0"
                         disabled={isSubmitting}
-                        onClick={() => toggleMutation.mutate({ channelId: channel.id, enabled: !channel.enabled })}
+                        onClick={() =>
+                          toggleMutation.mutate({
+                            channelId: channel.id,
+                            enabled: !channel.enabled,
+                          })
+                        }
                       >
                         {channel.enabled ? (
                           <Badge variant="default" className="bg-green-600">
@@ -529,10 +565,13 @@ export default function SettingsNotificationsPage() {
       </Card>
 
       {/* Create Channel Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={(open) => {
-        setShowCreateDialog(open);
-        if (!open) resetCreateForm();
-      }}>
+      <Dialog
+        open={showCreateDialog}
+        onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (!open) resetCreateForm();
+        }}
+      >
         <DialogContent className="max-w-lg">
           <form onSubmit={handleCreateSubmit}>
             <DialogHeader>
@@ -555,7 +594,10 @@ export default function SettingsNotificationsPage() {
 
               <div className="space-y-2">
                 <Label>Channel Type</Label>
-                <Select value={channelType} onValueChange={(v) => setChannelType(v as NotificationChannelType)}>
+                <Select
+                  value={channelType}
+                  onValueChange={(v) => setChannelType(v as NotificationChannelType)}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -606,297 +648,69 @@ export default function SettingsNotificationsPage() {
                 </Select>
               </div>
 
-              {/* Slack Config */}
               {channelType === "slack" && (
-                <div className="space-y-2">
-                  <Label htmlFor="webhook_url">Webhook URL</Label>
-                  <Input
-                    id="webhook_url"
-                    value={webhookUrl}
-                    onChange={(e) => setWebhookUrl(e.target.value)}
-                    placeholder="https://hooks.slack.com/services/..."
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Get this from your Slack App's Incoming Webhooks settings.
-                  </p>
-                </div>
+                <SlackConfigFields webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} />
               )}
-
-              {/* Discord Config */}
               {channelType === "discord" && (
-                <div className="space-y-2">
-                  <Label htmlFor="webhook_url">Webhook URL</Label>
-                  <Input
-                    id="webhook_url"
-                    value={webhookUrl}
-                    onChange={(e) => setWebhookUrl(e.target.value)}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Get this from your Discord channel's Integrations settings.
-                  </p>
-                </div>
+                <DiscordConfigFields webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} />
               )}
-
-              {/* Telegram Config */}
               {channelType === "telegram" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="bot_token">Bot Token</Label>
-                    <Input
-                      id="bot_token"
-                      type="password"
-                      value={botToken}
-                      onChange={(e) => setBotToken(e.target.value)}
-                      placeholder="123456:ABC-DEF..."
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Get this from @BotFather on Telegram.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="chat_id">Chat ID</Label>
-                    <Input
-                      id="chat_id"
-                      value={chatId}
-                      onChange={(e) => setChatId(e.target.value)}
-                      placeholder="-1001234567890"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The chat, group, or channel ID. Use @userinfobot to find yours.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="topic_id">Topic ID (optional)</Label>
-                    <Input
-                      id="topic_id"
-                      type="number"
-                      value={topicId}
-                      onChange={(e) => setTopicId(e.target.value)}
-                      placeholder="e.g., 123"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      For forum/topic groups, specify the topic thread ID.
-                    </p>
-                  </div>
-                </>
+                <TelegramConfigFields
+                  botToken={botToken}
+                  setBotToken={setBotToken}
+                  chatId={chatId}
+                  setChatId={setChatId}
+                  topicId={topicId}
+                  setTopicId={setTopicId}
+                />
               )}
-
-              {/* Microsoft Teams Config */}
               {channelType === "teams" && (
-                <div className="space-y-2">
-                  <Label htmlFor="teams_webhook_url">Webhook URL</Label>
-                  <Input
-                    id="teams_webhook_url"
-                    value={teamsWebhookUrl}
-                    onChange={(e) => setTeamsWebhookUrl(e.target.value)}
-                    placeholder="https://outlook.office.com/webhook/..."
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Create an Incoming Webhook connector in your Teams channel settings.
-                  </p>
-                </div>
+                <TeamsConfigFields
+                  teamsWebhookUrl={teamsWebhookUrl}
+                  setTeamsWebhookUrl={setTeamsWebhookUrl}
+                />
               )}
-
-              {/* Pushover Config */}
               {channelType === "pushover" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="pushover_user_key">User Key</Label>
-                    <Input
-                      id="pushover_user_key"
-                      value={pushoverUserKey}
-                      onChange={(e) => setPushoverUserKey(e.target.value)}
-                      placeholder="Your Pushover user key"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Find this in your Pushover dashboard settings.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pushover_app_token">App Token</Label>
-                    <Input
-                      id="pushover_app_token"
-                      type="password"
-                      value={pushoverAppToken}
-                      onChange={(e) => setPushoverAppToken(e.target.value)}
-                      placeholder="Your Pushover application API token"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Create an application at pushover.net to get an API token.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pushover_device">Device (optional)</Label>
-                    <Input
-                      id="pushover_device"
-                      value={pushoverDevice}
-                      onChange={(e) => setPushoverDevice(e.target.value)}
-                      placeholder="e.g., iphone, desktop"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Send to a specific device instead of all devices.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pushover_priority">Priority</Label>
-                    <Select value={pushoverPriority} onValueChange={setPushoverPriority}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="-2">-2 (Silent)</SelectItem>
-                        <SelectItem value="-1">-1 (Quiet)</SelectItem>
-                        <SelectItem value="0">0 (Normal)</SelectItem>
-                        <SelectItem value="1">1 (High)</SelectItem>
-                        <SelectItem value="2">2 (Emergency)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
+                <PushoverConfigFields
+                  pushoverUserKey={pushoverUserKey}
+                  setPushoverUserKey={setPushoverUserKey}
+                  pushoverAppToken={pushoverAppToken}
+                  setPushoverAppToken={setPushoverAppToken}
+                  pushoverDevice={pushoverDevice}
+                  setPushoverDevice={setPushoverDevice}
+                  pushoverPriority={pushoverPriority}
+                  setPushoverPriority={setPushoverPriority}
+                />
               )}
-
-              {/* Ntfy Config */}
               {channelType === "ntfy" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="ntfy_topic">Topic</Label>
-                    <Input
-                      id="ntfy_topic"
-                      value={ntfyTopic}
-                      onChange={(e) => setNtfyTopic(e.target.value)}
-                      placeholder="rivetr-alerts"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The ntfy topic to publish to. Choose a unique, hard-to-guess name.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ntfy_server_url">Server URL (optional)</Label>
-                    <Input
-                      id="ntfy_server_url"
-                      value={ntfyServerUrl}
-                      onChange={(e) => setNtfyServerUrl(e.target.value)}
-                      placeholder="https://ntfy.sh"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Leave empty to use the default ntfy.sh server, or enter your self-hosted instance URL.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ntfy_priority">Priority</Label>
-                    <Select value={ntfyPriority} onValueChange={setNtfyPriority}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 (Min)</SelectItem>
-                        <SelectItem value="2">2 (Low)</SelectItem>
-                        <SelectItem value="3">3 (Default)</SelectItem>
-                        <SelectItem value="4">4 (High)</SelectItem>
-                        <SelectItem value="5">5 (Max/Urgent)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ntfy_tags">Tags (optional)</Label>
-                    <Input
-                      id="ntfy_tags"
-                      value={ntfyTags}
-                      onChange={(e) => setNtfyTags(e.target.value)}
-                      placeholder="warning,server"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Comma-separated tags/emojis for the notification (e.g., warning,server).
-                    </p>
-                  </div>
-                </>
+                <NtfyConfigFields
+                  ntfyTopic={ntfyTopic}
+                  setNtfyTopic={setNtfyTopic}
+                  ntfyServerUrl={ntfyServerUrl}
+                  setNtfyServerUrl={setNtfyServerUrl}
+                  ntfyPriority={ntfyPriority}
+                  setNtfyPriority={setNtfyPriority}
+                  ntfyTags={ntfyTags}
+                  setNtfyTags={setNtfyTags}
+                />
               )}
-
-              {/* Email Config */}
               {channelType === "email" && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="smtp_host">SMTP Host</Label>
-                      <Input
-                        id="smtp_host"
-                        value={smtpHost}
-                        onChange={(e) => setSmtpHost(e.target.value)}
-                        placeholder="smtp.example.com"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="smtp_port">SMTP Port</Label>
-                      <Input
-                        id="smtp_port"
-                        type="number"
-                        value={smtpPort}
-                        onChange={(e) => setSmtpPort(e.target.value)}
-                        placeholder="587"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="smtp_username">Username (optional)</Label>
-                      <Input
-                        id="smtp_username"
-                        value={smtpUsername}
-                        onChange={(e) => setSmtpUsername(e.target.value)}
-                        placeholder="user@example.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="smtp_password">Password (optional)</Label>
-                      <Input
-                        id="smtp_password"
-                        type="password"
-                        value={smtpPassword}
-                        onChange={(e) => setSmtpPassword(e.target.value)}
-                        placeholder="********"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="smtp_tls"
-                      checked={smtpTls}
-                      onCheckedChange={setSmtpTls}
-                    />
-                    <Label htmlFor="smtp_tls">Use TLS</Label>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="from_address">From Address</Label>
-                    <Input
-                      id="from_address"
-                      value={fromAddress}
-                      onChange={(e) => setFromAddress(e.target.value)}
-                      placeholder="noreply@example.com"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="to_addresses">To Addresses (comma-separated)</Label>
-                    <Input
-                      id="to_addresses"
-                      value={toAddresses}
-                      onChange={(e) => setToAddresses(e.target.value)}
-                      placeholder="admin@example.com, devops@example.com"
-                      required
-                    />
-                  </div>
-                </>
+                <EmailConfigFields
+                  smtpHost={smtpHost}
+                  setSmtpHost={setSmtpHost}
+                  smtpPort={smtpPort}
+                  setSmtpPort={setSmtpPort}
+                  smtpUsername={smtpUsername}
+                  setSmtpUsername={setSmtpUsername}
+                  smtpPassword={smtpPassword}
+                  setSmtpPassword={setSmtpPassword}
+                  smtpTls={smtpTls}
+                  setSmtpTls={setSmtpTls}
+                  fromAddress={fromAddress}
+                  setFromAddress={setFromAddress}
+                  toAddresses={toAddresses}
+                  setToAddresses={setToAddresses}
+                />
               )}
             </div>
             <DialogFooter>
@@ -967,7 +781,10 @@ export default function SettingsNotificationsPage() {
             <form onSubmit={handleAddSubscription} className="flex items-end gap-4">
               <div className="flex-1 space-y-2">
                 <Label>Event Type</Label>
-                <Select value={subEventType} onValueChange={(v) => setSubEventType(v as NotificationEventType)}>
+                <Select
+                  value={subEventType}
+                  onValueChange={(v) => setSubEventType(v as NotificationEventType)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>

@@ -10,6 +10,8 @@ export interface Team {
   id: string;
   name: string;
   slug: string;
+  /** Whether 2FA is required for all team members (0 or 1) */
+  require_2fa: number;
   created_at: string;
   updated_at: string;
 }
@@ -19,6 +21,8 @@ export interface TeamWithMemberCount {
   id: string;
   name: string;
   slug: string;
+  /** Whether 2FA is required for all team members */
+  require_2fa: number;
   created_at: string;
   updated_at: string;
   member_count: number;
@@ -51,6 +55,8 @@ export interface TeamDetail {
   id: string;
   name: string;
   slug: string;
+  /** Whether 2FA is required for all team members */
+  require_2fa: number;
   created_at: string;
   updated_at: string;
   members: TeamMemberWithUser[];

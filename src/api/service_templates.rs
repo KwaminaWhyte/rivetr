@@ -53,6 +53,8 @@ fn namespace_container_names(content: &str, service_name: &str) -> Result<String
 pub struct ListQuery {
     /// Filter by category
     pub category: Option<String>,
+    /// Full-text search on name and description
+    pub search: Option<String>,
 }
 
 /// List all service templates
@@ -60,20 +62,26 @@ pub async fn list_templates(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ServiceTemplateResponse>>, StatusCode> {
-    let templates = if let Some(category) = query.category {
-        sqlx::query_as::<_, ServiceTemplate>(
-            "SELECT * FROM service_templates WHERE category = ? ORDER BY name ASC",
-        )
-        .bind(&category)
-        .fetch_all(&state.db)
-        .await
-    } else {
-        sqlx::query_as::<_, ServiceTemplate>(
-            "SELECT * FROM service_templates ORDER BY category ASC, name ASC",
-        )
-        .fetch_all(&state.db)
-        .await
-    }
+    let search_pattern = query
+        .search
+        .as_ref()
+        .map(|s| format!("%{}%", s.to_lowercase()));
+
+    let templates = sqlx::query_as::<_, ServiceTemplate>(
+        r#"
+        SELECT * FROM service_templates
+        WHERE (? IS NULL OR LOWER(name) LIKE ? OR LOWER(description) LIKE ?)
+          AND (? IS NULL OR category = ?)
+        ORDER BY name ASC
+        "#,
+    )
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(&query.category)
+    .bind(&query.category)
+    .fetch_all(&state.db)
+    .await
     .map_err(|e| {
         tracing::error!("Failed to list service templates: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

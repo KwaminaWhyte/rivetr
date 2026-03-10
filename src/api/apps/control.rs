@@ -30,7 +30,47 @@ pub async fn get_app_status(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    // Get the latest running deployment
+    // Get the latest deployment (any status) for phase detection
+    let latest_deployment: Option<(String, String, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT id, status, container_id, started_at FROM deployments WHERE app_id = ? ORDER BY started_at DESC LIMIT 1"
+        )
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    // Derive deployment phase and active deployment info from the latest deployment
+    let (deployment_phase, active_deployment_id, uptime_seconds) =
+        if let Some((dep_id, dep_status, _dep_container, dep_started_at)) = &latest_deployment {
+            let phase = match dep_status.as_str() {
+                "running" => "stable",
+                "cloning" | "building" => "deploying",
+                "starting" => "deploying",
+                "checking" => "health_checking",
+                "switching" => "switching",
+                _ => "stable",
+            };
+            let uptime = if dep_status == "running" {
+                dep_started_at.as_deref().and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| {
+                        let now = chrono::Utc::now();
+                        let started: chrono::DateTime<chrono::Utc> = dt.into();
+                        (now - started).num_seconds()
+                    })
+                })
+            } else {
+                None
+            };
+            (
+                phase.to_string(),
+                Some(dep_id.clone()),
+                uptime,
+            )
+        } else {
+            ("stable".to_string(), None, None)
+        };
+
+    // Get the latest running deployment's container
     let deployment: Option<(String,)> = sqlx::query_as(
         "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
     )
@@ -63,6 +103,9 @@ pub async fn get_app_status(
         running,
         status,
         host_port,
+        deployment_phase,
+        active_deployment_id,
+        uptime_seconds,
     }))
 }
 
@@ -149,6 +192,9 @@ pub async fn start_app(
         running: true,
         status: "running".to_string(),
         host_port,
+        deployment_phase: "stable".to_string(),
+        active_deployment_id: None,
+        uptime_seconds: None,
     }))
 }
 
@@ -219,6 +265,9 @@ pub async fn stop_app(
         running: false,
         status: "stopped".to_string(),
         host_port: None, // Container is stopped, no port exposed
+        deployment_phase: "stable".to_string(),
+        active_deployment_id: None,
+        uptime_seconds: None,
     }))
 }
 
@@ -313,5 +362,8 @@ pub async fn restart_app(
         running: true,
         status: "running".to_string(),
         host_port,
+        deployment_phase: "stable".to_string(),
+        active_deployment_id: None,
+        uptime_seconds: None,
     }))
 }

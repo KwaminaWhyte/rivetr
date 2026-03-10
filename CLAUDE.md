@@ -174,13 +174,13 @@ See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` fo
 - **Phase 0 (Foundation)**: Complete (93%)
 - **Phase 1 (MVP)**: Complete (100%)
 - **Phase 2 (Production Ready)**: Complete (100%)
-- **Phase 3 (Enhanced Features)**: Complete (96%)
+- **Phase 3 (Enhanced Features)**: Complete (100%)
 - **Phase 4 (Platform Services)**: Complete (100%)
 - **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
-- **Phase 6 (Unique Features)**: Planned (0%)
-- **Phase 7 (Competitive Parity)**: In progress (65%) - OAuth, environments, watch paths, Bitbucket, notifications, 74 templates, scheduled jobs, deploy by commit/tag done
-- **Phase 8 (Enterprise & Scale)**: In progress (27%) - 2FA, log draining, shared env vars complete
-- **Overall Progress**: 525/599 tasks (88%)
+- **Phase 6 (Unique Features)**: In progress (75%) - Dependency graph, zero-downtime indicator done
+- **Phase 7 (Competitive Parity)**: Complete (97%) - All webhooks, templates, OAuth, SSO/OIDC, replicas done
+- **Phase 8 (Enterprise & Scale)**: In progress (65%) - 2FA enforcement, multi-server, scheduled backups done
+- **Overall Progress**: 573/599 tasks (96%)
 
 ## Configuration
 

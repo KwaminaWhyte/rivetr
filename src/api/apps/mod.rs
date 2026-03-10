@@ -41,6 +41,12 @@ pub struct AppStatusResponse {
     pub status: String,
     /// The host port the container is accessible on (for "Open App" functionality)
     pub host_port: Option<u16>,
+    /// Blue/green deployment phase: "stable" | "deploying" | "health_checking" | "switching"
+    pub deployment_phase: String,
+    /// ID of the currently active deployment
+    pub active_deployment_id: Option<String>,
+    /// Seconds since the active deployment started (uptime indicator)
+    pub uptime_seconds: Option<i64>,
 }
 
 /// Request to delete an app (requires password confirmation)

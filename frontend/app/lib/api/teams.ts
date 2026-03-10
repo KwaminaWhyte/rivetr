@@ -174,6 +174,24 @@ export const teamsApi = {
   // Team Audit Logs
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // 2FA Enforcement
+  // -------------------------------------------------------------------------
+
+  /** Toggle whether 2FA is required for all team members (owner only) */
+  toggle2faEnforcement: (teamId: string, token?: string) =>
+    apiRequest<Team>(
+      `/teams/${teamId}/2fa-enforcement`,
+      {
+        method: "PUT",
+      },
+      token
+    ),
+
+  // -------------------------------------------------------------------------
+  // Team Audit Logs
+  // -------------------------------------------------------------------------
+
   /** Get paginated audit logs for a team */
   getTeamAuditLogs: (
     teamId: string,

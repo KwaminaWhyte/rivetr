@@ -306,6 +306,105 @@ pub async fn update_team(
     Ok(Json(team))
 }
 
+/// Check whether the given user satisfies the team's 2FA requirement.
+///
+/// Returns `Err(ApiError::forbidden(...))` when:
+/// - the team has `require_2fa = 1`, AND
+/// - the user does not have `totp_enabled = true`.
+#[allow(dead_code)]
+pub async fn check_2fa_enforcement(
+    db: &sqlx::SqlitePool,
+    user_id: &str,
+    team_id: &str,
+) -> Result<(), ApiError> {
+    // Fetch the team's require_2fa flag
+    let row: Option<(i64,)> = sqlx::query_as("SELECT require_2fa FROM teams WHERE id = ?")
+        .bind(team_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to query team 2fa setting");
+            ApiError::database("Failed to check 2FA enforcement")
+        })?;
+
+    if let Some((require_2fa,)) = row {
+        if require_2fa == 1 {
+            // Check whether the user has 2FA enabled
+            let user_row: Option<(bool,)> =
+                sqlx::query_as("SELECT totp_enabled FROM users WHERE id = ?")
+                    .bind(user_id)
+                    .fetch_optional(db)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!(error = %e, "Failed to query user totp_enabled");
+                        ApiError::database("Failed to check user 2FA status")
+                    })?;
+
+            if let Some((totp_enabled,)) = user_row {
+                if !totp_enabled {
+                    return Err(ApiError::forbidden(
+                        "This team requires 2FA. Please enable two-factor authentication.",
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Toggle the `require_2fa` setting for a team (owner only)
+/// PUT /api/teams/:id/2fa-enforcement
+pub async fn toggle_2fa_enforcement(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    user: User,
+) -> Result<Json<Team>, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "team_id") {
+        return Err(ApiError::validation_field("team_id", e));
+    }
+
+    // Only the team owner can change this setting
+    require_team_role(&state.db, &id, &user.id, TeamRole::Owner).await?;
+
+    // Check the team exists and read current flag
+    let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Team not found"))?;
+
+    let new_value = if team.require_2fa == 1 { 0_i64 } else { 1_i64 };
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "UPDATE teams SET require_2fa = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(new_value)
+    .bind(&now)
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to update team 2FA enforcement");
+        ApiError::database("Failed to update 2FA enforcement setting")
+    })?;
+
+    let updated = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await?;
+
+    tracing::info!(
+        team_id = %id,
+        require_2fa = new_value,
+        "Updated team 2FA enforcement setting"
+    );
+
+    Ok(Json(updated))
+}
+
 /// Delete a team (owner only)
 pub async fn delete_team(
     State(state): State<Arc<AppState>>,

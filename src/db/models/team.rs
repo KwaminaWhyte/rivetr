@@ -129,6 +129,9 @@ pub struct Team {
     pub id: String,
     pub name: String,
     pub slug: String,
+    /// Whether 2FA is required for all team members
+    #[serde(default)]
+    pub require_2fa: i64,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -7,12 +7,44 @@ use axum::{
     response::Response,
     Json,
 };
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::backup::{self, BackupInfo, RestoreResult};
 use crate::AppState;
 
 use super::super::error::ApiError;
+
+// ---------------------------------------------------------------------------
+// Backup Schedule models
+// ---------------------------------------------------------------------------
+
+/// A scheduled backup record
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BackupSchedule {
+    pub id: String,
+    pub backup_type: String,
+    pub cron_expression: String,
+    pub target_id: Option<String>,
+    pub s3_config_id: Option<String>,
+    pub retention_days: i64,
+    pub enabled: i64,
+    pub last_run_at: Option<String>,
+    pub next_run_at: Option<String>,
+    pub created_at: String,
+}
+
+/// Request to create a backup schedule
+#[derive(Debug, Deserialize)]
+pub struct CreateBackupScheduleRequest {
+    pub backup_type: String,
+    pub cron_expression: String,
+    pub target_id: Option<String>,
+    pub s3_config_id: Option<String>,
+    pub retention_days: Option<i64>,
+}
 
 /// Create a backup of the Rivetr instance and return it as a file download
 /// POST /api/system/backup
@@ -172,4 +204,163 @@ pub async fn download_backup(
         .map_err(|e| ApiError::internal(format!("Failed to build response: {}", e)))?;
 
     Ok(response)
+}
+
+// ---------------------------------------------------------------------------
+// Backup Schedule endpoints
+// ---------------------------------------------------------------------------
+
+/// List all backup schedules
+/// GET /api/backups/schedules
+pub async fn list_backup_schedules(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<BackupSchedule>>, ApiError> {
+    let schedules = sqlx::query_as::<_, BackupSchedule>(
+        "SELECT * FROM backup_schedules ORDER BY created_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to list backup schedules");
+        ApiError::internal("Failed to list backup schedules")
+    })?;
+
+    Ok(Json(schedules))
+}
+
+/// Create a new backup schedule
+/// POST /api/backups/schedules
+pub async fn create_backup_schedule(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateBackupScheduleRequest>,
+) -> Result<(StatusCode, Json<BackupSchedule>), ApiError> {
+    // Validate backup_type
+    if !["instance", "s3_database", "s3_volume"].contains(&req.backup_type.as_str()) {
+        return Err(ApiError::bad_request(
+            "backup_type must be one of: instance, s3_database, s3_volume",
+        ));
+    }
+
+    let id = Uuid::new_v4().to_string();
+    let retention_days = req.retention_days.unwrap_or(30);
+
+    // Compute initial next_run_at from cron expression
+    let next_run_at = compute_next_run(&req.cron_expression);
+
+    sqlx::query(
+        r#"INSERT INTO backup_schedules
+           (id, backup_type, cron_expression, target_id, s3_config_id, retention_days, enabled, next_run_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?)"#,
+    )
+    .bind(&id)
+    .bind(&req.backup_type)
+    .bind(&req.cron_expression)
+    .bind(&req.target_id)
+    .bind(&req.s3_config_id)
+    .bind(retention_days)
+    .bind(&next_run_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to create backup schedule");
+        ApiError::internal("Failed to create backup schedule")
+    })?;
+
+    let schedule = sqlx::query_as::<_, BackupSchedule>(
+        "SELECT * FROM backup_schedules WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to fetch created backup schedule");
+        ApiError::internal("Failed to fetch created backup schedule")
+    })?;
+
+    tracing::info!(
+        schedule_id = %id,
+        backup_type = %req.backup_type,
+        "Created backup schedule"
+    );
+
+    Ok((StatusCode::CREATED, Json(schedule)))
+}
+
+/// Delete a backup schedule
+/// DELETE /api/backups/schedules/:id
+pub async fn delete_backup_schedule(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query("DELETE FROM backup_schedules WHERE id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to delete backup schedule");
+            ApiError::internal("Failed to delete backup schedule")
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("Backup schedule not found"));
+    }
+
+    tracing::info!(schedule_id = %id, "Deleted backup schedule");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Toggle enable/disable for a backup schedule
+/// PUT /api/backups/schedules/:id/toggle
+pub async fn toggle_backup_schedule(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<BackupSchedule>, ApiError> {
+    // Flip enabled flag
+    let result = sqlx::query(
+        "UPDATE backup_schedules SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END WHERE id = ?",
+    )
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to toggle backup schedule");
+        ApiError::internal("Failed to toggle backup schedule")
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("Backup schedule not found"));
+    }
+
+    let schedule = sqlx::query_as::<_, BackupSchedule>(
+        "SELECT * FROM backup_schedules WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to fetch backup schedule after toggle");
+        ApiError::internal("Failed to fetch backup schedule")
+    })?;
+
+    Ok(Json(schedule))
+}
+
+/// Compute the next run time from a cron expression using the `cron` crate.
+/// Falls back to 24-hours-from-now for invalid expressions.
+fn compute_next_run(cron_expression: &str) -> Option<String> {
+    use cron::Schedule;
+    use std::str::FromStr;
+
+    match Schedule::from_str(cron_expression) {
+        Ok(schedule) => schedule
+            .upcoming(chrono::Utc)
+            .next()
+            .map(|t| t.to_rfc3339()),
+        Err(_) => {
+            // Fall back to 24 hours from now for unrecognised expressions
+            Some(
+                (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339(),
+            )
+        }
+    }
 }

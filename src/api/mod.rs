@@ -291,6 +291,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id", delete(projects::delete_project))
         .route("/projects/:id/apps/upload", post(apps::upload_create_app))
         .route("/projects/:id/costs", get(costs::get_project_costs))
+        .route(
+            "/projects/:id/dependency-graph",
+            get(projects::get_dependency_graph),
+        )
+        .route("/apps/:id/dependencies", post(projects::add_dependency))
+        .route(
+            "/apps/:id/dependencies/:dep_id",
+            delete(projects::delete_dependency),
+        )
         .route("/apps/:id/project", put(projects::assign_app_project))
         // Project Shared Env Vars
         .route(
@@ -346,6 +355,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/teams/:id", get(teams::get_team))
         .route("/teams/:id", put(teams::update_team))
         .route("/teams/:id", delete(teams::delete_team))
+        .route(
+            "/teams/:id/2fa-enforcement",
+            put(teams::toggle_2fa_enforcement),
+        )
         .route("/teams/:id/members", get(teams::list_members))
         .route("/teams/:id/members", post(teams::invite_member))
         .route(
@@ -577,6 +590,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(system::download_backup),
         )
         .route("/system/restore", post(system::restore_backup))
+        // Backup schedules
+        .route(
+            "/backups/schedules",
+            get(system::list_backup_schedules).post(system::create_backup_schedule),
+        )
+        .route(
+            "/backups/schedules/:id",
+            delete(system::delete_backup_schedule),
+        )
+        .route(
+            "/backups/schedules/:id/toggle",
+            put(system::toggle_backup_schedule),
+        )
         // System log cleanup
         .route(
             "/system/log-cleanup",
@@ -667,6 +693,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/gitlab", post(webhooks::gitlab_webhook))
         .route("/gitea", post(webhooks::gitea_webhook))
         .route("/bitbucket", post(webhooks::bitbucket_webhook))
+        .route("/dockerhub", post(webhooks::dockerhub_webhook))
         // Apply webhook-tier rate limiting (higher limits for webhooks)
         .layer(middleware::from_fn_with_state(
             state.clone(),

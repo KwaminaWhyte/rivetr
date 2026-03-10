@@ -4,11 +4,13 @@
 //! watch-path filtering, preview cleanup) live here.
 
 mod bitbucket;
+mod dockerhub;
 mod gitea;
 mod github;
 mod gitlab;
 
 pub use bitbucket::bitbucket_webhook;
+pub use dockerhub::dockerhub_webhook;
 pub use gitea::gitea_webhook;
 pub use github::github_webhook;
 pub use gitlab::gitlab_webhook;

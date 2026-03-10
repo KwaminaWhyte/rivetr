@@ -82,6 +82,9 @@ export const api = {
   createProject: projectsApi.createProject,
   updateProject: projectsApi.updateProject,
   deleteProject: projectsApi.deleteProject,
+  getDependencyGraph: projectsApi.getDependencyGraph,
+  addDependency: projectsApi.addDependency,
+  deleteDependency: projectsApi.deleteDependency,
 
   // Apps
   getApps: appsApi.getApps,

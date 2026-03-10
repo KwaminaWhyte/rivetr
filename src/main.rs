@@ -218,6 +218,9 @@ async fn main() -> Result<()> {
         state.deploy_tx.clone(),
     );
 
+    // Start backup scheduler (runs backup_schedules entries on their cron expressions)
+    rivetr::engine::scheduler::spawn_backup_scheduler(db.clone());
+
     // Start advanced monitoring tasks (uptime checker + log cleaner)
     rivetr::monitoring::spawn_uptime_checker_task(db.clone());
     rivetr::monitoring::spawn_log_cleaner_task(db.clone());

@@ -18,8 +18,8 @@ import {
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
-import type { App, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock } from "lucide-react";
+import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
+import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw } from "lucide-react";
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -33,6 +33,46 @@ interface OutletContext {
   deploymentsData?: DeploymentListResponse;
 }
 
+// Deployment phase config with display metadata
+const PHASE_CONFIG: Record<string, { label: string; colorClass: string; bgClass: string; borderClass: string; icon: React.ReactNode }> = {
+  stable: {
+    label: "Stable",
+    colorClass: "text-green-700 dark:text-green-400",
+    bgClass: "bg-green-50 dark:bg-green-950/20",
+    borderClass: "border-green-200 dark:border-green-800",
+    icon: <Shield className="h-4 w-4" />,
+  },
+  deploying: {
+    label: "Deploying",
+    colorClass: "text-blue-700 dark:text-blue-400",
+    bgClass: "bg-blue-50 dark:bg-blue-950/20",
+    borderClass: "border-blue-200 dark:border-blue-800",
+    icon: <Zap className="h-4 w-4 animate-pulse" />,
+  },
+  health_checking: {
+    label: "Health Checking",
+    colorClass: "text-yellow-700 dark:text-yellow-400",
+    bgClass: "bg-yellow-50 dark:bg-yellow-950/20",
+    borderClass: "border-yellow-200 dark:border-yellow-800",
+    icon: <HeartPulse className="h-4 w-4 animate-pulse" />,
+  },
+  switching: {
+    label: "Switching Traffic",
+    colorClass: "text-orange-700 dark:text-orange-400",
+    bgClass: "bg-orange-50 dark:bg-orange-950/20",
+    borderClass: "border-orange-200 dark:border-orange-800",
+    icon: <RefreshCw className="h-4 w-4 animate-spin" />,
+  },
+};
+
+function formatUptime(seconds: number | null | undefined): string {
+  if (!seconds) return "";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
 export default function AppDeploymentsTab() {
   const { app, deploymentsData: parentDeploymentsData } = useOutletContext<OutletContext>();
   const queryClient = useQueryClient();
@@ -41,6 +81,13 @@ export default function AppDeploymentsTab() {
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+
+  // Fetch app status for deployment phase indicator
+  const { data: appStatus } = useQuery<AppStatus>({
+    queryKey: ["app-status-detail", app.id],
+    queryFn: () => api.getAppStatus(app.id),
+    refetchInterval: 5000,
+  });
 
   // Approval workflow state
   const [showRejectDialog, setShowRejectDialog] = useState(false);
@@ -158,8 +205,36 @@ export default function AppDeploymentsTab() {
     (d) => d.approval_status === "pending"
   );
 
+  const phase = appStatus?.deployment_phase ?? "stable";
+  const phaseConfig = PHASE_CONFIG[phase] ?? PHASE_CONFIG.stable;
+
   return (
     <div className="space-y-6">
+      {/* Deployment Phase Status Banner */}
+      <div className={`flex items-center justify-between rounded-lg border p-3 ${phaseConfig.bgClass} ${phaseConfig.borderClass}`}>
+        <div className={`flex items-center gap-2 font-medium text-sm ${phaseConfig.colorClass}`}>
+          {phaseConfig.icon}
+          <span>Deployment Status: {phaseConfig.label}</span>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {appStatus?.container_id && (
+            <span className="font-mono" title="Container ID">
+              Container: {appStatus.container_id.slice(0, 12)}
+            </span>
+          )}
+          {appStatus?.uptime_seconds !== null && appStatus?.uptime_seconds !== undefined && (
+            <span>
+              Uptime: {formatUptime(appStatus.uptime_seconds)}
+            </span>
+          )}
+          {appStatus?.active_deployment_id && (
+            <span className="font-mono" title="Active Deployment ID">
+              Deploy: {appStatus.active_deployment_id.slice(0, 8)}
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Pending Approvals Section */}
       {pendingDeployments.length > 0 && (
         <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">

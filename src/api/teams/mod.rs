@@ -11,7 +11,10 @@ use super::error::{ApiError, ValidationErrorBuilder};
 
 // Re-export public handlers
 pub use audit::{list_audit_logs, log_team_audit};
-pub use crud::{create_team, delete_team, get_team, list_teams, update_team};
+pub use crud::{
+    check_2fa_enforcement, create_team, delete_team, get_team, list_teams,
+    toggle_2fa_enforcement, update_team,
+};
 pub use invitations::{
     accept_invitation, create_invitation, delete_invitation, list_invitations, resend_invitation,
     validate_invitation,
