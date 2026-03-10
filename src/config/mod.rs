@@ -736,6 +736,30 @@ impl Default for AutoUpdateConfig {
 }
 
 impl Config {
+    /// Return the public-facing hostname or IP for this server.
+    ///
+    /// Priority:
+    /// 1. `proxy.server_ip` — explicitly configured server IP
+    /// 2. Host extracted from `server.external_url` (e.g. "http://rivetr.site:8080" → "rivetr.site")
+    /// 3. `server.host` as final fallback (may be "0.0.0.0" for bind-all)
+    pub fn public_hostname(&self) -> String {
+        if let Some(ref ip) = self.proxy.server_ip {
+            return ip.clone();
+        }
+        if let Some(ref url) = self.server.external_url {
+            let without_scheme = url
+                .strip_prefix("https://")
+                .or_else(|| url.strip_prefix("http://"))
+                .unwrap_or(url.as_str());
+            let host = without_scheme.split('/').next().unwrap_or(without_scheme);
+            let host = host.split(':').next().unwrap_or(host);
+            if !host.is_empty() {
+                return host.to_string();
+            }
+        }
+        self.server.host.clone()
+    }
+
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
             info!("Loading configuration from {}", path.display());

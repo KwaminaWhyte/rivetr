@@ -65,7 +65,8 @@ pub async fn list_databases(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     let responses: Vec<ManagedDatabaseResponse> = databases
         .into_iter()
         .map(|db| db.to_response(query.reveal, host))
@@ -90,7 +91,8 @@ pub async fn get_database(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     Ok(Json(database.to_response(query.reveal, host)))
 }
 
@@ -267,7 +269,8 @@ pub async fn create_database(
         }
     }
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     Ok((StatusCode::CREATED, Json(database.to_response(true, host))))
 }
 
@@ -363,7 +366,8 @@ pub async fn start_database(
 
     // Check if already running
     if database.get_status() == DatabaseStatus::Running {
-        let host = Some(state.config.server.host.as_str());
+        let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
         return Ok(Json(database.to_response(false, host)));
     }
 
@@ -392,7 +396,8 @@ pub async fn start_database(
     )
     .await;
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     Ok(Json(database.to_response(false, host)))
 }
 
@@ -444,7 +449,8 @@ pub async fn stop_database(
     )
     .await;
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     Ok(Json(database.to_response(false, host)))
 }
 
@@ -763,7 +769,8 @@ pub async fn update_database(
 
     if updates.is_empty() {
         // No changes
-        let host = Some(state.config.server.host.as_str());
+        let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
         return Ok(Json(database.to_response(false, host)));
     }
 
@@ -864,7 +871,8 @@ pub async fn update_database(
     )
     .await;
 
-    let host = Some(state.config.server.host.as_str());
+    let hostname = state.config.public_hostname();
+    let host = Some(hostname.as_str());
     Ok(Json(database.to_response(false, host)))
 }
 
