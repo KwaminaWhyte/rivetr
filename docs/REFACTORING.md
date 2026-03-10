@@ -46,23 +46,23 @@ frontend/app/types/api.ts   →   frontend/app/types/
 | `src/api/webhooks.rs` (1670 lines) | `src/api/webhooks/` (mod + github/gitlab/gitea/bitbucket) | ✅ Complete |
 | `src/api/apps.rs` (1990 lines) | `src/api/apps/` (mod + crud/control/sharing/upload/logs) | ✅ Complete |
 | `src/api/teams.rs` (1682 lines) | `src/api/teams/` (mod + crud/members/invitations/audit) | ✅ Complete |
+| `src/runtime/docker.rs` (1016 lines) | `src/runtime/docker/` (mod + build/container/logs) | ✅ Complete |
+| `src/api/git_providers.rs` (1263 lines) | `src/api/git_providers/` (mod + github/gitlab/bitbucket) | ✅ Complete |
+| `src/engine/pipeline.rs` (1906 lines) | `src/engine/pipeline/` (mod + clone/build/start/rollback) | ✅ Complete |
+| `src/engine/container_monitor.rs` (1183 lines) | `src/engine/container_monitor/` (mod + health/stats/recovery) | ✅ Complete |
 
 ### Queued (after Sprint 4 agents finish)
 
 | File | Lines | Split Plan | Blocks |
 |---|---|---|---|
 | `src/api/apps.rs` | 1990 | `crud.rs`, `control.rs`, `sharing.rs`, `upload.rs` | None |
-| `src/engine/pipeline.rs` | 1906 | `clone.rs`, `build.rs`, `start.rs`, `rollback.rs` | Log drain agent |
 | `src/api/teams.rs` | 1682 | `crud.rs`, `members.rs`, `invitations.rs`, `audit.rs` | None |
 | `src/cli/mod.rs` | 1275 | `deploy.rs`, `backup.rs`, `database.rs`, `server.rs` | None |
-| `src/api/git_providers.rs` | 1263 | `github.rs`, `gitlab.rs`, `gitea.rs`, `bitbucket.rs` | None |
 | `src/notifications/alert_notifications.rs` | 1225 | `email.rs`, `slack.rs`, `discord.rs`, `channels.rs` | None |
-| `src/engine/container_monitor.rs` | 1183 | `health.rs`, `stats.rs`, `recovery.rs` | None |
 | `src/api/deployments.rs` | 1119 | `handlers.rs`, `rollback.rs`, `commits.rs` | None |
 | `src/api/validation.rs` | 1073 | `apps.rs`, `databases.rs`, `services.rs` | None |
 | `src/api/services.rs` | 1038 | `crud.rs`, `compose.rs`, `control.rs` | None |
 | `src/api/system.rs` | 1028 | `health.rs`, `backup.rs`, `updates.rs` | None |
-| `src/runtime/docker.rs` | 1016 | `build.rs`, `container.rs`, `logs.rs` | None |
 | `src/engine/build_detect.rs` | 1004 | `detectors.rs`, `languages.rs`, `config.rs` | None |
 
 ---

@@ -6,7 +6,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 
 ## Current Status
 
-**Overall Progress: 525/599 tasks complete**
+**Overall Progress: 548/599 tasks complete**
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -17,8 +17,8 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 | Phase 4: Platform Services | Complete | 100% |
 | Phase 5: Advanced CI/CD | In Progress | 90% |
 | Phase 6: Unique Features | Planned | 0% |
-| Phase 7: Competitive Parity | In Progress | 65% |
-| Phase 8: Enterprise & Scale | In Progress | 18% |
+| Phase 7: Competitive Parity | In Progress | 90% |
+| Phase 8: Enterprise & Scale | In Progress | 45% |
 
 ---
 
@@ -182,11 +182,11 @@ Features that both Coolify and Dokploy have. Required to compete.
 - [x] Job execution history and logs ✅
 - [x] Job management UI ✅
 
-### Container Replicas
-- [ ] Configurable replica count per app
-- [ ] Load balancing across replicas
-- [ ] Replica health monitoring
-- [ ] Scale up/down from UI
+### Container Replicas ✅ COMPLETE
+- [x] Configurable replica count per app ✅
+- [x] Load balancing across replicas (round-robin) ✅
+- [x] Replica health monitoring ✅
+- [x] Scale up/down from UI ✅
 
 ### Deploy by Commit/Tag ✅ COMPLETE
 - [x] Deploy specific Git commit by SHA ✅
@@ -200,20 +200,20 @@ Features that both Coolify and Dokploy have. Required to compete.
 
 Features required for enterprise adoption and high availability.
 
-### Multi-Server Support
-- [ ] Remote server registration via SSH
-- [ ] Server health monitoring from dashboard
+### Multi-Server Support ✅ PARTIAL
+- [x] Remote server registration via SSH ✅
+- [x] Server health monitoring from dashboard ✅
+- [x] Server-level resource monitoring (CPU/memory/disk) ✅
 - [ ] Deploy apps to specific servers
-- [ ] Server-level resource monitoring
 - [ ] Remote server terminal access
 - [ ] File system browser for remote servers
 
-### SSO / SAML / OIDC
-- [ ] OpenID Connect (OIDC) provider integration
+### SSO / SAML / OIDC ✅ PARTIAL
+- [x] OpenID Connect (OIDC) provider integration ✅
+- [x] Auth0, Keycloak, Azure AD, Okta compatibility ✅
+- [x] SSO configuration UI ✅
+- [x] Per-team SSO provider settings ✅
 - [ ] SAML 2.0 support
-- [ ] Auth0, Keycloak, Azure AD, Okta compatibility
-- [ ] SSO configuration UI
-- [ ] Per-team SSO provider settings
 
 ### Two-Factor Authentication (2FA)
 - [x] TOTP-based 2FA (Google Authenticator, Authy) ✅

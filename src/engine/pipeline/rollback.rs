@@ -1,0 +1,276 @@
+use anyhow::{Context, Result};
+use std::sync::Arc;
+
+use crate::db::App;
+use crate::runtime::{ContainerRuntime, PortMapping, RunConfig};
+use crate::DbPool;
+
+use super::super::{add_deployment_log, update_deployment_status, KEY_LENGTH};
+use super::{AutoRollbackTriggered, DeploymentResult};
+use super::start::collect_env_vars;
+
+/// Rollback to a previous deployment by restarting with the old image.
+/// This does NOT rebuild the image - it reuses the existing image from the target deployment.
+pub async fn run_rollback(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    rollback_deployment_id: &str,
+    target_deployment: &crate::db::Deployment,
+    app: &App,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+) -> Result<DeploymentResult> {
+    let image_tag = target_deployment
+        .image_tag
+        .as_ref()
+        .context("Target deployment has no image tag - cannot rollback")?;
+
+    add_deployment_log(
+        db,
+        rollback_deployment_id,
+        "info",
+        &format!(
+            "Rolling back to deployment {} with image {}",
+            target_deployment.id, image_tag
+        ),
+    )
+    .await?;
+    update_deployment_status(db, rollback_deployment_id, "starting", None).await?;
+
+    // Stop current container
+    let container_name = format!("rivetr-{}", app.name);
+    let _ = runtime.stop(&container_name).await;
+    let _ = runtime.remove(&container_name).await;
+
+    let env_vars = collect_env_vars(db, app, encryption_key).await;
+
+    // Get volumes from database
+    let volumes = sqlx::query_as::<_, crate::db::Volume>(
+        "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
+    )
+    .bind(&app.id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    // Convert volumes to bind mount strings
+    let binds: Vec<String> = volumes.iter().map(|v| v.to_bind_mount()).collect();
+
+    // Parse network configuration from app
+    let port_mappings: Vec<PortMapping> = app
+        .get_port_mappings()
+        .into_iter()
+        .map(|pm| PortMapping {
+            host_port: pm.host_port,
+            container_port: pm.container_port,
+            protocol: pm.protocol,
+        })
+        .collect();
+
+    let run_config = RunConfig {
+        image: image_tag.clone(),
+        name: container_name.clone(),
+        port: app.port as u16,
+        env: env_vars,
+        memory_limit: app.memory_limit.clone(),
+        cpu_limit: app.cpu_limit.clone(),
+        port_mappings,
+        network_aliases: app.get_network_aliases(),
+        extra_hosts: app.get_extra_hosts(),
+        labels: app.get_container_labels(),
+        binds,
+    };
+
+    add_deployment_log(
+        db,
+        rollback_deployment_id,
+        "info",
+        "Starting rollback container...",
+    )
+    .await?;
+    let container_id = runtime
+        .run(&run_config)
+        .await
+        .context("Failed to start rollback container")?;
+
+    // Update deployment with container ID and image tag
+    sqlx::query("UPDATE deployments SET container_id = ?, image_tag = ? WHERE id = ?")
+        .bind(&container_id)
+        .bind(image_tag)
+        .bind(rollback_deployment_id)
+        .execute(db)
+        .await?;
+
+    // Health check
+    if let Some(healthcheck) = &app.healthcheck {
+        add_deployment_log(
+            db,
+            rollback_deployment_id,
+            "info",
+            "Running health check...",
+        )
+        .await?;
+        update_deployment_status(db, rollback_deployment_id, "checking", None).await?;
+
+        let info = runtime.inspect(&container_id).await?;
+        if let Some(port) = info.port {
+            let health_url = format!("http://127.0.0.1:{}{}", port, healthcheck);
+
+            let mut healthy = false;
+            for attempt in 1..=10 {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                match reqwest::get(&health_url).await {
+                    Ok(resp) if resp.status().is_success() => {
+                        healthy = true;
+                        break;
+                    }
+                    Ok(resp) => {
+                        add_deployment_log(
+                            db,
+                            rollback_deployment_id,
+                            "warn",
+                            &format!("Health check attempt {}: status {}", attempt, resp.status()),
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        add_deployment_log(
+                            db,
+                            rollback_deployment_id,
+                            "warn",
+                            &format!("Health check attempt {}: {}", attempt, e),
+                        )
+                        .await?;
+                    }
+                }
+            }
+
+            if !healthy {
+                let _ = runtime.stop(&container_id).await;
+                let _ = runtime.remove(&container_id).await;
+                anyhow::bail!("Health check failed after 10 attempts during rollback");
+            }
+        }
+
+        add_deployment_log(db, rollback_deployment_id, "info", "Health check passed").await?;
+    }
+
+    // Get final container info
+    let final_info = runtime.inspect(&container_id).await?;
+
+    add_deployment_log(
+        db,
+        rollback_deployment_id,
+        "info",
+        "Rollback completed successfully",
+    )
+    .await?;
+    update_deployment_status(db, rollback_deployment_id, "running", None).await?;
+
+    Ok(DeploymentResult {
+        container_id,
+        image_tag: image_tag.clone(),
+        port: final_info.port,
+        auto_rollback_from: None,
+    })
+}
+
+/// Trigger an automatic rollback to the previous successful deployment.
+/// Called when health check fails and auto_rollback_enabled is true.
+pub(super) async fn trigger_auto_rollback(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    failed_deployment_id: &str,
+    app: &App,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+) -> Result<AutoRollbackTriggered> {
+    use crate::db::Deployment;
+
+    // Find the previous successful deployment with an image_tag (not the current one)
+    let target_deployment: Option<Deployment> = sqlx::query_as(
+        r#"
+        SELECT * FROM deployments
+        WHERE app_id = ?
+          AND id != ?
+          AND image_tag IS NOT NULL
+          AND status IN ('running', 'replaced', 'stopped')
+        ORDER BY started_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&app.id)
+    .bind(failed_deployment_id)
+    .fetch_optional(db)
+    .await?;
+
+    let target = target_deployment.ok_or_else(|| {
+        anyhow::anyhow!("No previous deployment with image found for auto-rollback")
+    })?;
+
+    // Create a new deployment record for the auto-rollback
+    let rollback_deployment_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO deployments (id, app_id, status, started_at, image_tag, rollback_from_deployment_id, is_auto_rollback)
+        VALUES (?, ?, 'pending', ?, ?, ?, 1)
+        "#,
+    )
+    .bind(&rollback_deployment_id)
+    .bind(&app.id)
+    .bind(&now)
+    .bind(&target.image_tag)
+    .bind(failed_deployment_id)
+    .execute(db)
+    .await?;
+
+    add_deployment_log(
+        db,
+        &rollback_deployment_id,
+        "info",
+        &format!(
+            "Auto-rollback initiated due to health check failure in deployment {}",
+            failed_deployment_id
+        ),
+    )
+    .await?;
+
+    // Execute the rollback
+    match run_rollback(
+        db,
+        runtime,
+        &rollback_deployment_id,
+        &target,
+        app,
+        encryption_key,
+    )
+    .await
+    {
+        Ok(_result) => {
+            tracing::info!(
+                rollback_deployment_id = %rollback_deployment_id,
+                target_deployment_id = %target.id,
+                failed_deployment_id = %failed_deployment_id,
+                "Auto-rollback completed successfully"
+            );
+
+            Ok(AutoRollbackTriggered {
+                failed_deployment_id: failed_deployment_id.to_string(),
+                rollback_deployment_id,
+                target_deployment_id: target.id.clone(),
+            })
+        }
+        Err(e) => {
+            // Update rollback deployment as failed
+            let _ = update_deployment_status(
+                db,
+                &rollback_deployment_id,
+                "failed",
+                Some(&e.to_string()),
+            )
+            .await;
+            Err(anyhow::anyhow!("Auto-rollback execution failed: {}", e))
+        }
+    }
+}
