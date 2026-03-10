@@ -39,12 +39,40 @@ pub async fn init(data_dir: &Path) -> Result<DbPool> {
 
     info!("Initializing database at {}", db_path.display());
 
+    // Use a temporary single-connection pool for migrations to avoid
+    // stale prepared-statement caches after ALTER TABLE migrations.
+    {
+        let migration_pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&db_url)
+            .await?;
+
+        sqlx::query("PRAGMA journal_mode = WAL")
+            .execute(&migration_pool)
+            .await?;
+        sqlx::query("PRAGMA synchronous = NORMAL")
+            .execute(&migration_pool)
+            .await?;
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&migration_pool)
+            .await?;
+
+        run_migrations(&migration_pool).await?;
+
+        // Checkpoint the WAL and close the migration pool so the new pool
+        // opens fresh connections with the fully-updated schema.
+        let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&migration_pool)
+            .await;
+        migration_pool.close().await;
+    }
+
+    // Open the production pool with fresh connections (no stale statement cache).
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
         .await?;
 
-    // Enable WAL mode for better concurrency
     sqlx::query("PRAGMA journal_mode = WAL")
         .execute(&pool)
         .await?;
@@ -54,9 +82,6 @@ pub async fn init(data_dir: &Path) -> Result<DbPool> {
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(&pool)
         .await?;
-
-    // Run migrations
-    run_migrations(&pool).await?;
 
     info!("Database initialized successfully");
     Ok(pool)
