@@ -31,3 +31,6 @@ rivetr.toml
 cookies.txt
 nul
 .playwright-mcp/
+
+# Live testing credentials (contains real secrets - never commit)
+live-testing/CREDENTIALS.md
