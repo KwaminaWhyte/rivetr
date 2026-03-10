@@ -1,4 +1,10 @@
-# Implementation Plan: Competitive Feature Parity
+# Implementation Plan: Competitive Feature Parity (Archive)
+
+> **Note**: This document is archived. All sprints described here are complete as of March 2026.
+> All features implemented in these sprints are now documented in [README.md](../README.md).
+> This file is kept for historical reference only.
+
+---
 
 > Execution plan for Phases 5-8 using parallel sub-agents for maximum throughput.
 

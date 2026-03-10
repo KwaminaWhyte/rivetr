@@ -1,783 +1,1984 @@
 # Rivetr Comprehensive Testing Guide
 
-This document provides actionable testing tasks for every module/feature of the Rivetr deployment platform.
+Covers v0.3 through v0.10. Each item is a checklist box so you can check off tests as you run them.
+
+**How to use:** Set `TOKEN` and `SERVER` before running curl commands.
+```bash
+export SERVER="http://YOUR_IP:8080"
+export TOKEN="your-api-token-here"
+```
+
+---
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [Installation Testing](#installation-testing)
-3. [Authentication & Authorization](#authentication--authorization)
-4. [Team Management](#team-management)
-5. [Project Management](#project-management)
-6. [App Deployment](#app-deployment)
-7. [Environment Variables](#environment-variables)
-8. [Managed Databases](#managed-databases)
-9. [Docker Compose Services](#docker-compose-services)
-10. [Volumes & Persistence](#volumes--persistence)
-11. [Alerting & Notifications](#alerting--notifications)
-12. [Preview Deployments](#preview-deployments)
-13. [System Monitoring](#system-monitoring)
-14. [Proxy & Routing](#proxy--routing)
-15. [Security Features](#security-features)
-16. [WebSocket Features](#websocket-features)
-17. [API Endpoints](#api-endpoints)
+1. [Installation & Startup](#1-installation--startup)
+2. [Authentication](#2-authentication)
+3. [Team Management](#3-team-management)
+4. [Project Management](#4-project-management)
+5. [App Deployment — Git](#5-app-deployment--git)
+6. [App Deployment — Other Sources](#6-app-deployment--other-sources)
+7. [Webhooks](#7-webhooks)
+8. [App Settings & Control](#8-app-settings--control)
+9. [Deployment Management](#9-deployment-management)
+10. [Container Replicas & Auto-scaling](#10-container-replicas--auto-scaling)
+11. [Container Terminal & Logs](#11-container-terminal--logs)
+12. [Managed Databases](#12-managed-databases)
+13. [Docker Compose Services](#13-docker-compose-services)
+14. [Service Templates](#14-service-templates)
+15. [Bulk Operations](#15-bulk-operations)
+16. [S3 & Backups](#16-s3--backups)
+17. [Notifications & Alerts](#17-notifications--alerts)
+18. [Multi-Server](#18-multi-server)
+19. [Docker Swarm](#19-docker-swarm)
+20. [Build Servers](#20-build-servers)
+21. [Scheduled Jobs](#21-scheduled-jobs)
+22. [System](#22-system)
+23. [Security](#23-security)
 
 ---
 
-## Prerequisites
+## 1. Installation & Startup
 
-### Test Server Requirements
-- Fresh Ubuntu 22.04/24.04 or Debian 12 server
-- Minimum 2GB RAM (1GB for minimal testing)
-- 20GB disk space
-- Root/sudo access
-- Ports 80, 443, 8080 accessible
+### 1.1 Fresh Install via Curl Script
+- [ ] **Clean state** — Remove any prior installation before testing
+  ```bash
+  systemctl stop rivetr 2>/dev/null
+  rm -rf /opt/rivetr /var/lib/rivetr /etc/systemd/system/rivetr.service
+  userdel rivetr 2>/dev/null
+  systemctl daemon-reload
+  # Stop conflicting services
+  systemctl stop nginx 2>/dev/null && systemctl disable nginx 2>/dev/null
+  ```
+  **Expected:** No errors (missing dirs/users are fine)
 
-### Test Accounts
-- GitHub account with test repos
-- Email account for notifications (optional)
+- [ ] **Run installer**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+  ```
+  **Expected:** Script runs to completion, reports success
 
-### Test Repositories
-- `https://github.com/heroku/node-js-getting-started.git` (Node.js, Nixpacks)
-- `https://github.com/KwaminaWhyte/adamus-forms` (Docker)
-- Any repo with `Dockerfile` in root
+- [ ] **Binary downloaded from GitHub Releases** (not built from source)
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh > /tmp/install.sh
+  bash -x /tmp/install.sh 2>&1 | grep -i "download\|release"
+  ```
+  **Expected:** Log line containing "Downloaded binary from GitHub releases"
 
----
+- [ ] **Build tools installed**
+  ```bash
+  nixpacks --version
+  pack version
+  docker --version
+  ```
+  **Expected:** All three print version strings
 
-## Installation Testing
+- [ ] **Rivetr binary present and executable**
+  ```bash
+  ls -la /opt/rivetr/rivetr
+  /opt/rivetr/rivetr --version 2>/dev/null || echo "no --version flag"
+  ```
+  **Expected:** File exists, is executable
 
-### Task 1.1: Fresh Installation
-```bash
-# Clean state verification
-systemctl stop rivetr 2>/dev/null
-rm -rf /opt/rivetr /var/lib/rivetr /etc/systemd/system/rivetr.service
-userdel rivetr 2>/dev/null
+### 1.2 Config File Verification
+- [ ] **Config file created at expected path**
+  ```bash
+  cat /opt/rivetr/rivetr.toml
+  ```
+  **Expected:** File contains `admin_token`, `[server]`, `[database]` sections
 
-# Run installation
-curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-```
+- [ ] **Data directory created**
+  ```bash
+  ls -la /var/lib/rivetr/
+  ```
+  **Expected:** Directory exists, contains `rivetr.db` after first start
 
-**Verify:**
-- [ ] Docker installed and running
-- [ ] Nixpacks installed (`nixpacks --version`)
-- [ ] Pack CLI installed (`pack version`)
-- [ ] Rivetr binary at `/opt/rivetr/rivetr`
-- [ ] Config at `/opt/rivetr/rivetr.toml`
-- [ ] Service running (`systemctl status rivetr`)
-- [ ] Dashboard accessible at `http://SERVER_IP:8080`
+### 1.3 Service Status
+- [ ] **Systemd service running**
+  ```bash
+  systemctl status rivetr
+  ```
+  **Expected:** `Active: active (running)`
 
-**Issues Found:**
-- (Document any issues here)
+- [ ] **Service listens on port 8080**
+  ```bash
+  ss -tlnp | grep 8080
+  ```
+  **Expected:** Port 8080 bound
 
-### Task 1.2: Verify Binary Download (Not Source Build)
-```bash
-# Check install log or re-run with verbose
-curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh > /tmp/install.sh
-bash -x /tmp/install.sh 2>&1 | tee /tmp/install-verbose.log
+- [ ] **Health endpoint responds**
+  ```bash
+  curl http://localhost:8080/health
+  ```
+  **Expected:** `OK`
 
-# Look for "Downloaded binary from GitHub releases" message
-grep -i "download" /tmp/install-verbose.log
-```
+### 1.4 Dashboard Loads
+- [ ] Open `http://SERVER_IP:8080` in a browser
+  **Expected:** Login/setup page loads, no 502 or blank screen
 
-**Verify:**
-- [ ] Binary downloaded from GitHub releases (not built from source)
-- [ ] Source build only used as fallback
+### 1.5 First-Time Admin Account Creation
+- [ ] Complete the first-time setup form (name, email, password)
+  **Expected:** Redirected to main dashboard after submit
 
-### Task 1.3: Upgrade/Re-installation
-```bash
-# Simulate upgrade
-export RIVETR_VERSION=latest
-curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-```
-
-**Verify:**
-- [ ] Existing config preserved
-- [ ] Existing data preserved
-- [ ] Service restarts with new binary
-
----
-
-## Authentication & Authorization
-
-### Task 2.1: Initial Setup
-1. Navigate to `http://SERVER_IP:8080`
-2. Create first admin account
-
-**Verify:**
-- [ ] Registration form validates password strength
-- [ ] Account created successfully
-- [ ] Redirected to dashboard after setup
-
-**Issues Found:**
-- (Document any issues here)
-
-### Task 2.2: Login/Logout
-1. Logout from dashboard
-2. Login with created credentials
-3. Test "Remember me" functionality
-
-**Verify:**
-- [ ] Login works with correct credentials
-- [ ] Login fails with wrong credentials
-- [ ] Session persists on page refresh
-- [ ] Logout clears session
-
-### Task 2.3: API Token Authentication
-```bash
-# Get token from /opt/rivetr/rivetr.toml
-TOKEN=$(grep admin_token /opt/rivetr/rivetr.toml | cut -d'"' -f2)
-
-# Test API auth
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/apps
-```
-
-**Verify:**
-- [ ] Token auth works for API endpoints
-- [ ] Invalid token returns 401
+### 1.6 Upgrade / Re-installation
+- [ ] **Re-run installer on existing install**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+  ```
+  **Expected:** Config preserved, data preserved, service restarts with new binary
 
 ---
 
-## Team Management
+## 2. Authentication
 
-### Task 3.1: Auto-Created Personal Team
-**Verify:**
-- [ ] "Personal" team auto-created for new users
-- [ ] User is owner of Personal team
+### 2.1 Email/Password Login
+- [ ] **Login with correct credentials**
+  ```bash
+  curl -X POST -H "Content-Type: application/json" \
+    -d '{"email":"admin@example.com","password":"YourPassword"}' \
+    $SERVER/api/auth/login
+  ```
+  **Expected:** `200 OK` with `{ "token": "..." }`
 
-### Task 3.2: Team CRUD
-1. Create new team "Test Team"
-2. Update team name
-3. View team details
+- [ ] **Login with wrong password returns 401**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"email":"admin@example.com","password":"wrong"}' \
+    $SERVER/api/auth/login
+  ```
+  **Expected:** `401`
 
-**Verify:**
-- [ ] Team created successfully
-- [ ] Team name updated
-- [ ] Team shows in team switcher
+- [ ] **Session persists on page refresh** — reload dashboard in browser
+  **Expected:** Still logged in, no redirect to login page
 
-### Task 3.3: Team Members
-1. Invite member by email
-2. Verify invitation email sent (if SMTP configured)
-3. Accept invitation (in new browser/incognito)
-4. Change member role
-5. Remove member
+- [ ] **Logout clears session** — click logout, refresh
+  **Expected:** Redirected to login page
 
-**Verify:**
-- [ ] Invitation created
-- [ ] Member can accept invite
-- [ ] Role changes applied
-- [ ] Member removal works
+### 2.2 GitHub OAuth Login
+- [ ] Navigate to login page, click "Sign in with GitHub"
+  **Expected:** Redirected to GitHub, back to dashboard after authorizing
+  **Notes:** Requires OAuth app configured in `rivetr.toml` or via Settings > OAuth Providers
 
-### Task 3.4: Team Audit Logs
-1. Perform various actions on team
-2. Check audit logs at Teams > Settings > Audit
+### 2.3 Google OAuth Login
+- [ ] Navigate to login page, click "Sign in with Google"
+  **Expected:** Redirected to Google, back to dashboard after authorizing
+  **Notes:** Requires Google OAuth app configured
 
-**Verify:**
-- [ ] Actions logged with timestamp
-- [ ] Actor (user) recorded
-- [ ] Resource type and action recorded
+### 2.4 SSO / OIDC Login
+- [ ] Initiate SSO login via provider URL
+  ```bash
+  # Replace PROVIDER_ID with the ID from /api/sso/providers
+  curl -v "$SERVER/auth/sso/PROVIDER_ID/login"
+  ```
+  **Expected:** Redirect to OIDC provider's authorization endpoint
 
----
+- [ ] Complete OIDC callback and land on dashboard
+  **Expected:** Logged in as SSO user
 
-## Project Management
+### 2.5 Two-Factor Authentication (TOTP)
+- [ ] **2FA setup — get QR code**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/auth/2fa/setup
+  ```
+  **Expected:** `{ "secret": "...", "qr_code": "data:image/png;base64,..." }`
 
-### Task 4.1: Project CRUD
-1. Create new project "Test Project"
-2. Update project description
-3. Delete project (empty)
+- [ ] **Scan QR code in authenticator app** (Google Authenticator, Authy, etc.)
+  **Expected:** 6-digit codes generated
 
-**Verify:**
-- [ ] Project created
-- [ ] Project updated
-- [ ] Project deleted
+- [ ] **Verify TOTP to complete setup**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"code":"123456"}' \
+    $SERVER/api/auth/2fa/verify
+  ```
+  **Expected:** `{ "recovery_codes": [...] }` — save these codes
 
-### Task 4.2: Project Organization
-1. Create apps in different projects
-2. Move app between projects
+- [ ] **2FA status shows enabled**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/auth/2fa/status
+  ```
+  **Expected:** `{ "enabled": true }`
 
-**Verify:**
-- [ ] Apps organized by project
-- [ ] App can be reassigned to different project
+- [ ] **Login flow requires TOTP after enabling** — log out, log back in, enter TOTP code
+  **Expected:** Login blocked until correct TOTP entered
 
----
+- [ ] **Recovery codes work** — use a recovery code instead of TOTP
+  ```bash
+  curl -X POST -H "Content-Type: application/json" \
+    -d '{"temp_token":"<from_login>","code":"RECOVERY-CODE"}' \
+    $SERVER/api/auth/2fa/validate
+  ```
+  **Expected:** `200 OK` with full session token
 
-## App Deployment
+- [ ] **Disable 2FA**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"code":"123456"}' \
+    $SERVER/api/auth/2fa/disable
+  ```
+  **Expected:** `200 OK`, 2FA disabled
 
-### Task 5.1: Create App from Git URL
-1. Apps > New App
-2. Enter: `https://github.com/heroku/node-js-getting-started.git`
-3. Set name, port (3000), build type (auto/nixpacks)
-4. Deploy
+### 2.6 API Token Authentication
+- [ ] **Bearer token accepted**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps
+  ```
+  **Expected:** `200 OK` with app list
 
-**Verify:**
-- [ ] App created
-- [ ] Build starts automatically
-- [ ] Build logs stream (check WebSocket)
-- [ ] Container running after build
-- [ ] App accessible via assigned port
+- [ ] **Missing token returns 401**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" $SERVER/api/apps
+  ```
+  **Expected:** `401`
 
-### Task 5.2: Create App via GitHub App
-1. Connect GitHub account
-2. Select repository from list
-3. Configure and deploy
-
-**Verify:**
-- [ ] GitHub repos listed
-- [ ] Can select branch
-- [ ] Webhook configured automatically
-
-### Task 5.3: Build Types
-Test each build type:
-
-**5.3.1 Nixpacks (Auto-detect)**
-- Use Node.js repo
-- [ ] Build completes
-- [ ] Correct runtime detected
-
-**5.3.2 Dockerfile**
-- Use repo with Dockerfile
-- [ ] Dockerfile detected
-- [ ] Build completes
-
-**5.3.3 Railpack** (if available)
-- [ ] Build completes (or graceful fallback)
-
-**5.3.4 Cloud Native Buildpacks**
-- Configure app to use `buildpack` type
-- [ ] Build completes with pack CLI
-
-**5.3.5 Static Site**
-- Configure as static build
-- [ ] Build output served correctly
-
-### Task 5.4: Deployment Operations
-1. View deployment history
-2. Trigger manual redeploy
-3. Rollback to previous version
-4. View deployment logs
-
-**Verify:**
-- [ ] Deployment history shows all deploys
-- [ ] Manual redeploy works
-- [ ] Rollback switches to previous container
-- [ ] Logs show build output
-
-### Task 5.5: App Controls
-1. Stop running app
-2. Start stopped app
-3. Restart running app
-
-**Verify:**
-- [ ] Stop: Container stops, status updated
-- [ ] Start: Container starts, status updated
-- [ ] Restart: Quick stop/start cycle
-
-### Task 5.6: Resource Limits
-1. Edit app settings
-2. Set CPU limit (e.g., "1")
-3. Set Memory limit (e.g., "512m")
-4. Redeploy and verify
-
-**Verify:**
-- [ ] Limits applied to container
-- [ ] `docker inspect` shows correct limits
-
-### Task 5.7: Health Checks
-1. Configure health check path (e.g., `/health`)
-2. Set health check interval
-3. Deploy and monitor
-
-**Verify:**
-- [ ] Health check running
-- [ ] Status shows healthy/unhealthy correctly
-- [ ] Auto-rollback triggers on failure (if enabled)
+- [ ] **Invalid token returns 401**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer invalidtoken" $SERVER/api/apps
+  ```
+  **Expected:** `401`
 
 ---
 
-## Environment Variables
+## 3. Team Management
 
-### Task 6.1: Environment Variables UI
-1. Go to App > Settings > Environment
-2. Add variable: `TEST_VAR=hello`
-3. Add secret: `SECRET_KEY=abc123` (mark as secret)
-4. Redeploy app
+### 3.1 Create Team
+- [ ] **Personal team auto-created** on first login
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/teams
+  ```
+  **Expected:** Response includes a team with name "Personal", user is `owner`
 
-**Verify:**
-- [ ] Variables UI accessible
-- [ ] Variables saved
-- [ ] Secrets hidden in UI
-- [ ] Variables available in container (`docker exec <container> env`)
+- [ ] **Create a new team**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Test Team","slug":"test-team"}' \
+    $SERVER/api/teams
+  ```
+  **Expected:** `201 Created` with team object
 
-### Task 6.2: PORT Variable Auto-Injection
-1. Create app without setting PORT
-2. Deploy
-3. Check container environment
+- [ ] **Update team name**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Renamed Team"}' \
+    $SERVER/api/teams/TEAM_ID
+  ```
+  **Expected:** Updated team returned
 
-**Verify:**
-- [ ] PORT automatically set to configured app port
-- [ ] App listens on correct port
+- [ ] **Team appears in team switcher** — check dashboard UI
+  **Expected:** Dropdown lists both Personal and new team
 
----
+### 3.2 Invite Member via Email
+- [ ] **Send invitation**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"newuser@example.com","role":"developer"}' \
+    $SERVER/api/teams/TEAM_ID/invitations
+  ```
+  **Expected:** `201 Created` with invitation token
 
-## Managed Databases
+- [ ] **Validate invitation token (public endpoint)**
+  ```bash
+  curl $SERVER/api/auth/invitations/INVITATION_TOKEN
+  ```
+  **Expected:** `200 OK` with team and inviter info
 
-### Task 7.1: Create Database
-1. Databases > New Database
-2. Select type: PostgreSQL
-3. Configure name, version, credentials
-4. Create
+- [ ] **Accept invitation** (as the invited user)
+  ```bash
+  curl -X POST -H "Authorization: Bearer $OTHER_USER_TOKEN" \
+    $SERVER/api/invitations/INVITATION_TOKEN/accept
+  ```
+  **Expected:** User added to team
 
-**Verify:**
-- [ ] Database container created
-- [ ] Database running
-- [ ] Connection string generated
+- [ ] **Resend invitation**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/teams/TEAM_ID/invitations/INV_ID/resend
+  ```
+  **Expected:** `200 OK`
 
-### Task 7.2: Database Operations
-1. Stop database
-2. Start database
-3. View logs
-4. Check stats
+### 3.3 Role Management
+- [ ] **Update member role**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"role":"admin"}' \
+    $SERVER/api/teams/TEAM_ID/members/USER_ID
+  ```
+  **Expected:** Updated member returned
 
-**Verify:**
-- [ ] Stop/start works
-- [ ] Logs accessible
-- [ ] Stats show CPU/memory
+- [ ] **List members shows correct roles**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/teams/TEAM_ID/members
+  ```
+  **Expected:** Array with role field per member
 
-### Task 7.3: Database Backups
-1. Create manual backup
-2. Schedule automatic backup
-3. Download backup
-4. Delete old backup
+### 3.4 Remove Member
+- [ ] **Remove a member from team**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/teams/TEAM_ID/members/USER_ID
+  ```
+  **Expected:** `200 OK`, user no longer in member list
 
-**Verify:**
-- [ ] Manual backup created
-- [ ] Schedule saved
-- [ ] Backup downloadable
-- [ ] Delete removes file
+### 3.5 Audit Log Viewing
+- [ ] **Team audit logs contain recent actions**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/teams/TEAM_ID/audit-logs
+  ```
+  **Expected:** Array of audit entries with `actor`, `action`, `resource_type`, `created_at`
 
-### Task 7.4: Database Types
-Test creating each supported type:
-- [ ] PostgreSQL
-- [ ] MySQL
-- [ ] MariaDB
-- [ ] MongoDB
-- [ ] Redis
-- [ ] Valkey
+### 3.6 2FA Enforcement (Owner Only)
+- [ ] **Enable 2FA enforcement for team**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"enforce_2fa":true}' \
+    $SERVER/api/teams/TEAM_ID/2fa-enforcement
+  ```
+  **Expected:** `200 OK`
 
----
+- [ ] **Non-owner cannot toggle enforcement** — test with admin or developer token
+  **Expected:** `403 Forbidden`
 
-## Docker Compose Services
+### 3.7 Team Switching
+- [ ] Switch active team in dashboard UI
+  **Expected:** Apps and projects shown update to reflect selected team
 
-### Task 8.1: Service Templates
-1. Services > Templates
-2. Browse available templates
-3. Deploy a template (e.g., Redis, Nginx)
-
-**Verify:**
-- [ ] Templates listed with categories
-- [ ] Template deploys successfully
-- [ ] Service running
-
-### Task 8.2: Custom Docker Compose
-1. Services > New Service
-2. Enter custom docker-compose.yml
-3. Deploy
-
-**Verify:**
-- [ ] Compose file validated
-- [ ] Multi-container service starts
-- [ ] All containers accessible
-
-### Task 8.3: Service Operations
-1. Stop service
-2. Start service
-3. View logs
-4. Delete service
-
-**Verify:**
-- [ ] All operations complete successfully
-- [ ] Resources cleaned up on delete
-
----
-
-## Volumes & Persistence
-
-### Task 9.1: Create Volume
-1. App > Settings > Volumes
-2. Add volume with mount path
-3. Redeploy app
-
-**Verify:**
-- [ ] Volume created
-- [ ] Data persists across restarts
-
-### Task 9.2: Volume Backup
-1. Create volume backup
-2. Download backup
-
-**Verify:**
-- [ ] Backup file generated
-- [ ] Backup downloadable
+### 3.8 Delete Team
+- [ ] **Delete a non-Personal team**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/teams/TEAM_ID
+  ```
+  **Expected:** `200 OK`, team no longer in list
 
 ---
 
-## Alerting & Notifications
+## 4. Project Management
 
-### Task 10.1: Create Alert
-1. App > Settings > Alerts
-2. Add CPU usage alert (> 80%)
-3. Add memory alert (> 90%)
+### 4.1 Create Project
+- [ ] **Create project**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Test Project","team_id":"TEAM_ID"}' \
+    $SERVER/api/projects
+  ```
+  **Expected:** `201 Created` with project object
 
-**Verify:**
-- [ ] Alerts created
-- [ ] Alert conditions evaluated
+- [ ] **Update project**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Renamed Project","description":"Updated desc"}' \
+    $SERVER/api/projects/PROJECT_ID
+  ```
+  **Expected:** Updated project returned
 
-### Task 10.2: Notification Channels
-1. Settings > Notifications
-2. Add Slack webhook channel
-3. Add email channel (if SMTP configured)
-4. Test notification
+### 4.2 Assign Environments
+- [ ] **Create environment for project**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"production","slug":"production"}' \
+    $SERVER/api/projects/PROJECT_ID/environments
+  ```
+  **Expected:** `201 Created`
 
-**Verify:**
-- [ ] Channel created
-- [ ] Test notification received
-- [ ] Alert triggers notification
+- [ ] **Create staging and dev environments** — repeat above with `staging` and `development`
+  **Expected:** Three environments listed
 
-### Task 10.3: Alert Events
-1. View alert event history
-2. Check triggered/resolved events
+- [ ] **Add env vars to environment**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"key":"DATABASE_URL","value":"postgres://...","is_secret":true}' \
+    $SERVER/api/environments/ENV_ID/env-vars
+  ```
+  **Expected:** `201 Created`
 
-**Verify:**
-- [ ] Events logged
-- [ ] Timestamps accurate
+### 4.3 Project-Level Environment Variables
+- [ ] **Create project env var (shared across apps)**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"key":"SHARED_VAR","value":"shared_value","is_secret":false}' \
+    $SERVER/api/projects/PROJECT_ID/env-vars
+  ```
+  **Expected:** `201 Created`
 
----
+- [ ] **List resolves app + project + team vars together**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/env-vars/resolved
+  ```
+  **Expected:** Merged list of all env var sources
 
-## Preview Deployments
+### 4.4 Add Apps to Project
+- [ ] **Assign app to project**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"project_id":"PROJECT_ID"}' \
+    $SERVER/api/apps/APP_ID/project
+  ```
+  **Expected:** `200 OK`
 
-### Task 11.1: PR Preview (GitHub App)
-1. Open PR on connected repo
-2. Check for preview deployment
-3. Access preview URL
+### 4.5 Service Dependency Graph
+- [ ] **Add dependency (app A depends on app B)**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"dependency_id":"APP_B_ID"}' \
+    $SERVER/api/apps/APP_A_ID/dependencies
+  ```
+  **Expected:** `201 Created`
 
-**Verify:**
-- [ ] Preview auto-created on PR
-- [ ] Preview accessible
-- [ ] Preview deleted on PR close/merge
+- [ ] **View dependency graph**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/projects/PROJECT_ID/dependency-graph
+  ```
+  **Expected:** JSON graph with nodes and edges
 
-### Task 11.2: Manual Preview
-1. Create preview for specific branch
-2. Test preview URL
-3. Delete preview
+- [ ] **Remove dependency**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_A_ID/dependencies/DEP_ID
+  ```
+  **Expected:** `200 OK`
 
-**Verify:**
-- [ ] Preview created
-- [ ] Isolated from main deployment
-- [ ] Cleanup works
-
----
-
-## System Monitoring
-
-### Task 12.1: Dashboard Stats
-1. Check main dashboard
-2. Verify running apps count
-3. Verify memory/CPU charts
-
-**Verify:**
-- [ ] Stats accurate
-- [ ] Charts render (stats history endpoint)
-- [ ] Recent events list
-
-### Task 12.2: System Health
-```bash
-curl http://localhost:8080/api/system/health
-```
-
-**Verify:**
-- [ ] Health endpoint returns status
-- [ ] All checks pass (database, runtime, disk)
-
-### Task 12.3: Disk Monitoring
-```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/system/disk
-```
-
-**Verify:**
-- [ ] Disk stats returned
-- [ ] Values reasonable
-
-### Task 12.4: Metrics Endpoint
-```bash
-curl http://localhost:8080/metrics
-```
-
-**Verify:**
-- [ ] Prometheus metrics exposed
-- [ ] Request counts, durations visible
-
----
-
-## Proxy & Routing
-
-### Task 13.1: Custom Domain
-1. App > Settings > Domains
-2. Add custom domain
-3. Configure DNS
-
-**Verify:**
-- [ ] Domain added to routes
-- [ ] App accessible via domain
-
-### Task 13.2: SSL/TLS
-1. Enable HTTPS for custom domain
-2. Verify certificate provisioned (Let's Encrypt)
-
-**Verify:**
-- [ ] HTTPS works
-- [ ] Certificate valid
-- [ ] HTTP redirects to HTTPS
-
-### Task 13.3: Routes API
-```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/routes
-```
-
-**Verify:**
-- [ ] All routes listed
-- [ ] Health status accurate
+### 4.6 Delete Project
+- [ ] **Delete project**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/projects/PROJECT_ID
+  ```
+  **Expected:** `200 OK`
+  **Notes:** Deleting a project with apps may require removing apps first
 
 ---
 
-## Security Features
+## 5. App Deployment — Git
 
-### Task 14.1: Basic Auth
-1. App > Settings > Security
-2. Enable HTTP Basic Auth
-3. Set username/password
-4. Test access
+### 5.1 GitHub Repo with Dockerfile
+- [ ] **Create and deploy app**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "docker-test",
+      "git_url": "https://github.com/KwaminaWhyte/adamus-forms",
+      "branch": "main",
+      "port": 3000,
+      "build_type": "dockerfile",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/apps
+  ```
+  **Expected:** App created, deployment queued
 
-**Verify:**
-- [ ] Auth prompt appears
-- [ ] Correct credentials grant access
-- [ ] Wrong credentials denied
+- [ ] **Trigger deploy and confirm build runs**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** Deployment object returned with `status: "queued"` or `"building"`
 
-### Task 14.2: Rate Limiting
-```bash
-# Rapid requests to trigger rate limit
-for i in {1..100}; do curl -s http://localhost:8080/api/auth/login > /dev/null; done
-```
+- [ ] **Container running after build**
+  ```bash
+  docker ps | grep docker-test
+  ```
+  **Expected:** Container listed as `Up`
 
-**Verify:**
-- [ ] 429 status returned after limit reached
-- [ ] Limits configurable in rivetr.toml
+### 5.2 GitHub Repo with Nixpacks Auto-detect
+- [ ] **Create Nixpacks app**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "nixpacks-test",
+      "git_url": "https://github.com/heroku/node-js-getting-started.git",
+      "branch": "main",
+      "port": 3000,
+      "build_type": "nixpacks",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/apps
+  ```
+  **Expected:** Build completes, app accessible on mapped port
 
-### Task 14.3: SSH Keys
-1. Settings > SSH Keys
-2. Add SSH public key
-3. Test git clone with SSH
+- [ ] **PORT env var automatically set**
+  ```bash
+  docker exec rivetr-nixpacks-test env | grep PORT
+  ```
+  **Expected:** `PORT=3000`
 
-**Verify:**
-- [ ] Key stored
-- [ ] Private repos accessible (if configured)
+### 5.3 GitLab Repo
+- [ ] Create app with a GitLab git URL (public repo)
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "gitlab-test",
+      "git_url": "https://gitlab.com/YOUR_ACCOUNT/YOUR_REPO.git",
+      "branch": "main",
+      "port": 8000,
+      "build_type": "dockerfile"
+    }' \
+    $SERVER/api/apps
+  ```
+  **Expected:** Clones from GitLab, builds, and runs
 
----
-
-## WebSocket Features
-
-### Task 15.1: Build Log Streaming
-1. Deploy an app
-2. Open browser DevTools > Network > WS
-3. Watch for WebSocket connection
-
-**Verify:**
-- [ ] WebSocket connects to `/api/deployments/:id/logs/stream`
-- [ ] Logs stream in real-time
-- [ ] Connection closes after build
-
-### Task 15.2: Container Terminal
-1. App > Actions > Terminal
-2. Execute commands
-
-**Verify:**
-- [ ] Terminal opens
-- [ ] Commands execute in container
-- [ ] Output displayed
-
----
-
-## API Endpoints
-
-### Full API Test Suite
-Run these curl commands to verify all major endpoints:
-
-```bash
-TOKEN=$(grep admin_token /opt/rivetr/rivetr.toml | cut -d'"' -f2)
-BASE="http://localhost:8080/api"
-
-# Health (no auth)
-curl http://localhost:8080/health
-
-# System
-curl -H "Authorization: Bearer $TOKEN" $BASE/system/stats
-curl -H "Authorization: Bearer $TOKEN" $BASE/system/disk
-curl -H "Authorization: Bearer $TOKEN" $BASE/system/health
-curl -H "Authorization: Bearer $TOKEN" "$BASE/system/stats/history?hours=24"
-
-# Apps
-curl -H "Authorization: Bearer $TOKEN" $BASE/apps
-curl -H "Authorization: Bearer $TOKEN" $BASE/apps/{id}
-curl -H "Authorization: Bearer $TOKEN" $BASE/apps/{id}/deployments
-curl -H "Authorization: Bearer $TOKEN" $BASE/apps/{id}/env-vars
-
-# Teams
-curl -H "Authorization: Bearer $TOKEN" $BASE/teams
-curl -H "Authorization: Bearer $TOKEN" $BASE/teams/{id}/members
-
-# Databases
-curl -H "Authorization: Bearer $TOKEN" $BASE/databases
-
-# Services
-curl -H "Authorization: Bearer $TOKEN" $BASE/services
-curl -H "Authorization: Bearer $TOKEN" $BASE/templates
-
-# Routes
-curl -H "Authorization: Bearer $TOKEN" $BASE/routes
-curl -H "Authorization: Bearer $TOKEN" $BASE/routes/health
-
-# Audit
-curl -H "Authorization: Bearer $TOKEN" $BASE/audit
-```
+### 5.4 Public Repo (No Auth Required)
+- [ ] Create app from a fully public repo with no credentials configured
+  **Expected:** Clone succeeds without authentication errors
 
 ---
 
-## Issues Log
+## 6. App Deployment — Other Sources
 
-### Critical Issues
-| ID | Description | Status | Fix Version |
-|----|-------------|--------|-------------|
-| C1 | Teams API panic: `byte index 8 is out of bounds of 'system'` in `teams.rs:253` when user.id is shorter than 8 chars | Fixed | v0.2.13 |
+### 6.1 ZIP Upload Deployment
+- [ ] **Upload a ZIP and deploy**
+  ```bash
+  # Create a minimal Dockerfile app as ZIP
+  mkdir /tmp/testapp && echo 'FROM nginx:alpine' > /tmp/testapp/Dockerfile
+  cd /tmp && zip -r testapp.zip testapp/
 
-### High Priority Issues
-| ID | Description | Status | Fix Version |
-|----|-------------|--------|-------------|
-| H1 | Stats history chart 401 Unauthorized - wrong localStorage key | Fixed | v0.2.12 |
-| H2 | Container monitor: `no column found for name: team_id` - SELECT query missing team_id column | Fixed | v0.2.14 |
-| H3 | Notification channels: CHECK constraint missing 'webhook' type - database migration needed | Fixed | v0.2.14 |
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -F "file=@/tmp/testapp.zip" \
+    $SERVER/api/apps/APP_ID/deploy/upload
+  ```
+  **Expected:** Build type auto-detected, deployment starts
 
-### Medium Priority Issues
-| ID | Description | Status | Fix Version |
-|----|-------------|--------|-------------|
-| M1 | Auto-update settings page had missing route registration in `routes.ts` | Fixed | v0.2.13 |
-| M2 | Auto-update API methods not exported in combined `api` object | Fixed | v0.2.13 |
-| M3 | Migration 038 (webhook type) needs PRAGMA foreign_keys=OFF for table recreation | Fixed | v0.2.14 |
+- [ ] **Build type detection endpoint**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -F "file=@/tmp/testapp.zip" \
+    $SERVER/api/build/detect
+  ```
+  **Expected:** JSON with `build_type` field
 
-### Low Priority Issues
-| ID | Description | Status | Fix Version |
-|----|-------------|--------|-------------|
-| L1 | Console warning: Pattern attribute regex error | Open | |
-| L2 | API Tokens page disabled ("coming soon") | Open | |
-| L3 | Notifications page buttons disabled ("coming soon") | Open | |
+### 6.2 Docker Image Deploy
+- [ ] **Create app using existing Docker image**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "image-test",
+      "image": "nginx:alpine",
+      "port": 80,
+      "build_type": "image"
+    }' \
+    $SERVER/api/apps
+  ```
+  **Expected:** Container starts from the specified image, no build phase
 
----
+### 6.3 Deploy Specific Commit SHA
+- [ ] **Trigger deploy at a specific SHA**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"commit_sha":"abc1234def5678"}' \
+    $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** Build clones the repo at that specific commit
 
-## Testing Checklist Summary
+- [ ] **List available commits**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/commits
+  ```
+  **Expected:** Array of commit objects with `sha` and `message`
 
-**Last tested: 2026-02-05 | Version: v0.2.14 | Server: 167.71.46.193**
+### 6.4 Deploy Specific Git Tag
+- [ ] **Trigger deploy at a specific tag**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"git_tag":"v1.0.0"}' \
+    $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** Build clones the repo at that tag
 
-### Core Functionality
-- [x] Installation complete and service running
-- [x] User authentication working (login, logout, session persistence)
-- [x] Team/project management working (CRUD, team switcher, audit logs)
-- [x] App deployment (Nixpacks tested with node-js-getting-started)
-- [x] Environment variables working (PORT auto-injection verified)
-- [x] Managed databases working (PostgreSQL 16 tested, stats, backups)
-- [x] Docker Compose services working (Uptime Kuma template deployed)
-
-### Advanced Features
-- [x] Volumes API working (create, list, update, delete via API)
-- [x] Alerting working (CPU/memory alerts, alert defaults, alert stats, alert events)
-- [x] Notification channels working (webhook type, test notifications, subscriptions)
-- [ ] Preview deployments (API returns empty, needs GitHub App for PR-based previews)
-- [x] System monitoring (all 4 health checks passing, chart timeframe selector working)
-- [x] Resource charts update with timeframe changes (1h, 6h, 24h, 7d, 30d)
-- [x] Proxy/routes API working (returns empty - no custom domains configured)
-- [x] Rate limiting working (auth: 20/min, hits at request 21)
-
-### Dashboard & UI
-- [x] Dashboard: system stats (CPU, memory, disk, uptime, running services count)
-- [x] Dashboard: running services widget (shows apps, databases, services with CPU/memory)
-- [x] Dashboard: cost summary card with projected monthly cost
-- [x] Dashboard: recent events timeline
-- [x] Monitoring page: system health, all checks, resource chart, disk usage
-- [x] Costs page: cost breakdown, by team, by app, export CSV
-- [x] Templates page: 26 templates across 7 categories with Deploy buttons
-- [x] Settings: General, Auto Updates, Alert Defaults, Teams, Notifications, Git, SSH, Webhooks, Tokens, Audit
-- [x] Audit log: full history with timestamps, actions, resources, users
-- [x] Auto-update settings page: version info, check/download/apply buttons
-
-### Integrations
-- [ ] GitHub App integration (UI ready, needs GitHub App setup)
-- [ ] Webhook deployments (endpoints exist, needs connected repo)
-- [ ] SSL/TLS certificates (needs custom domain)
-
-### WebSocket/Real-time
-- [x] Build log streaming
-- [x] Container terminal (commands execute successfully)
-- [x] Stats history charts (fixed in v0.2.12, timeframe selection verified)
-- [x] Runtime log streaming (SSE working)
-
-### API Endpoints Verified
-- [x] `/api/system/stats` - System stats
-- [x] `/api/system/disk` - Disk stats
-- [x] `/api/system/health` - Health checks (4 checks all passing)
-- [x] `/api/system/stats/history?hours=N` - Stats history (31 entries for 24h)
-- [x] `/api/apps` - List apps
-- [x] `/api/apps/:id/stats` - App resource stats
-- [x] `/api/apps/:id/alerts` - Alert configs (create, list)
-- [x] `/api/apps/:id/alert-events` - Alert events
-- [x] `/api/apps/:id/volumes` - Volume management
-- [x] `/api/apps/:id/previews` - Preview deployments list
-- [x] `/api/databases` - List databases
-- [x] `/api/databases/:id/stats` - Database resource stats
-- [x] `/api/databases/:id/backups` - Create/list/download backups
-- [x] `/api/services` - List services
-- [x] `/api/templates` - Service templates
-- [x] `/api/notification-channels` - Notification channel CRUD
-- [x] `/api/notification-channels/:id/test` - Test notification (200 OK)
-- [x] `/api/notification-channels/:id/subscriptions` - Subscription management
-- [x] `/api/settings/alert-defaults` - Global alert thresholds
-- [x] `/api/settings/alert-stats` - Alert configuration stats
-- [x] `/api/routes` - Proxy routes
-- [x] `/api/audit` - Audit logs
-- [x] `/api/ssh-keys` - SSH key management
-- [x] `/api/costs/dashboard` - Cost overview
-- [x] `/api/system/version` - Version info / auto-update
-- [x] `/metrics` - Prometheus metrics
+- [ ] **List available tags**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/tags
+  ```
+  **Expected:** Array of tag objects
 
 ---
 
-## Appendix: Common Troubleshooting
+## 7. Webhooks
+
+### 7.1 GitHub Push Webhook
+- [ ] **Webhook endpoint accepts GitHub push events**
+  ```bash
+  # Simulate a GitHub push event (replace WEBHOOK_SECRET with actual secret)
+  curl -X POST \
+    -H "X-GitHub-Event: push" \
+    -H "X-Hub-Signature-256: sha256=HMAC_SIGNATURE" \
+    -H "Content-Type: application/json" \
+    -d '{"ref":"refs/heads/main","repository":{"clone_url":"https://github.com/OWNER/REPO.git"}}' \
+    $SERVER/webhooks/github
+  ```
+  **Expected:** `200 OK`, deployment triggered for matching app
+
+- [ ] **Push to connected GitHub repo triggers auto-deploy** — make a real push
+  **Expected:** New deployment appears in app's deployment list within seconds
+
+### 7.2 GitLab Push Webhook
+- [ ] Configure GitLab webhook pointing to `$SERVER/webhooks/gitlab`
+- [ ] Push to repository
+  **Expected:** Deployment triggered
+
+### 7.3 Gitea Push Webhook
+- [ ] Configure Gitea webhook pointing to `$SERVER/webhooks/gitea`
+- [ ] Push to repository
+  **Expected:** Deployment triggered
+
+### 7.4 DockerHub Webhook
+- [ ] Configure DockerHub webhook pointing to `$SERVER/webhooks/dockerhub`
+- [ ] Push a Docker image tag to DockerHub
+  **Expected:** App deployment triggered for image-based app
+
+### 7.5 Preview Deployment on PR Open
+- [ ] **Open a Pull Request on a connected GitHub repo**
+  **Expected:** Preview deployment created automatically, PR comment with preview URL added
+
+- [ ] **View preview in dashboard**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/previews
+  ```
+  **Expected:** Preview entry with status and URL
+
+### 7.6 Preview Cleanup on PR Close
+- [ ] **Close or merge the PR**
+  **Expected:** Preview deployment deleted, container removed
+
+- [ ] **Verify preview gone**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/previews
+  ```
+  **Expected:** Closed PR's preview no longer in list
+
+---
+
+## 8. App Settings & Control
+
+### 8.1 Start / Stop / Restart
+- [ ] **Stop app**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/stop
+  ```
+  **Expected:** `200 OK`, `docker ps` no longer shows container
+
+- [ ] **Start app**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/start
+  ```
+  **Expected:** `200 OK`, container running again
+
+- [ ] **Restart app**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/restart
+  ```
+  **Expected:** `200 OK`, brief downtime then container up
+
+### 8.2 Environment Variables (Plain + Secret)
+- [ ] **Add plain env var**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"key":"APP_ENV","value":"production","is_secret":false}' \
+    $SERVER/api/apps/APP_ID/env-vars
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Add secret env var**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"key":"SECRET_KEY","value":"super_secret_value","is_secret":true}' \
+    $SERVER/api/apps/APP_ID/env-vars
+  ```
+  **Expected:** `201 Created`, value masked in list response
+
+- [ ] **Redeploy and verify vars in container**
+  ```bash
+  docker exec rivetr-APP_NAME env | grep APP_ENV
+  ```
+  **Expected:** `APP_ENV=production`
+
+- [ ] **Update env var**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"value":"staging"}' \
+    $SERVER/api/apps/APP_ID/env-vars/APP_ENV
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **Delete env var**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/env-vars/APP_ENV
+  ```
+  **Expected:** `200 OK`
+
+### 8.3 Shared Environment Variables
+- [ ] **Create team-level shared env var**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"key":"TEAM_SHARED","value":"shared_val","is_secret":false}' \
+    $SERVER/api/teams/TEAM_ID/env-vars
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Create project-level shared env var** (see Section 4.3)
+
+- [ ] **Resolved env vars merge all levels**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/env-vars/resolved
+  ```
+  **Expected:** App vars + project vars + team vars all present
+
+### 8.4 Domain Management
+- [ ] **Add custom domain**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"domain":"myapp.example.com"}' \
+    $SERVER/api/routes
+  ```
+  **Expected:** `201 Created`, route registered
+
+- [ ] **List routes**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/routes
+  ```
+  **Expected:** Domain appears with `app_id` association
+
+- [ ] **Access app via custom domain** (after DNS configured)
+  ```bash
+  curl -H "Host: myapp.example.com" http://SERVER_IP/
+  ```
+  **Expected:** App response
+
+### 8.5 Watch Paths
+- [ ] **Configure watch paths on app** — set `watch_paths` to `["src/", "Dockerfile"]` in app settings
+  **Expected:** Setting saved
+
+- [ ] **Push change outside watch path** (e.g., only change `README.md`)
+  **Expected:** Webhook received but no deployment triggered
+
+- [ ] **Push change inside watch path** (e.g., edit a file in `src/`)
+  **Expected:** Deployment triggered
+
+### 8.6 Maintenance Mode
+- [ ] **Enable maintenance mode** — toggle in app settings UI
+  **Expected:** App URL returns maintenance page instead of app
+
+- [ ] **Custom maintenance page** — if configured, verify custom message displayed
+
+- [ ] **Disable maintenance mode**
+  **Expected:** App serves normally again
+
+### 8.7 App Cloning
+- [ ] **Clone an app** — use "Clone App" option in dashboard UI
+  **Expected:** New app created with same settings, git URL, env vars
+
+### 8.8 Config Snapshot (Save / Restore)
+- [ ] **Save a config snapshot** — use snapshot option in app settings
+  **Expected:** Snapshot stored with timestamp
+
+- [ ] **Modify app config** (change port or build type)
+  **Expected:** Change visible in app settings
+
+- [ ] **Restore to snapshot**
+  **Expected:** Config reverts to saved values
+
+### 8.9 HTTP Basic Auth
+- [ ] **Enable basic auth for app**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"username":"user","password":"pass","enabled":true}' \
+    $SERVER/api/apps/APP_ID/basic-auth
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **Access app in browser — auth prompt appears**
+  **Expected:** Browser shows HTTP Basic Auth dialog
+
+- [ ] **Correct credentials grant access**
+  ```bash
+  curl -u user:pass http://SERVER_IP:APP_PORT/
+  ```
+  **Expected:** App response
+
+- [ ] **Disable basic auth**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/basic-auth
+  ```
+  **Expected:** `200 OK`, no auth prompt
+
+---
+
+## 9. Deployment Management
+
+### 9.1 View Deployment History
+- [ ] **List deployments with pagination**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    "$SERVER/api/apps/APP_ID/deployments?page=1&per_page=10"
+  ```
+  **Expected:** `{ "items": [...], "total": N, "page": 1, "per_page": 10, "total_pages": M }`
+
+- [ ] **Get single deployment**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/deployments/DEPLOYMENT_ID
+  ```
+  **Expected:** Full deployment object with status, logs reference
+
+### 9.2 Rollback to Previous Deployment
+- [ ] **Trigger rollback**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/deployments/DEPLOYMENT_ID/rollback
+  ```
+  **Expected:** Previous container image started, status switches to `running`
+
+### 9.3 Approval Workflow
+- [ ] **Set app to require deployment approval** — update app with `require_approval: true`
+  **Expected:** Next deploy goes into `pending_approval` state
+
+- [ ] **Trigger a new deploy**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** Deployment created with `status: "pending_approval"`
+
+- [ ] **List pending deployments**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/deployments/pending
+  ```
+  **Expected:** Pending deployment appears
+
+- [ ] **Approve deployment**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/deployments/DEPLOYMENT_ID/approve
+  ```
+  **Expected:** Deployment proceeds to build
+
+- [ ] **Reject deployment**
+  ```bash
+  # Trigger another deploy first, then reject it
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/deployments/DEPLOYMENT_ID/reject
+  ```
+  **Expected:** Deployment status set to `rejected`, no build occurs
+
+### 9.4 Freeze Window
+- [ ] **Create freeze window** (block deploys during a time range)
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Holiday Freeze",
+      "start_time": "2026-12-24T00:00:00Z",
+      "end_time": "2026-12-26T23:59:59Z",
+      "reason": "No deploys during holidays"
+    }' \
+    $SERVER/api/freeze-windows
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Attempt deploy during active freeze window**
+  **Expected:** Deploy blocked with an error indicating freeze window is active
+
+- [ ] **Delete freeze window**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/freeze-windows/WINDOW_ID
+  ```
+  **Expected:** `200 OK`, deploys allowed again
+
+### 9.5 Scheduled Deployment
+- [ ] **Schedule a future deployment**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"scheduled_at":"2026-03-11T02:00:00Z"}' \
+    $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** Deployment created with `scheduled_at` timestamp and `status: "scheduled"`
+
+- [ ] **Verify deployment runs at scheduled time**
+  **Expected:** Shortly after the scheduled time, deployment status changes to `building`
+
+### 9.6 Deployment Retention
+- [ ] **Configure rollback retention count** — set `rollback_retention_count` in app settings (e.g. 5)
+  **Expected:** Only last 5 completed deployments kept, older ones cleaned up
+
+### 9.7 Zero-Downtime Deploy
+- [ ] **Deploy while app is receiving traffic**
+  **Expected:** During deployment, old container continues serving until new one is healthy, then swap occurs; no connection errors observed
+
+### 9.8 Deployment Diff
+- [ ] **View diff between two deployments**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/deployments/DEPLOYMENT_ID/diff
+  ```
+  **Expected:** Response contains changed files or commit range between current and previous deployment
+
+---
+
+## 10. Container Replicas & Auto-scaling
+
+### 10.1 Set Replica Count
+- [ ] **Scale to 3 replicas**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"count":3}' \
+    $SERVER/api/apps/APP_ID/replicas/count
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **List replicas**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/replicas
+  ```
+  **Expected:** 3 replica entries each with `container_id` and `status`
+
+### 10.2 Load Balancing
+- [ ] **Make repeated requests and verify different replicas serve them**
+  ```bash
+  for i in $(seq 1 10); do
+    curl -s http://SERVER_IP:APP_PORT/health
+  done
+  ```
+  **Expected:** Requests distributed across replicas (verify via container logs)
+  ```bash
+  docker logs rivetr-APP_NAME-0 2>&1 | tail -5
+  docker logs rivetr-APP_NAME-1 2>&1 | tail -5
+  docker logs rivetr-APP_NAME-2 2>&1 | tail -5
+  ```
+
+### 10.3 Restart Specific Replica
+- [ ] **Restart replica at index 1**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/replicas/1/restart
+  ```
+  **Expected:** `200 OK`, that replica restarts, others unaffected
+
+### 10.4 Auto-scaling Rule
+- [ ] **Create CPU-based auto-scaling rule**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "metric": "cpu",
+      "threshold": 70,
+      "scale_up_by": 1,
+      "scale_down_by": 1,
+      "min_replicas": 1,
+      "max_replicas": 5,
+      "cooldown_seconds": 120
+    }' \
+    $SERVER/api/apps/APP_ID/autoscaling
+  ```
+  **Expected:** `201 Created` with rule object
+
+- [ ] **List auto-scaling rules**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/autoscaling
+  ```
+  **Expected:** Rule listed
+
+- [ ] **Update rule**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"threshold":80}' \
+    $SERVER/api/apps/APP_ID/autoscaling/RULE_ID
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **Delete rule**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/autoscaling/RULE_ID
+  ```
+  **Expected:** `200 OK`
+
+---
+
+## 11. Container Terminal & Logs
+
+### 11.1 Container Terminal
+- [ ] **Open terminal via dashboard** — navigate to App > Terminal
+  **Expected:** WebSocket connects to `/api/apps/APP_ID/terminal`, shell prompt appears
+
+- [ ] **Run commands in terminal**
+  - `ls /app` — directory listing
+  - `echo $PORT` — environment variable
+  - `cat /etc/os-release` — OS info
+  **Expected:** Each command outputs results in terminal
+
+### 11.2 Live Log Streaming
+- [ ] **View live logs in dashboard** — open App > Logs
+  **Expected:** Logs stream in real-time via SSE at `/api/apps/APP_ID/logs/stream`
+
+- [ ] **Build log streaming during deploy**
+  **Expected:** Browser DevTools > Network shows WS connection to `/api/deployments/ID/logs/stream`, logs appear line-by-line during build
+
+### 11.3 Log Search
+- [ ] **Search logs by keyword**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    "$SERVER/api/apps/APP_ID/logs/search?q=error&limit=50"
+  ```
+  **Expected:** Matching log lines returned
+
+### 11.4 Log Retention Policy
+- [ ] **Set log retention**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"max_lines":10000,"max_age_days":30}' \
+    $SERVER/api/apps/APP_ID/log-retention
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **Get log retention settings**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/log-retention
+  ```
+  **Expected:** Returns the configured policy
+
+---
+
+## 12. Managed Databases
+
+### 12.1 Create PostgreSQL Database
+- [ ] **Create database**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "test-postgres",
+      "db_type": "postgres",
+      "version": "16",
+      "username": "testuser",
+      "password": "testpass123",
+      "database": "testdb",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/databases
+  ```
+  **Expected:** `201 Created`, database container starts
+
+### 12.2 Create MySQL Database
+- [ ] **Create MySQL database**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "test-mysql",
+      "db_type": "mysql",
+      "version": "8.0",
+      "username": "mysqluser",
+      "password": "mysqlpass123",
+      "database": "testdb",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/databases
+  ```
+  **Expected:** `201 Created`, MySQL container starts
+
+### 12.3 Create Redis Database
+- [ ] **Create Redis**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "test-redis",
+      "db_type": "redis",
+      "version": "7",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/databases
+  ```
+  **Expected:** `201 Created`, Redis container starts
+
+### 12.4 View Connection Credentials
+- [ ] **Get database details**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/databases/DB_ID
+  ```
+  **Expected:** Response includes `connection_string`, `host`, `port`, `username`
+
+### 12.5 Connect to Database from Terminal
+- [ ] **Connect via app terminal or SSH to server**
+  ```bash
+  # For PostgreSQL
+  docker exec -it rivetr-test-postgres psql -U testuser -d testdb -c "SELECT 1;"
+  # For Redis
+  docker exec -it rivetr-test-redis redis-cli ping
+  ```
+  **Expected:** Connection successful, query or PONG returned
+
+### 12.6 Database Backup (Manual)
+- [ ] **Create manual backup**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/databases/DB_ID/backups
+  ```
+  **Expected:** `201 Created` with backup object
+
+- [ ] **Download backup**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    -o /tmp/backup.sql \
+    $SERVER/api/databases/DB_ID/backups/BACKUP_ID/download
+  ```
+  **Expected:** File downloaded, non-empty
+
+### 12.7 Backup Schedule
+- [ ] **Create backup schedule**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"cron_expression":"0 2 * * *","retention_count":7}' \
+    $SERVER/api/databases/DB_ID/backups/schedule
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Get backup schedule**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/databases/DB_ID/backups/schedule
+  ```
+  **Expected:** Schedule object returned
+
+### 12.8 Stop / Start Database
+- [ ] **Stop database**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/databases/DB_ID/stop
+  ```
+  **Expected:** `200 OK`, container stopped
+
+- [ ] **Start database**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/databases/DB_ID/start
+  ```
+  **Expected:** `200 OK`, container running
+
+---
+
+## 13. Docker Compose Services
+
+### 13.1 Deploy from Template
+- [ ] **List available templates**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/templates
+  ```
+  **Expected:** Array of template objects (should be 74 templates)
+
+- [ ] **Deploy Grafana template**
+  ```bash
+  # Get the template ID for Grafana
+  TEMPLATE_ID=$(curl -s -H "Authorization: Bearer $TOKEN" $SERVER/api/templates \
+    | python3 -c "import sys,json; t=json.load(sys.stdin); print([x['id'] for x in t if 'grafana' in x['name'].lower()][0])")
+
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"my-grafana","team_id":"TEAM_ID"}' \
+    $SERVER/api/templates/$TEMPLATE_ID/deploy
+  ```
+  **Expected:** Compose service created, containers starting
+
+### 13.2 Create Custom Compose Service
+- [ ] **Create service from custom compose YAML**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "custom-service",
+      "compose_content": "services:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8081:80\"",
+      "team_id": "TEAM_ID"
+    }' \
+    $SERVER/api/services
+  ```
+  **Expected:** `201 Created`, service defined
+
+### 13.3 Start / Stop Compose Service
+- [ ] **Start service**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/services/SERVICE_ID/start
+  ```
+  **Expected:** `200 OK`, all containers in compose up
+
+- [ ] **Stop service**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/services/SERVICE_ID/stop
+  ```
+  **Expected:** `200 OK`, containers stopped
+
+### 13.4 View Compose Logs
+- [ ] **Get logs**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/services/SERVICE_ID/logs
+  ```
+  **Expected:** Log lines from service containers
+
+- [ ] **Stream service logs**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    -N $SERVER/api/services/SERVICE_ID/logs/stream
+  ```
+  **Expected:** SSE stream of live log events
+
+### 13.5 Delete Compose Service
+- [ ] **Delete service**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/services/SERVICE_ID
+  ```
+  **Expected:** `200 OK`, containers and volumes cleaned up
+
+---
+
+## 14. Service Templates
+
+### 14.1 Browse Templates
+- [ ] **Browse all 74 templates**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/templates | python3 -c \
+    "import sys,json; t=json.load(sys.stdin); print(f'Total: {len(t)}')"
+  ```
+  **Expected:** Count should be 74
+
+- [ ] **List categories**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/templates/categories
+  ```
+  **Expected:** Array of category strings
+
+### 14.2 Search Templates
+- [ ] Search in dashboard UI using the search box
+  **Expected:** Filtered results update as you type
+
+### 14.3 Filter by Category
+- [ ] Select a category filter in dashboard UI
+  **Expected:** Only templates in that category shown
+
+### 14.4 Deploy a Template (Plausible Analytics)
+- [ ] Find Plausible template ID and deploy it
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"my-plausible","team_id":"TEAM_ID"}' \
+    $SERVER/api/templates/PLAUSIBLE_TEMPLATE_ID/deploy
+  ```
+  **Expected:** `201 Created`, service containers starting
+
+### 14.5 Suggest a Template
+- [ ] **Submit a template suggestion**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "My Custom App",
+      "description": "A template suggestion for testing",
+      "category": "databases",
+      "docker_compose": "services:\n  app:\n    image: myapp:latest"
+    }' \
+    $SERVER/api/templates/suggest
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **List suggestions (admin)**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/templates/suggestions
+  ```
+  **Expected:** Suggestion listed with `status: "pending"`
+
+---
+
+## 15. Bulk Operations
+
+### 15.1 Bulk Start
+- [ ] **Select multiple apps and start them all**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"app_ids":["APP_ID_1","APP_ID_2"],"action":"start"}' \
+    $SERVER/api/apps/bulk
+  ```
+  **Expected:** All specified apps start
+
+### 15.2 Bulk Stop
+- [ ] **Bulk stop**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"app_ids":["APP_ID_1","APP_ID_2"],"action":"stop"}' \
+    $SERVER/api/apps/bulk
+  ```
+  **Expected:** All specified apps stop
+
+### 15.3 Bulk Restart
+- [ ] **Bulk restart**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"app_ids":["APP_ID_1","APP_ID_2"],"action":"restart"}' \
+    $SERVER/api/apps/bulk
+  ```
+  **Expected:** All specified apps restart
+
+### 15.4 Bulk Deploy
+- [ ] **Bulk deploy**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"app_ids":["APP_ID_1","APP_ID_2"],"action":"deploy"}' \
+    $SERVER/api/apps/bulk
+  ```
+  **Expected:** Deployments queued for all specified apps
+
+---
+
+## 16. S3 & Backups
+
+### 16.1 Configure S3 Storage
+- [ ] **Add S3 config (MinIO or AWS)**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "my-s3",
+      "endpoint": "https://play.min.io",
+      "access_key": "YOUR_ACCESS_KEY",
+      "secret_key": "YOUR_SECRET_KEY",
+      "bucket": "rivetr-backups",
+      "region": "us-east-1"
+    }' \
+    $SERVER/api/s3/configs
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Test S3 config connectivity**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/s3/configs/CONFIG_ID/test
+  ```
+  **Expected:** `200 OK` with success message
+
+### 16.2 Database Backup to S3
+- [ ] **Trigger S3 backup for a database backup**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"s3_config_id":"S3_CONFIG_ID","source":"database","source_id":"DB_ID"}' \
+    $SERVER/api/s3/backup
+  ```
+  **Expected:** `202 Accepted`, backup upload starts
+
+### 16.3 Volume Backup to S3
+- [ ] **Backup volume**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/volumes/VOLUME_ID/backup
+  ```
+  **Expected:** `200 OK` with backup file details
+
+### 16.4 Create Instance Backup
+- [ ] **Create full instance backup**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/system/backup
+  ```
+  **Expected:** Backup file created, response includes file name
+
+- [ ] **List instance backups**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/system/backups
+  ```
+  **Expected:** Array of backup entries with name and size
+
+### 16.5 Upload Instance Backup to S3
+- [ ] **Upload backup to S3**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"s3_config_id":"S3_CONFIG_ID"}' \
+    $SERVER/api/system/backups/BACKUP_NAME/upload-to-s3
+  ```
+  **Expected:** `200 OK`
+
+### 16.6 Create Backup Schedule
+- [ ] **Schedule recurring backups**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Nightly Backup",
+      "cron_expression": "0 3 * * *",
+      "s3_config_id": "S3_CONFIG_ID",
+      "retention_count": 14
+    }' \
+    $SERVER/api/backups/schedules
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **List backup schedules**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/backups/schedules
+  ```
+  **Expected:** Schedule listed
+
+- [ ] **Toggle schedule on/off**
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" $SERVER/api/backups/schedules/SCHEDULE_ID/toggle
+  ```
+  **Expected:** `200 OK`, `enabled` flag toggled
+
+### 16.7 Restore from Backup
+- [ ] **Restore instance from backup**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"backup_name":"BACKUP_NAME"}' \
+    $SERVER/api/system/restore
+  ```
+  **Expected:** `200 OK`
+  **Notes:** Exercise caution on a live server; test on a staging instance
+
+---
+
+## 17. Notifications & Alerts
+
+### 17.1 Configure Slack Notification Channel
+- [ ] **Create Slack channel**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Slack Alerts",
+      "type": "slack",
+      "config": {"webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"}
+    }' \
+    $SERVER/api/notification-channels
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Test Slack channel**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/notification-channels/CHANNEL_ID/test
+  ```
+  **Expected:** `200 OK`, test message appears in Slack
+
+### 17.2 Configure Email Notification
+- [ ] **Create email channel** (requires SMTP configured)
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Email Alerts",
+      "type": "email",
+      "config": {"to": "alerts@example.com"}
+    }' \
+    $SERVER/api/notification-channels
+  ```
+  **Expected:** `201 Created`
+
+### 17.3 Create Alert Rule (CPU Threshold)
+- [ ] **Create CPU alert**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "metric": "cpu",
+      "threshold": 80,
+      "comparison": "gt",
+      "duration_seconds": 60,
+      "notification_channel_id": "CHANNEL_ID"
+    }' \
+    $SERVER/api/apps/APP_ID/alerts
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Create memory alert**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "metric": "memory",
+      "threshold": 90,
+      "comparison": "gt",
+      "duration_seconds": 120,
+      "notification_channel_id": "CHANNEL_ID"
+    }' \
+    $SERVER/api/apps/APP_ID/alerts
+  ```
+  **Expected:** `201 Created`
+
+### 17.4 Trigger Alert
+- [ ] **Stress the container to trigger CPU alert**
+  ```bash
+  # Run stress inside container
+  docker exec rivetr-APP_NAME sh -c "apt-get install -y stress 2>/dev/null; stress --cpu 4 --timeout 90s &"
+  ```
+  **Expected:** Alert fires within configured duration, notification received on channel
+
+- [ ] **Verify alert event logged**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/alert-events
+  ```
+  **Expected:** Alert event entry with timestamp and metric values
+
+### 17.5 Log Drain (Axiom)
+- [ ] **Create Axiom log drain**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Axiom Drain",
+      "type": "axiom",
+      "config": {
+        "dataset": "rivetr-logs",
+        "api_token": "YOUR_AXIOM_TOKEN"
+      }
+    }' \
+    $SERVER/api/apps/APP_ID/log-drains
+  ```
+  **Expected:** `201 Created`
+
+- [ ] **Test log drain**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/log-drains/DRAIN_ID/test
+  ```
+  **Expected:** `200 OK`, test event appears in Axiom dataset
+
+- [ ] **Generate app logs and verify forwarding**
+  **Expected:** Logs appear in Axiom within a few seconds
+
+---
+
+## 18. Multi-Server
+
+### 18.1 Register Remote Server
+- [ ] **Add remote server**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Remote Server 1",
+      "host": "REMOTE_IP",
+      "port": 22,
+      "username": "root",
+      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n..."
+    }' \
+    $SERVER/api/servers
+  ```
+  **Expected:** `201 Created`
+
+### 18.2 Health Check Server
+- [ ] **Check server health (CPU/memory/disk)**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/servers/SERVER_ID/check
+  ```
+  **Expected:** `200 OK` with CPU %, memory %, disk % stats
+
+### 18.3 Remote Server Terminal
+- [ ] **Open SSH terminal in browser** — navigate to Servers > SERVER_NAME > Terminal
+  **Expected:** WebSocket connects to `/api/servers/SERVER_ID/terminal`, remote shell prompt appears
+
+### 18.4 Assign App to Server
+- [ ] **Assign app to remote server**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/servers/SERVER_ID/apps/APP_ID
+  ```
+  **Expected:** `200 OK`
+
+- [ ] **Verify assignment**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/servers/SERVER_ID/apps
+  ```
+  **Expected:** App listed
+
+- [ ] **Unassign app from server**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/servers/SERVER_ID/apps/APP_ID
+  ```
+  **Expected:** `200 OK`
+
+---
+
+## 19. Docker Swarm
+
+### 19.1 Initialize Swarm
+- [ ] **Initialize Docker Swarm on the server**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"advertise_addr":"SERVER_IP"}' \
+    $SERVER/api/swarm/init
+  ```
+  **Expected:** `200 OK` with swarm join token
+
+### 19.2 Check Swarm Status
+- [ ] **Get swarm status**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/swarm/status
+  ```
+  **Expected:** `{ "active": true, "node_id": "...", "role": "manager" }`
+
+- [ ] **List swarm nodes**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/swarm/nodes
+  ```
+  **Expected:** Array with at least one manager node
+
+### 19.3 Create Swarm Service
+- [ ] **Create a service in the swarm**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "swarm-nginx",
+      "image": "nginx:alpine",
+      "replicas": 1,
+      "port": 8082
+    }' \
+    $SERVER/api/swarm/services
+  ```
+  **Expected:** `201 Created`
+
+### 19.4 Scale Swarm Service
+- [ ] **Scale to 3 replicas**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"replicas":3}' \
+    $SERVER/api/swarm/services/SERVICE_ID/scale
+  ```
+  **Expected:** `200 OK`
+
+### 19.5 Remove Swarm Service
+- [ ] **Delete service**
+  ```bash
+  curl -X DELETE -H "Authorization: Bearer $TOKEN" $SERVER/api/swarm/services/SERVICE_ID
+  ```
+  **Expected:** `200 OK`
+
+### 19.6 Leave Swarm
+- [ ] **Leave swarm (and disable Swarm mode)**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"force":true}' \
+    $SERVER/api/swarm/leave
+  ```
+  **Expected:** `200 OK`
+
+---
+
+## 20. Build Servers
+
+### 20.1 Register Build Server
+- [ ] **Add a build server**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "Build Server 1",
+      "host": "BUILD_SERVER_IP",
+      "port": 22,
+      "username": "root",
+      "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
+      "max_concurrent_builds": 4
+    }' \
+    $SERVER/api/build-servers
+  ```
+  **Expected:** `201 Created`
+
+### 20.2 Health Check Build Server
+- [ ] **Check build server health**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/build-servers/BUILD_SERVER_ID/check
+  ```
+  **Expected:** `200 OK` with status and capacity info
+
+### 20.3 View Active Builds
+- [ ] **List build servers and their current load**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/build-servers
+  ```
+  **Expected:** Build server listed, shows concurrent build count
+
+---
+
+## 21. Scheduled Jobs
+
+### 21.1 Create Cron Job
+- [ ] **Create a scheduled job**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "hourly-hello",
+      "command": "echo hello from cron",
+      "schedule": "0 * * * *",
+      "enabled": true
+    }' \
+    $SERVER/api/apps/APP_ID/jobs
+  ```
+  **Expected:** `201 Created` with job object
+
+- [ ] **Manually trigger job run**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/jobs/JOB_ID/run
+  ```
+  **Expected:** `200 OK`, job run queued immediately
+
+### 21.2 View Job Execution History
+- [ ] **List job runs**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    $SERVER/api/apps/APP_ID/jobs/JOB_ID/runs
+  ```
+  **Expected:** Array of run records with `status`, `started_at`, `finished_at`, `output`
+
+### 21.3 Verify Job Runs on Schedule
+- [ ] Set schedule to `* * * * *` (every minute), wait 2 minutes
+  ```bash
+  curl -X PUT -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"schedule":"* * * * *"}' \
+    $SERVER/api/apps/APP_ID/jobs/JOB_ID
+  # Wait ~2 minutes, then:
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/apps/APP_ID/jobs/JOB_ID/runs
+  ```
+  **Expected:** At least one successful run recorded after the minute mark
+
+---
+
+## 22. System
+
+### 22.1 System Stats
+- [ ] **Current stats**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/system/stats
+  ```
+  **Expected:** JSON with `cpu_percent`, `memory_used`, `memory_total`, `uptime`
+
+- [ ] **Stats history (last 24 hours)**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" "$SERVER/api/system/stats/history?hours=24"
+  ```
+  **Expected:** Array of timestamped stat snapshots
+
+- [ ] **Disk stats**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/system/disk
+  ```
+  **Expected:** JSON with `total`, `used`, `available` in bytes
+
+### 22.2 System Health
+- [ ] **Detailed health check**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/system/health
+  ```
+  **Expected:** All checks pass: `database`, `runtime`, `disk`
+
+### 22.3 Prometheus Metrics
+- [ ] **Metrics endpoint**
+  ```bash
+  curl $SERVER/metrics
+  ```
+  **Expected:** Prometheus format text with `rivetr_` prefixed metrics, HTTP request counts
+
+### 22.4 Webhook Events Log
+- [ ] **View webhook events**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/webhook-events
+  ```
+  **Expected:** Array of recent webhook events with source, payload hash, and timestamp
+
+### 22.5 Auto-Update Settings
+- [ ] **Check current version**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/system/version
+  ```
+  **Expected:** JSON with `current_version`, `latest_version`, `update_available`
+
+- [ ] **Check for updates**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" $SERVER/api/system/update/check
+  ```
+  **Expected:** `200 OK` with version comparison result
+
+### 22.6 System Backup and Restore
+- [ ] Create instance backup (see Section 16.4)
+- [ ] Download backup
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" \
+    -o /tmp/rivetr-backup.tar.gz \
+    $SERVER/api/system/backups/BACKUP_NAME/download
+  ```
+  **Expected:** Archive downloaded, non-empty
+- [ ] Restore from backup (see Section 16.7)
+
+### 22.7 Audit Log (Global)
+- [ ] **List all audit log entries**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/audit
+  ```
+  **Expected:** Array of audit events across all resources
+
+- [ ] **List available action types**
+  ```bash
+  curl -H "Authorization: Bearer $TOKEN" $SERVER/api/audit/actions
+  ```
+  **Expected:** Array of action type strings
+
+---
+
+## 23. Security
+
+### 23.1 Rate Limiting
+- [ ] **Auth endpoint rate limit (20 req/min)**
+  ```bash
+  for i in $(seq 1 25); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+      -H "Content-Type: application/json" \
+      -d '{"email":"x","password":"y"}' \
+      $SERVER/api/auth/login)
+    echo "Request $i: $STATUS"
+  done
+  ```
+  **Expected:** Requests 1–20 return `401`, request 21+ return `429 Too Many Requests`
+
+- [ ] **API endpoint rate limit**
+  ```bash
+  for i in $(seq 1 200); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      -H "Authorization: Bearer $TOKEN" $SERVER/api/apps)
+    [ "$STATUS" = "429" ] && echo "429 hit at request $i" && break
+  done
+  ```
+  **Expected:** `429` returned when API rate limit exceeded
+
+### 23.2 Invalid Token Returns 401
+- [ ] **Verify any malformed or expired token is rejected**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer thisisnotavalidtoken" \
+    $SERVER/api/apps
+  ```
+  **Expected:** `401`
+
+### 23.3 Role-Based Access Control
+- [ ] **Viewer role cannot trigger deploy**
+  ```bash
+  # Use token of a viewer-role user
+  curl -s -o /dev/null -w "%{http_code}" -X POST \
+    -H "Authorization: Bearer $VIEWER_TOKEN" \
+    $SERVER/api/apps/APP_ID/deploy
+  ```
+  **Expected:** `403 Forbidden`
+
+- [ ] **Developer role cannot manage team members**
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}" -X POST \
+    -H "Authorization: Bearer $DEVELOPER_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"someone@example.com","role":"developer"}' \
+    $SERVER/api/teams/TEAM_ID/invitations
+  ```
+  **Expected:** `403 Forbidden`
+
+### 23.4 2FA Blocks Login Without TOTP
+- [ ] Enable 2FA on an account (see Section 2.5)
+- [ ] Log out, then attempt login with correct email/password but no TOTP
+  ```bash
+  RESULT=$(curl -s -X POST -H "Content-Type: application/json" \
+    -d '{"email":"admin@example.com","password":"YourPassword"}' \
+    $SERVER/api/auth/login)
+  echo $RESULT
+  ```
+  **Expected:** Response contains `"requires_2fa": true` and a temporary token, NOT a full session token
+
+- [ ] **Completing 2FA unlocks the session**
+  ```bash
+  curl -X POST -H "Content-Type: application/json" \
+    -d '{"temp_token":"TEMP_TOKEN_FROM_LOGIN","code":"123456"}' \
+    $SERVER/api/auth/2fa/validate
+  ```
+  **Expected:** `200 OK` with full session token
+
+### 23.5 Security Headers
+- [ ] **Verify security headers on responses**
+  ```bash
+  curl -I $SERVER/health
+  ```
+  **Expected:** Response includes:
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `X-XSS-Protection: 1; mode=block`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+
+---
+
+## Appendix: Quick Troubleshooting
 
 ### Service won't start
 ```bash
-journalctl -u rivetr -f  # View logs
-systemctl status rivetr  # Check status
+journalctl -u rivetr -f
+systemctl status rivetr
 ```
 
 ### Container issues
 ```bash
-docker ps -a                    # List all containers
-docker logs <container_id>      # View container logs
-docker inspect <container_id>   # Detailed info
+docker ps -a
+docker logs rivetr-APP_NAME 2>&1 | tail -50
+docker inspect rivetr-APP_NAME
 ```
 
 ### Database issues
 ```bash
-sqlite3 /var/lib/rivetr/rivetr.db "SELECT * FROM apps;"
+sqlite3 /var/lib/rivetr/rivetr.db ".tables"
+sqlite3 /var/lib/rivetr/rivetr.db "SELECT name, status FROM apps;"
 ```
 
 ### Network issues
 ```bash
-ss -tlnp | grep -E "(80|443|8080)"  # Check ports
-curl -v localhost:8080              # Test API
+ss -tlnp | grep -E "(80|443|8080)"
+curl -v localhost:8080/health
 ```
+
+### Reset token from config
+```bash
+TOKEN=$(grep admin_token /opt/rivetr/rivetr.toml | cut -d'"' -f2)
+echo $TOKEN
+```
+
+### Known fixed issues (from v0.2.x testing)
+| Issue | Fixed In |
+|-------|----------|
+| `byte index 8 is out of bounds` panic in teams.rs when user.id short | v0.2.13 |
+| Stats history chart 401 — wrong localStorage key | v0.2.12 |
+| Container monitor: `no column found for name: team_id` | v0.2.14 |
+| Notification channels: CHECK constraint missing 'webhook' type | v0.2.14 |
+| Auto-update page missing route registration | v0.2.13 |
+| Migration 038 needs `PRAGMA foreign_keys=OFF` for table recreation | v0.2.14 |

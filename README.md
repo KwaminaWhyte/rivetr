@@ -1,154 +1,259 @@
 # Rivetr
 
-A fast, lightweight deployment engine built in Rust.
+Deploy applications from Git with a single binary — ~30MB RAM idle, no external dependencies.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Build](https://img.shields.io/github/actions/workflow/status/KwaminaWhyte/rivetr/ci.yml?branch=main)](https://github.com/KwaminaWhyte/rivetr/actions)
 
 ## What is Rivetr?
 
-Rivetr is a **single-binary PaaS** that lets you deploy applications from Git with minimal resource usage. Think Coolify, but using 30MB RAM instead of 800MB.
+Rivetr is a self-hosted PaaS (Platform as a Service) that deploys applications from Git with minimal resource usage. It ships as a single binary with an embedded SQLite database, an embedded reverse proxy with automatic HTTPS, and a full-featured React dashboard — no Redis, no PostgreSQL, no Traefik required.
 
-### Features
+It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gitea, and Bitbucket, and provides zero-downtime deployments with health checks and automatic rollback.
 
-- **Single Binary** - No external databases, no Redis, no separate proxy
-- **Git Webhooks** - Deploy on push from GitHub, GitLab, or Gitea
-- **Multiple Build Types** - Dockerfile, Nixpacks, Railpack, Heroku/Paketo buildpacks, static sites
-- **Embedded Proxy** - Automatic HTTPS with Let's Encrypt
-- **Hybrid Runtime** - Works with Docker or Podman
-- **Managed Databases** - One-click PostgreSQL, MySQL, MongoDB, Redis
-- **Docker Compose** - Deploy multi-container apps from compose files
-- **26 Service Templates** - Grafana, Portainer, Uptime Kuma, Gitea, n8n, and more
-- **Web Dashboard** - Modern React SSR dashboard with real-time updates
-- **Real-time Logs** - Stream build and runtime logs via WebSocket
-- **Team Management** - RBAC with owner/admin/developer/viewer roles
+## Why Rivetr?
 
-### Resource Comparison
+| | Rivetr | Coolify | Dokploy |
+|---|---|---|---|
+| **RAM idle** | ~30–80 MB | 400–800 MB | ~300 MB |
+| **External dependencies** | None | PostgreSQL, Redis, Traefik | PostgreSQL |
+| **Single binary** | Yes | No | No |
+| **Container runtimes** | Docker + Podman | Docker | Docker |
+| **Git providers** | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Bitbucket |
+| **Preview deployments** | Yes | Yes | No |
+| **MCP server** | Yes | No | No |
+| **License** | MIT | Apache 2.0 | MIT |
 
-| System     | RAM (Idle)  | Dependencies               |
-| ---------- | ----------- | -------------------------- |
-| Coolify    | 400-800MB   | PostgreSQL, Redis, Traefik |
-| **Rivetr** | **30-80MB** | Docker or Podman           |
+## Features
+
+### Core Deployment
+
+- Git deployments from GitHub, GitLab, Gitea, and Bitbucket with webhook signature verification
+- Build types: Dockerfile, Nixpacks, Railpack, Heroku/Paketo buildpacks, static sites
+- Docker and Podman runtime with automatic detection
+- Zero-downtime deployments: clone → build → start → health check → atomic proxy switch
+- Automatic rollback on health check failure
+- Preview deployments for pull requests (unique subdomain per PR, auto-cleaned on close/merge)
+- Deploy by specific commit SHA or git tag
+- Container replicas with round-robin load balancing
+- ZIP file upload as an alternative to Git
+
+### Platform Services
+
+- Managed databases: PostgreSQL, MySQL, MongoDB, Redis (one-click provisioning)
+- Docker Compose multi-container deployments
+- 74 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
+- Scheduled jobs: cron-based command execution inside running containers
+
+### Team Collaboration
+
+- Multi-tenant with full resource isolation between teams
+- RBAC: owner / admin / developer / viewer roles
+- Team invitations via email with 7-day expiry
+- Audit logging for all team operations
+- App sharing between teams
+- Per-team 2FA enforcement
+
+### Security and Authentication
+
+- Automatic HTTPS with Let's Encrypt and auto-renewal
+- OAuth login: GitHub, Google
+- SSO/OIDC: Auth0, Keycloak, Azure AD, Okta
+- TOTP-based 2FA with recovery codes
+- AES-256-GCM encryption for secrets and SSH keys at rest
+- Rate limiting on API, webhook, and auth endpoints
+- Strict input validation and security headers
+
+### CI/CD
+
+- Deployment approval workflow: require sign-off before a deploy goes live
+- Deployment freeze windows: block deployments during maintenance periods
+- Scheduled deployments: trigger a deploy at a specific date and time
+- DockerHub webhook: auto-deploy when a new image is pushed
+- Watch paths: only trigger a deploy when specific file paths change in a push
+
+### Operations and Monitoring
+
+- Real-time log streaming via WebSocket and SSE
+- Full-text log search with configurable per-app retention policies
+- Uptime tracking and response time monitoring via health check latency
+- Container crash recovery with exponential backoff and configurable restart limits
+- Scheduled container restarts (cron-based)
+- Prometheus `/metrics` endpoint for external monitoring
+- Webhook audit log
+
+### Developer Experience
+
+- Modern React + TypeScript dashboard using shadcn/ui components
+- Browser-based terminal for running containers and remote servers (SSH)
+- Environment variables with AES-256-GCM encrypted storage
+- Shared env vars with inheritance: team → project → environment → app
+- Service dependency graph
+- Config snapshots: save and restore full app configuration
+- Export and import projects as JSON
+- MCP server for AI assistant integration (Claude, Copilot, etc.)
+
+### Backup and Storage
+
+- S3-compatible backup destinations: AWS S3, MinIO, Cloudflare R2, or any custom endpoint
+- Volume and database backup to S3
+- Scheduled backups with retention policies
+- Full instance backup: SQLite database + config + SSL certificates as a single archive
+
+### Multi-Server and Scale
+
+- Multi-server support: register and deploy to remote servers via SSH
+- Remote server browser-based terminal
+- Docker Swarm: init swarm, manage nodes, scale services
+- Build servers: offload builds to dedicated remote nodes
+- Container registry push after build
+- Log draining: Axiom, New Relic, Datadog, Logtail, or any HTTP endpoint
 
 ## Quick Start
 
-### Production Install (Recommended)
-
-The one-liner install script sets up everything you need on a fresh Linux server:
+### One-Line Install (Production)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
 ```
 
-**What the install script does:**
+The install script:
+1. Installs Docker if not already present (Ubuntu, Debian, Fedora, CentOS, RHEL)
+2. Downloads and installs the Rivetr binary from GitHub Releases
+3. Installs build tools: Git, Nixpacks, Railpack, Pack CLI
+4. Creates a `rivetr` system user with Docker access
+5. Writes a config file at `/opt/rivetr/rivetr.toml` with a generated admin token
+6. Registers a systemd service with auto-restart
+7. Opens firewall ports 80, 443, and 8080
 
-1. **Installs Docker** - If not already present (supports Ubuntu, Debian, Fedora, CentOS, RHEL)
-2. **Installs Build Tools** - Git, Nixpacks, Railpack (optional), Pack CLI for buildpacks
-3. **Creates Service User** - `rivetr` user with Docker access
-4. **Downloads Binary** - From GitHub releases (or builds from source as fallback)
-5. **Creates Configuration** - `/opt/rivetr/rivetr.toml` with secure admin token
-6. **Sets Up Systemd Service** - Auto-start on boot, auto-restart on crash
-7. **Configures Firewall** - Opens ports 80, 443, and 8080
-
-**After installation:**
+After installation:
 
 ```
-Web Dashboard:  http://your-server-ip:8080
-Config File:    /opt/rivetr/rivetr.toml
-Data Directory: /var/lib/rivetr
-Service Logs:   sudo journalctl -u rivetr -f
+Dashboard:      http://your-server-ip:8080
+Config:         /opt/rivetr/rivetr.toml
+Data:           /var/lib/rivetr
+Logs:           sudo journalctl -u rivetr -f
 ```
 
-**Environment Variables:**
+Create your admin account on the first visit to the dashboard.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RIVETR_VERSION` | `v0.2.6` | Version to install (or `latest`) |
-| `INSTALL_DIR` | `/opt/rivetr` | Binary installation directory |
-| `DATA_DIR` | `/var/lib/rivetr` | Data storage directory |
+**Install a specific version:**
 
-Example with custom version:
 ```bash
-RIVETR_VERSION=latest curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
 ```
 
 ### Service Management
 
 ```bash
-# Check status
 sudo systemctl status rivetr
-
-# Start/stop/restart
-sudo systemctl start rivetr
-sudo systemctl stop rivetr
 sudo systemctl restart rivetr
-
-# View logs
 sudo journalctl -u rivetr -f
-
-# View last 100 lines
-sudo journalctl -u rivetr -n 100
 ```
 
 ### Development Setup
 
-**Linux/macOS:**
+**Prerequisites:** Rust 1.75+, Node.js 20+, Docker or Podman
 
 ```bash
 git clone https://github.com/KwaminaWhyte/rivetr.git
 cd rivetr
-chmod +x scripts/setup.sh
-./scripts/setup.sh
+
+# Run the backend (auto-reloads on file changes)
+cargo install cargo-watch   # once
+cargo watch -x "run -- --config rivetr.example.toml"
+
+# Run the frontend dev server (separate terminal)
+cd frontend
+npm install
+npm run dev
 ```
 
-**Windows (PowerShell):**
+The backend listens on `http://localhost:8080`. The frontend dev server proxies API calls to it.
 
-```powershell
-git clone https://github.com/KwaminaWhyte/rivetr.git
-cd rivetr
-.\scripts\setup.ps1
-```
-
-**Manual Build:**
+**Manual build:**
 
 ```bash
-git clone https://github.com/KwaminaWhyte/rivetr.git
-cd rivetr
 cargo build --release
-./target/release/rivetr --config rivetr.toml
+./target/release/rivetr --config rivetr.example.toml
 ```
-
-On first visit to `http://localhost:8080`, you'll be prompted to create your admin account.
 
 ## Configuration
 
-Create `rivetr.toml`:
+### `rivetr.toml` — Server Configuration
 
 ```toml
 [server]
 host = "0.0.0.0"
 api_port = 8080
 proxy_port = 80
+proxy_https_port = 443
+data_dir = "/var/lib/rivetr"
+# Required for GitHub App callbacks when behind a tunnel (ngrok, etc.)
+# external_url = "https://your-tunnel.example.com"
 
 [auth]
-admin_token = "your-secret-token"
+admin_token = "change-me-in-production"
+# AES-256-GCM key for encrypting env vars at rest (optional, recommended)
+# encryption_key = "your-32-char-minimum-key-here"
 
 [runtime]
-type = "auto"  # "docker", "podman", or "auto"
+runtime_type = "auto"   # "docker", "podman", or "auto"
+build_cpu_limit = "2"
+build_memory_limit = "2g"
+
+[proxy]
+acme_enabled = true
+acme_email = "admin@example.com"
+acme_staging = false    # set true for testing (avoids Let's Encrypt rate limits)
+acme_cache_dir = "./data/acme"
+# base_domain = "apps.example.com"  # enables *.apps.example.com subdomains
+sslip_enabled = true    # auto-generates sslip.io domains per app
+
+[logging]
+level = "info"   # trace | debug | info | warn | error
+
+[webhooks]
+# github_secret = "your-hmac-secret"
+# gitlab_token  = "your-token"
+# gitea_secret  = "your-hmac-secret"
+
+[rate_limit]
+enabled = true
+api_requests_per_window = 100
+webhook_requests_per_window = 500
+auth_requests_per_window = 20
+window_seconds = 60
+
+[cleanup]
+enabled = true
+max_deployments_per_app = 10
+cleanup_interval_seconds = 3600
+prune_images = true
+
+[container_monitor]
+enabled = true
+check_interval_secs = 30
+max_restart_attempts = 5
+initial_backoff_secs = 5
+max_backoff_secs = 300
+stable_duration_secs = 120
+
+[email]
+# enabled = true
+# smtp_host = "smtp.example.com"
+# smtp_port = 587
+# smtp_username = "apikey"
+# smtp_password = "your-smtp-password"
+# from_address = "noreply@example.com"
 ```
 
-## Usage
+See [`rivetr.example.toml`](rivetr.example.toml) for the full reference with all options documented.
 
-### Deploy an App
+### `deploy.toml` — Per-App Configuration
 
-1. Open the dashboard at `http://your-server:8080`
-2. Add your Git repository URL
-3. Configure your domain
-4. Push to deploy
-
-### Per-App Configuration
-
-Add `deploy.toml` to your repository root:
+Place this file in your repository root:
 
 ```toml
 app = "my-api"
@@ -159,115 +264,93 @@ dockerfile = "./Dockerfile"
 
 [deploy]
 healthcheck = "/health"
+healthcheck_timeout = 30
 
 [resources]
 memory = "256mb"
+cpu = "0.5"
 ```
-
-## Requirements
-
-- **OS**: Windows 10+, Linux (x86_64 or aarch64), macOS
-- **Runtime**: Docker Engine 24+ OR Podman 4+
-- **Build**: Rust 1.75+, Git
-- **Ports**: 80 (proxy), 8080 (API/dashboard)
 
 ## Project Structure
 
 ```
 rivetr/
 ├── src/
-│   ├── main.rs          # Entry point
-│   ├── api/             # REST API routes (Axum)
-│   ├── config/          # Configuration (TOML)
-│   ├── db/              # SQLite database + models
-│   ├── engine/          # Deployment pipeline + builders
-│   ├── proxy/           # Reverse proxy + TLS/ACME
-│   ├── runtime/         # Container abstraction (Docker/Podman)
-│   └── startup/         # Self-checks and initialization
-├── frontend/            # React Router v7 + Vite + shadcn/ui
-├── .claude/
-│   ├── agents/          # Claude Code sub-agents
-│   └── skills/          # Claude Code skills
-├── scripts/             # Setup scripts (setup.sh, setup.ps1)
-├── migrations/          # SQLite migrations
-└── plan/                # Development roadmap
+│   ├── main.rs              # Entry point and CLI
+│   ├── lib.rs               # AppState and shared state
+│   ├── api/                 # Axum REST API routes
+│   │   ├── apps/            # App CRUD, control, sharing, ZIP upload
+│   │   ├── deployments/     # Deployment handlers, rollback, approval, freeze
+│   │   ├── webhooks/        # GitHub, GitLab, Gitea, Bitbucket handlers
+│   │   ├── teams/           # Team CRUD, members, invitations, audit
+│   │   ├── git_providers/   # OAuth connections to git providers
+│   │   ├── services/        # Docker Compose and service templates
+│   │   ├── system/          # Health, backup, auto-update
+│   │   └── validation/      # Request validation layer
+│   ├── engine/              # Deployment pipeline
+│   │   ├── pipeline/        # Clone → build → start → rollback
+│   │   ├── container_monitor/ # Crash detection and recovery
+│   │   └── scheduler.rs     # Cron-based job scheduler
+│   ├── runtime/             # Container runtime abstraction
+│   │   ├── docker/          # Bollard-based Docker implementation
+│   │   └── podman.rs        # Podman CLI wrapper
+│   ├── proxy/               # Embedded reverse proxy
+│   │   ├── router.rs        # ArcSwap-based route table
+│   │   └── tls.rs           # ACME/Let's Encrypt
+│   ├── db/                  # SQLite database layer
+│   │   ├── models.rs        # All data models
+│   │   └── seeders/         # 74 service template definitions
+│   ├── backup/              # S3-compatible backup
+│   ├── logging/             # Log draining (Axiom, New Relic, Datadog, HTTP)
+│   ├── monitoring/          # Uptime, metrics, Prometheus exporter
+│   ├── notifications/       # Alert channels (Slack, Discord, email, Telegram, etc.)
+│   ├── mcp/                 # MCP server for AI assistant integration
+│   ├── crypto/              # AES-256-GCM encryption utilities
+│   ├── cli/                 # CLI subcommands (backup, restore, server)
+│   ├── config/              # Configuration parsing (TOML)
+│   ├── startup/             # Self-checks and initialization
+│   └── utils/               # Git operations and shared helpers
+├── frontend/                # React + TypeScript dashboard
+│   └── app/
+│       ├── routes/          # Page-level route components
+│       ├── components/      # Reusable UI components (shadcn/ui)
+│       ├── types/           # TypeScript type definitions
+│       └── lib/             # API client and utilities
+├── migrations/              # SQLite schema migrations
+├── static/dist/             # Built frontend assets (served by Rivetr)
+├── docs/                    # Architecture and reference documentation
+├── scripts/ralph/           # Ralph autonomous agent loop
+├── .claude/                 # Claude Code agents and skills
+├── live-testing/            # Manual testing guides
+├── rivetr.example.toml      # Annotated configuration reference
+└── install.sh               # Production install script
 ```
+
+## Requirements
+
+- **OS**: Linux (x86_64 or aarch64) for production; macOS and Windows for development
+- **Runtime**: Docker Engine 24+ or Podman 4+
+- **Ports**: 80 (HTTP proxy), 443 (HTTPS proxy), 8080 (API and dashboard)
+- **Build from source**: Rust 1.75+, Node.js 20+
 
 ## Contributing
 
-Contributions are welcome! Please read the development plan in `plan/` to understand the architecture.
-
-```bash
-# Run in development
-cargo run -- --config rivetr.example.toml
-
-# Run tests
-cargo test
-
-# Check formatting
-cargo fmt --check
-cargo clippy
-```
-
-## Troubleshooting
-
-### Port 80 Permission Denied
-
-If you see `Proxy server error error=Permission denied (os error 13)` in the logs, the service doesn't have permission to bind to port 80. The install script handles this automatically, but if you're running manually:
-
-```bash
-# Option 1: Use setcap (recommended)
-sudo setcap 'cap_net_bind_service=+ep' /opt/rivetr/rivetr
-
-# Option 2: Run as root (not recommended)
-sudo ./rivetr --config rivetr.toml
-```
-
-### Service Won't Start
-
-Check the logs for details:
-```bash
-sudo journalctl -u rivetr -n 50 --no-pager
-```
-
-Common issues:
-- **Missing Docker**: Ensure Docker is installed and running (`systemctl status docker`)
-- **Port in use**: Check if ports 80 or 8080 are already in use (`ss -tlnp | grep -E ':(80|8080)'`)
-- **Config error**: Validate your config file (`/opt/rivetr/rivetr --config /opt/rivetr/rivetr.toml config check`)
-
-### Reinstalling
-
-To completely remove and reinstall:
-```bash
-sudo systemctl stop rivetr
-sudo rm -rf /opt/rivetr /var/lib/rivetr /etc/systemd/system/rivetr.service
-sudo userdel rivetr
-sudo systemctl daemon-reload
-
-# Then run the install script again
-curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-```
-
-### Updating
-
-To update to a newer version:
-```bash
-sudo systemctl stop rivetr
-RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-```
-
-The install script preserves your existing configuration.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and the PR checklist.
 
 ## Documentation
 
-- [ROADMAP.md](ROADMAP.md) - Development roadmap and planned features
-- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
-- [plan/TASKS.md](plan/TASKS.md) - Detailed task tracking
+| Document | Description |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code style, PR process |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production install, configuration, backup, troubleshooting |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
+| [ROADMAP.md](ROADMAP.md) | Planned features and future direction |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and component breakdown |
+| [docs/TECH_STACK.md](docs/TECH_STACK.md) | Technology choices and crate selection |
+| [docs/REFACTORING.md](docs/REFACTORING.md) | Code organization and module splitting guide |
+| [docs/RALPH_GUIDE.md](docs/RALPH_GUIDE.md) | Ralph autonomous agent loop for feature development |
+| [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-Inspired by [Coolify](https://coolify.io/), built for developers who want simplicity and efficiency.
+MIT — see [LICENSE](LICENSE) for details.

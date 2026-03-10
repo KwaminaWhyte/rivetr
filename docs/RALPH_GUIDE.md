@@ -1,6 +1,8 @@
 # Ralph Guide - Autonomous AI Development for Rivetr
 
-Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all tasks in a Product Requirements Document (PRD) are complete. This guide explains how to use Ralph for developing features in Rivetr.
+Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all tasks in a Product Requirements Document (PRD) are complete. This guide explains how to use Ralph for developing new features in Rivetr.
+
+> **Note for contributors**: Ralph was used heavily during Rivetr's initial development sprints (Phases 1–7) and is now the recommended workflow for implementing significant new features or multi-task improvements going forward. If you are picking up a well-scoped issue, a direct PR is fine. For larger features that span multiple files and subsystems, the Ralph workflow helps maintain quality and progress tracking across multiple Claude Code sessions.
 
 ## Table of Contents
 

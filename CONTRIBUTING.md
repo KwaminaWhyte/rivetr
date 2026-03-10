@@ -1,38 +1,48 @@
 # Contributing to Rivetr
 
-Thank you for your interest in contributing to Rivetr! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Rivetr. This document covers prerequisites, development setup, code organization, and the PR process.
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+| Tool | Version | Notes |
+|---|---|---|
+| [Rust](https://rustup.rs/) | 1.75+ | Install via rustup |
+| [Node.js](https://nodejs.org/) | 20+ | For frontend development |
+| Docker or Podman | Docker 24+ / Podman 4+ | Required for testing deployments |
+| Git | Any recent version | |
 
-- **Rust 1.75+** - [Install Rust](https://rustup.rs/)
-- **Git** - For version control
-- **Docker or Podman** - Container runtime for testing deployments
-- **Node.js 18+** - For frontend development
-
-### Development Setup
+Optional but recommended:
 
 ```bash
-# Clone the repository
-git clone https://github.com/Kwaminawhyte/rivetr.git
-cd rivetr
-
-# Build the project
-cargo build
-
-# Run in development mode
-cargo run -- --config rivetr.example.toml
-
-# Run tests
-cargo test
-
-# Check code formatting and linting
-cargo fmt --check
-cargo clippy
+cargo install cargo-watch   # auto-reload backend on file changes
 ```
 
-### Frontend Development
+## Development Setup
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/KwaminaWhyte/rivetr.git
+cd rivetr
+cp rivetr.example.toml rivetr.local.toml
+# Edit rivetr.local.toml if needed (defaults work for local dev)
+```
+
+### 2. Run the backend
+
+```bash
+# With auto-reload (recommended)
+cargo watch -x "run -- --config rivetr.local.toml"
+
+# Without auto-reload
+cargo run -- --config rivetr.local.toml
+```
+
+The API and dashboard are served on `http://localhost:8080`.
+
+### 3. Run the frontend dev server
+
+Open a second terminal:
 
 ```bash
 cd frontend
@@ -40,162 +50,168 @@ npm install
 npm run dev
 ```
 
-## Development Workflow
+The Vite dev server runs on `http://localhost:5173` and proxies all `/api/` requests to the backend on port 8080. During development, use the Vite URL to get hot-module reload; the backend URL works too but does not hot-reload React.
 
-### Branch Naming
+### 4. Quality checks
 
-Use descriptive branch names:
-- `feat/feature-name` - New features
-- `fix/bug-description` - Bug fixes
-- `refactor/what-changed` - Code refactoring
-- `docs/what-documented` - Documentation updates
-
-### Commit Messages
-
-Follow conventional commit format:
-```
-type: short description
-
-Optional longer description explaining the change.
-
-Co-Authored-By: Your Name <your.email@example.com>
-```
-
-Types:
-- `feat` - New feature
-- `fix` - Bug fix
-- `refactor` - Code refactoring
-- `docs` - Documentation changes
-- `test` - Adding or updating tests
-- `chore` - Maintenance tasks
-
-### Pull Request Process
-
-1. Create a feature branch from `main`
-2. Make your changes with clear, focused commits
-3. Ensure all tests pass: `cargo test`
-4. Ensure code is formatted: `cargo fmt`
-5. Ensure no clippy warnings: `cargo clippy`
-6. Update documentation if needed
-7. Submit a pull request with a clear description
-
-## Code Style
-
-### Rust
-
-- Follow the [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- Use `cargo fmt` for formatting
-- Address all `cargo clippy` warnings
-- Write doc comments for public APIs
-- Prefer explicit error handling over `.unwrap()`
-- Use async/await patterns consistent with the codebase
-
-### TypeScript/React (Frontend)
-
-- Use TypeScript for all new code
-- Follow existing component patterns in `frontend/src/`
-- Use shadcn/ui components when possible
-- Keep components small and focused
-
-## Architecture Overview
-
-Understanding the codebase structure helps you contribute effectively:
-
-```
-src/
-├── api/          # REST API routes (Axum)
-├── config/       # Configuration handling
-├── db/           # SQLite database + models
-├── engine/       # Deployment pipeline
-├── proxy/        # Reverse proxy
-├── runtime/      # Container abstraction (Docker/Podman)
-└── startup/      # Initialization
-frontend/         # React + Vite dashboard
-```
-
-Key patterns:
-- **Container Runtime Trait** - See `src/runtime/mod.rs` for the abstraction
-- **Deployment Pipeline** - Jobs flow through `src/engine/`
-- **State Management** - `AppState` in `src/lib.rs` holds shared state
-
-## Testing
-
-### Running Tests
+Before committing, run:
 
 ```bash
-# Run all tests
-cargo test
-
-# Run specific test
-cargo test test_name
-
-# Run tests with output
-cargo test -- --nocapture
-
-# Frontend tests
-cd frontend && npm test
+cargo fmt --check     # formatting
+cargo clippy          # linting (no new warnings allowed)
+cargo test            # tests
 ```
 
-### Writing Tests
+For frontend:
 
-- Add unit tests near the code they test
-- Integration tests go in `tests/`
-- Test both success and error cases
-- Mock external dependencies (Docker/Podman) where appropriate
+```bash
+cd frontend
+npm run lint
+npm run build         # ensure production build compiles
+```
 
-## Using Claude Code
+## Code Organization
 
-This project includes Claude Code configuration for AI-assisted development.
+The backend follows a **subdirectory module pattern** documented in [`docs/REFACTORING.md`](docs/REFACTORING.md). Any file that grows beyond ~1000 lines is split into a subdirectory:
 
-### Sub-Agents
+```
+src/api/apps.rs   →   src/api/apps/
+                          ├── mod.rs     (route registration, re-exports)
+                          ├── crud.rs    (list, get, create, update, delete)
+                          ├── control.rs (start, stop, restart)
+                          └── upload.rs  (ZIP upload deploy flow)
+```
 
-Available in `.claude/agents/`:
-- `code-reviewer` - Rust code review
-- `frontend-reviewer` - React/TypeScript review
-- `debugger` - Error investigation
-- `test-runner` - Test automation
-- `security-reviewer` - Security audits
+Rust resolves `mod apps;` transparently to either `apps.rs` or `apps/mod.rs`, so callers never need to change.
 
-### Skills
+### Backend module map
 
-Available in `.claude/skills/`:
-- `rust-review` - Rust patterns and idioms
-- `api-testing` - REST API testing commands
-- `docker-testing` - Container testing
-- `database-operations` - SQLite/SQLx patterns
-- `deployment-pipeline` - Pipeline debugging
+| Directory | Responsibility |
+|---|---|
+| `src/api/` | All Axum route handlers, grouped by resource |
+| `src/engine/` | Deployment pipeline, container monitor, scheduler |
+| `src/runtime/` | Container runtime abstraction (Docker, Podman) |
+| `src/proxy/` | Embedded reverse proxy and ACME/TLS |
+| `src/db/` | SQLite models, queries, migrations, seeders |
+| `src/backup/` | S3-compatible backup and restore |
+| `src/logging/` | Log draining to external providers |
+| `src/monitoring/` | Uptime tracking, Prometheus metrics |
+| `src/notifications/` | Alert channels (Slack, Discord, email, Telegram, etc.) |
+| `src/mcp/` | MCP server for AI assistant integration |
+| `src/crypto/` | AES-256-GCM encryption utilities |
+| `src/cli/` | CLI subcommands (`rivetr backup`, `rivetr restore`) |
+| `src/config/` | Configuration parsing (TOML → typed structs) |
+| `src/startup/` | Startup self-checks and database initialization |
 
-### Ralph (Autonomous Agent Loop)
+### Frontend structure
 
-For larger features, use the Ralph pattern in `scripts/ralph/`:
-1. Create a PRD with the `prd` skill
-2. Convert to `prd.json` with the `ralph` skill
-3. Run `./scripts/ralph/ralph.sh` to autonomously implement
+```
+frontend/app/
+├── routes/       # Page-level route components (React Router v7 file-based routing)
+├── components/   # Reusable UI components built with shadcn/ui
+├── types/        # TypeScript type definitions (barrel-exported from types/index.ts)
+└── lib/          # API client, React Query hooks, and utilities
+```
 
-See `scripts/ralph/README.md` for details.
+See [docs/REFACTORING.md](docs/REFACTORING.md) for the complete split log and rules for new files.
 
-## Documentation
+## Adding New Features
 
-- Update `CLAUDE.md` when adding new patterns or architectural changes
-- Update `README.md` for user-facing changes
-- Update `ROADMAP.md` and `plan/TASKS.md` for feature planning
-- Add inline code comments for non-obvious logic
+### Backend
+
+1. **Database changes first**: Add a migration in `migrations/`. Follow the existing numbered format.
+2. **Add or update models**: Update `src/db/models.rs` with new structs and SQLx queries.
+3. **Add route handlers**: Create or extend the relevant module under `src/api/`. Register the route in the module's `mod.rs` and in `src/api/mod.rs`.
+4. **Wire up state**: If the feature needs shared state, add it to `AppState` in `src/lib.rs`.
+5. **Follow the `ContainerRuntime` trait**: If adding container operations, implement them for both `DockerRuntime` and `PodmanRuntime`.
+
+### Frontend
+
+1. **Add types**: Add TypeScript interfaces to the appropriate file under `frontend/app/types/` and re-export from `frontend/app/types/index.ts`.
+2. **Add API calls**: Add fetch calls or React Query hooks in `frontend/app/lib/`.
+3. **Add components**: Use shadcn/ui primitives where possible. Keep components small and focused.
+4. **Add routes**: New pages go in `frontend/app/routes/`. React Router v7 uses file-based routing.
+
+### Adding a service template
+
+Service templates (the 74 one-click services in the gallery) are defined in `src/db/seeders/`. Each file covers a category:
+
+```
+src/db/seeders/
+├── mod.rs           # Entry point — calls all sub-seeders
+├── ai_ml.rs         # Ollama, Open WebUI, LiteLLM, etc.
+├── analytics.rs     # Plausible, Umami, PostHog, etc.
+├── cms.rs           # WordPress, Ghost, Strapi, etc.
+└── ...
+```
+
+To add a new template:
+1. Find the appropriate category file (or add a new one if the category doesn't exist).
+2. Add a new `ServiceTemplate` entry following the pattern of existing entries in that file.
+3. If you create a new category file, import and call it from `src/db/seeders/mod.rs`.
+4. Run `cargo test` to verify compilation.
+
+## Pull Request Checklist
+
+Before submitting a PR, confirm:
+
+- [ ] `cargo fmt --check` passes (no formatting changes needed)
+- [ ] `cargo clippy` passes with no new warnings
+- [ ] `cargo test` passes
+- [ ] For frontend changes: `npm run lint` and `npm run build` pass
+- [ ] No secrets, credentials, or personal data committed
+- [ ] New public Rust functions have doc comments
+- [ ] If the change is user-facing, `README.md` is updated
+
+## Branch Naming
+
+```
+feat/description       # New features
+fix/description        # Bug fixes
+refactor/description   # Code reorganization
+docs/description       # Documentation only
+```
+
+## Commit Messages
+
+Follow the [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```
+feat: add Telegram notification channel
+fix: correct watch path glob matching for nested directories
+docs: update CONTRIBUTING with frontend patterns
+refactor: split src/api/apps.rs into subdirectory module
+```
+
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+
+## Issue Labels
+
+| Label | Meaning |
+|---|---|
+| `good first issue` | Self-contained, well-scoped — good starting point |
+| `help wanted` | Maintainer could use community input |
+| `bug` | Something is not working as documented |
+| `enhancement` | New feature or improvement to an existing one |
+| `documentation` | Docs-only change |
+| `backend` | Rust/server-side change |
+| `frontend` | React/TypeScript change |
+| `security` | Security-related issue (see below for reporting) |
 
 ## Security
 
-- Never commit secrets or credentials
-- Report security vulnerabilities privately
-- Follow OWASP guidelines for web security
-- Validate all user input
-- Use parameterized queries for database operations
+- Never commit secrets, credentials, or API keys.
+- Report security vulnerabilities **privately** via [GitHub Security Advisories](https://github.com/KwaminaWhyte/rivetr/security/advisories/new), not as public issues.
+- Use parameterized queries for all database operations.
+- Validate all user input through the validation layer in `src/api/validation/`.
+- Follow OWASP guidelines for new authentication or session-related code.
 
 ## Getting Help
 
-- Open an issue for bugs or feature requests
-- Check existing issues before creating new ones
-- Read `plan/ARCHITECTURE.md` for design context
-- See `plan/TASKS.md` for current development priorities
+- Search [existing issues](https://github.com/KwaminaWhyte/rivetr/issues) before opening a new one.
+- For architecture questions, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- For tech stack decisions, see [docs/TECH_STACK.md](docs/TECH_STACK.md).
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
