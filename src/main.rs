@@ -26,6 +26,9 @@ use rivetr::DbPool;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install the ring crypto provider for rustls (required for TLS)
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let cli = Cli::parse();
 
     // If a subcommand is provided, run it and exit
