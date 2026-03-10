@@ -737,15 +737,18 @@ pub struct CertificateResult {
 /// Certificate renewal manager
 pub struct CertificateRenewalManager {
     client: Arc<AcmeClient>,
+    /// Full domain list (including all SANs) to use when renewing
+    domains: Vec<String>,
     renewal_check_interval: Duration,
     renewal_before_expiry: Duration,
 }
 
 impl CertificateRenewalManager {
-    /// Create a new renewal manager
-    pub fn new(client: Arc<AcmeClient>) -> Self {
+    /// Create a new renewal manager with the full list of covered domains
+    pub fn new(client: Arc<AcmeClient>, domains: Vec<String>) -> Self {
         Self {
             client,
+            domains,
             renewal_check_interval: Duration::from_secs(12 * 60 * 60), // 12 hours
             renewal_before_expiry: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
         }
@@ -807,15 +810,18 @@ impl CertificateRenewalManager {
                     "Certificate expires soon, renewing"
                 );
 
-                // Request new certificate
+                // Renew using the full domain list (not just base domain)
+                let renewal_domains = if self.domains.is_empty() {
+                    vec![domain.to_string()]
+                } else {
+                    self.domains.clone()
+                };
                 let result = self
                     .client
-                    .request_certificate(&[domain.to_string()])
+                    .request_certificate(&renewal_domains)
                     .await?;
 
-                // Save new certificate
                 self.client.save_certificate(&result).await?;
-
                 info!(domain = %domain, "Certificate renewed successfully");
             } else {
                 debug!(
@@ -825,15 +831,9 @@ impl CertificateRenewalManager {
                 );
             }
         } else {
-            // If we can't parse expiry, try to renew anyway
-            warn!(domain = %domain, "Could not parse certificate expiry, attempting renewal");
-
-            let result = self
-                .client
-                .request_certificate(&[domain.to_string()])
-                .await?;
-
-            self.client.save_certificate(&result).await?;
+            // Can't parse expiry (cert may be freshly issued or use unsupported format)
+            // Do NOT renew — just log and skip to avoid overwriting valid multi-domain certs
+            debug!(domain = %domain, "Could not parse certificate expiry, skipping renewal check");
         }
 
         Ok(())

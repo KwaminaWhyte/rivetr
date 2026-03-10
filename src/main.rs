@@ -343,12 +343,12 @@ async fn main() -> Result<()> {
                     tracing::info!("HTTPS proxy listening on https://{}", https_addr);
 
                     // Start certificate renewal manager
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client);
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, all_cert_domains.clone());
                     tokio::spawn(async move { renewal_mgr.run().await });
                 } else {
                     tracing::warn!("Running HTTP-only (no TLS certificate available)");
                     // Start renewal manager anyway — it will retry on next cycle
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client);
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, all_cert_domains.clone());
                     tokio::spawn(async move { renewal_mgr.run().await });
                 }
             }
