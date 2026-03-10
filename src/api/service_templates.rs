@@ -347,3 +347,157 @@ pub async fn list_categories() -> Json<Vec<&'static str>> {
         "security",
     ])
 }
+
+// ---------------------------------------------------------------------------
+// Template Suggestions
+// ---------------------------------------------------------------------------
+
+/// Request body for submitting a template suggestion
+#[derive(Debug, serde::Deserialize)]
+pub struct TemplateSuggestionRequest {
+    pub name: String,
+    pub description: String,
+    pub docker_image: String,
+    pub category: String,
+    pub website_url: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// Row model for a template suggestion
+#[derive(Debug, sqlx::FromRow, serde::Serialize)]
+pub struct TemplateSuggestion {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub docker_image: String,
+    pub category: String,
+    pub website_url: Option<String>,
+    pub notes: Option<String>,
+    pub status: String,
+    pub submitted_by: Option<String>,
+    pub reviewed_by: Option<String>,
+    pub reviewed_at: Option<String>,
+    pub created_at: String,
+}
+
+/// Submit a new template suggestion (no auth required)
+pub async fn suggest_template(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<TemplateSuggestionRequest>,
+) -> Result<(StatusCode, Json<TemplateSuggestion>), StatusCode> {
+    if req.name.trim().is_empty() || req.docker_image.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO template_suggestions
+            (id, name, description, docker_image, category, website_url, notes, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        "#,
+    )
+    .bind(&id)
+    .bind(&req.name)
+    .bind(&req.description)
+    .bind(&req.docker_image)
+    .bind(&req.category)
+    .bind(&req.website_url)
+    .bind(&req.notes)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to insert template suggestion: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let suggestion = sqlx::query_as::<_, TemplateSuggestion>(
+        "SELECT * FROM template_suggestions WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok((StatusCode::CREATED, Json(suggestion)))
+}
+
+/// List all template suggestions (admin only — caller should protect this route)
+pub async fn list_template_suggestions(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<TemplateSuggestion>>, StatusCode> {
+    let suggestions = sqlx::query_as::<_, TemplateSuggestion>(
+        "SELECT * FROM template_suggestions ORDER BY created_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list template suggestions: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(suggestions))
+}
+
+/// Approve a template suggestion and seed it into service_templates
+pub async fn approve_template_suggestion(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    // Fetch the suggestion
+    let suggestion = sqlx::query_as::<_, TemplateSuggestion>(
+        "SELECT * FROM template_suggestions WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Build a minimal compose template from the docker image
+    let compose_template = format!(
+        "version: '3'\nservices:\n  {}:\n    image: {}\n    restart: unless-stopped\n",
+        suggestion.name.to_lowercase().replace(' ', "_"),
+        suggestion.docker_image
+    );
+
+    let template_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO service_templates
+            (id, name, description, category, compose_template, env_schema, icon, website_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, '[]', NULL, ?, ?, ?)
+        "#,
+    )
+    .bind(&template_id)
+    .bind(&suggestion.name)
+    .bind(&suggestion.description)
+    .bind(&suggestion.category)
+    .bind(&compose_template)
+    .bind(&suggestion.website_url)
+    .bind(&now)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to seed approved template suggestion: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Mark suggestion as approved
+    sqlx::query(
+        "UPDATE template_suggestions SET status = 'approved', reviewed_at = ? WHERE id = ?",
+    )
+    .bind(&now)
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
+}

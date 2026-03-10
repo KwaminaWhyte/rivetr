@@ -135,4 +135,41 @@ export const servicesApi = {
       },
       token
     ),
+
+  /** Submit a community template suggestion */
+  suggestTemplate: (
+    data: {
+      name: string;
+      description: string;
+      docker_image: string;
+      category: string;
+      website_url?: string;
+      notes?: string;
+    },
+    token?: string
+  ) =>
+    apiRequest<import("../../types/apps").TemplateSuggestion>(
+      "/templates/suggest",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** List all template suggestions (admin) */
+  listSuggestions: (token?: string) =>
+    apiRequest<import("../../types/apps").TemplateSuggestion[]>(
+      "/templates/suggestions",
+      {},
+      token
+    ),
+
+  /** Approve a template suggestion and seed it */
+  approveSuggestion: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/templates/suggestions/${id}/approve`,
+      { method: "PUT" },
+      token
+    ),
 };

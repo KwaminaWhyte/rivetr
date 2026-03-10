@@ -7,6 +7,7 @@ pub mod db;
 pub mod engine;
 pub mod github;
 pub mod logging;
+pub mod mcp;
 pub mod monitoring;
 pub mod notifications;
 pub mod proxy;

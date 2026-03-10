@@ -621,3 +621,160 @@ pub fn spawn_scheduled_deployment_checker(
         }
     });
 }
+
+// ---------------------------------------------------------------------------
+// Autoscaling Checker
+// ---------------------------------------------------------------------------
+
+/// Row shape for an autoscaling rule from the DB
+#[derive(Debug, sqlx::FromRow)]
+struct AutoscalingRuleRow {
+    id: String,
+    app_id: String,
+    metric: String,
+    scale_up_threshold: f64,
+    scale_down_threshold: f64,
+    min_replicas: i64,
+    max_replicas: i64,
+    cooldown_seconds: i64,
+    last_scaled_at: Option<String>,
+}
+
+/// One autoscaling check cycle — evaluates every enabled rule
+async fn autoscaling_cycle(db: &DbPool) {
+    let now = Utc::now();
+
+    let rules: Vec<AutoscalingRuleRow> = match sqlx::query_as(
+        r#"
+        SELECT id, app_id, metric, scale_up_threshold, scale_down_threshold,
+               min_replicas, max_replicas, cooldown_seconds, last_scaled_at
+        FROM autoscaling_rules
+        WHERE enabled = 1
+        "#,
+    )
+    .fetch_all(db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::debug!(error = %e, "Failed to fetch autoscaling rules (table may not exist yet)");
+            return;
+        }
+    };
+
+    for rule in rules {
+        // Respect cooldown
+        if let Some(ref last_scaled) = rule.last_scaled_at {
+            if let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last_scaled) {
+                let elapsed = now
+                    .signed_duration_since(last_dt.with_timezone(&Utc))
+                    .num_seconds();
+                if elapsed < rule.cooldown_seconds {
+                    continue;
+                }
+            }
+        }
+
+        // Fetch the latest resource metric for this app
+        let metric_value: Option<f64> = match rule.metric.as_str() {
+            "cpu" => {
+                sqlx::query_scalar::<_, f64>(
+                    "SELECT cpu_percent FROM resource_metrics WHERE app_id = ? \
+                     ORDER BY recorded_at DESC LIMIT 1",
+                )
+                .bind(&rule.app_id)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
+            }
+            "memory" => {
+                sqlx::query_scalar::<_, f64>(
+                    "SELECT memory_percent FROM resource_metrics WHERE app_id = ? \
+                     ORDER BY recorded_at DESC LIMIT 1",
+                )
+                .bind(&rule.app_id)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
+            }
+            _ => None, // request_rate not yet implemented
+        };
+
+        let Some(value) = metric_value else {
+            continue;
+        };
+
+        // Fetch current replica count
+        let current_replicas: i64 = sqlx::query_scalar::<_, i64>(
+            "SELECT replica_count FROM apps WHERE id = ?",
+        )
+        .bind(&rule.app_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(1)
+        .max(1);
+
+        let new_replicas = if value >= rule.scale_up_threshold {
+            (current_replicas + 1).min(rule.max_replicas)
+        } else if value <= rule.scale_down_threshold {
+            (current_replicas - 1).max(rule.min_replicas)
+        } else {
+            continue; // within comfortable range
+        };
+
+        if new_replicas == current_replicas {
+            continue;
+        }
+
+        tracing::info!(
+            app_id = %rule.app_id,
+            rule_id = %rule.id,
+            metric = %rule.metric,
+            value = value,
+            current_replicas = current_replicas,
+            new_replicas = new_replicas,
+            "Autoscaling: adjusting replica count"
+        );
+
+        // Update replica_count on the app
+        if let Err(e) = sqlx::query("UPDATE apps SET replica_count = ? WHERE id = ?")
+            .bind(new_replicas)
+            .bind(&rule.app_id)
+            .execute(db)
+            .await
+        {
+            tracing::warn!(error = %e, app_id = %rule.app_id, "Failed to update replica count for autoscaling");
+            continue;
+        }
+
+        // Update last_scaled_at
+        let now_str = now.to_rfc3339();
+        let _ = sqlx::query("UPDATE autoscaling_rules SET last_scaled_at = ? WHERE id = ?")
+            .bind(&now_str)
+            .bind(&rule.id)
+            .execute(db)
+            .await;
+    }
+}
+
+/// Spawn the background autoscaling checker (runs every 60 seconds)
+pub fn spawn_autoscaling_checker(db: DbPool) {
+    tracing::info!("Starting autoscaling checker (60s interval)");
+
+    tokio::spawn(async move {
+        // Brief startup delay
+        tokio::time::sleep(Duration::from_secs(45)).await;
+
+        let mut tick = interval(Duration::from_secs(60));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tick.tick().await;
+            autoscaling_cycle(&db).await;
+        }
+    });
+}

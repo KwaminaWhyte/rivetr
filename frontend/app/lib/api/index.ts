@@ -30,6 +30,7 @@ export { serversApi } from "./servers";
 export type { Server, CreateServerRequest, UpdateServerRequest } from "./servers";
 export { ssoApi } from "./sso";
 export type { OidcProvider, CreateOidcProviderRequest } from "./sso";
+export { autoscalingApi } from "./autoscaling";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -264,6 +265,9 @@ export const api = {
   getAuditLogs: systemApi.getAuditLogs,
   getAuditActionTypes: systemApi.getAuditActionTypes,
   getAuditResourceTypes: systemApi.getAuditResourceTypes,
+
+  // Webhook Events
+  listWebhookEvents: systemApi.listWebhookEvents,
 
   // Alert Defaults (Settings)
   getAlertDefaults: systemApi.getAlertDefaults,

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, should_deploy_for_changed_files,
-    verify_gitea_signature, ChangedFiles,
+    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, log_wh_event,
+    should_deploy_for_changed_files, verify_gitea_signature, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::App;
@@ -103,6 +103,8 @@ pub async fn gitea_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    incr_webhooks("gitea");
+
     if let Some(ref secret) = state.config.webhooks.gitea_secret {
         let signature = headers
             .get("X-Gitea-Signature")
@@ -168,6 +170,8 @@ async fn handle_gitea_push(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let changed_files = collect_changed_files(payload.commits.iter());
+    let first_commit_sha = payload.commits.first().map(|c| c.id.as_str());
+    let apps_count = apps.len() as i64;
 
     for app in apps {
         if !should_deploy_for_changed_files(&app, &changed_files) {
@@ -198,6 +202,20 @@ async fn handle_gitea_push(
             tracing::error!("Failed to queue deployment: {}", e);
         }
     }
+
+    log_wh_event(
+        &state.db,
+        "gitea",
+        "push",
+        Some(&payload.repository.full_name),
+        Some(branch),
+        first_commit_sha,
+        body.len(),
+        apps_count,
+        if apps_count > 0 { "processed" } else { "ignored" },
+        None,
+    )
+    .await;
 
     Ok(StatusCode::OK)
 }

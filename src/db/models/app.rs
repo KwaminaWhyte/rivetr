@@ -103,6 +103,9 @@ pub struct App {
     pub replica_count: i64,
     /// Preferred server ID for remote deployment (nullable)
     pub server_id: Option<String>,
+    /// Number of previous successful deployments to keep for rollback (default: 10)
+    #[serde(default = "default_rollback_retention_count")]
+    pub rollback_retention_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -179,6 +182,8 @@ pub struct AppResponse {
     pub replica_count: i64,
     /// Preferred server ID for remote deployment (nullable)
     pub server_id: Option<String>,
+    /// Number of previous successful deployments to keep for rollback (default: 10)
+    pub rollback_retention_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -234,6 +239,7 @@ impl From<App> for AppResponse {
             maintenance_message: app.maintenance_message,
             replica_count: app.replica_count,
             server_id: app.server_id,
+            rollback_retention_count: app.rollback_retention_count,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -521,6 +527,10 @@ fn default_build_type() -> String {
     "dockerfile".to_string()
 }
 
+fn default_rollback_retention_count() -> i64 {
+    10
+}
+
 fn default_image_tag() -> Option<String> {
     Some("latest".to_string())
 }
@@ -602,6 +612,8 @@ pub struct UpdateAppRequest {
     pub registry_push_enabled: Option<bool>,
     /// Maximum number of deployment versions to keep for rollback
     pub max_rollback_versions: Option<i32>,
+    /// Number of previous successful deployments to retain for rollback (1-50)
+    pub rollback_retention_count: Option<i64>,
     // Approval and maintenance
     /// Require approval before deployments are executed
     pub require_approval: Option<bool>,

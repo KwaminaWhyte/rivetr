@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::{handle_generic_preview_cleanup, verify_github_signature};
+use super::{handle_generic_preview_cleanup, incr_webhooks, log_wh_event, verify_github_signature};
 use crate::crypto;
 use crate::db::App;
 use crate::engine::preview::{
@@ -54,11 +54,13 @@ pub struct BitbucketTarget {
 #[derive(Debug, Deserialize)]
 pub struct BitbucketRepository {
     pub full_name: String,
+    #[allow(dead_code)]
     pub links: BitbucketRepoLinks,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct BitbucketRepoLinks {
+    #[allow(dead_code)]
     pub html: BitbucketLink,
 }
 
@@ -114,6 +116,8 @@ pub async fn bitbucket_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    incr_webhooks("bitbucket");
+
     if let Some(ref secret) = state.config.webhooks.bitbucket_secret {
         let signature = headers
             .get("X-Hub-Signature")
@@ -232,6 +236,20 @@ async fn handle_bitbucket_push(
 
             tracing::info!("Queued deployment {} for app {}", deployment_id, app.name);
         }
+
+        log_wh_event(
+            &state.db,
+            "bitbucket",
+            "push",
+            Some(&payload.repository.full_name),
+            Some(branch),
+            Some(new_ref.target.hash.as_str()),
+            body.len(),
+            0, // logged per-change; approximate
+            "processed",
+            None,
+        )
+        .await;
     }
 
     Ok(StatusCode::OK)

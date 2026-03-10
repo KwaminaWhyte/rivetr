@@ -261,6 +261,9 @@ export interface App {
   auto_rollback_enabled: boolean;
   registry_push_enabled: boolean;
   max_rollback_versions: number;
+  rollback_retention_count: number;
+  // Replica settings
+  replica_count: number;
   // Deployment approval and maintenance mode
   require_approval: boolean;
   maintenance_mode: boolean;
@@ -494,10 +497,67 @@ export interface UpdateAppRequest {
   auto_rollback_enabled?: boolean;
   registry_push_enabled?: boolean;
   max_rollback_versions?: number;
+  rollback_retention_count?: number;
   // Deployment approval and maintenance
   require_approval?: boolean;
   maintenance_mode?: boolean;
   maintenance_message?: string;
+}
+
+// -------------------------------------------------------------------------
+// Autoscaling types
+// -------------------------------------------------------------------------
+
+export interface AutoscalingRule {
+  id: string;
+  app_id: string;
+  metric: "cpu" | "memory" | "request_rate";
+  scale_up_threshold: number;
+  scale_down_threshold: number;
+  min_replicas: number;
+  max_replicas: number;
+  cooldown_seconds: number;
+  enabled: number;
+  last_scaled_at: string | null;
+  created_at: string;
+}
+
+export interface CreateAutoscalingRuleRequest {
+  metric: "cpu" | "memory" | "request_rate";
+  scale_up_threshold: number;
+  scale_down_threshold: number;
+  min_replicas?: number;
+  max_replicas?: number;
+  cooldown_seconds?: number;
+  enabled?: boolean;
+}
+
+// -------------------------------------------------------------------------
+// Template Suggestion types
+// -------------------------------------------------------------------------
+
+export interface TemplateSuggestion {
+  id: string;
+  name: string;
+  description: string;
+  docker_image: string;
+  category: string;
+  website_url: string | null;
+  notes: string | null;
+  status: "pending" | "approved" | "rejected";
+  submitted_by: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface TemplateSuggestionRequest {
+  name: string;
+  description: string;
+  docker_image: string;
+  category: string;
+  website_url?: string;
+  notes?: string;
 }
 
 // -------------------------------------------------------------------------

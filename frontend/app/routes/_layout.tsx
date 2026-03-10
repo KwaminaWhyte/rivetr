@@ -55,6 +55,10 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Audit Log" },
   ],
+  "/settings/webhook-events": [
+    { label: "Settings", href: "/settings" },
+    { label: "Webhook Events" },
+  ],
   "/settings/auto-update": [
     { label: "Settings", href: "/settings" },
     { label: "Auto Updates" },

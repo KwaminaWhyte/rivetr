@@ -808,6 +808,55 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 061: Registry push pipeline (columns already exist, no-op migration)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/061_registry_push.sql"),
+    )
+    .await?;
+
+    // Migration 062: Add rollback_retention_count to apps
+    let has_rollback_retention_count: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'rollback_retention_count'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_rollback_retention_count.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/062_rollback_retention.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 063: Add template_suggestions table
+    let has_template_suggestions_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='template_suggestions'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_template_suggestions_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/063_template_suggestions.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 064: Add autoscaling_rules table
+    let has_autoscaling_rules_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='autoscaling_rules'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_autoscaling_rules_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/064_autoscaling.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

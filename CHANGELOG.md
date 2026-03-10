@@ -9,10 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - SAML 2.0 support
-- Remote build execution (SSH-based)
+- Remote build execution (SSH-based, RemoteContext foundation in place)
 - File system browser for remote servers
 - Overlay networking for Docker Swarm
 - Rolling updates with Swarm
+
+---
+
+## [0.10.0] - 2026-03-10
+
+### Added
+
+#### Container Registry Push
+- **Registry Push on Deploy** — Apps can push built images to any Docker registry after a successful build (registry URL, username, encrypted password, toggle per app)
+- **Settings UI** — Container Registry section in app settings
+
+#### Rollback Retention Policies
+- **Configurable Retention** — Keep 1–50 previous deployments per app (default: 10); older deployments and their logs are automatically trimmed after each successful deploy
+- **Settings UI** — Rollback retention count input in deployment settings
+
+#### Community Template Suggestions
+- **Suggest a Template** — Users can submit template suggestions (name, Docker image, category, description, website URL); stored in `template_suggestions` table
+- **Admin Approval** — Admins can list pending suggestions and approve them (seeds into service_templates)
+
+#### Auto-scaling Foundation
+- **Autoscaling Rules** — Define CPU/memory threshold-based scaling rules per app with min/max replica bounds and cooldown periods
+- **Background Scaler** — 60-second cycle reads resource metrics, scales replicas up/down within configured bounds
+- **Settings UI** — Auto-scaling card in app settings with create/edit/delete dialog
+
+#### Enhanced Prometheus Metrics
+- `rivetr_deployments_total{app,status}` — deployment count by app and outcome
+- `rivetr_deployment_duration_seconds{app}` — deployment duration tracking
+- `rivetr_active_apps_total` / `rivetr_active_databases_total` — live resource gauges
+- `rivetr_webhooks_received_total{provider}` — webhook ingestion by provider
+
+#### Webhook Audit Log
+- **Webhook Events Table** — All incoming webhook events logged with provider, event type, repository, branch, apps triggered, and status
+- **Settings Page** — Webhook Events viewer with provider/status filters and 30-second auto-refresh
+
+#### MCP Server
+- **Model Context Protocol** — `/mcp` endpoint exposing Rivetr tools for AI assistant integration: `list_apps`, `deploy_app`, `get_app_status`, `get_deployment_logs`
 
 ---
 

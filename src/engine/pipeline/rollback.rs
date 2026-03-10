@@ -9,6 +9,33 @@ use super::super::{add_deployment_log, update_deployment_status, KEY_LENGTH};
 use super::{AutoRollbackTriggered, DeploymentResult};
 use super::start::collect_env_vars;
 
+/// Trim old successful deployments to keep only the last `retention` entries.
+/// Also removes deployment logs for the trimmed deployments.
+pub async fn trim_old_deployments(db: &DbPool, app_id: &str, retention: i64) -> Result<()> {
+    // Get IDs of successful deployments older than the retention limit
+    let old_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM deployments WHERE app_id = ? AND status = 'success' \
+         ORDER BY created_at DESC LIMIT -1 OFFSET ?",
+    )
+    .bind(app_id)
+    .bind(retention)
+    .fetch_all(db)
+    .await?;
+
+    for id in old_ids {
+        sqlx::query("DELETE FROM deployment_logs WHERE deployment_id = ?")
+            .bind(&id)
+            .execute(db)
+            .await?;
+        sqlx::query("DELETE FROM deployments WHERE id = ?")
+            .bind(&id)
+            .execute(db)
+            .await?;
+    }
+
+    Ok(())
+}
+
 /// Rollback to a previous deployment by restarting with the old image.
 /// This does NOT rebuild the image - it reuses the existing image from the target deployment.
 pub async fn run_rollback(

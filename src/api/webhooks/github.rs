@@ -10,8 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, should_deploy_for_changed_files,
-    verify_github_signature, ChangedFiles,
+    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, log_wh_event,
+    should_deploy_for_changed_files, verify_github_signature, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::{App, PreviewDeployment};
@@ -112,6 +112,8 @@ pub async fn github_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    incr_webhooks("github");
+
     if let Some(ref secret) = state.config.webhooks.github_secret {
         let signature = headers
             .get("X-Hub-Signature-256")
@@ -179,10 +181,24 @@ async fn handle_github_push(
 
     if apps.is_empty() {
         tracing::warn!("No matching app found for push webhook");
+        log_wh_event(
+            &state.db,
+            "github",
+            "push",
+            Some(&payload.repository.full_name),
+            Some(branch),
+            payload.head_commit.as_ref().map(|c| c.id.as_str()),
+            body.len(),
+            0,
+            "ignored",
+            None,
+        )
+        .await;
         return Ok(StatusCode::OK);
     }
 
     let changed_files = collect_changed_files(payload.commits.iter());
+    let apps_count = apps.len() as i64;
 
     for app in apps {
         if !should_deploy_for_changed_files(&app, &changed_files) {
@@ -223,6 +239,20 @@ async fn handle_github_push(
 
         tracing::info!("Queued deployment {} for app {}", deployment_id, app.name);
     }
+
+    log_wh_event(
+        &state.db,
+        "github",
+        "push",
+        Some(&payload.repository.full_name),
+        Some(branch),
+        payload.head_commit.as_ref().map(|c| c.id.as_str()),
+        body.len(),
+        apps_count,
+        "processed",
+        None,
+    )
+    .await;
 
     Ok(StatusCode::OK)
 }

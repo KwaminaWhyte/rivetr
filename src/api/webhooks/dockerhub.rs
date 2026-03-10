@@ -5,6 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 use crate::{db::App, AppState};
+use super::{incr_webhooks, log_wh_event};
 
 #[derive(Debug, Deserialize)]
 pub struct DockerHubWebhookPayload {
@@ -22,8 +23,11 @@ pub struct DockerHubPushData {
 #[derive(Debug, Deserialize)]
 pub struct DockerHubRepository {
     pub repo_name: String,     // e.g. "myuser/myimage"
+    #[allow(dead_code)]
     pub name: String,          // image name
+    #[allow(dead_code)]
     pub namespace: String,     // user/org
+    #[allow(dead_code)]
     pub is_private: bool,
 }
 
@@ -32,6 +36,8 @@ pub async fn dockerhub_webhook(
     _headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    incr_webhooks("dockerhub");
+
     // DockerHub doesn't sign webhooks — just parse the payload
     let payload: DockerHubWebhookPayload = serde_json::from_slice(&body).map_err(|e| {
         tracing::error!("Failed to parse DockerHub webhook payload: {}", e);
@@ -61,9 +67,23 @@ pub async fn dockerhub_webhook(
 
     if apps.is_empty() {
         tracing::debug!("No apps found for DockerHub image {}:{}", image_name, tag);
+        log_wh_event(
+            &state.db,
+            "dockerhub",
+            "push",
+            Some(image_name),
+            None,
+            Some(tag.as_str()),
+            body.len(),
+            0,
+            "ignored",
+            None,
+        )
+        .await;
         return Ok(StatusCode::OK);
     }
 
+    let apps_count = apps.len() as i64;
     for app in apps {
         let deployment_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -90,6 +110,20 @@ pub async fn dockerhub_webhook(
             app.name
         );
     }
+
+    log_wh_event(
+        &state.db,
+        "dockerhub",
+        "push",
+        Some(image_name),
+        None,
+        Some(tag.as_str()),
+        body.len(),
+        apps_count,
+        "processed",
+        None,
+    )
+    .await;
 
     // DockerHub expects a callback if callback_url is provided
     if let Some(callback_url) = &payload.callback_url {

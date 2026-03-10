@@ -19,6 +19,7 @@ import type {
   UpdateStatus,
   BackupInfo,
   RestoreResult,
+  WebhookEvent,
 } from "@/types/api";
 
 /** Options for getting system stats */
@@ -188,6 +189,27 @@ export const systemApi = {
       token
     );
     return response.blob();
+  },
+
+  // -------------------------------------------------------------------------
+  // Webhook Events
+  // -------------------------------------------------------------------------
+
+  /** List recent webhook audit events */
+  listWebhookEvents: (
+    params: { provider?: string; status?: string; limit?: number } = {},
+    token?: string
+  ) => {
+    const query = new URLSearchParams();
+    if (params.provider) query.append("provider", params.provider);
+    if (params.status) query.append("status", params.status);
+    if (params.limit) query.append("limit", params.limit.toString());
+    const qs = query.toString();
+    return apiRequest<WebhookEvent[]>(
+      `/webhook-events${qs ? `?${qs}` : ""}`,
+      {},
+      token
+    );
   },
 
   /** Restore from a backup file upload */

@@ -61,6 +61,7 @@ const navMain: NavMainItem[] = [
       { title: "Build Servers", url: "/settings/build-servers" },
       { title: "Docker Swarm", url: "/settings/swarm" },
       { title: "Webhooks", url: "/settings/webhooks" },
+      { title: "Webhook Events", url: "/settings/webhook-events" },
       { title: "API Tokens", url: "/settings/tokens" },
       { title: "Audit Log", url: "/settings/audit" },
     ],

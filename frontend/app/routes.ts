@@ -89,6 +89,7 @@ export default [
       route("servers", "routes/settings/servers.tsx"),
       route("build-servers", "routes/settings/build-servers.tsx"),
       route("swarm", "routes/settings/swarm.tsx"),
+      route("webhook-events", "routes/settings/webhook-events.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

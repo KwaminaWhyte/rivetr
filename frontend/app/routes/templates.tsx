@@ -21,14 +21,17 @@ import {
   Zap,
   FileText,
   MessageCircle,
+  Lightbulb,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { servicesApi } from "@/lib/api/services";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +40,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   ServiceTemplate,
   TemplateCategory,
@@ -110,6 +120,30 @@ function getCategoryColor(category: TemplateCategory) {
   }
 }
 
+const SUGGEST_CATEGORIES = [
+  "monitoring",
+  "database",
+  "storage",
+  "development",
+  "analytics",
+  "networking",
+  "security",
+  "ai",
+  "automation",
+  "cms",
+  "communication",
+  "other",
+];
+
+interface SuggestForm {
+  name: string;
+  description: string;
+  docker_image: string;
+  category: string;
+  website_url: string;
+  notes: string;
+}
+
 export default function TemplatesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -120,10 +154,56 @@ export default function TemplatesPage() {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
+  // Suggest Template state
+  const [showSuggestDialog, setShowSuggestDialog] = useState(false);
+  const [suggestForm, setSuggestForm] = useState<SuggestForm>({
+    name: "",
+    description: "",
+    docker_image: "",
+    category: "other",
+    website_url: "",
+    notes: "",
+  });
+
   const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
     queryKey: ["templates"],
     queryFn: () => api.getTemplates(),
   });
+
+  const suggestMutation = useMutation({
+    mutationFn: () =>
+      servicesApi.suggestTemplate({
+        name: suggestForm.name.trim(),
+        description: suggestForm.description.trim(),
+        docker_image: suggestForm.docker_image.trim(),
+        category: suggestForm.category,
+        website_url: suggestForm.website_url.trim() || undefined,
+        notes: suggestForm.notes.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success("Template suggestion submitted! We'll review it soon.");
+      setShowSuggestDialog(false);
+      setSuggestForm({
+        name: "",
+        description: "",
+        docker_image: "",
+        category: "other",
+        website_url: "",
+        notes: "",
+      });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to submit suggestion");
+    },
+  });
+
+  const handleSuggestSubmit = () => {
+    if (!suggestForm.name.trim() || !suggestForm.docker_image.trim()) {
+      toast.error("Name and Docker image are required");
+      return;
+    }
+    suggestMutation.mutate();
+  };
 
   const deployMutation = useMutation({
     mutationFn: (data: { templateId: string; request: DeployTemplateRequest }) =>
@@ -202,11 +282,17 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Service Templates</h1>
-        <p className="text-muted-foreground">
-          Deploy pre-configured services with one click
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Service Templates</h1>
+          <p className="text-muted-foreground">
+            Deploy pre-configured services with one click
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setShowSuggestDialog(true)}>
+          <Lightbulb className="mr-2 h-4 w-4" />
+          Suggest a Template
+        </Button>
       </div>
 
       {/* Search and Filter */}
@@ -302,6 +388,105 @@ export default function TemplatesPage() {
           ))}
         </div>
       )}
+
+      {/* Suggest Template Dialog */}
+      <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Suggest a Template</DialogTitle>
+            <DialogDescription>
+              Know a great Docker image that should be a template? Submit it for review and we'll add it to the library.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="suggest-name">
+                Template Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="suggest-name"
+                value={suggestForm.name}
+                onChange={(e) => setSuggestForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Minio, Grafana, n8n"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="suggest-docker-image">
+                Docker Image <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="suggest-docker-image"
+                value={suggestForm.docker_image}
+                onChange={(e) => setSuggestForm((f) => ({ ...f, docker_image: e.target.value }))}
+                placeholder="e.g. minio/minio:latest"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="suggest-description">Description</Label>
+              <Textarea
+                id="suggest-description"
+                value={suggestForm.description}
+                onChange={(e) => setSuggestForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="What does this service do?"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="suggest-category">Category</Label>
+              <Select
+                value={suggestForm.category}
+                onValueChange={(v) => setSuggestForm((f) => ({ ...f, category: v }))}
+              >
+                <SelectTrigger id="suggest-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUGGEST_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat} className="capitalize">
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="suggest-website">Website URL</Label>
+              <Input
+                id="suggest-website"
+                value={suggestForm.website_url}
+                onChange={(e) => setSuggestForm((f) => ({ ...f, website_url: e.target.value }))}
+                placeholder="https://example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="suggest-notes">Additional Notes</Label>
+              <Textarea
+                id="suggest-notes"
+                value={suggestForm.notes}
+                onChange={(e) => setSuggestForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Any special configuration, ports, or environment variables we should know about?"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSuggestDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSuggestSubmit}
+              disabled={suggestMutation.isPending || !suggestForm.name.trim() || !suggestForm.docker_image.trim()}
+            >
+              {suggestMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Lightbulb className="mr-2 h-4 w-4" />
+              )}
+              {suggestMutation.isPending ? "Submitting..." : "Submit Suggestion"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deploy Dialog */}
       <Dialog

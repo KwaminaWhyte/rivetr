@@ -294,18 +294,46 @@ pub async fn run_deployment(
         existing_tag.clone()
     } else if let Some(source_path) = upload_source_path {
         // Upload-based deployment: use pre-extracted source
-        run_upload_deployment(
-            db,
-            runtime.clone(),
-            deployment_id,
-            app,
-            &source_path,
-            build_limits,
-        )
-        .await?
+        let tag =
+            run_upload_deployment(
+                db,
+                runtime.clone(),
+                deployment_id,
+                app,
+                &source_path,
+                build_limits,
+            )
+            .await?;
+        // Optionally push to registry after upload build
+        if let Err(e) =
+            build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+        {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "warn",
+                &format!("Registry push failed (non-fatal): {}", e),
+            )
+            .await?;
+        }
+        tag
     } else {
         // Git-based deployment: clone and build
-        run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?
+        let tag =
+            run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?;
+        // Optionally push to registry after git build
+        if let Err(e) =
+            build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+        {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "warn",
+                &format!("Registry push failed (non-fatal): {}", e),
+            )
+            .await?;
+        }
+        tag
     };
 
     // Start container, health check, and finalize

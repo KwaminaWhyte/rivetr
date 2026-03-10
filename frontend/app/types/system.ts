@@ -267,6 +267,25 @@ export interface S3TestConnectionResult {
 }
 
 // -------------------------------------------------------------------------
+// Webhook Event Audit types
+// -------------------------------------------------------------------------
+
+/** A single webhook audit event */
+export interface WebhookEvent {
+  id: string;
+  provider: string;
+  event_type: string;
+  repository: string | null;
+  branch: string | null;
+  commit_sha: string | null;
+  payload_size: number | null;
+  apps_triggered: number;
+  status: "received" | "processed" | "ignored" | "error";
+  error_message: string | null;
+  received_at: string;
+}
+
+// -------------------------------------------------------------------------
 // Advanced Monitoring types
 // -------------------------------------------------------------------------
 

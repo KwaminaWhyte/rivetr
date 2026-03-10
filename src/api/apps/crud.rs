@@ -322,6 +322,10 @@ pub async fn update_app(
     let max_rollback_versions = req
         .max_rollback_versions
         .unwrap_or(existing.max_rollback_versions);
+    let rollback_retention_count = req
+        .rollback_retention_count
+        .unwrap_or(existing.rollback_retention_count)
+        .clamp(1, 50);
 
     // Approval and maintenance settings
     let require_approval = req
@@ -382,6 +386,7 @@ pub async fn update_app(
             maintenance_mode = ?,
             maintenance_message = ?,
             server_id = ?,
+            rollback_retention_count = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -426,6 +431,7 @@ pub async fn update_app(
     .bind(maintenance_mode)
     .bind(&maintenance_message)
     .bind(&server_id)
+    .bind(rollback_retention_count)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

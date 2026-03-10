@@ -34,7 +34,10 @@ pub use static_builder::*;
 pub use stats_collector::*;
 pub use zip_extract::*;
 
-use crate::api::metrics::{record_deployment_failed, record_deployment_success};
+use crate::api::metrics::{
+    increment_deployments_total, observe_deployment_duration, record_deployment_failed,
+    record_deployment_success,
+};
 use crate::config::{AuthConfig, RuntimeConfig};
 use crate::crypto;
 use crate::db::{App, NotificationEventType};
@@ -118,6 +121,7 @@ impl DeploymentEngine {
             let encryption_key = self.encryption_key;
 
             tokio::spawn(async move {
+                let deploy_start = std::time::Instant::now();
                 let notification_service = NotificationService::new(db.clone());
 
                 // Send deployment_started notification
@@ -147,6 +151,9 @@ impl DeploymentEngine {
                     Ok(container_info) => {
                         // Record successful deployment metric
                         record_deployment_success();
+                        let duration_secs = deploy_start.elapsed().as_secs_f64();
+                        increment_deployments_total(&app.name, "success");
+                        observe_deployment_duration(&app.name, duration_secs);
 
                         // Send deployment_success notification
                         let success_payload = NotificationPayload::deployment_event(
@@ -396,6 +403,9 @@ impl DeploymentEngine {
                         } else {
                             // Regular failure - no auto-rollback
                             record_deployment_failed();
+                            let duration_secs = deploy_start.elapsed().as_secs_f64();
+                            increment_deployments_total(&app.name, "failed");
+                            observe_deployment_duration(&app.name, duration_secs);
 
                             tracing::error!("Deployment {} failed: {}", deployment_id, e);
                             let _ = update_deployment_status(

@@ -1,8 +1,10 @@
 mod alerts;
 mod apps;
+mod autoscaling;
 mod build_servers;
 mod swarm;
 mod audit;
+mod webhook_events;
 pub mod auth;
 mod basic_auth;
 mod cost_rates;
@@ -546,6 +548,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/templates/categories",
             get(service_templates::list_categories),
         )
+        .route(
+            "/templates/suggest",
+            post(service_templates::suggest_template),
+        )
+        .route(
+            "/templates/suggestions",
+            get(service_templates::list_template_suggestions),
+        )
+        .route(
+            "/templates/suggestions/:id/approve",
+            put(service_templates::approve_template_suggestion),
+        )
         .route("/templates/:id", get(service_templates::get_template))
         .route(
             "/templates/:id/deploy",
@@ -652,6 +666,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))
         .route("/audit/resource-types", get(audit::list_resource_types))
+        // Webhook audit events
+        .route("/webhook-events", get(webhook_events::list_webhook_events))
         // GitHub Apps (callbacks are in public auth_routes)
         .route("/github-apps", get(github_apps::list_apps))
         .route("/github-apps", post(github_apps::create_manifest))
@@ -692,6 +708,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/apps/:id/replicas/:index/restart",
             post(replicas::restart_replica),
+        )
+        // Autoscaling Rules
+        .route(
+            "/apps/:id/autoscaling",
+            get(autoscaling::list_rules).post(autoscaling::create_rule),
+        )
+        .route(
+            "/apps/:id/autoscaling/:rule_id",
+            put(autoscaling::update_rule).delete(autoscaling::delete_rule),
         )
         // Preview Deployments (PR previews)
         .route("/apps/:id/previews", get(previews::list_app_previews))
@@ -758,6 +783,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
+        .route("/mcp", post(crate::mcp::server::mcp_handler))
         .nest("/api/auth", auth_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)

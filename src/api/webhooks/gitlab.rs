@@ -10,8 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, should_deploy_for_changed_files,
-    ChangedFiles,
+    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks,
+    should_deploy_for_changed_files, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::App;
@@ -102,6 +102,8 @@ pub async fn gitlab_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    incr_webhooks("gitlab");
+
     if let Some(ref expected_token) = state.config.webhooks.gitlab_token {
         let token = headers
             .get("X-Gitlab-Token")

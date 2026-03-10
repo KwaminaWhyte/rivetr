@@ -26,6 +26,13 @@ pub const DEPLOYMENTS_TOTAL: &str = "deployments_total";
 pub const APPS_TOTAL: &str = "apps_total";
 pub const CONTAINERS_RUNNING: &str = "containers_running";
 
+// Application-level metric names
+pub const RIVETR_DEPLOYMENTS_TOTAL: &str = "rivetr_deployments_total";
+pub const RIVETR_DEPLOYMENT_DURATION_SECONDS: &str = "rivetr_deployment_duration_seconds";
+pub const RIVETR_ACTIVE_APPS_TOTAL: &str = "rivetr_active_apps_total";
+pub const RIVETR_ACTIVE_DATABASES_TOTAL: &str = "rivetr_active_databases_total";
+pub const RIVETR_WEBHOOKS_RECEIVED_TOTAL: &str = "rivetr_webhooks_received_total";
+
 // Disk space metrics
 pub const DISK_TOTAL_BYTES: &str = "rivetr_disk_total_bytes";
 pub const DISK_USED_BYTES: &str = "rivetr_disk_used_bytes";
@@ -130,6 +137,28 @@ pub fn init_metrics() -> PrometheusHandle {
         "Current restart backoff delay in seconds (labeled by app_name)"
     );
 
+    // Application-level metrics
+    describe_counter!(
+        RIVETR_DEPLOYMENTS_TOTAL,
+        "Total deployments by app name and status"
+    );
+    describe_histogram!(
+        RIVETR_DEPLOYMENT_DURATION_SECONDS,
+        "Deployment duration in seconds (labeled by app)"
+    );
+    describe_gauge!(
+        RIVETR_ACTIVE_APPS_TOTAL,
+        "Number of currently running app containers"
+    );
+    describe_gauge!(
+        RIVETR_ACTIVE_DATABASES_TOTAL,
+        "Number of currently running managed databases"
+    );
+    describe_counter!(
+        RIVETR_WEBHOOKS_RECEIVED_TOTAL,
+        "Total webhook events received by provider"
+    );
+
     handle
 }
 
@@ -168,6 +197,26 @@ async fn update_gauge_metrics(state: &AppState) {
             .filter(|c| c.status.to_lowercase().contains("running"))
             .count();
         gauge!(CONTAINERS_RUNNING).set(running_count as f64);
+    }
+
+    // Count active (running) apps via deployments table
+    if let Ok(active_apps) = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(DISTINCT app_id) FROM deployments WHERE status = 'running'"
+    )
+    .fetch_one(&state.db)
+    .await
+    {
+        set_active_apps_total(active_apps as f64);
+    }
+
+    // Count active (running) databases
+    if let Ok(active_dbs) = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM databases WHERE status = 'running'"
+    )
+    .fetch_one(&state.db)
+    .await
+    {
+        set_active_databases_total(active_dbs as f64);
     }
 }
 
@@ -269,6 +318,31 @@ pub fn increment_container_restarts(app_name: &str) {
 /// Update container restart backoff delay metric.
 pub fn set_container_restart_backoff_seconds(app_name: &str, backoff_secs: f64) {
     gauge!(CONTAINER_RESTART_BACKOFF_SECONDS, "app_name" => app_name.to_string()).set(backoff_secs);
+}
+
+/// Increment deployment counter by app name and status.
+pub fn increment_deployments_total(app_name: &str, status: &str) {
+    counter!(RIVETR_DEPLOYMENTS_TOTAL, "app" => app_name.to_string(), "status" => status.to_string()).increment(1);
+}
+
+/// Record deployment duration histogram observation.
+pub fn observe_deployment_duration(app_name: &str, duration_secs: f64) {
+    histogram!(RIVETR_DEPLOYMENT_DURATION_SECONDS, "app" => app_name.to_string()).record(duration_secs);
+}
+
+/// Set the number of currently running app containers.
+pub fn set_active_apps_total(count: f64) {
+    gauge!(RIVETR_ACTIVE_APPS_TOTAL).set(count);
+}
+
+/// Set the number of currently running managed databases.
+pub fn set_active_databases_total(count: f64) {
+    gauge!(RIVETR_ACTIVE_DATABASES_TOTAL).set(count);
+}
+
+/// Increment webhook received counter by provider.
+pub fn increment_webhooks_received(provider: &str) {
+    counter!(RIVETR_WEBHOOKS_RECEIVED_TOTAL, "provider" => provider.to_string()).increment(1);
 }
 
 #[cfg(test)]

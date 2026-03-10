@@ -15,6 +15,7 @@ mod stats;
 
 pub use recovery::ContainerRestartState;
 
+use crate::api::metrics::{set_active_apps_total, set_active_databases_total};
 use crate::config::ContainerMonitorConfig;
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
@@ -131,6 +132,10 @@ pub fn spawn_container_monitor_task(
             tick.tick().await;
 
             let result = monitor.check_and_restart().await;
+
+            // Update active apps/databases Prometheus gauges after each cycle
+            set_active_apps_total(result.containers_running as f64);
+            set_active_databases_total(result.databases_running as f64);
 
             let has_app_changes = result.containers_crashed > 0 || result.containers_restarted > 0;
             let has_db_changes = result.databases_stopped > 0;

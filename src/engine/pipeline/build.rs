@@ -12,6 +12,125 @@ use crate::DbPool;
 
 use super::super::{add_deployment_log, BuildLimits};
 
+/// Push a built image to a Docker registry if the app has registry push enabled.
+/// Uses `docker tag` + `docker login` + `docker push` CLI commands.
+pub(super) async fn push_image_to_registry(
+    db: &DbPool,
+    deployment_id: &str,
+    app: &App,
+    image_tag: &str,
+    encryption_key: Option<&[u8; super::super::KEY_LENGTH]>,
+) -> Result<()> {
+    use crate::crypto;
+    use tokio::process::Command;
+
+    if !app.is_registry_push_enabled() {
+        return Ok(());
+    }
+
+    let registry_url = match app.registry_url.as_deref().filter(|s| !s.is_empty()) {
+        Some(url) => url.to_string(),
+        None => {
+            add_deployment_log(
+                db,
+                deployment_id,
+                "warn",
+                "Registry push is enabled but no registry URL is configured — skipping push",
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
+    // Short deployment ID for the remote tag (first 8 chars)
+    let short_id = if deployment_id.len() >= 8 {
+        &deployment_id[..8]
+    } else {
+        deployment_id
+    };
+    let remote_tag = format!("{}/{app_name}:{short_id}", registry_url, app_name = app.name);
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("Pushing image to registry: {}", remote_tag),
+    )
+    .await?;
+
+    // Step 1: tag
+    let tag_output = Command::new("docker")
+        .args(["tag", image_tag, &remote_tag])
+        .output()
+        .await
+        .context("Failed to run docker tag")?;
+
+    if !tag_output.status.success() {
+        let stderr = String::from_utf8_lossy(&tag_output.stderr);
+        anyhow::bail!("docker tag failed: {}", stderr);
+    }
+
+    // Step 2: docker login (only if credentials are provided)
+    if let Some(username) = app.registry_username.as_deref().filter(|s| !s.is_empty()) {
+        let raw_password = app.registry_password.clone().unwrap_or_default();
+        let password = crypto::decrypt_if_encrypted(&raw_password, encryption_key)
+            .unwrap_or(raw_password);
+
+        if !password.is_empty() {
+            let login_output = Command::new("docker")
+                .args(["login", &registry_url, "-u", username, "--password-stdin"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to spawn docker login")?
+                .wait_with_output()
+                .await;
+
+            // If spawn/piped stdin approach is not available, fall back to -p flag
+            // (less secure but simpler)
+            let login_output = match login_output {
+                Ok(o) if o.status.success() => o,
+                _ => {
+                    let fallback = Command::new("docker")
+                        .args(["login", &registry_url, "-u", username, "-p", &password])
+                        .output()
+                        .await
+                        .context("Failed to run docker login")?;
+                    fallback
+                }
+            };
+
+            if !login_output.status.success() {
+                let stderr = String::from_utf8_lossy(&login_output.stderr);
+                anyhow::bail!("docker login failed: {}", stderr);
+            }
+        }
+    }
+
+    // Step 3: docker push
+    let push_output = Command::new("docker")
+        .args(["push", &remote_tag])
+        .output()
+        .await
+        .context("Failed to run docker push")?;
+
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        anyhow::bail!("docker push failed: {}", stderr);
+    }
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("Image pushed to registry: {}", remote_tag),
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// Execute deployment commands (pre or post) in a container
 /// For pre-deploy: runs in a temporary container using the built image
 /// For post-deploy: runs in the running container using docker exec

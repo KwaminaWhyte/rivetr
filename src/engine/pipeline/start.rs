@@ -133,7 +133,7 @@ pub(super) async fn start_container(
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
     use super::build::execute_deployment_commands;
-    use super::rollback::trigger_auto_rollback;
+    use super::rollback::{trigger_auto_rollback, trim_old_deployments};
 
     // Step 3: Stop old containers (primary and any replicas)
     let container_name = format!("rivetr-{}", app.name);
@@ -445,6 +445,16 @@ pub(super) async fn start_container(
     )
     .await?;
     update_deployment_status(db, deployment_id, "running", None).await?;
+
+    // Step 10: Trim old deployments according to retention policy
+    let retention = app.rollback_retention_count.max(1);
+    if let Err(e) = trim_old_deployments(db, &app.id, retention).await {
+        tracing::warn!(
+            app_id = %app.id,
+            error = %e,
+            "Failed to trim old deployments (non-fatal)"
+        );
+    }
 
     Ok(DeploymentResult {
         container_id,
