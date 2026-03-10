@@ -69,19 +69,12 @@ export function RunningServicesCard() {
             url: `/apps/${app.id}`,
           };
         } catch {
-          return {
-            id: app.id,
-            name: app.name,
-            type: "app" as const,
-            status: "running",
-            cpu_percent: 0,
-            memory_usage: 0,
-            memory_limit: 0,
-            url: `/apps/${app.id}`,
-          };
+          // App is not running (no container) — skip it
+          return null;
         }
       });
-      return Promise.all(statsPromises);
+      const results = await Promise.all(statsPromises);
+      return results.filter((r): r is NonNullable<typeof r> => r !== null);
     },
     enabled: runningApps.length > 0,
     refetchInterval: 15000,
