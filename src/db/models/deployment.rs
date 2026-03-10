@@ -65,17 +65,23 @@ pub struct Deployment {
     #[serde(default)]
     pub is_auto_rollback: i32,
     /// Git tag name when deploying from a specific tag
+    #[sqlx(default)]
     pub git_tag: Option<String>,
     // Approval workflow fields (added in migration 049)
     /// Approval status: 'pending', 'approved', or 'rejected'
+    #[sqlx(default)]
     pub approval_status: Option<String>,
     /// ID of the user who approved/rejected
+    #[sqlx(default)]
     pub approved_by: Option<String>,
     /// Timestamp when the deployment was approved/rejected
+    #[sqlx(default)]
     pub approved_at: Option<String>,
     /// Reason for rejection (if rejected)
+    #[sqlx(default)]
     pub rejection_reason: Option<String>,
     /// Scheduled deployment time (ISO 8601) — scheduler picks this up
+    #[sqlx(default)]
     pub scheduled_at: Option<String>,
 }
 
