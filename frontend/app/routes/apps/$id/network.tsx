@@ -1,13 +1,16 @@
 import { useState, useMemo } from "react";
 import { useOutletContext } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import type { App, Deployment, PortMapping, Domain } from "@/types/api";
-import { Copy, Check, Globe, Server, ExternalLink, Network, Container, Lock } from "lucide-react";
+import type { App, Deployment, PortMapping, UpdateAppRequest } from "@/types/api";
+import { Copy, Check, Server, Network, Container, Lock } from "lucide-react";
+import { DomainManagementCard } from "@/components/domain-management-card";
+import { appsApi } from "@/lib/api/apps";
 
 interface OutletContext {
   app: App;
@@ -16,8 +19,21 @@ interface OutletContext {
 }
 
 export default function AppNetworkTab() {
-  const { app, deployments } = useOutletContext<OutletContext>();
+  const { app, deployments, token } = useOutletContext<OutletContext>();
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleDomainSave = async (updates: UpdateAppRequest) => {
+    setIsSaving(true);
+    try {
+      await appsApi.updateApp(app.id, updates, token);
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      toast.success("Domain configuration saved");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const runningDeployment = deployments.find((d) => d.status === "running");
 
@@ -30,16 +46,6 @@ export default function AppNetworkTab() {
       return [];
     }
   }, [app.port_mappings]);
-
-  // Parse domains from JSON string
-  const domains: Domain[] = useMemo(() => {
-    if (!app.domains) return [];
-    try {
-      return JSON.parse(app.domains);
-    } catch {
-      return [];
-    }
-  }, [app.domains]);
 
   // Parse network aliases from JSON string
   const networkAliases: string[] = useMemo(() => {
@@ -81,101 +87,12 @@ export default function AppNetworkTab() {
 
   return (
     <div className="space-y-6">
-      {/* Domain Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Globe className="h-5 w-5" />
-            Domain Configuration
-          </CardTitle>
-          <CardDescription>
-            Public URLs for accessing your application
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Primary Domain */}
-          <div className="space-y-2">
-            <Label>Primary Domain</Label>
-            <div className="flex gap-2">
-              <Input
-                value={app.domain || "Not configured"}
-                readOnly
-                className="font-mono"
-              />
-              {app.domain && (
-                <>
-                  <CopyButton text={app.domain} field="domain" />
-                  <Button variant="outline" size="icon" asChild>
-                    <a
-                      href={`https://${app.domain}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                </>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              The main domain used to access this application
-            </p>
-          </div>
-
-          {/* Auto Subdomain */}
-          {app.auto_subdomain && (
-            <div className="space-y-2">
-              <Label>Auto Subdomain</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={app.auto_subdomain}
-                  readOnly
-                  className="font-mono"
-                />
-                <CopyButton text={app.auto_subdomain} field="auto_subdomain" />
-                <Button variant="outline" size="icon" asChild>
-                  <a
-                    href={`https://${app.auto_subdomain}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Automatically assigned subdomain
-              </p>
-            </div>
-          )}
-
-          {/* Additional Domains */}
-          {domains.length > 0 && (
-            <div className="space-y-2">
-              <Label>Additional Domains</Label>
-              <div className="space-y-2">
-                {domains.map((domain, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 bg-muted rounded-lg">
-                    <span className="font-mono text-sm flex-1">{domain.domain}</span>
-                    {domain.primary && (
-                      <Badge variant="outline" className="text-xs">Primary</Badge>
-                    )}
-                    <CopyButton text={domain.domain} field={`domain-${idx}`} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!app.domain && !app.auto_subdomain && domains.length === 0 && (
-            <div className="text-center py-4 text-muted-foreground">
-              <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No domain configured</p>
-              <p className="text-sm">Configure a domain in the Settings tab</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Domain Management */}
+      <DomainManagementCard
+        app={app}
+        onSave={handleDomainSave}
+        isSaving={isSaving}
+      />
 
       {/* Port Configuration */}
       <Card>

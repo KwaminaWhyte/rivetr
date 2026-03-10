@@ -5,6 +5,15 @@ import {
   Settings,
   BarChart3,
   Bell,
+  Server,
+  Cpu,
+  Key,
+  Network,
+  Users,
+  GitBranch,
+  Webhook,
+  Activity,
+  KeyRound,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
@@ -19,27 +28,29 @@ import {
 } from "@/components/ui/sidebar";
 import { useTeamContext } from "@/lib/team-context";
 
-const navMain: NavMainItem[] = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Projects",
-    url: "/projects",
-    icon: FolderKanban,
-  },
-  {
-    title: "Monitoring",
-    url: "/monitoring",
-    icon: BarChart3,
-  },
-  {
-    title: "Notifications",
-    url: "/notifications",
-    icon: Bell,
-  },
+const navPlatform: NavMainItem[] = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Projects", url: "/projects", icon: FolderKanban },
+  { title: "Monitoring", url: "/monitoring", icon: BarChart3 },
+  { title: "Notifications", url: "/notifications", icon: Bell },
+];
+
+const navInfrastructure: NavMainItem[] = [
+  { title: "Servers", url: "/settings/servers", icon: Server },
+  { title: "Build Servers", url: "/settings/build-servers", icon: Cpu },
+  { title: "SSH Keys", url: "/settings/ssh-keys", icon: Key },
+  { title: "Docker Swarm", url: "/settings/swarm", icon: Network },
+];
+
+const navAccess: NavMainItem[] = [
+  { title: "Teams", url: "/settings/teams", icon: Users },
+  { title: "Git Integrations", url: "/settings/git-providers", icon: GitBranch },
+  { title: "Webhooks", url: "/settings/webhooks", icon: Webhook },
+  { title: "Webhook Events", url: "/settings/webhook-events", icon: Activity },
+  { title: "API Tokens", url: "/settings/tokens", icon: KeyRound },
+];
+
+const navSettings: NavMainItem[] = [
   {
     title: "Settings",
     url: "/settings",
@@ -48,21 +59,12 @@ const navMain: NavMainItem[] = [
       { title: "General", url: "/settings" },
       { title: "Security", url: "/settings/security" },
       { title: "Auto Updates", url: "/settings/auto-update" },
+      { title: "Authentication", url: "/settings/oauth" },
+      { title: "SSO / OIDC", url: "/settings/sso" },
       { title: "Backup & Restore", url: "/settings/backup" },
       { title: "S3 Storage", url: "/settings/s3" },
       { title: "Alert Defaults", url: "/settings/alert-defaults" },
-      { title: "Authentication", url: "/settings/oauth" },
-      { title: "SSO / OIDC", url: "/settings/sso" },
-      { title: "Teams", url: "/settings/teams" },
       { title: "Notifications", url: "/settings/notifications" },
-      { title: "Git Integrations", url: "/settings/git-providers" },
-      { title: "SSH Keys", url: "/settings/ssh-keys" },
-      { title: "Servers", url: "/settings/servers" },
-      { title: "Build Servers", url: "/settings/build-servers" },
-      { title: "Docker Swarm", url: "/settings/swarm" },
-      { title: "Webhooks", url: "/settings/webhooks" },
-      { title: "Webhook Events", url: "/settings/webhook-events" },
-      { title: "API Tokens", url: "/settings/tokens" },
       { title: "Audit Log", url: "/settings/audit" },
     ],
   },
@@ -81,7 +83,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navMain} />
+        <NavMain items={navPlatform} label="Platform" />
+        <NavMain items={navInfrastructure} label="Infrastructure" />
+        <NavMain items={navAccess} label="Access" />
+        <NavMain items={navSettings} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

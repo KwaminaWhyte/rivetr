@@ -27,7 +27,7 @@ export interface NavMainItem {
   }[];
 }
 
-export function NavMain({ items }: { items: NavMainItem[] }) {
+export function NavMain({ items, label }: { items: NavMainItem[]; label?: string }) {
   const location = useLocation();
 
   const isActive = (url: string) => {
@@ -39,7 +39,7 @@ export function NavMain({ items }: { items: NavMainItem[] }) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) =>
           item.items && item.items.length > 0 ? (

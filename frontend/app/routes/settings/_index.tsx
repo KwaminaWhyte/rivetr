@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Globe, Info } from "lucide-react";
 
 export function meta() {
   return [
@@ -17,32 +17,33 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>General Settings</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Instance Domain
+          </CardTitle>
           <CardDescription>
-            Configure general settings for your Rivetr instance.
+            Configure a custom domain so users can access the Rivetr dashboard through it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="instance-name">Instance Name</Label>
-            <Input
-              id="instance-name"
-              placeholder="My Rivetr Instance"
-              defaultValue="Rivetr"
-            />
+          <div className="flex items-start gap-2 rounded-md bg-muted p-4 text-sm">
+            <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <div className="space-y-2">
+              <p className="font-medium">How to configure an instance domain</p>
+              <p className="text-muted-foreground">
+                Add the following to your <code className="bg-background px-1 rounded font-mono">rivetr.toml</code>:
+              </p>
+              <pre className="bg-background rounded p-3 font-mono text-xs overflow-x-auto">
+{`[proxy]
+instance_domain = "rivetr.yourdomain.com"`}
+              </pre>
+              <p className="text-muted-foreground">
+                Then point your DNS A record for <code className="bg-background px-1 rounded font-mono">rivetr.yourdomain.com</code>{" "}
+                to this server and restart Rivetr. The proxy will automatically forward traffic for that
+                domain to the Rivetr API server, making the dashboard accessible at that address.
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="default-branch">Default Branch</Label>
-            <Input
-              id="default-branch"
-              placeholder="main"
-              defaultValue="main"
-            />
-          </div>
-          <Button disabled>Save Changes</Button>
-          <p className="text-xs text-muted-foreground">
-            Settings configuration coming in a future update.
-          </p>
         </CardContent>
       </Card>
 
@@ -50,18 +51,18 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Container Runtime</CardTitle>
           <CardDescription>
-            View information about the detected container runtime.
+            Information about the active container runtime.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <div className="text-sm text-muted-foreground">Runtime</div>
-              <div className="font-medium">Docker</div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Runtime</Label>
+              <p className="font-medium">Docker / Podman (auto-detected)</p>
             </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Status</div>
-              <div className="font-medium text-green-600">Connected</div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Status</Label>
+              <p className="font-medium text-green-600">Connected</p>
             </div>
           </div>
         </CardContent>

@@ -206,6 +206,9 @@ pub struct ProxyConfig {
     /// Base domain for PR preview deployments (e.g., "preview.example.com")
     /// Preview environments get subdomains like "pr-123.my-app.preview.example.com"
     pub preview_domain: Option<String>,
+    /// Domain for accessing the Rivetr dashboard/API itself (e.g., "rivetr.example.com")
+    /// When set, the proxy forwards requests for this domain to the API server
+    pub instance_domain: Option<String>,
 }
 
 fn default_acme_cache_dir() -> PathBuf {
@@ -239,6 +242,7 @@ impl Default for ProxyConfig {
             server_ip: None,
             sslip_enabled: false,
             preview_domain: None,
+            instance_domain: None,
         }
     }
 }

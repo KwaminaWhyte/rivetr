@@ -108,6 +108,21 @@ async fn main() -> Result<()> {
         tracing::warn!("Failed to restore routes: {}", e);
     }
 
+    // Register instance domain → API server so users can access the dashboard via a custom domain
+    if let Some(ref instance_domain) = config.proxy.instance_domain {
+        let backend = Backend::new(
+            "rivetr-api".to_string(),
+            "127.0.0.1".to_string(),
+            config.server.api_port,
+        );
+        routes.load().add_route(instance_domain.clone(), backend);
+        tracing::info!(
+            domain = %instance_domain,
+            port = config.server.api_port,
+            "Registered instance domain for Rivetr dashboard"
+        );
+    }
+
     // Reconcile container status on startup
     // This updates database records for containers that stopped while server was down
     reconcile_container_status(&db, &runtime).await;
