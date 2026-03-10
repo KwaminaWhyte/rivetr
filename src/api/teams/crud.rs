@@ -40,46 +40,64 @@ pub async fn list_teams(
     .fetch_all(&state.db)
     .await?;
 
-    // If user has no teams, create a default "Personal" team for them
-    if teams.is_empty() {
+    // If user has no teams and is a real DB user, create a default "Personal" team for them.
+    // Skip auto-create for the synthetic admin-token user ("system") which has no DB record.
+    if teams.is_empty() && user.id != "system" {
         let team_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
+        let slug = format!(
+            "personal-{}",
+            &user.id.chars().take(8).collect::<String>()
+        );
 
+        // Use INSERT OR IGNORE to avoid UNIQUE constraint errors if slug already exists
+        // (e.g. from a previous partially-failed attempt)
         sqlx::query(
-            "INSERT INTO teams (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO teams (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(&team_id)
         .bind("Personal")
-        .bind(format!(
-            "personal-{}",
-            &user.id.chars().take(8).collect::<String>()
-        ))
+        .bind(&slug)
         .bind(&now)
         .bind(&now)
         .execute(&state.db)
         .await?;
 
-        let member_id = uuid::Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(&member_id)
-        .bind(&team_id)
-        .bind(&user.id)
-        .bind("owner")
-        .bind(&now)
-        .execute(&state.db)
-        .await?;
+        // Fetch the team (may have been created now or previously)
+        let actual_team_id: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM teams WHERE slug = ?")
+                .bind(&slug)
+                .fetch_optional(&state.db)
+                .await?;
 
-        tracing::info!("Created default Personal team for user: {}", user.email);
+        if let Some((actual_id,)) = actual_team_id {
+            // Ensure user is a member (INSERT OR IGNORE handles duplicates)
+            let member_id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT OR IGNORE INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(&member_id)
+            .bind(&actual_id)
+            .bind(&user.id)
+            .bind("owner")
+            .bind(&now)
+            .execute(&state.db)
+            .await?;
 
-        // Fetch the newly created team
-        if let Some(team) = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
-            .bind(&team_id)
-            .fetch_optional(&state.db)
-            .await?
-        {
-            teams.push(team);
+            tracing::info!("Ensured default Personal team for user: {}", user.email);
+
+            // Re-fetch teams after ensuring membership
+            teams = sqlx::query_as::<_, Team>(
+                r#"
+                SELECT t.* FROM teams t
+                INNER JOIN team_members tm ON t.id = tm.team_id
+                WHERE tm.user_id = ?
+                ORDER BY t.created_at DESC
+                "#,
+            )
+            .bind(&user.id)
+            .fetch_all(&state.db)
+            .await?;
         }
     }
 
