@@ -996,10 +996,30 @@ pub async fn run_deployment(
         run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?
     };
 
-    // Step 3: Stop old container (if exists)
+    // Step 3: Stop old containers (primary and any replicas)
     let container_name = format!("rivetr-{}", app.name);
     let _ = runtime.stop(&container_name).await;
     let _ = runtime.remove(&container_name).await;
+
+    // Also stop any running replicas from previous deployment
+    let old_replicas = sqlx::query_as::<_, crate::db::AppReplica>(
+        "SELECT * FROM app_replicas WHERE app_id = ? AND status = 'running'",
+    )
+    .bind(&app.id)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+    for old_replica in &old_replicas {
+        if let Some(ref cid) = old_replica.container_id {
+            let _ = runtime.stop(cid).await;
+            let _ = runtime.remove(cid).await;
+        }
+    }
+    // Clear old replica records
+    let _ = sqlx::query("DELETE FROM app_replicas WHERE app_id = ?")
+        .bind(&app.id)
+        .execute(db)
+        .await;
 
     // Step 4: Start new container
     add_deployment_log(db, deployment_id, "info", "Starting container...").await?;
@@ -1161,6 +1181,73 @@ pub async fn run_deployment(
         .bind(deployment_id)
         .execute(db)
         .await?;
+
+    // Record primary container as replica 0
+    {
+        let replica_id = uuid::Uuid::new_v4().to_string();
+        let _ = sqlx::query(
+            "INSERT INTO app_replicas (id, app_id, replica_index, container_id, status, started_at)
+             VALUES (?, ?, 0, ?, 'running', datetime('now'))",
+        )
+        .bind(&replica_id)
+        .bind(&app.id)
+        .bind(&container_id)
+        .execute(db)
+        .await;
+    }
+
+    // Start additional replicas if replica_count > 1
+    let replica_count = app.replica_count.max(1);
+    if replica_count > 1 {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!("Starting {} additional replica(s)...", replica_count - 1),
+        )
+        .await?;
+
+        for i in 1..replica_count {
+            let replica_name = format!("rivetr-{}-{}", app.name, i);
+            let mut replica_config = run_config.clone();
+            replica_config.name = replica_name;
+            // Additional replicas don't need explicit port mappings (ephemeral ports)
+            replica_config.port_mappings = vec![];
+
+            match runtime.run(&replica_config).await {
+                Ok(replica_container_id) => {
+                    let replica_id = uuid::Uuid::new_v4().to_string();
+                    let _ = sqlx::query(
+                        "INSERT INTO app_replicas (id, app_id, replica_index, container_id, status, started_at)
+                         VALUES (?, ?, ?, ?, 'running', datetime('now'))",
+                    )
+                    .bind(&replica_id)
+                    .bind(&app.id)
+                    .bind(i)
+                    .bind(&replica_container_id)
+                    .execute(db)
+                    .await;
+
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Replica {} started: {}", i, replica_container_id),
+                    )
+                    .await?;
+                }
+                Err(e) => {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Failed to start replica {}: {}", i, e),
+                    )
+                    .await?;
+                }
+            }
+        }
+    }
 
     // Step 5: Execute pre-deploy commands (before health check)
     let pre_deploy_commands = app.get_pre_deploy_commands();

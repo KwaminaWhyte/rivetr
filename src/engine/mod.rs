@@ -177,7 +177,7 @@ impl DeploymentEngine {
                             let all_domains = app.get_all_domain_names();
                             let route_table = routes.load();
 
-                            // Helper to create backend with basic auth if configured
+                            // Helper to create primary backend with basic auth if configured
                             let create_backend = || {
                                 let mut backend = Backend::new(
                                     container_info.container_id.clone(),
@@ -200,6 +200,30 @@ impl DeploymentEngine {
                                 backend
                             };
 
+                            // Collect all replica backend addresses for round-robin load balancing
+                            let replica_backends: Vec<String> = {
+                                let mut addrs = vec![format!("127.0.0.1:{}", port)];
+                                // Fetch running replicas (index > 0)
+                                if let Ok(replicas) = sqlx::query_as::<_, crate::db::AppReplica>(
+                                    "SELECT * FROM app_replicas WHERE app_id = ? AND replica_index > 0 AND status = 'running'",
+                                )
+                                .bind(&app.id)
+                                .fetch_all(&db)
+                                .await
+                                {
+                                    for replica in &replicas {
+                                        if let Some(ref cid) = replica.container_id {
+                                            if let Ok(info) = runtime.inspect(cid).await {
+                                                if let Some(rport) = info.port {
+                                                    addrs.push(format!("127.0.0.1:{}", rport));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                addrs
+                            };
+
                             if !all_domains.is_empty() {
                                 // Log basic auth status once
                                 if app.basic_auth_enabled != 0 {
@@ -213,12 +237,17 @@ impl DeploymentEngine {
                                 }
 
                                 for domain in &all_domains {
-                                    route_table.add_route(domain.clone(), create_backend());
+                                    route_table.add_backends(
+                                        domain.clone(),
+                                        replica_backends.clone(),
+                                        create_backend(),
+                                    );
                                 }
 
                                 tracing::info!(
                                     domains = ?all_domains,
                                     port = port,
+                                    replicas = replica_backends.len(),
                                     healthcheck = ?app.healthcheck,
                                     basic_auth = app.basic_auth_enabled != 0,
                                     "Proxy routes updated for app {}",
@@ -237,10 +266,15 @@ impl DeploymentEngine {
                                     }
                                 }
 
-                                route_table.add_route(domain.clone(), create_backend());
+                                route_table.add_backends(
+                                    domain.clone(),
+                                    replica_backends.clone(),
+                                    create_backend(),
+                                );
                                 tracing::info!(
                                     domain = %domain,
                                     port = port,
+                                    replicas = replica_backends.len(),
                                     healthcheck = ?app.healthcheck,
                                     basic_auth = app.basic_auth_enabled != 0,
                                     "Proxy route updated for app {}",

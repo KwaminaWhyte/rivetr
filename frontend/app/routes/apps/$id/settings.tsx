@@ -41,6 +41,7 @@ import { VolumesCard } from "@/components/volumes-card";
 import { RollbackSettingsCard } from "@/components/rollback-settings-card";
 import { AppSharingCard } from "@/components/app-sharing-card";
 import { api } from "@/lib/api";
+import { replicasApi, type AppReplica } from "@/lib/api/replicas";
 import type {
   App,
   AppEnvironment,
@@ -359,6 +360,42 @@ export default function AppSettingsTab() {
     }
   };
 
+  // Replicas state
+  const [replicaCount, setReplicaCount] = useState(app.replica_count ?? 1);
+  const [isSavingReplicas, setIsSavingReplicas] = useState(false);
+  const [restartingReplica, setRestartingReplica] = useState<number | null>(null);
+
+  const { data: replicas = [], refetch: refetchReplicas } = useQuery<AppReplica[]>({
+    queryKey: ["replicas", app.id],
+    queryFn: () => replicasApi.list(app.id),
+  });
+
+  const handleSetReplicaCount = async () => {
+    setIsSavingReplicas(true);
+    try {
+      await replicasApi.setCount(app.id, replicaCount);
+      toast.success(`Replica count updated to ${replicaCount}`);
+      refetchReplicas();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update replica count");
+    } finally {
+      setIsSavingReplicas(false);
+    }
+  };
+
+  const handleRestartReplica = async (index: number) => {
+    setRestartingReplica(index);
+    try {
+      await replicasApi.restart(app.id, index);
+      toast.success(`Replica ${index} restarted`);
+      refetchReplicas();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to restart replica");
+    } finally {
+      setRestartingReplica(null);
+    }
+  };
+
   // Delete freeze window handler
   const handleDeleteFreezeWindow = async (id: string) => {
     try {
@@ -373,7 +410,7 @@ export default function AppSettingsTab() {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="build">Build</TabsTrigger>
           <TabsTrigger value="network">Network</TabsTrigger>
@@ -387,6 +424,7 @@ export default function AppSettingsTab() {
             <Shield className="h-4 w-4 mr-1" />
             Deploy
           </TabsTrigger>
+          <TabsTrigger value="replicas">Replicas</TabsTrigger>
           <TabsTrigger value="snapshots">Snapshots</TabsTrigger>
           <TabsTrigger value="sharing">Sharing</TabsTrigger>
         </TabsList>
@@ -971,6 +1009,102 @@ export default function AppSettingsTab() {
                       </Button>
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Replicas Tab */}
+        <TabsContent value="replicas" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Container Replicas</CardTitle>
+              <CardDescription>
+                Run multiple container instances to distribute load. Changes apply on the next deployment.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Replica count input */}
+              <div className="flex items-end gap-4">
+                <div className="space-y-2 flex-1 max-w-xs">
+                  <Label htmlFor="replica-count">Replica Count</Label>
+                  <Input
+                    id="replica-count"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={replicaCount}
+                    onChange={(e) => setReplicaCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Number of container instances to run (1–10)
+                  </p>
+                </div>
+                <Button onClick={handleSetReplicaCount} disabled={isSavingReplicas}>
+                  {isSavingReplicas ? "Updating..." : "Update"}
+                </Button>
+              </div>
+
+              {/* Replica status table */}
+              {replicas.length > 0 ? (
+                <div className="rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-4 py-2 text-left font-medium">Index</th>
+                        <th className="px-4 py-2 text-left font-medium">Container ID</th>
+                        <th className="px-4 py-2 text-left font-medium">Status</th>
+                        <th className="px-4 py-2 text-left font-medium">Started At</th>
+                        <th className="px-4 py-2 text-right font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {replicas.map((replica) => (
+                        <tr key={replica.id} className="border-b last:border-0">
+                          <td className="px-4 py-2 font-mono">{replica.replica_index}</td>
+                          <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                            {replica.container_id ? replica.container_id.slice(0, 12) : "—"}
+                          </td>
+                          <td className="px-4 py-2">
+                            <Badge
+                              variant={
+                                replica.status === "running"
+                                  ? "secondary"
+                                  : replica.status === "error"
+                                  ? "destructive"
+                                  : "outline"
+                              }
+                              className="text-xs"
+                            >
+                              {replica.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-muted-foreground">
+                            {replica.started_at
+                              ? new Date(replica.started_at).toLocaleString()
+                              : "—"}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={restartingReplica === replica.replica_index}
+                              onClick={() => handleRestartReplica(replica.replica_index)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              {restartingReplica === replica.replica_index ? "Restarting..." : "Restart"}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground">
+                  No replica data yet. Deploy your app to start tracking replicas.
                 </div>
               )}
             </CardContent>

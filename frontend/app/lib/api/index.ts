@@ -26,6 +26,10 @@ export { logDrainsApi } from "./log-drains";
 export { s3Api } from "./s3";
 export { monitoringApi } from "./monitoring";
 export { sharedEnvVarsApi } from "./shared-env-vars";
+export { serversApi } from "./servers";
+export type { Server, CreateServerRequest, UpdateServerRequest } from "./servers";
+export { ssoApi } from "./sso";
+export type { OidcProvider, CreateOidcProviderRequest } from "./sso";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -46,6 +50,7 @@ import { logDrainsApi } from "./log-drains";
 import { s3Api } from "./s3";
 import { monitoringApi } from "./monitoring";
 import { sharedEnvVarsApi } from "./shared-env-vars";
+import { serversApi } from "./servers";
 
 /**
  * Combined API object for backward compatibility.
@@ -345,6 +350,14 @@ export const api = {
   getS3Backups: s3Api.listBackups,
   restoreS3Backup: s3Api.restoreBackup,
   deleteS3Backup: s3Api.deleteBackup,
+
+  // Remote Servers
+  getServers: serversApi.list,
+  getServer: serversApi.get,
+  createServer: serversApi.create,
+  updateServer: serversApi.update,
+  deleteServer: serversApi.delete,
+  checkServerHealth: serversApi.check,
 
   // Shared Environment Variables
   getTeamEnvVars: sharedEnvVarsApi.getTeamEnvVars,

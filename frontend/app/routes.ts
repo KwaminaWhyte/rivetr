@@ -85,6 +85,8 @@ export default [
       route("s3", "routes/settings/s3.tsx"),
       route("security", "routes/settings/security.tsx"),
       route("oauth", "routes/settings/oauth.tsx"),
+      route("sso", "routes/settings/sso.tsx"),
+      route("servers", "routes/settings/servers.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

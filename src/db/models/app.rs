@@ -98,6 +98,9 @@ pub struct App {
     pub maintenance_mode: i32,
     /// Custom maintenance message shown when maintenance mode is active
     pub maintenance_message: Option<String>,
+    /// Number of container replicas to run (for load balancing)
+    #[serde(default = "default_replica_count")]
+    pub replica_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -170,6 +173,8 @@ pub struct AppResponse {
     pub maintenance_mode: bool,
     /// Custom maintenance message
     pub maintenance_message: Option<String>,
+    /// Number of container replicas to run (for load balancing)
+    pub replica_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -223,6 +228,7 @@ impl From<App> for AppResponse {
             require_approval: app.require_approval != 0,
             maintenance_mode: app.maintenance_mode != 0,
             maintenance_message: app.maintenance_message,
+            replica_count: app.replica_count,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -655,6 +661,10 @@ pub struct CreateAppShareRequest {
 
 fn default_share_permission() -> String {
     "view".to_string()
+}
+
+fn default_replica_count() -> i64 {
+    1
 }
 
 /// Response for app with sharing indicator

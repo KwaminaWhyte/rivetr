@@ -499,6 +499,8 @@ pub async fn get_current_user(
             totp_secret: None,
             totp_enabled: false,
             recovery_codes: None,
+            oidc_subject: None,
+            oidc_provider_id: None,
         });
     }
 

@@ -21,6 +21,10 @@ pub struct User {
     /// JSON array of hashed recovery codes
     #[serde(skip_serializing)]
     pub recovery_codes: Option<String>,
+    /// OIDC subject identifier (from SSO provider)
+    pub oidc_subject: Option<String>,
+    /// OIDC provider ID that authenticated this user
+    pub oidc_provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

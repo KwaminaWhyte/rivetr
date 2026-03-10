@@ -31,7 +31,10 @@ pub mod team;
 pub mod user;
 pub mod log_drain;
 pub mod monitoring;
+pub mod oidc;
+pub mod replica;
 pub mod s3;
+pub mod server;
 pub mod volume;
 
 // Re-export all types for backwards compatibility
@@ -56,8 +59,11 @@ pub use project::*;
 pub use resource_metric::*;
 pub use log_drain::*;
 pub use monitoring::*;
+pub use oidc::*;
+pub use replica::*;
 pub use s3::*;
 pub use scheduled_job::*;
+pub use server::*;
 pub use service::*;
 pub use service_template::*;
 pub use shared_env_var::*;

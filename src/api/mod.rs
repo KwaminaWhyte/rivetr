@@ -22,11 +22,14 @@ pub mod oauth;
 mod previews;
 mod projects;
 pub mod rate_limit;
+mod replicas;
 mod routes;
 mod s3;
 mod service_templates;
 mod services;
+mod servers;
 mod shared_env_vars;
+mod sso;
 mod ssh_keys;
 mod system;
 mod teams;
@@ -172,6 +175,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/ssh-keys/:id", put(ssh_keys::update_ssh_key))
         .route("/ssh-keys/:id", delete(ssh_keys::delete_ssh_key))
         .route("/apps/:id/ssh-keys", get(ssh_keys::get_app_ssh_keys))
+        // Remote Servers
+        .route("/servers", get(servers::list_servers).post(servers::create_server))
+        .route(
+            "/servers/:id",
+            get(servers::get_server)
+                .put(servers::update_server)
+                .delete(servers::delete_server),
+        )
+        .route("/servers/:id/check", post(servers::check_server_health))
         // Environment Variables
         .route("/apps/:id/env-vars", get(env_vars::list_env_vars))
         .route("/apps/:id/env-vars", post(env_vars::create_env_var))
@@ -537,6 +549,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/settings/oauth-connections/:id",
             delete(oauth::delete_user_connection),
         )
+        // SSO / OIDC Provider Settings (admin)
+        .route("/sso/providers", get(sso::list_providers).post(sso::create_provider))
+        .route(
+            "/sso/providers/:id",
+            get(sso::get_provider).put(sso::update_provider).delete(sso::delete_provider),
+        )
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
         .route("/system/stats/history", get(system::get_stats_history))
@@ -613,6 +631,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/:id/installations/:iid/repos",
             get(github_apps::list_installation_repos),
         )
+        // Container Replicas
+        .route("/apps/:id/replicas", get(replicas::list_replicas))
+        .route("/apps/:id/replicas/count", put(replicas::set_replica_count))
+        .route(
+            "/apps/:id/replicas/:index/restart",
+            post(replicas::restart_replica),
+        )
         // Preview Deployments (PR previews)
         .route("/apps/:id/previews", get(previews::list_app_previews))
         .route("/previews", get(previews::list_all_previews))
@@ -648,12 +673,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             rate_limit_webhook,
         ));
 
+    // SSO/OIDC auth flow routes (public - no auth required, browser redirects)
+    let sso_routes = Router::new()
+        .route(
+            "/auth/sso/:provider_id/login",
+            get(sso::initiate_sso_login),
+        )
+        .route(
+            "/auth/sso/:provider_id/callback",
+            get(sso::handle_sso_callback),
+        );
+
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
         .nest("/api/auth", auth_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)
+        .merge(sso_routes)
         // Fallback to embedded static files for frontend SPA
         .fallback(serve_embedded_static)
         .layer(middleware::from_fn(security_headers))

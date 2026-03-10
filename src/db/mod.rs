@@ -728,6 +728,30 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 053: Add OIDC/SSO provider support
+    let has_oidc_providers_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='oidc_providers'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_oidc_providers_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/053_sso_oidc.sql"),
+        )
+        .await?;
+    }
+
+    // Add oidc_subject and oidc_provider_id columns to users if missing
+    let has_oidc_subject: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('users') WHERE name = 'oidc_subject'")
+            .fetch_optional(pool)
+            .await?;
+    if has_oidc_subject.is_none() {
+        execute_sql(pool, "ALTER TABLE users ADD COLUMN oidc_subject TEXT").await?;
+        execute_sql(pool, "ALTER TABLE users ADD COLUMN oidc_provider_id TEXT REFERENCES oidc_providers(id) ON DELETE SET NULL").await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

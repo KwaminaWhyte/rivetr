@@ -67,6 +67,14 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Security" },
   ],
+  "/settings/sso": [
+    { label: "Settings", href: "/settings" },
+    { label: "SSO / OIDC" },
+  ],
+  "/settings/servers": [
+    { label: "Settings", href: "/settings" },
+    { label: "Servers" },
+  ],
 };
 
 function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {

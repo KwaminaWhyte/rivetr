@@ -12,6 +12,7 @@ pub mod tls;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{error, info};
@@ -112,42 +113,116 @@ impl Backend {
     }
 }
 
+/// Round-robin backend pool for load balancing across multiple container replicas
+#[derive(Debug, Clone)]
+pub struct RoundRobinBackend {
+    /// List of "host:port" addresses for the backend pool
+    pub backends: Vec<String>,
+    /// Atomic counter for round-robin selection
+    pub current: Arc<AtomicUsize>,
+}
+
+impl RoundRobinBackend {
+    pub fn new(backends: Vec<String>) -> Self {
+        Self {
+            backends,
+            current: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Get the next backend address using round-robin selection
+    pub fn next(&self) -> Option<&str> {
+        if self.backends.is_empty() {
+            return None;
+        }
+        let idx = self.current.fetch_add(1, Ordering::Relaxed) % self.backends.len();
+        Some(&self.backends[idx])
+    }
+}
+
 /// Thread-safe route table for mapping domains to backends
 #[derive(Debug, Default)]
 pub struct RouteTable {
     routes: DashMap<String, Backend>,
+    /// Multi-backend routes for round-robin load balancing
+    multi_routes: DashMap<String, RoundRobinBackend>,
 }
 
 impl RouteTable {
     pub fn new() -> Self {
         Self {
             routes: DashMap::new(),
+            multi_routes: DashMap::new(),
         }
     }
 
     /// Add or update a route for a domain
     pub fn add_route(&self, domain: String, backend: Backend) {
         info!(domain = %domain, backend = ?backend.addr(), "Adding proxy route");
+        // Remove any multi-backend route for this domain (single takes precedence)
+        self.multi_routes.remove(&domain);
         self.routes.insert(domain, backend);
+    }
+
+    /// Add multiple backends for a domain with round-robin load balancing.
+    /// If only one backend is provided, falls back to single-backend route.
+    pub fn add_backends(&self, domain: String, backends: Vec<String>, primary_backend: Backend) {
+        if backends.len() <= 1 {
+            // Single backend: use normal route
+            self.routes.insert(domain, primary_backend);
+        } else {
+            info!(domain = %domain, count = backends.len(), "Adding round-robin backends for proxy route");
+            // Store the primary backend in routes as the canonical backend (for health checks, etc.)
+            self.routes.insert(domain.clone(), primary_backend);
+            // Store round-robin pool
+            self.multi_routes.insert(domain, RoundRobinBackend::new(backends));
+        }
     }
 
     /// Remove a route for a domain
     pub fn remove_route(&self, domain: &str) {
         info!(domain = %domain, "Removing proxy route");
         self.routes.remove(domain);
+        self.multi_routes.remove(domain);
     }
 
-    /// Get the backend for a domain
+    /// Get the backend for a domain, using round-robin if multiple backends are registered
     pub fn get_backend(&self, domain: &str) -> Option<Backend> {
+        // Check if there is a round-robin multi-backend route
+        let lookup_domain = |d: &str| -> Option<Backend> {
+            if let Some(rr) = self.multi_routes.get(d) {
+                // Round-robin: pick next address and construct a temporary Backend
+                if let Some(addr) = rr.next() {
+                    let mut parts = addr.splitn(2, ':');
+                    let host = parts.next().unwrap_or("127.0.0.1").to_string();
+                    let port: u16 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(80);
+                    // Use primary backend metadata (healthcheck, auth) from routes
+                    if let Some(primary) = self.routes.get(d) {
+                        let mut replica_backend = Backend::new(
+                            primary.container_id.clone(),
+                            host,
+                            port,
+                        );
+                        replica_backend.healthy = primary.healthy;
+                        replica_backend.healthcheck_path = primary.healthcheck_path.clone();
+                        replica_backend.basic_auth = primary.basic_auth.clone();
+                        return Some(replica_backend);
+                    }
+                }
+            }
+            // Fall back to single-backend route
+            self.routes.get(d).map(|b| b.clone())
+        };
+
         // Try exact match first
-        if let Some(backend) = self.routes.get(domain) {
-            return Some(backend.clone());
+        if let Some(backend) = lookup_domain(domain) {
+            return Some(backend);
         }
 
         // Try stripping port from domain (e.g., "example.com:8080" -> "example.com")
         if let Some(host) = domain.split(':').next() {
-            if let Some(backend) = self.routes.get(host) {
-                return Some(backend.clone());
+            if let Some(backend) = lookup_domain(host) {
+                return Some(backend);
             }
         }
 
