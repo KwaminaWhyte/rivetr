@@ -630,6 +630,48 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 046: Add s3_storage_configs and s3_backups tables
+    let has_s3_storage_configs_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='s3_storage_configs'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_s3_storage_configs_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/046_s3_storage.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 047: Add advanced monitoring tables (log retention, uptime, scheduled restarts)
+    let has_log_retention_policies_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='log_retention_policies'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_log_retention_policies_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/047_advanced_monitoring.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 048: Add log_drains table for forwarding container logs
+    let has_log_drains_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='log_drains'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_log_drains_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/048_log_drains.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

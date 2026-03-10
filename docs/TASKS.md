@@ -680,21 +680,21 @@ Features that differentiate Rivetr from Coolify/Dokploy.
 
 ### 6.4 Advanced Monitoring
 
-- [ ] **T6.4.1** Log search (full-text search across deployment logs)
-- [ ] **T6.4.2** Log retention policies (configurable per app)
-- [ ] **T6.4.3** Scheduled container restarts (auto-restart at intervals)
+- [x] **T6.4.1** Log search (full-text search across deployment logs) ✅
+- [x] **T6.4.2** Log retention policies (configurable per app) ✅
+- [x] **T6.4.3** Scheduled container restarts (auto-restart at intervals) ✅
 - [ ] **T6.4.4** Dependency graph visualization (show service relationships)
-- [ ] **T6.4.5** Uptime tracking per app (availability percentage)
-- [ ] **T6.4.6** Response time monitoring (via health checks)
+- [x] **T6.4.5** Uptime tracking per app (availability percentage) ✅
+- [x] **T6.4.6** Response time monitoring (via health checks) ✅
 
 ### 6.5 S3 Backup Integration
 
-- [ ] **T6.5.1** S3 storage configuration (AWS, MinIO, R2)
-- [ ] **T6.5.2** Volume backup to S3
-- [ ] **T6.5.3** Database backup to S3
+- [x] **T6.5.1** S3 storage configuration (AWS, MinIO, R2) ✅
+- [x] **T6.5.2** Volume backup to S3 ✅
+- [x] **T6.5.3** Database backup to S3 ✅
 - [ ] **T6.5.4** Scheduled S3 backups
-- [ ] **T6.5.5** S3 backup restore functionality
-- [ ] **T6.5.6** S3 backup settings UI
+- [x] **T6.5.5** S3 backup restore functionality ✅
+- [x] **T6.5.6** S3 backup settings UI ✅
 
 **Phase 6 Checkpoint**: Differentiated PaaS with unique enterprise features
 
@@ -882,13 +882,13 @@ TOTP-based two-factor authentication for enhanced account security.
 
 Export application logs to external observability services.
 
-- [ ] **T8.4.1** Log drain configuration table (id, app_id, provider, config_json, enabled)
-- [ ] **T8.4.2** Axiom log drain provider
-- [ ] **T8.4.3** New Relic log drain provider
+- [x] **T8.4.1** Log drain configuration table (id, app_id, provider, config_json, enabled) ✅
+- [x] **T8.4.2** Axiom log drain provider ✅
+- [x] **T8.4.3** New Relic log drain provider ✅
 - [ ] **T8.4.4** Custom FluentBit configuration support
-- [ ] **T8.4.5** Generic HTTP log drain (POST logs to any endpoint)
-- [ ] **T8.4.6** Per-app log drain configuration
-- [ ] **T8.4.7** Log drain settings UI
+- [x] **T8.4.5** Generic HTTP log drain (POST logs to any endpoint) ✅
+- [x] **T8.4.6** Per-app log drain configuration ✅
+- [x] **T8.4.7** Log drain settings UI ✅
 
 ### 8.5 Docker Swarm Integration
 

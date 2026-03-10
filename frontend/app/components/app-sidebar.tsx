@@ -49,6 +49,7 @@ const navMain: NavMainItem[] = [
       { title: "Security", url: "/settings/security" },
       { title: "Auto Updates", url: "/settings/auto-update" },
       { title: "Backup & Restore", url: "/settings/backup" },
+      { title: "S3 Storage", url: "/settings/s3" },
       { title: "Alert Defaults", url: "/settings/alert-defaults" },
       { title: "Authentication", url: "/settings/oauth" },
       { title: "Teams", url: "/settings/teams" },

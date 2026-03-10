@@ -28,6 +28,9 @@ pub mod ssh_key;
 pub mod stats;
 pub mod team;
 pub mod user;
+pub mod log_drain;
+pub mod monitoring;
+pub mod s3;
 pub mod volume;
 
 // Re-export all types for backwards compatibility
@@ -50,6 +53,9 @@ pub use oauth::*;
 pub use preview_deployment::*;
 pub use project::*;
 pub use resource_metric::*;
+pub use log_drain::*;
+pub use monitoring::*;
+pub use s3::*;
 pub use scheduled_job::*;
 pub use service::*;
 pub use service_template::*;

@@ -8,16 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- S3 backup integration
 - Container replicas
 - Multi-server support
 - SSO/SAML/OIDC
 - Docker Swarm integration
-- Log draining (Axiom, New Relic)
+- Scheduled S3 backups
 - Template search and filtering
 - Deployment enhancements (approval workflow, scheduled deploys, freeze periods)
 - Bulk operations (start/stop/restart/deploy multiple apps)
 - Shared environment variables (team/project/environment inheritance)
+
+---
+
+## [0.4.0] - 2026-03-10
+
+### Added
+
+#### S3 Backup Integration
+- **S3 Storage Configs** - Support for AWS S3, MinIO, Cloudflare R2, and any S3-compatible endpoint with encrypted credential storage
+- **Backup to S3** - Upload instance, database, and volume backups to S3 buckets in background
+- **Restore from S3** - Browse and restore any backup stored in S3 with one click
+- **S3 Settings UI** - Configure storage configs, test connections, manage backups, trigger restores
+
+#### Advanced Monitoring
+- **Full-Text Log Search** - Search deployment logs by query, date range, and log level
+- **Uptime Tracking** - Background health checks every 60s with availability percentage, response time, and 24h/7d/30d history
+- **Log Retention Policies** - Per-app configurable retention (days + max size), with daily background cleanup
+- **Scheduled Container Restarts** - Cron-based automatic restarts per app with enable/disable toggle
+- **Monitoring Tab** - New tab on each app with log search, uptime stats, retention config, and scheduled restart management
+
+#### Log Draining
+- **Axiom** - HTTPS ingest with dataset and API token
+- **New Relic** - Log API with US/EU region support
+- **Datadog** - Log intake with configurable site (datadoghq.com, EU, etc.)
+- **Logtail** (Better Stack) - Source token based ingestion
+- **Custom HTTP** - Generic POST to any endpoint with optional auth header
+- **Batched Forwarding** - Logs buffered and flushed every 5 seconds or 100 lines, with error tracking
+- **Log Drains Tab** - Per-app management UI with provider config forms, enable/disable, and test button
+
+#### Code Organization (File Splitting)
+- `src/db/seeders.rs` → `src/db/seeders/` (10 files by template category)
+- `src/api/webhooks.rs` → `src/api/webhooks/` (mod.rs + github.rs, gitlab.rs, gitea.rs, bitbucket.rs)
+
+### Changed
+- **Watch path filtering** added to GitHub push handler (was missing, only Gitea/GitLab had it)
 
 ---
 

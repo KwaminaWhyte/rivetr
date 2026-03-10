@@ -212,6 +212,10 @@ async fn main() -> Result<()> {
     // Start scheduled jobs scheduler (cron-based commands in containers)
     rivetr::engine::scheduler::spawn_scheduler(db.clone(), runtime.clone());
 
+    // Start advanced monitoring tasks (uptime checker + log cleaner)
+    rivetr::monitoring::spawn_uptime_checker_task(db.clone());
+    rivetr::monitoring::spawn_log_cleaner_task(db.clone());
+
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());
 

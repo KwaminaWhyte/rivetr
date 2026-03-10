@@ -1810,3 +1810,224 @@ export const DATABASE_TYPES: DatabaseTypeInfo[] = [
     defaultVersion: "7",
   },
 ];
+
+// -------------------------------------------------------------------------
+// Log Drain Types
+// -------------------------------------------------------------------------
+
+/** Log drain provider type */
+export type LogDrainProvider = "axiom" | "newrelic" | "http" | "datadog" | "logtail";
+
+/** Log drain configuration */
+export interface LogDrain {
+  id: string;
+  app_id: string;
+  name: string;
+  provider: LogDrainProvider;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  last_sent_at: string | null;
+  error_count: number;
+  last_error: string | null;
+  team_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create a log drain */
+export interface CreateLogDrainRequest {
+  name: string;
+  provider: LogDrainProvider;
+  config: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+/** Request to update a log drain */
+export interface UpdateLogDrainRequest {
+  name?: string;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+}
+
+/** Response from test log drain endpoint */
+export interface TestLogDrainResponse {
+  success: boolean;
+  message: string;
+}
+
+// -------------------------------------------------------------------------
+// S3 Storage & Backup Types
+// -------------------------------------------------------------------------
+
+/** S3 storage configuration */
+export interface S3StorageConfig {
+  id: string;
+  name: string;
+  endpoint: string | null;
+  bucket: string;
+  region: string;
+  access_key: string;
+  secret_key: string;
+  path_prefix: string | null;
+  is_default: boolean;
+  team_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** S3 storage configuration response (keys may be masked) */
+export interface S3StorageConfigResponse {
+  id: string;
+  name: string;
+  endpoint: string | null;
+  bucket: string;
+  region: string;
+  access_key: string;
+  secret_key: string;
+  path_prefix: string | null;
+  is_default: boolean;
+  team_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to create an S3 storage configuration */
+export interface CreateS3StorageConfigRequest {
+  name: string;
+  endpoint?: string;
+  bucket: string;
+  region?: string;
+  access_key: string;
+  secret_key: string;
+  path_prefix?: string;
+  is_default?: boolean;
+  team_id?: string;
+}
+
+/** Request to update an S3 storage configuration */
+export interface UpdateS3StorageConfigRequest {
+  name?: string;
+  endpoint?: string;
+  bucket?: string;
+  region?: string;
+  access_key?: string;
+  secret_key?: string;
+  path_prefix?: string;
+  is_default?: boolean;
+}
+
+/** S3 backup type */
+export type S3BackupType = "instance" | "database" | "volume";
+
+/** S3 backup status */
+export type S3BackupStatus = "pending" | "uploading" | "completed" | "failed";
+
+/** S3 backup response */
+export interface S3BackupResponse {
+  id: string;
+  storage_config_id: string;
+  storage_config_name: string | null;
+  backup_type: S3BackupType;
+  source_id: string | null;
+  s3_key: string;
+  size_bytes: number | null;
+  size_human: string | null;
+  status: S3BackupStatus;
+  error_message: string | null;
+  team_id: string | null;
+  created_at: string;
+}
+
+/** Request to trigger an S3 backup */
+export interface TriggerS3BackupRequest {
+  storage_config_id: string;
+  backup_type: S3BackupType;
+  source_id?: string;
+}
+
+/** S3 connection test result */
+export interface S3TestConnectionResult {
+  success: boolean;
+  message: string;
+}
+
+// -------------------------------------------------------------------------
+// Advanced Monitoring types
+// -------------------------------------------------------------------------
+
+/** Log search result */
+export interface LogSearchResult {
+  id: number;
+  deployment_id: string;
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+/** Log retention policy for an app */
+export interface LogRetentionPolicy {
+  id: string;
+  app_id: string;
+  retention_days: number;
+  max_size_mb: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Request to update log retention policy */
+export interface UpdateLogRetentionRequest {
+  retention_days?: number;
+  max_size_mb?: number | null;
+}
+
+/** Result of system log cleanup */
+export interface LogCleanupResult {
+  apps_processed: number;
+  logs_deleted: number;
+}
+
+/** Uptime check record */
+export interface UptimeCheck {
+  id: string;
+  app_id: string;
+  status: "up" | "down" | "degraded";
+  response_time_ms: number | null;
+  status_code: number | null;
+  error_message: string | null;
+  checked_at: string;
+}
+
+/** Uptime summary for an app */
+export interface UptimeSummary {
+  app_id: string;
+  availability_percent: number;
+  total_checks: number;
+  up_checks: number;
+  down_checks: number;
+  degraded_checks: number;
+  avg_response_time_ms: number | null;
+  recent_checks: UptimeCheck[];
+}
+
+/** Scheduled restart configuration */
+export interface ScheduledRestart {
+  id: string;
+  app_id: string;
+  cron_expression: string;
+  enabled: boolean;
+  last_restart: string | null;
+  next_restart: string | null;
+  created_at: string;
+}
+
+/** Request to create a scheduled restart */
+export interface CreateScheduledRestartRequest {
+  cron_expression: string;
+  enabled?: boolean;
+}
+
+/** Request to update a scheduled restart */
+export interface UpdateScheduledRestartRequest {
+  cron_expression?: string;
+  enabled?: boolean;
+}

@@ -14,13 +14,16 @@ pub mod error;
 mod git_providers;
 mod github_apps;
 mod jobs;
+mod log_drains;
 pub mod metrics;
+mod monitoring;
 mod notifications;
 pub mod oauth;
 mod previews;
 mod projects;
 pub mod rate_limit;
 mod routes;
+mod s3;
 mod service_templates;
 mod services;
 mod ssh_keys;
@@ -171,6 +174,49 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/volumes/:id", put(volumes::update_volume))
         .route("/volumes/:id", delete(volumes::delete_volume))
         .route("/volumes/:id/backup", post(volumes::backup_volume))
+        // Log Drains
+        .route("/apps/:id/log-drains", get(log_drains::list_log_drains))
+        .route("/apps/:id/log-drains", post(log_drains::create_log_drain))
+        .route(
+            "/apps/:id/log-drains/:drain_id",
+            put(log_drains::update_log_drain),
+        )
+        .route(
+            "/apps/:id/log-drains/:drain_id",
+            delete(log_drains::delete_log_drain),
+        )
+        .route(
+            "/apps/:id/log-drains/:drain_id/test",
+            post(log_drains::test_log_drain),
+        )
+        // Monitoring: Log Search, Retention, Uptime, Scheduled Restarts
+        .route("/apps/:id/logs/search", get(monitoring::search_logs))
+        .route("/apps/:id/log-retention", get(monitoring::get_log_retention))
+        .route(
+            "/apps/:id/log-retention",
+            put(monitoring::update_log_retention),
+        )
+        .route("/apps/:id/uptime", get(monitoring::get_uptime))
+        .route(
+            "/apps/:id/uptime/history",
+            get(monitoring::get_uptime_history),
+        )
+        .route(
+            "/apps/:id/scheduled-restarts",
+            post(monitoring::create_scheduled_restart),
+        )
+        .route(
+            "/apps/:id/scheduled-restarts",
+            get(monitoring::list_scheduled_restarts),
+        )
+        .route(
+            "/apps/:id/scheduled-restarts/:restart_id",
+            put(monitoring::update_scheduled_restart),
+        )
+        .route(
+            "/apps/:id/scheduled-restarts/:restart_id",
+            delete(monitoring::delete_scheduled_restart),
+        )
         // Scheduled Jobs
         .route("/apps/:id/jobs", get(jobs::list_jobs))
         .route("/apps/:id/jobs", post(jobs::create_job))
@@ -447,6 +493,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(system::download_backup),
         )
         .route("/system/restore", post(system::restore_backup))
+        // System log cleanup
+        .route(
+            "/system/log-cleanup",
+            post(monitoring::trigger_log_cleanup),
+        )
+        // S3 Storage Configs
+        .route("/s3/configs", post(s3::create_config))
+        .route("/s3/configs", get(s3::list_configs))
+        .route("/s3/configs/:id", put(s3::update_config))
+        .route("/s3/configs/:id", delete(s3::delete_config))
+        .route("/s3/configs/:id/test", post(s3::test_config))
+        // S3 Backups
+        .route("/s3/backup", post(s3::trigger_backup))
+        .route("/s3/backups", get(s3::list_backups))
+        .route("/s3/backups/:id/restore", post(s3::restore_backup))
+        .route("/s3/backups/:id", delete(s3::delete_backup))
         // Audit logs
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))

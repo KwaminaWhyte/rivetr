@@ -4,6 +4,9 @@
 //! - SQLite database (with WAL checkpoint)
 //! - Configuration file (rivetr.toml)
 //! - SSL/ACME certificates
+//! - S3 remote backup integration
+
+pub mod s3;
 
 use anyhow::{Context, Result};
 use chrono::Utc;

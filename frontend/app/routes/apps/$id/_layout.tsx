@@ -100,6 +100,8 @@ const tabs = [
   { id: "previews", label: "Previews", path: "/previews" },
   { id: "jobs", label: "Jobs", path: "/jobs" },
   { id: "logs", label: "Logs", path: "/logs" },
+  { id: "log-drains", label: "Log Drains", path: "/log-drains" },
+  { id: "monitoring", label: "Monitoring", path: "/monitoring" },
   { id: "terminal", label: "Terminal", path: "/terminal" },
 ];
 

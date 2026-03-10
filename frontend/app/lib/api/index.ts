@@ -21,6 +21,9 @@ export { oauthApi } from "./oauth";
 export { environmentsApi } from "./environments";
 export { twoFactorApi } from "./two-factor";
 export { jobsApi } from "./jobs";
+export { logDrainsApi } from "./log-drains";
+export { s3Api } from "./s3";
+export { monitoringApi } from "./monitoring";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -36,6 +39,9 @@ import { oauthApi } from "./oauth";
 import { environmentsApi } from "./environments";
 import { twoFactorApi } from "./two-factor";
 import { jobsApi } from "./jobs";
+import { logDrainsApi } from "./log-drains";
+import { s3Api } from "./s3";
+import { monitoringApi } from "./monitoring";
 
 /**
  * Combined API object for backward compatibility.
@@ -266,6 +272,25 @@ export const api = {
   triggerJobRun: jobsApi.triggerJobRun,
   getJobRuns: jobsApi.getJobRuns,
 
+  // Log Drains
+  getLogDrains: logDrainsApi.getLogDrains,
+  createLogDrain: logDrainsApi.createLogDrain,
+  updateLogDrain: logDrainsApi.updateLogDrain,
+  deleteLogDrain: logDrainsApi.deleteLogDrain,
+  testLogDrain: logDrainsApi.testLogDrain,
+
+  // Monitoring
+  searchLogs: monitoringApi.searchLogs,
+  getLogRetention: monitoringApi.getLogRetention,
+  updateLogRetention: monitoringApi.updateLogRetention,
+  triggerLogCleanup: monitoringApi.triggerLogCleanup,
+  getUptime: monitoringApi.getUptime,
+  getUptimeHistory: monitoringApi.getUptimeHistory,
+  getScheduledRestarts: monitoringApi.getScheduledRestarts,
+  createScheduledRestart: monitoringApi.createScheduledRestart,
+  updateScheduledRestart: monitoringApi.updateScheduledRestart,
+  deleteScheduledRestart: monitoringApi.deleteScheduledRestart,
+
   // Project Environments
   getEnvironments: environmentsApi.getEnvironments,
   createEnvironment: environmentsApi.createEnvironment,
@@ -275,6 +300,17 @@ export const api = {
   createEnvironmentEnvVar: environmentsApi.createEnvironmentEnvVar,
   updateEnvironmentEnvVar: environmentsApi.updateEnvironmentEnvVar,
   deleteEnvironmentEnvVar: environmentsApi.deleteEnvironmentEnvVar,
+
+  // S3 Storage & Backups
+  getS3Configs: s3Api.listConfigs,
+  createS3Config: s3Api.createConfig,
+  updateS3Config: s3Api.updateConfig,
+  deleteS3Config: s3Api.deleteConfig,
+  testS3Config: s3Api.testConfig,
+  triggerS3Backup: s3Api.triggerBackup,
+  getS3Backups: s3Api.listBackups,
+  restoreS3Backup: s3Api.restoreBackup,
+  deleteS3Backup: s3Api.deleteBackup,
 };
 
 export default api;

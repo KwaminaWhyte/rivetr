@@ -132,6 +132,7 @@ Skills in `.claude/skills/` provide domain-specific knowledge and workflows:
 | `docker-testing` | Reference | Container runtime testing, Docker/Podman debugging, build types |
 | `database-operations` | Reference | SQLite/SQLx patterns, queries, migrations, models |
 | `deployment-pipeline` | Reference | Pipeline stages, build types, rollbacks, debugging |
+| `frontend-patterns` | Reference | React Router v7, React Query, shadcn/ui patterns for the dashboard |
 | `/prd` | Workflow | Generate Product Requirements Documents for new features |
 | `/ralph` | Workflow | Convert PRDs to prd.json format for Ralph autonomous agent execution |
 
@@ -178,8 +179,8 @@ See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` fo
 - **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
 - **Phase 6 (Unique Features)**: Planned (0%)
 - **Phase 7 (Competitive Parity)**: In progress (65%) - OAuth, environments, watch paths, Bitbucket, notifications, 74 templates, scheduled jobs, deploy by commit/tag done
-- **Phase 8 (Enterprise & Scale)**: In progress (9%) - 2FA complete
-- **Overall Progress**: 480/599 tasks (80%)
+- **Phase 8 (Enterprise & Scale)**: In progress (18%) - 2FA, log draining complete
+- **Overall Progress**: 504/599 tasks (84%)
 
 ## Configuration
 

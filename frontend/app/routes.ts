@@ -33,6 +33,8 @@ export default [
       route("previews", "routes/apps/$id/previews.tsx"),
       route("jobs", "routes/apps/$id/jobs.tsx"),
       route("logs", "routes/apps/$id/logs.tsx"),
+      route("log-drains", "routes/apps/$id/log-drains.tsx"),
+      route("monitoring", "routes/apps/$id/monitoring.tsx"),
       route("terminal", "routes/apps/$id/terminal.tsx"),
     ]),
 
@@ -80,6 +82,7 @@ export default [
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
       route("auto-update", "routes/settings/auto-update.tsx"),
       route("backup", "routes/settings/backup.tsx"),
+      route("s3", "routes/settings/s3.tsx"),
       route("security", "routes/settings/security.tsx"),
       route("oauth", "routes/settings/oauth.tsx"),
     ]),
