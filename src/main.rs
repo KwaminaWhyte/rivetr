@@ -309,9 +309,9 @@ async fn restore_routes(
     runtime: &Arc<dyn ContainerRuntime>,
     routes: &Arc<ArcSwap<RouteTable>>,
 ) -> Result<()> {
-    // Get all apps with domains from the database
-    let apps: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT name, domain, healthcheck FROM apps WHERE domain IS NOT NULL AND domain != ''",
+    // Fetch all apps that have either a legacy domain or the new domains JSON array
+    let apps: Vec<(String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT name, domain, domains, healthcheck FROM apps WHERE (domain IS NOT NULL AND domain != '') OR (domains IS NOT NULL AND domains != '' AND domains != '[]')",
     )
     .fetch_all(db)
     .await?;
@@ -324,23 +324,51 @@ async fn restore_routes(
     // List all running rivetr containers
     let containers = runtime.list_containers("rivetr-").await?;
 
-    for (app_name, domain, healthcheck) in apps {
+    for (app_name, legacy_domain, domains_json, healthcheck) in apps {
         let container_name = format!("rivetr-{}", app_name);
 
         // Find the running container for this app
         if let Some(container) = containers.iter().find(|c| c.name == container_name) {
             if let Some(port) = container.port {
-                let backend = Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
-                    .with_healthcheck(healthcheck);
+                // Collect all domain names for this app
+                let mut domain_names: Vec<String> = Vec::new();
 
-                routes.load().add_route(domain.clone(), backend);
-                tracing::info!(
-                    domain = %domain,
-                    port = port,
-                    container = %container_name,
-                    "Restored proxy route for app {}",
-                    app_name
-                );
+                // Legacy domain field
+                if let Some(ref d) = legacy_domain {
+                    if !d.is_empty() {
+                        domain_names.push(d.clone());
+                    }
+                }
+
+                // New domains JSON array: [{domain: "...", primary: true}, ...]
+                if let Some(ref json) = domains_json {
+                    if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                        if let Some(list) = arr.as_array() {
+                            for entry in list {
+                                if let Some(d) = entry.get("domain").and_then(|v| v.as_str()) {
+                                    if !d.is_empty() && !domain_names.contains(&d.to_string()) {
+                                        domain_names.push(d.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for domain in domain_names {
+                    let backend =
+                        Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
+                            .with_healthcheck(healthcheck.clone());
+
+                    routes.load().add_route(domain.clone(), backend);
+                    tracing::info!(
+                        domain = %domain,
+                        port = port,
+                        container = %container_name,
+                        "Restored proxy route for app {}",
+                        app_name
+                    );
+                }
             }
         }
     }
