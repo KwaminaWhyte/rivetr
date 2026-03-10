@@ -11,16 +11,21 @@ use tracing::info;
 
 pub type DbPool = SqlitePool;
 
-/// Execute a SQL migration file, properly handling comments
+/// Execute a SQL migration file, properly handling comments.
+///
+/// Strips `--` comment lines first, then splits on `;` to run individual statements.
+/// This avoids the bug where a `;` inside a `--` comment would produce invalid SQL fragments.
 async fn execute_sql(pool: &SqlitePool, sql: &str) -> Result<()> {
-    for statement in sql.split(';') {
-        // Strip SQL comment lines (lines starting with --)
-        let cleaned: String = statement
-            .lines()
-            .filter(|line| !line.trim().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let trimmed = cleaned.trim();
+    // First pass: strip all comment lines (lines whose non-whitespace content starts with --)
+    let stripped: String = sql
+        .lines()
+        .filter(|line| !line.trim().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Second pass: split on `;` and run each non-empty statement
+    for statement in stripped.split(';') {
+        let trimmed = statement.trim();
         if !trimmed.is_empty() {
             sqlx::query(trimmed).execute(pool).await?;
         }
