@@ -3,7 +3,7 @@
 //! Checks every 60 seconds for jobs whose `next_run_at` has passed,
 //! then executes them in the app's running container using the container runtime.
 
-use crate::db::ScheduledJob;
+use crate::db::{App, ScheduledJob};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 use chrono::Utc;
@@ -11,6 +11,7 @@ use cron::Schedule;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::time::interval;
 
 /// Calculate the next run time from a cron expression, starting from now
@@ -346,6 +347,122 @@ pub fn spawn_scheduler(db: DbPool, runtime: Arc<dyn ContainerRuntime>) {
         loop {
             tick.tick().await;
             scheduler_cycle(&db, &runtime).await;
+        }
+    });
+}
+
+/// Poll deployments every minute for scheduled_at that has passed, then queue them.
+async fn check_scheduled_deployments(db: &DbPool, deploy_tx: &mpsc::Sender<(String, App)>) {
+    let now = Utc::now().to_rfc3339();
+
+    // Find deployments whose scheduled_at has passed, are still pending, and haven't been
+    // queued yet (status = 'pending' and approval_status is NULL or 'approved').
+    let rows: Vec<(String, String)> = match sqlx::query_as(
+        r#"
+        SELECT d.id, d.app_id
+        FROM deployments d
+        WHERE d.scheduled_at IS NOT NULL
+          AND d.scheduled_at <= ?
+          AND d.status = 'pending'
+          AND (d.approval_status IS NULL OR d.approval_status = 'approved')
+        "#,
+    )
+    .bind(&now)
+    .fetch_all(db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch scheduled deployments");
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    tracing::info!(count = rows.len(), "Found scheduled deployments to trigger");
+
+    for (deployment_id, app_id) in rows {
+        // Fetch the app record
+        let app: Option<App> = match sqlx::query_as(
+            "SELECT * FROM apps WHERE id = ?",
+        )
+        .bind(&app_id)
+        .fetch_optional(db)
+        .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!(
+                    deployment_id = %deployment_id,
+                    app_id = %app_id,
+                    error = %e,
+                    "Failed to fetch app for scheduled deployment"
+                );
+                continue;
+            }
+        };
+
+        let Some(app) = app else {
+            tracing::warn!(
+                deployment_id = %deployment_id,
+                app_id = %app_id,
+                "App not found for scheduled deployment, skipping"
+            );
+            continue;
+        };
+
+        // Clear scheduled_at so this doesn't get picked up again, then queue
+        if let Err(e) = sqlx::query(
+            "UPDATE deployments SET scheduled_at = NULL WHERE id = ?",
+        )
+        .bind(&deployment_id)
+        .execute(db)
+        .await
+        {
+            tracing::warn!(
+                deployment_id = %deployment_id,
+                error = %e,
+                "Failed to clear scheduled_at for deployment"
+            );
+            continue;
+        }
+
+        tracing::info!(
+            deployment_id = %deployment_id,
+            app_name = %app.name,
+            "Queueing scheduled deployment"
+        );
+
+        if let Err(e) = deploy_tx.send((deployment_id.clone(), app)).await {
+            tracing::error!(
+                deployment_id = %deployment_id,
+                error = %e,
+                "Failed to send scheduled deployment to engine"
+            );
+        }
+    }
+}
+
+/// Spawn the background task that checks for scheduled deployments every 60 seconds.
+pub fn spawn_scheduled_deployment_checker(
+    db: DbPool,
+    deploy_tx: mpsc::Sender<(String, App)>,
+) {
+    tracing::info!("Starting scheduled deployment checker (60s interval)");
+
+    tokio::spawn(async move {
+        // Wait a bit before the first check so the engine is ready
+        tokio::time::sleep(Duration::from_secs(20)).await;
+
+        let mut tick = interval(Duration::from_secs(60));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tick.tick().await;
+            check_scheduled_deployments(&db, &deploy_tx).await;
         }
     });
 }

@@ -212,6 +212,12 @@ async fn main() -> Result<()> {
     // Start scheduled jobs scheduler (cron-based commands in containers)
     rivetr::engine::scheduler::spawn_scheduler(db.clone(), runtime.clone());
 
+    // Start scheduled deployment checker (queues deployments whose scheduled_at has passed)
+    rivetr::engine::scheduler::spawn_scheduled_deployment_checker(
+        db.clone(),
+        state.deploy_tx.clone(),
+    );
+
     // Start advanced monitoring tasks (uptime checker + log cleaner)
     rivetr::monitoring::spawn_uptime_checker_task(db.clone());
     rivetr::monitoring::spawn_log_cleaner_task(db.clone());

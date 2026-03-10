@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { bulkApi } from "@/lib/api/bulk";
 import {
   ArrowLeft,
   ChevronDown,
@@ -22,6 +23,8 @@ import {
   Search,
   Rocket,
   Settings2,
+  RotateCw,
+  CheckSquare,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
@@ -197,6 +200,10 @@ export default function ProjectDetailPage() {
 
   // Environment state
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>("all");
+
+  // Bulk selection state
+  const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   // Form state for database creation
   const [dbName, setDbName] = useState("");
@@ -586,6 +593,53 @@ services:
     );
   }
 
+  // Bulk selection helpers
+  const toggleAppSelection = (appId: string) => {
+    setSelectedAppIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(appId)) next.delete(appId);
+      else next.add(appId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedAppIds.size === filteredApps.length) {
+      setSelectedAppIds(new Set());
+    } else {
+      setSelectedAppIds(new Set(filteredApps.map((a) => a.id)));
+    }
+  };
+
+  const handleBulkAction = async (action: "start" | "stop" | "restart" | "deploy") => {
+    if (selectedAppIds.size === 0) return;
+    setIsBulkLoading(true);
+    try {
+      const appIds = Array.from(selectedAppIds);
+      let result;
+      if (action === "start") result = await bulkApi.bulkStart({ app_ids: appIds });
+      else if (action === "stop") result = await bulkApi.bulkStop({ app_ids: appIds });
+      else if (action === "restart") result = await bulkApi.bulkRestart({ app_ids: appIds });
+      else result = await bulkApi.bulkDeploy({ app_ids: appIds });
+
+      const failed = result.results.filter((r) => !r.success);
+      if (failed.length === 0) {
+        toast.success(`Bulk ${action} completed for ${appIds.length} app(s)`);
+      } else {
+        toast.warning(
+          `Bulk ${action}: ${appIds.length - failed.length} succeeded, ${failed.length} failed`
+        );
+      }
+      setSelectedAppIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["app-statuses"] });
+      queryClient.invalidateQueries({ queryKey: ["project", id] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Bulk ${action} failed`);
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
   if (!project) {
     return (
       <div className="space-y-6">
@@ -684,6 +738,16 @@ services:
             </Button>
             <Button
               variant="outline"
+              size="sm"
+              asChild
+            >
+              <Link to={`/projects/${project.id}/env-vars`}>
+                <Settings2 className="mr-2 h-4 w-4" />
+                Shared Variables
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setIsAddAppDialogOpen(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -698,6 +762,63 @@ services:
           </div>
         </CardHeader>
         <CardContent>
+          {/* Bulk action bar */}
+          {selectedAppIds.size > 0 && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2">
+              <span className="text-sm font-medium mr-2">
+                {selectedAppIds.size} app{selectedAppIds.size !== 1 ? "s" : ""} selected
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("start")}
+                className="gap-1.5"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Start
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("stop")}
+                className="gap-1.5"
+              >
+                <Square className="h-3.5 w-3.5" />
+                Stop
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("restart")}
+                className="gap-1.5"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Restart
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isBulkLoading}
+                onClick={() => handleBulkAction("deploy")}
+                className="gap-1.5"
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                Deploy
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedAppIds(new Set())}
+                className="ml-auto"
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                Clear
+              </Button>
+            </div>
+          )}
           {filteredApps.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-muted-foreground mb-4">
@@ -720,66 +841,96 @@ services:
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredApps.map((app) => {
-                const status = appStatuses?.[app.id] || "stopped";
-                return (
-                  <Card
-                    key={app.id}
-                    className="group relative hover:shadow-md transition-shadow"
-                  >
-                    <Link
-                      to={`/apps/${app.id}`}
-                      className="absolute inset-0 z-0"
-                    />
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <CardTitle className="text-base font-semibold">
-                            {app.name}
-                          </CardTitle>
-                          <div className="flex items-center gap-2">
-                            <StatusBadge status={status} />
-                            <EnvironmentBadge environment={app.environment} />
+            <>
+              {/* Select All checkbox row */}
+              <div className="flex items-center gap-2 mb-3">
+                <Checkbox
+                  id="select-all-apps"
+                  checked={
+                    filteredApps.length > 0 &&
+                    selectedAppIds.size === filteredApps.length
+                  }
+                  onCheckedChange={toggleSelectAll}
+                />
+                <label
+                  htmlFor="select-all-apps"
+                  className="text-sm text-muted-foreground cursor-pointer select-none"
+                >
+                  Select all ({filteredApps.length})
+                </label>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredApps.map((app) => {
+                  const status = appStatuses?.[app.id] || "stopped";
+                  const isSelected = selectedAppIds.has(app.id);
+                  return (
+                    <Card
+                      key={app.id}
+                      className={`group relative hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-primary" : ""}`}
+                    >
+                      {/* Checkbox in top-left (above the link overlay) */}
+                      <div
+                        className="absolute top-3 left-3 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleAppSelection(app.id)}
+                        />
+                      </div>
+                      <Link
+                        to={`/apps/${app.id}`}
+                        className="absolute inset-0 z-0"
+                      />
+                      <CardHeader className="pb-2 pl-10">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <CardTitle className="text-base font-semibold">
+                              {app.name}
+                            </CardTitle>
+                            <div className="flex items-center gap-2">
+                              <StatusBadge status={status} />
+                              <EnvironmentBadge environment={app.environment} />
+                            </div>
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity relative z-10"
+                            disabled={removeAppMutation.isPending}
+                            title="Remove from project"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              removeAppMutation.mutate(app.id);
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity relative z-10"
-                          disabled={removeAppMutation.isPending}
-                          title="Remove from project"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            removeAppMutation.mutate(app.id);
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0 pb-4">
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        {app.domain && (
-                          <div className="flex items-center gap-2 truncate">
-                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{app.domain}</span>
-                          </div>
-                        )}
-                        {app.git_url && (
-                          <div className="truncate text-xs opacity-75">
-                            {app.git_url
-                              .replace(/^https?:\/\//, "")
-                              .replace(/\.git$/, "")}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                      </CardHeader>
+                      <CardContent className="pt-0 pb-4">
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                          {app.domain && (
+                            <div className="flex items-center gap-2 truncate">
+                              <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{app.domain}</span>
+                            </div>
+                          )}
+                          {app.git_url && (
+                            <div className="truncate text-xs opacity-75">
+                              {app.git_url
+                                .replace(/^https?:\/\//, "")
+                                .replace(/\.git$/, "")}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

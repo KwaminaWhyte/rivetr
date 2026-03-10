@@ -6,7 +6,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 
 ## Current Status
 
-**Overall Progress: 504/599 tasks complete**
+**Overall Progress: 525/599 tasks complete**
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -99,18 +99,18 @@ Enhanced rollback with registry integration.
 
 ### Deployment Enhancements
 - [ ] Deployment preview diff (show changes before deploy)
-- [ ] Approval workflow for production deployments
-- [ ] Scheduled deployments (deploy at specific time)
-- [ ] Deployment freeze periods
+- [x] Approval workflow for production deployments ✅
+- [x] Scheduled deployments (deploy at specific time) ✅
+- [x] Deployment freeze periods ✅
 - [ ] Zero-downtime indicator (blue/green status)
 
-### Bulk Operations & App Management
-- [ ] Bulk start/stop/restart multiple apps
-- [ ] Bulk deploy multiple apps
-- [ ] App cloning (duplicate configuration)
-- [ ] Configuration snapshots (save/restore)
-- [ ] Export/import projects (JSON backup)
-- [ ] Maintenance mode with custom page
+### Bulk Operations & App Management ✅ COMPLETE
+- [x] Bulk start/stop/restart multiple apps ✅
+- [x] Bulk deploy multiple apps ✅
+- [x] App cloning (duplicate configuration) ✅
+- [x] Configuration snapshots (save/restore) ✅
+- [x] Export/import projects (JSON backup) ✅
+- [x] Maintenance mode with custom page ✅
 
 ### Advanced Monitoring
 - [x] Full-text log search ✅

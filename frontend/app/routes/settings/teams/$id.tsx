@@ -86,8 +86,10 @@ import {
   ChevronRight,
   Calendar,
   Filter,
+  SlidersHorizontal,
 } from "lucide-react";
 import { TeamNotificationChannelsCard } from "@/components/team-notification-channels-card";
+import { SharedEnvVarsTable } from "@/components/shared-env-vars-table";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
@@ -589,6 +591,10 @@ export default function TeamDetailPage() {
               Activity
             </TabsTrigger>
           )}
+          <TabsTrigger value="shared-vars" className="gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            Shared Variables
+          </TabsTrigger>
         </TabsList>
 
         {/* Members Tab */}
@@ -1091,6 +1097,16 @@ export default function TeamDetailPage() {
             </Card>
           </TabsContent>
         )}
+
+        {/* Shared Variables Tab */}
+        <TabsContent value="shared-vars">
+          <SharedEnvVarsTable
+            scope="team"
+            scopeId={id!}
+            title="Team Shared Variables"
+            description="These variables are inherited by all apps in this team. App-level variables take precedence."
+          />
+        </TabsContent>
       </Tabs>
 
       {/* Notification Channels - Only visible to admins */}

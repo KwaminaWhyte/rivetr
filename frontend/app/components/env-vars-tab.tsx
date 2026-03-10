@@ -52,12 +52,16 @@ import {
   List,
   Loader2,
   AlertTriangle,
+  Layers,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedEnvVarsApi } from "@/lib/api/shared-env-vars";
 import type {
   EnvVar,
   CreateEnvVarRequest,
   UpdateEnvVarRequest,
+  ResolvedEnvVar,
+  EnvVarSource,
 } from "@/types/api";
 
 // Parse .env file content into key-value pairs
@@ -118,9 +122,35 @@ interface EnvVarsTabProps {
   token?: string;
 }
 
+function sourceLabel(source: EnvVarSource): string {
+  switch (source) {
+    case "app":
+      return "App";
+    case "environment":
+      return "Environment";
+    case "project":
+      return "Project";
+    case "team":
+      return "Team";
+  }
+}
+
+function sourceBadgeClass(source: EnvVarSource): string {
+  switch (source) {
+    case "app":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
+    case "environment":
+      return "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300";
+    case "project":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300";
+    case "team":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300";
+  }
+}
+
 export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
   const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<"normal" | "developer">("normal");
+  const [viewMode, setViewMode] = useState<"normal" | "developer" | "resolved">("normal");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -150,6 +180,16 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
   } = useQuery<EnvVar[]>({
     queryKey: ["env-vars", appId],
     queryFn: () => api.getEnvVars(appId, false, token),
+  });
+
+  // Fetch resolved env vars (for inheritance view)
+  const {
+    data: resolvedVars = [],
+    isLoading: isLoadingResolved,
+  } = useQuery<ResolvedEnvVar[]>({
+    queryKey: ["env-vars-resolved", appId],
+    queryFn: () => sharedEnvVarsApi.getResolvedEnvVars(appId),
+    enabled: viewMode === "resolved",
   });
 
   // Create mutation
@@ -466,6 +506,10 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                 <Code className="h-4 w-4" />
                 Developer
               </TabsTrigger>
+              <TabsTrigger value="resolved" className="gap-1.5">
+                <Layers className="h-4 w-4" />
+                Resolved
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -571,6 +615,72 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
               </Table>
             )}
           </>
+        ) : viewMode === "resolved" ? (
+          // Resolved View - Shows effective variables with source badges
+          <div className="space-y-4">
+            <div className="p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+              Effective variables for this app showing the full inheritance chain.
+              Higher-priority sources override lower ones:{" "}
+              <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${sourceBadgeClass("team")}`}>Team</span>{" "}
+              {"→"}{" "}
+              <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${sourceBadgeClass("project")}`}>Project</span>{" "}
+              {"→"}{" "}
+              <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${sourceBadgeClass("environment")}`}>Environment</span>{" "}
+              {"→"}{" "}
+              <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${sourceBadgeClass("app")}`}>App</span>
+            </div>
+            {isLoadingResolved ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-10 bg-muted rounded animate-pulse" />
+                ))}
+              </div>
+            ) : resolvedVars.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No environment variables defined for this app.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Key</TableHead>
+                    <TableHead>Value</TableHead>
+                    <TableHead className="w-[120px]">Source</TableHead>
+                    <TableHead className="w-[90px]">Type</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {resolvedVars.map((v) => (
+                    <TableRow key={v.key}>
+                      <TableCell className="font-mono text-sm">{v.key}</TableCell>
+                      <TableCell>
+                        <span className="font-mono text-sm text-muted-foreground truncate max-w-[300px] block">
+                          {v.is_secret ? "***" : v.value}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${sourceBadgeClass(v.source)}`}
+                        >
+                          {sourceLabel(v.source)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {v.is_secret ? (
+                          <Badge variant="secondary" className="gap-1">
+                            <Lock className="h-3 w-3" />
+                            Secret
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Plain</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
         ) : (
           // Developer View - Textarea for .env format
           <div className="space-y-4">

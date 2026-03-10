@@ -90,6 +90,14 @@ pub struct App {
     /// Maximum number of deployment versions to keep for rollback (default: 5)
     #[serde(default)]
     pub max_rollback_versions: i32,
+    /// Require approval before deployments are executed
+    #[serde(default)]
+    pub require_approval: i32,
+    /// Enable maintenance mode (serves maintenance message instead of app)
+    #[serde(default)]
+    pub maintenance_mode: i32,
+    /// Custom maintenance message shown when maintenance mode is active
+    pub maintenance_message: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -156,6 +164,12 @@ pub struct AppResponse {
     pub registry_push_enabled: bool,
     /// Maximum number of deployment versions to keep for rollback
     pub max_rollback_versions: i32,
+    /// Require approval before deployments are executed
+    pub require_approval: bool,
+    /// Enable maintenance mode
+    pub maintenance_mode: bool,
+    /// Custom maintenance message
+    pub maintenance_message: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -206,6 +220,9 @@ impl From<App> for AppResponse {
             auto_rollback_enabled: app.auto_rollback_enabled != 0,
             registry_push_enabled: app.registry_push_enabled != 0,
             max_rollback_versions: app.max_rollback_versions,
+            require_approval: app.require_approval != 0,
+            maintenance_mode: app.maintenance_mode != 0,
+            maintenance_message: app.maintenance_message,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -379,6 +396,16 @@ impl App {
     /// Check if automatic rollback is enabled for this app
     pub fn is_auto_rollback_enabled(&self) -> bool {
         self.auto_rollback_enabled != 0
+    }
+
+    /// Check if deployment approval is required for this app
+    pub fn is_require_approval(&self) -> bool {
+        self.require_approval != 0
+    }
+
+    /// Check if maintenance mode is enabled for this app
+    pub fn is_maintenance_mode(&self) -> bool {
+        self.maintenance_mode != 0
     }
 
     /// Check if registry push is enabled for this app
@@ -564,6 +591,13 @@ pub struct UpdateAppRequest {
     pub registry_push_enabled: Option<bool>,
     /// Maximum number of deployment versions to keep for rollback
     pub max_rollback_versions: Option<i32>,
+    // Approval and maintenance
+    /// Require approval before deployments are executed
+    pub require_approval: Option<bool>,
+    /// Enable maintenance mode
+    pub maintenance_mode: Option<bool>,
+    /// Custom maintenance message
+    pub maintenance_message: Option<String>,
 }
 
 /// Request specifically for updating domains

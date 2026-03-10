@@ -665,18 +665,18 @@ Features that differentiate Rivetr from Coolify/Dokploy.
 
 - [ ] **T6.2.1** Zero-downtime deployment indicator (blue/green strategy status)
 - [ ] **T6.2.2** Deployment preview diff (show env/domain/config changes before deploy)
-- [ ] **T6.2.3** Deployment approval workflow (require approval before production)
-- [ ] **T6.2.4** Scheduled deployments (deploy at specific time)
-- [ ] **T6.2.5** Deployment freeze periods (prevent deployments during windows)
+- [x] **T6.2.3** Deployment approval workflow (require approval before production) ✅
+- [x] **T6.2.4** Scheduled deployments (deploy at specific time) ✅
+- [x] **T6.2.5** Deployment freeze periods (prevent deployments during windows) ✅
 
 ### 6.3 Bulk Operations & App Management
 
-- [ ] **T6.3.1** Bulk start/stop/restart multiple apps
-- [ ] **T6.3.2** Bulk deploy multiple apps
-- [ ] **T6.3.3** App cloning (duplicate app configuration)
-- [ ] **T6.3.4** Configuration snapshots (save/restore app configs)
-- [ ] **T6.3.5** Export/import projects (JSON backup of entire project)
-- [ ] **T6.3.6** Maintenance mode with custom page (503 with HTML)
+- [x] **T6.3.1** Bulk start/stop/restart multiple apps ✅
+- [x] **T6.3.2** Bulk deploy multiple apps ✅
+- [x] **T6.3.3** App cloning (duplicate app configuration) ✅
+- [x] **T6.3.4** Configuration snapshots (save/restore app configs) ✅
+- [x] **T6.3.5** Export/import projects (JSON backup of entire project) ✅
+- [x] **T6.3.6** Maintenance mode with custom page (503 with HTML) ✅
 
 ### 6.4 Advanced Monitoring
 
@@ -919,11 +919,11 @@ Offload builds to dedicated build servers to reduce production server load.
 
 Hierarchical environment variable inheritance across team, project, and environment levels.
 
-- [ ] **T8.7.1** Team-level shared variables table (team_env_vars)
-- [ ] **T8.7.2** Project-level shared variables table (project_env_vars)
-- [ ] **T8.7.3** Variable inheritance resolution (team → project → environment → app)
-- [ ] **T8.7.4** Override indicators in UI (show where each variable comes from)
-- [ ] **T8.7.5** Shared variable management UI (team settings, project settings)
+- [x] **T8.7.1** Team-level shared variables table (team_env_vars) ✅
+- [x] **T8.7.2** Project-level shared variables table (project_env_vars) ✅
+- [x] **T8.7.3** Variable inheritance resolution (team → project → environment → app) ✅
+- [x] **T8.7.4** Override indicators in UI (show where each variable comes from) ✅
+- [x] **T8.7.5** Shared variable management UI (team settings, project settings) ✅
 
 **Phase 8 Checkpoint**: Enterprise-ready PaaS with multi-server and SSO support
 

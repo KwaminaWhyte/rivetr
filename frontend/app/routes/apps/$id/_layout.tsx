@@ -13,8 +13,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
+import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
-import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project, GitCommit, GitTag } from "@/types/api";
+import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project, GitCommit, GitTag, DeploymentFreezeWindow } from "@/types/api";
 import {
   Play,
   Square,
@@ -26,7 +27,10 @@ import {
   Upload,
   GitCommitHorizontal,
   Tag,
+  Copy,
+  WrenchIcon,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -92,7 +96,7 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
 }
 
-const tabs = [
+const TAB_DEFS = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
   { id: "settings", label: "Settings", path: "/settings" },
@@ -118,6 +122,14 @@ export default function AppDetailLayout() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [detectionResult, setDetectionResult] = useState<BuildDetectionResult | null>(null);
+
+  // Clone app state
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
+  const [cloneName, setCloneName] = useState("");
+  const [isCloning, setIsCloning] = useState(false);
+
+  // Maintenance mode state
+  const [isMaintenanceLoading, setIsMaintenanceLoading] = useState(false);
 
   // Deploy by commit/tag state
   const [showDeployOptionsDialog, setShowDeployOptionsDialog] = useState(false);
@@ -174,6 +186,11 @@ export default function AppDetailLayout() {
   });
 
   const deployments = deploymentsData?.items ?? [];
+
+  // Count pending-approval deployments for this app
+  const pendingApprovalCount = deployments.filter(
+    (d: Deployment) => d.approval_status === "pending"
+  ).length;
 
   // Fetch commits for deploy-by-commit (only when dialog is open)
   const { data: commits = [], isLoading: commitsLoading } = useQuery<GitCommit[]>({
@@ -319,11 +336,44 @@ export default function AppDetailLayout() {
     }
   };
 
+  // Handle clone app
+  const handleClone = async () => {
+    if (!id) return;
+    setIsCloning(true);
+    try {
+      const result = await bulkApi.cloneApp(id, cloneName ? { name: cloneName } : undefined);
+      toast.success(`App cloned as "${result.app.name}"`);
+      setShowCloneDialog(false);
+      setCloneName("");
+      navigate(`/apps/${result.app.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clone app");
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
+  // Handle maintenance mode toggle
+  const handleToggleMaintenance = async () => {
+    if (!id || !app) return;
+    const currentMode = (app as App & { maintenance_mode?: boolean }).maintenance_mode ?? false;
+    setIsMaintenanceLoading(true);
+    try {
+      await bulkApi.setMaintenanceMode(id, { enabled: !currentMode });
+      toast.success(currentMode ? "Maintenance mode disabled" : "Maintenance mode enabled");
+      queryClient.invalidateQueries({ queryKey: ["app", id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to toggle maintenance mode");
+    } finally {
+      setIsMaintenanceLoading(false);
+    }
+  };
+
   // Determine active tab from path
   const basePath = `/apps/${id}`;
   const currentPath = location.pathname;
   const activeTab =
-    tabs.find((tab) => {
+    TAB_DEFS.find((tab) => {
       if (tab.path === "") {
         return currentPath === basePath || currentPath === basePath + "/";
       }
@@ -465,15 +515,61 @@ export default function AppDetailLayout() {
               </a>
             </Button>
           )}
+          {/* More actions dropdown: Clone + Maintenance */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  setCloneName(`${app.name}-copy`);
+                  setShowCloneDialog(true);
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Clone App
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleToggleMaintenance}
+                disabled={isMaintenanceLoading}
+              >
+                <WrenchIcon className="h-4 w-4 mr-2" />
+                {(app as App & { maintenance_mode?: boolean }).maintenance_mode
+                  ? "Disable Maintenance"
+                  : "Enable Maintenance"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* Maintenance mode badge */}
+          {(app as App & { maintenance_mode?: boolean }).maintenance_mode && (
+            <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600">
+              <WrenchIcon className="h-3 w-3" />
+              Maintenance
+            </Badge>
+          )}
         </div>
       </div>
 
       {/* Tabs Navigation */}
       <Tabs value={activeTab} className="w-full">
         <TabsList className="w-full justify-start">
-          {tabs.map((tab) => (
+          {TAB_DEFS.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
-              <Link to={`${basePath}${tab.path}`}>{tab.label}</Link>
+              <Link to={`${basePath}${tab.path}`} className="gap-1.5">
+                {tab.label}
+                {tab.id === "deployments" && pendingApprovalCount > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="h-4 min-w-4 px-1 text-[10px] rounded-full"
+                  >
+                    {pendingApprovalCount}
+                  </Badge>
+                )}
+              </Link>
             </TabsTrigger>
           ))}
         </TabsList>
@@ -684,6 +780,48 @@ export default function AppDetailLayout() {
             >
               <Rocket className="h-4 w-4" />
               {isSubmitting ? "Deploying..." : "Deploy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone App Dialog */}
+      <Dialog
+        open={showCloneDialog}
+        onOpenChange={(open) => {
+          setShowCloneDialog(open);
+          if (!open) setCloneName("");
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clone App</DialogTitle>
+            <DialogDescription>
+              Create a deep copy of this app including its configuration, environment variables, and volumes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="clone-name">New App Name</Label>
+              <Input
+                id="clone-name"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder={`${app.name}-copy`}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCloneDialog(false)}
+              disabled={isCloning}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleClone} disabled={isCloning} className="gap-2">
+              <Copy className="h-4 w-4" />
+              {isCloning ? "Cloning..." : "Clone App"}
             </Button>
           </DialogFooter>
         </DialogContent>

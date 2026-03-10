@@ -672,6 +672,62 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 049: Add deployment enhancements (approval workflow, maintenance mode, freeze windows)
+    let has_approval_status: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'approval_status'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_approval_status.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/049_deployment_enhancements.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 050: Add config_snapshots table and maintenance mode columns
+    let has_config_snapshots_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='config_snapshots'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_config_snapshots_table.is_none() {
+        execute_sql(
+            pool,
+            r#"CREATE TABLE IF NOT EXISTS config_snapshots (
+              id TEXT PRIMARY KEY,
+              app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+              name TEXT NOT NULL,
+              description TEXT,
+              config_json TEXT NOT NULL,
+              env_vars_json TEXT NOT NULL,
+              created_by TEXT REFERENCES users(id),
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )"#,
+        )
+        .await?;
+    }
+
+    // Add maintenance_mode column to apps if missing
+    let has_maintenance_mode: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'maintenance_mode'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_maintenance_mode.is_none() {
+        execute_sql(
+            pool,
+            "ALTER TABLE apps ADD COLUMN maintenance_mode INTEGER NOT NULL DEFAULT 0",
+        )
+        .await?;
+        execute_sql(
+            pool,
+            "ALTER TABLE apps ADD COLUMN maintenance_message TEXT",
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

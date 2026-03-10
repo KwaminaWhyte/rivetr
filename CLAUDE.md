@@ -179,8 +179,8 @@ See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` fo
 - **Phase 5 (Advanced CI/CD)**: In progress (90%) - Preview deployments complete
 - **Phase 6 (Unique Features)**: Planned (0%)
 - **Phase 7 (Competitive Parity)**: In progress (65%) - OAuth, environments, watch paths, Bitbucket, notifications, 74 templates, scheduled jobs, deploy by commit/tag done
-- **Phase 8 (Enterprise & Scale)**: In progress (18%) - 2FA, log draining complete
-- **Overall Progress**: 504/599 tasks (84%)
+- **Phase 8 (Enterprise & Scale)**: In progress (27%) - 2FA, log draining, shared env vars complete
+- **Overall Progress**: 525/599 tasks (88%)
 
 ## Configuration
 

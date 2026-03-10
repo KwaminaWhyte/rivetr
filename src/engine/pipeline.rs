@@ -1068,6 +1068,50 @@ pub async fn run_deployment(
         }
     }
 
+    // Merge project-level shared env vars (overrides team vars, overridden by environment/app vars)
+    if let Some(ref project_id) = app.project_id {
+        let project_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM project_env_vars WHERE project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in project_env_vars {
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt project env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
+    }
+
+    // Merge team-level shared env vars (lowest priority — overridden by everything above)
+    if let Some(ref team_id) = app.team_id {
+        let team_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM team_env_vars WHERE team_id = ?",
+        )
+        .bind(team_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in team_env_vars {
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt team env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
+    }
+
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
         "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
@@ -1665,6 +1709,50 @@ pub async fn run_rollback(
                 let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
                     .unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
+    }
+
+    // Merge project-level shared env vars (overrides team vars, overridden by environment/app vars)
+    if let Some(ref project_id) = app.project_id {
+        let project_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM project_env_vars WHERE project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in project_env_vars {
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt project env var {}: {}", key, e);
+                        value
+                    });
+                env_vars.push((key, decrypted));
+            }
+        }
+    }
+
+    // Merge team-level shared env vars (lowest priority — overridden by everything above)
+    if let Some(ref team_id) = app.team_id {
+        let team_env_vars = sqlx::query_as::<_, (String, String)>(
+            "SELECT key, value FROM team_env_vars WHERE team_id = ?",
+        )
+        .bind(team_id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for (key, value) in team_env_vars {
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                let decrypted = crypto::decrypt_if_encrypted(&value, encryption_key)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to decrypt team env var {}: {}", key, e);
                         value
                     });
                 env_vars.push((key, decrypted));

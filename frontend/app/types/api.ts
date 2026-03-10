@@ -253,6 +253,10 @@ export interface App {
   auto_rollback_enabled: boolean;
   registry_push_enabled: boolean;
   max_rollback_versions: number;
+  // Deployment approval and maintenance mode
+  require_approval: boolean;
+  maintenance_mode: boolean;
+  maintenance_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -380,6 +384,13 @@ export interface Deployment {
   commit_sha: string | null;
   commit_message: string | null;
   git_tag: string | null;
+  // Approval workflow fields
+  approval_status: "pending" | "approved" | "rejected" | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  // Scheduled deployment
+  scheduled_at: string | null;
 }
 
 /** Git commit info from the commits list API */
@@ -400,6 +411,8 @@ export interface GitTag {
 export interface TriggerDeployRequest {
   commit_sha?: string;
   git_tag?: string;
+  /** ISO 8601 datetime to schedule the deployment for future execution */
+  scheduled_at?: string;
 }
 
 /** Paginated response for deployment list */
@@ -434,6 +447,37 @@ export interface DeploymentLog {
   level: "info" | "warn" | "error";
   message: string;
   timestamp: string;
+}
+
+/** Deployment freeze window — prevents deployments during a specified time range */
+export interface DeploymentFreezeWindow {
+  id: string;
+  app_id: string | null;
+  team_id: string | null;
+  name: string;
+  /** Start time in HH:MM UTC format */
+  start_time: string;
+  /** End time in HH:MM UTC format */
+  end_time: string;
+  /** Comma-separated days of week: 0=Sun, 1=Mon, ..., 6=Sat */
+  days_of_week: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** Request body for creating a freeze window */
+export interface CreateFreezeWindowRequest {
+  name: string;
+  start_time: string;
+  end_time: string;
+  days_of_week: string;
+  app_id?: string;
+  team_id?: string;
+}
+
+/** Request body for rejecting a deployment */
+export interface RejectDeploymentRequest {
+  reason?: string;
 }
 
 export interface CreateAppRequest {
@@ -542,6 +586,10 @@ export interface UpdateAppRequest {
   auto_rollback_enabled?: boolean;
   registry_push_enabled?: boolean;
   max_rollback_versions?: number;
+  // Deployment approval and maintenance
+  require_approval?: boolean;
+  maintenance_mode?: boolean;
+  maintenance_message?: string;
 }
 
 export interface SshKey {
@@ -623,6 +671,74 @@ export interface CreateEnvVarRequest {
 export interface UpdateEnvVarRequest {
   value?: string;
   is_secret?: boolean;
+}
+
+// -------------------------------------------------------------------------
+// Shared Environment Variables (Team-level and Project-level)
+// -------------------------------------------------------------------------
+
+/** Team-level shared environment variable (inherited by all apps in the team) */
+export interface TeamEnvVar {
+  id: string;
+  team_id: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTeamEnvVarRequest {
+  key: string;
+  value: string;
+  is_secret?: boolean;
+  description?: string;
+}
+
+export interface UpdateTeamEnvVarRequest {
+  value?: string;
+  is_secret?: boolean;
+  description?: string;
+}
+
+/** Project-level shared environment variable (inherited by all apps in the project) */
+export interface ProjectEnvVar {
+  id: string;
+  project_id: string;
+  key: string;
+  value: string;
+  is_secret: boolean;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProjectEnvVarRequest {
+  key: string;
+  value: string;
+  is_secret?: boolean;
+  description?: string;
+}
+
+export interface UpdateProjectEnvVarRequest {
+  value?: string;
+  is_secret?: boolean;
+  description?: string;
+}
+
+/** The source level for a resolved environment variable */
+export type EnvVarSource = "app" | "environment" | "project" | "team";
+
+/** A resolved environment variable with effective value and its inheritance source */
+export interface ResolvedEnvVar {
+  key: string;
+  /** Secrets are masked as `***` */
+  value: string;
+  is_secret: boolean;
+  /** Where this variable comes from in the inheritance chain */
+  source: EnvVarSource;
+  description: string | null;
 }
 
 // Container resource statistics
@@ -2030,4 +2146,118 @@ export interface CreateScheduledRestartRequest {
 export interface UpdateScheduledRestartRequest {
   cron_expression?: string;
   enabled?: boolean;
+}
+
+// -------------------------------------------------------------------------
+// Bulk Operations
+// -------------------------------------------------------------------------
+
+/** Result for one app in a bulk operation */
+export interface BulkAppResult {
+  app_id: string;
+  success: boolean;
+  error: string | null;
+}
+
+/** Response for bulk start / stop / restart / deploy */
+export interface BulkOperationResponse {
+  results: BulkAppResult[];
+}
+
+/** Request body for bulk operations */
+export interface BulkAppIdsRequest {
+  app_ids: string[];
+}
+
+/** Config snapshot of an app's configuration */
+export interface ConfigSnapshot {
+  id: string;
+  app_id: string;
+  name: string;
+  description: string | null;
+  config_json: string;
+  env_vars_json: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Request to create a config snapshot */
+export interface CreateSnapshotRequest {
+  name: string;
+  description?: string;
+}
+
+/** Request to clone an app */
+export interface CloneAppRequest {
+  name?: string;
+}
+
+/** Response from clone app */
+export interface CloneAppResponse {
+  app: App;
+}
+
+/** Request to toggle maintenance mode */
+export interface MaintenanceModeRequest {
+  enabled: boolean;
+  message?: string;
+}
+
+/** Response from maintenance mode toggle */
+export interface MaintenanceModeResponse {
+  app_id: string;
+  maintenance_mode: boolean;
+  maintenance_message: string | null;
+}
+
+/** Env var entry in a project export */
+export interface ExportEnvVar {
+  key: string;
+  value: string;
+  is_secret: boolean;
+}
+
+/** Volume entry in a project export */
+export interface ExportVolume {
+  name: string;
+  host_path: string;
+  container_path: string;
+  read_only: boolean;
+}
+
+/** App entry in a project export */
+export interface ExportApp {
+  name: string;
+  git_url: string;
+  branch: string;
+  dockerfile: string;
+  port: number;
+  healthcheck: string | null;
+  memory_limit: string | null;
+  cpu_limit: string | null;
+  environment: string;
+  dockerfile_path: string | null;
+  base_directory: string | null;
+  build_target: string | null;
+  pre_deploy_commands: string | null;
+  post_deploy_commands: string | null;
+  domains: string | null;
+  docker_image: string | null;
+  docker_image_tag: string | null;
+  build_type: string | null;
+  env_vars: ExportEnvVar[];
+  volumes: ExportVolume[];
+}
+
+/** Full project export envelope */
+export interface ProjectExport {
+  project_name: string;
+  export_version: number;
+  apps: ExportApp[];
+}
+
+/** Response from project import */
+export interface ProjectImportResponse {
+  apps_created: number;
+  app_ids: string[];
 }

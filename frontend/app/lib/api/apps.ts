@@ -35,6 +35,9 @@ import type {
   GitCommit,
   GitTag,
   TriggerDeployRequest,
+  DeploymentFreezeWindow,
+  CreateFreezeWindowRequest,
+  RejectDeploymentRequest,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -556,6 +559,79 @@ export const appsApi = {
   /** Get apps with sharing information (owned + shared) */
   getAppsWithSharing: (teamId: string, token?: string) =>
     apiRequest<AppWithSharing[]>(`/apps/with-sharing?team_id=${encodeURIComponent(teamId)}`, {}, token),
+
+  // -------------------------------------------------------------------------
+  // Deployment Approval Workflow
+  // -------------------------------------------------------------------------
+
+  /** Approve a pending deployment (admin only) */
+  approveDeployment: (deploymentId: string, token?: string) =>
+    apiRequest<Deployment>(
+      `/deployments/${deploymentId}/approve`,
+      { method: "POST" },
+      token,
+    ),
+
+  /** Reject a pending deployment (admin only) */
+  rejectDeployment: (
+    deploymentId: string,
+    data?: RejectDeploymentRequest,
+    token?: string,
+  ) =>
+    apiRequest<Deployment>(
+      `/deployments/${deploymentId}/reject`,
+      {
+        method: "POST",
+        body: data ? JSON.stringify(data) : undefined,
+      },
+      token,
+    ),
+
+  /** List all deployments with approval_status = 'pending' */
+  listPendingDeployments: (token?: string) =>
+    apiRequest<Deployment[]>("/deployments/pending", {}, token),
+
+  // -------------------------------------------------------------------------
+  // Deployment Freeze Windows
+  // -------------------------------------------------------------------------
+
+  /** List freeze windows (optionally filter by app_id or team_id) */
+  getFreezeWindows: (
+    options?: { appId?: string; teamId?: string },
+    token?: string,
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.appId) params.append("app_id", options.appId);
+    if (options?.teamId) params.append("team_id", options.teamId);
+    const qs = params.toString();
+    return apiRequest<DeploymentFreezeWindow[]>(
+      qs ? `/freeze-windows?${qs}` : "/freeze-windows",
+      {},
+      token,
+    );
+  },
+
+  /** Create a new freeze window */
+  createFreezeWindow: (
+    data: CreateFreezeWindowRequest,
+    token?: string,
+  ) =>
+    apiRequest<DeploymentFreezeWindow>(
+      "/freeze-windows",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+      token,
+    ),
+
+  /** Delete a freeze window */
+  deleteFreezeWindow: (id: string, token?: string) =>
+    apiRequest<void>(
+      `/freeze-windows/${id}`,
+      { method: "DELETE" },
+      token,
+    ),
 
   // -------------------------------------------------------------------------
   // WebSocket URLs

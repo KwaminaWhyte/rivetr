@@ -9,6 +9,7 @@ export type { ApiRequestOptions } from "./core";
 
 // Re-export domain-specific APIs
 export { projectsApi } from "./projects";
+export { bulkApi } from "./bulk";
 export { appsApi } from "./apps";
 export { databasesApi } from "./databases";
 export { servicesApi } from "./services";
@@ -24,9 +25,11 @@ export { jobsApi } from "./jobs";
 export { logDrainsApi } from "./log-drains";
 export { s3Api } from "./s3";
 export { monitoringApi } from "./monitoring";
+export { sharedEnvVarsApi } from "./shared-env-vars";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
+import { bulkApi } from "./bulk";
 import { appsApi } from "./apps";
 import { databasesApi } from "./databases";
 import { servicesApi } from "./services";
@@ -42,6 +45,7 @@ import { jobsApi } from "./jobs";
 import { logDrainsApi } from "./log-drains";
 import { s3Api } from "./s3";
 import { monitoringApi } from "./monitoring";
+import { sharedEnvVarsApi } from "./shared-env-vars";
 
 /**
  * Combined API object for backward compatibility.
@@ -53,6 +57,20 @@ import { monitoringApi } from "./monitoring";
  * ```
  */
 export const api = {
+  // Bulk Operations
+  bulkStart: bulkApi.bulkStart,
+  bulkStop: bulkApi.bulkStop,
+  bulkRestart: bulkApi.bulkRestart,
+  bulkDeploy: bulkApi.bulkDeploy,
+  cloneApp: bulkApi.cloneApp,
+  createSnapshot: bulkApi.createSnapshot,
+  listSnapshots: bulkApi.listSnapshots,
+  restoreSnapshot: bulkApi.restoreSnapshot,
+  deleteSnapshot: bulkApi.deleteSnapshot,
+  exportProject: bulkApi.exportProject,
+  importProject: bulkApi.importProject,
+  setMaintenanceMode: bulkApi.setMaintenanceMode,
+
   // Projects
   getProjects: projectsApi.getProjects,
   getProject: projectsApi.getProject,
@@ -107,6 +125,22 @@ export const api = {
   updateAlert: appsApi.updateAlert,
   deleteAlert: appsApi.deleteAlert,
   getAlertEvents: appsApi.getAlertEvents,
+
+  // App Sharing
+  getAppShares: appsApi.getAppShares,
+  createAppShare: appsApi.createAppShare,
+  deleteAppShare: appsApi.deleteAppShare,
+  getAppsWithSharing: appsApi.getAppsWithSharing,
+
+  // Deployment Approval Workflow
+  approveDeployment: appsApi.approveDeployment,
+  rejectDeployment: appsApi.rejectDeployment,
+  listPendingDeployments: appsApi.listPendingDeployments,
+
+  // Deployment Freeze Windows
+  getFreezeWindows: appsApi.getFreezeWindows,
+  createFreezeWindow: appsApi.createFreezeWindow,
+  deleteFreezeWindow: appsApi.deleteFreezeWindow,
 
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
@@ -311,6 +345,17 @@ export const api = {
   getS3Backups: s3Api.listBackups,
   restoreS3Backup: s3Api.restoreBackup,
   deleteS3Backup: s3Api.deleteBackup,
+
+  // Shared Environment Variables
+  getTeamEnvVars: sharedEnvVarsApi.getTeamEnvVars,
+  createTeamEnvVar: sharedEnvVarsApi.createTeamEnvVar,
+  updateTeamEnvVar: sharedEnvVarsApi.updateTeamEnvVar,
+  deleteTeamEnvVar: sharedEnvVarsApi.deleteTeamEnvVar,
+  getProjectEnvVars: sharedEnvVarsApi.getProjectEnvVars,
+  createProjectEnvVar: sharedEnvVarsApi.createProjectEnvVar,
+  updateProjectEnvVar: sharedEnvVarsApi.updateProjectEnvVar,
+  deleteProjectEnvVar: sharedEnvVarsApi.deleteProjectEnvVar,
+  getResolvedEnvVars: sharedEnvVarsApi.getResolvedEnvVars,
 };
 
 export default api;

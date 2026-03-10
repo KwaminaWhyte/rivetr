@@ -44,6 +44,8 @@ frontend/app/types/api.ts   →   frontend/app/types/
 |---|---|---|
 | `src/db/seeders.rs` (2663 lines) | `src/db/seeders/` (10 files by category) | ✅ Complete |
 | `src/api/webhooks.rs` (1670 lines) | `src/api/webhooks/` (mod + github/gitlab/gitea/bitbucket) | ✅ Complete |
+| `src/api/apps.rs` (1990 lines) | `src/api/apps/` (mod + crud/control/sharing/upload/logs) | ✅ Complete |
+| `src/api/teams.rs` (1682 lines) | `src/api/teams/` (mod + crud/members/invitations/audit) | ✅ Complete |
 
 ### Queued (after Sprint 4 agents finish)
 

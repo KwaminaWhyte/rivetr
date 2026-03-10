@@ -4,6 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +19,7 @@ import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
 import type { App, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock } from "lucide-react";
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -38,6 +41,11 @@ export default function AppDeploymentsTab() {
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+
+  // Approval workflow state
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectDeploymentId, setRejectDeploymentId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   // Read pagination params from URL
   const page = parseInt(searchParams.get("page") || "1");
@@ -108,13 +116,122 @@ export default function AppDeploymentsTab() {
     }
   };
 
+  // Handle approve deployment
+  const handleApprove = async (deploymentId: string) => {
+    setIsSubmitting(true);
+    try {
+      await api.approveDeployment(deploymentId);
+      toast.success("Deployment approved and queued");
+      queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to approve deployment");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle reject deployment
+  const handleReject = async () => {
+    if (!rejectDeploymentId) return;
+    setIsSubmitting(true);
+    try {
+      await api.rejectDeployment(rejectDeploymentId, { reason: rejectionReason || undefined });
+      toast.success("Deployment rejected");
+      setShowRejectDialog(false);
+      setRejectDeploymentId(null);
+      setRejectionReason("");
+      queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to reject deployment");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Pagination info
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 1;
   const currentPage = data?.page ?? page;
 
+  // Pending-approval deployments for this app
+  const pendingDeployments = deployments.filter(
+    (d) => d.approval_status === "pending"
+  );
+
   return (
     <div className="space-y-6">
+      {/* Pending Approvals Section */}
+      {pendingDeployments.length > 0 && (
+        <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+              <Clock className="h-5 w-5" />
+              Pending Approvals ({pendingDeployments.length})
+            </CardTitle>
+            <CardDescription>
+              These deployments are waiting for admin approval before they run.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {pendingDeployments.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-center justify-between rounded-md border border-yellow-200 bg-white dark:bg-background p-3"
+                >
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium font-mono">
+                      {d.id.slice(0, 8)}
+                      {d.commit_sha && (
+                        <span className="ml-2 text-muted-foreground">
+                          @ {d.commit_sha.slice(0, 7)}
+                        </span>
+                      )}
+                    </p>
+                    {d.commit_message && (
+                      <p className="text-xs text-muted-foreground truncate max-w-sm">
+                        {d.commit_message.split("\n")[0]}
+                      </p>
+                    )}
+                    {d.scheduled_at && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CalendarClock className="h-3 w-3" />
+                        Scheduled for {new Date(d.scheduled_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-green-600 border-green-300 hover:bg-green-50"
+                      disabled={isSubmitting}
+                      onClick={() => handleApprove(d.id)}
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setRejectDeploymentId(d.id);
+                        setShowRejectDialog(true);
+                      }}
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -221,6 +338,60 @@ export default function AppDeploymentsTab() {
             </Button>
             <Button onClick={handleRollback} disabled={isSubmitting}>
               {isSubmitting ? "Rolling back..." : "Rollback"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject deployment dialog */}
+      <Dialog
+        open={showRejectDialog}
+        onOpenChange={(open) => {
+          setShowRejectDialog(open);
+          if (!open) {
+            setRejectDeploymentId(null);
+            setRejectionReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Deployment</DialogTitle>
+            <DialogDescription>
+              Optionally provide a reason for rejecting this deployment. The
+              deployment will be marked as failed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rejection-reason">Reason (optional)</Label>
+            <Textarea
+              id="rejection-reason"
+              placeholder="e.g. Needs more testing, missing feature X..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRejectDialog(false);
+                setRejectDeploymentId(null);
+                setRejectionReason("");
+              }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={isSubmitting}
+              className="gap-2"
+            >
+              <XCircle className="h-4 w-4" />
+              {isSubmitting ? "Rejecting..." : "Reject Deployment"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,14 +3,15 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
 use crate::db::{
-    actions, resource_types, App, Deployment, DeploymentLog, GitHubApp, GitHubAppInstallation,
-    TeamAuditAction, TeamAuditResourceType, User,
+    actions, resource_types, App, Deployment, DeploymentFreezeWindow, DeploymentLog, GitHubApp,
+    GitHubAppInstallation, TeamAuditAction, TeamAuditResourceType, User,
 };
 use crate::engine::{
     detect_build_type, extract_zip_and_find_root, run_rollback, BuildDetectionResult,
@@ -79,6 +80,8 @@ pub struct TriggerDeployRequest {
     pub commit_sha: Option<String>,
     /// Deploy a specific git tag instead of branch HEAD
     pub git_tag: Option<String>,
+    /// Schedule the deployment for a specific time (ISO 8601 format)
+    pub scheduled_at: Option<String>,
 }
 
 /// Request body for rollback endpoint
@@ -190,21 +193,36 @@ pub async fn trigger_deploy(
     // Extract deploy options from request body
     let deploy_opts = body.map(|b| b.0).unwrap_or_default();
 
+    // Check freeze windows before queuing (skip for upload apps — they are manual)
+    if !is_upload_app {
+        check_freeze_windows(&state, &app, &now).await?;
+    }
+
     // Determine commit_sha and git_tag for the deployment record
     // For upload apps: commit_sha stores source path, git_tag is unused
     // For git apps: commit_sha/git_tag store the requested target
     let (deploy_commit_sha, deploy_git_tag) = if is_upload_app {
         (upload_source_path, None)
     } else {
-        (deploy_opts.commit_sha, deploy_opts.git_tag)
+        (deploy_opts.commit_sha.clone(), deploy_opts.git_tag.clone())
+    };
+
+    // Determine if this deployment needs approval
+    // Approval is required if: app.require_approval is set AND user is not admin
+    let needs_approval = app.require_approval != 0 && user.role != "admin";
+
+    let approval_status: Option<&str> = if needs_approval {
+        Some("pending")
+    } else {
+        None
     };
 
     // For upload apps with existing image, store the image tag to reuse
     // commit_sha stores source path for rebuild, image_tag stores image for restart
     sqlx::query(
         r#"
-        INSERT INTO deployments (id, app_id, status, started_at, commit_sha, image_tag, git_tag)
-        VALUES (?, ?, 'pending', ?, ?, ?, ?)
+        INSERT INTO deployments (id, app_id, status, started_at, commit_sha, image_tag, git_tag, approval_status, scheduled_at)
+        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&deployment_id)
@@ -213,17 +231,36 @@ pub async fn trigger_deploy(
     .bind(&deploy_commit_sha)
     .bind(&existing_image_tag)
     .bind(&deploy_git_tag)
+    .bind(approval_status)
+    .bind(&deploy_opts.scheduled_at)
     .execute(&state.db)
     .await?;
 
-    // Queue the deployment job
-    if let Err(e) = state
-        .deploy_tx
-        .send((deployment_id.clone(), app.clone()))
-        .await
-    {
-        tracing::error!("Failed to queue deployment: {}", e);
-        return Err(ApiError::internal("Failed to queue deployment job"));
+    // Only queue immediately if no approval needed and not scheduled for the future
+    let should_queue_now = !needs_approval && deploy_opts.scheduled_at.is_none();
+
+    if should_queue_now {
+        // Queue the deployment job
+        if let Err(e) = state
+            .deploy_tx
+            .send((deployment_id.clone(), app.clone()))
+            .await
+        {
+            tracing::error!("Failed to queue deployment: {}", e);
+            return Err(ApiError::internal("Failed to queue deployment job"));
+        }
+    } else if needs_approval {
+        tracing::info!(
+            deployment_id = %deployment_id,
+            app_id = %app_id,
+            "Deployment requires approval, awaiting approver action"
+        );
+    } else {
+        tracing::info!(
+            deployment_id = %deployment_id,
+            scheduled_at = ?deploy_opts.scheduled_at,
+            "Deployment scheduled for future execution"
+        );
     }
 
     let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
@@ -1116,4 +1153,405 @@ pub async fn list_tags(
 
     // Fallback: return empty list for non-GitHub repos
     Ok(Json(vec![]))
+}
+
+// -------------------------------------------------------------------------
+// Freeze Window Helper
+// -------------------------------------------------------------------------
+
+/// Check if current time is within any active freeze window for this app/team.
+/// Returns 409 Conflict if deployment is frozen.
+async fn check_freeze_windows(
+    state: &Arc<AppState>,
+    app: &App,
+    now: &str,
+) -> Result<(), ApiError> {
+    // Parse current time to get HH:MM and day-of-week
+    let now_dt = chrono::DateTime::parse_from_rfc3339(now)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now());
+
+    let current_time = now_dt.format("%H:%M").to_string();
+    // 0=Sun as per the schema convention
+    let current_dow = now_dt.weekday().num_days_from_sunday().to_string();
+
+    // Fetch active freeze windows for this app and/or team
+    let windows: Vec<DeploymentFreezeWindow> = if let Some(ref team_id) = app.team_id {
+        sqlx::query_as(
+            r#"
+            SELECT * FROM deployment_freeze_windows
+            WHERE is_active = 1
+              AND (app_id = ? OR team_id = ?)
+            "#,
+        )
+        .bind(&app.id)
+        .bind(team_id)
+        .fetch_all(&state.db)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT * FROM deployment_freeze_windows WHERE is_active = 1 AND app_id = ?",
+        )
+        .bind(&app.id)
+        .fetch_all(&state.db)
+        .await?
+    };
+
+    for window in &windows {
+        // Check if current day-of-week is in the window
+        let days: Vec<&str> = window.days_of_week.split(',').collect();
+        if !days.contains(&current_dow.as_str()) {
+            continue;
+        }
+
+        // Check if current time is within start_time..end_time (HH:MM strings)
+        let in_window = if window.start_time <= window.end_time {
+            current_time >= window.start_time && current_time < window.end_time
+        } else {
+            // Wraps midnight
+            current_time >= window.start_time || current_time < window.end_time
+        };
+
+        if in_window {
+            return Err(ApiError::conflict(format!(
+                "Deployment frozen: '{}' freeze window is active ({} - {} UTC)",
+                window.name, window.start_time, window.end_time
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+// -------------------------------------------------------------------------
+// Deployment Approval Endpoints
+// -------------------------------------------------------------------------
+
+/// Request body for rejecting a deployment
+#[derive(Debug, Deserialize, Default)]
+pub struct RejectDeployRequest {
+    pub reason: Option<String>,
+}
+
+/// Approve a pending deployment
+/// POST /api/deployments/:id/approve
+pub async fn approve_deployment(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Path(deployment_id): Path<String>,
+) -> Result<Json<Deployment>, ApiError> {
+    if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
+        return Err(ApiError::validation_field("deployment_id", e));
+    }
+
+    // Only admins can approve deployments
+    if user.role != "admin" {
+        return Err(ApiError::forbidden("Only admins can approve deployments"));
+    }
+
+    // Get the deployment
+    let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
+
+    // Must be in pending approval state
+    if deployment.approval_status.as_deref() != Some("pending") {
+        return Err(ApiError::bad_request("Deployment is not pending approval"));
+    }
+
+    // Must still have status 'pending'
+    if deployment.status != "pending" {
+        return Err(ApiError::bad_request(
+            "Deployment is no longer in pending state",
+        ));
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Update approval status
+    sqlx::query(
+        "UPDATE deployments SET approval_status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?",
+    )
+    .bind(&user.id)
+    .bind(&now)
+    .bind(&deployment_id)
+    .execute(&state.db)
+    .await?;
+
+    // Get the app so we can queue the deployment
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&deployment.app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Queue the deployment job now that it is approved
+    if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app)).await {
+        tracing::error!("Failed to queue approved deployment: {}", e);
+        return Err(ApiError::internal("Failed to queue deployment job"));
+    }
+
+    let updated = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    tracing::info!(
+        deployment_id = %deployment_id,
+        approved_by = %user.id,
+        "Deployment approved and queued"
+    );
+
+    Ok(Json(updated))
+}
+
+/// Reject a pending deployment
+/// POST /api/deployments/:id/reject
+pub async fn reject_deployment(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Path(deployment_id): Path<String>,
+    body: Option<Json<RejectDeployRequest>>,
+) -> Result<Json<Deployment>, ApiError> {
+    if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
+        return Err(ApiError::validation_field("deployment_id", e));
+    }
+
+    // Only admins can reject deployments
+    if user.role != "admin" {
+        return Err(ApiError::forbidden("Only admins can reject deployments"));
+    }
+
+    // Get the deployment
+    let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
+
+    // Must be in pending approval state
+    if deployment.approval_status.as_deref() != Some("pending") {
+        return Err(ApiError::bad_request("Deployment is not pending approval"));
+    }
+
+    let reason = body
+        .and_then(|b| b.0.reason)
+        .unwrap_or_else(|| "No reason provided".to_string());
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"UPDATE deployments
+           SET approval_status = 'rejected',
+               approved_by = ?,
+               approved_at = ?,
+               rejection_reason = ?,
+               status = 'failed',
+               error_message = ?,
+               finished_at = ?
+           WHERE id = ?"#,
+    )
+    .bind(&user.id)
+    .bind(&now)
+    .bind(&reason)
+    .bind(format!("Deployment rejected: {}", reason))
+    .bind(&now)
+    .bind(&deployment_id)
+    .execute(&state.db)
+    .await?;
+
+    let updated = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    tracing::info!(
+        deployment_id = %deployment_id,
+        rejected_by = %user.id,
+        reason = %reason,
+        "Deployment rejected"
+    );
+
+    Ok(Json(updated))
+}
+
+/// List pending-approval deployments for an app
+/// GET /api/apps/:id/deployments/pending
+pub async fn list_pending_deployments(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+) -> Result<Json<Vec<Deployment>>, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if app_exists.is_none() {
+        return Err(ApiError::not_found("App not found"));
+    }
+
+    let deployments = sqlx::query_as::<_, Deployment>(
+        "SELECT * FROM deployments WHERE app_id = ? AND approval_status = 'pending' ORDER BY started_at DESC",
+    )
+    .bind(&app_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(deployments))
+}
+
+// -------------------------------------------------------------------------
+// Freeze Window Endpoints
+// -------------------------------------------------------------------------
+
+/// Request body for creating a freeze window
+#[derive(Debug, Deserialize)]
+pub struct CreateFreezeWindowRequest {
+    pub name: String,
+    /// Start time in HH:MM UTC format
+    pub start_time: String,
+    /// End time in HH:MM UTC format
+    pub end_time: String,
+    /// Comma-separated days of week (0=Sun, ..., 6=Sat). Default: all days
+    pub days_of_week: Option<String>,
+    #[serde(default = "default_is_active")]
+    pub is_active: bool,
+}
+
+fn default_is_active() -> bool {
+    true
+}
+
+/// List freeze windows for an app
+/// GET /api/apps/:id/freeze-windows
+pub async fn list_freeze_windows(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+) -> Result<Json<Vec<DeploymentFreezeWindow>>, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if app_exists.is_none() {
+        return Err(ApiError::not_found("App not found"));
+    }
+
+    let windows = sqlx::query_as::<_, DeploymentFreezeWindow>(
+        "SELECT * FROM deployment_freeze_windows WHERE app_id = ? ORDER BY created_at DESC",
+    )
+    .bind(&app_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(windows))
+}
+
+/// Create a freeze window for an app
+/// POST /api/apps/:id/freeze-windows
+pub async fn create_freeze_window(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Path(app_id): Path<String>,
+    Json(req): Json<CreateFreezeWindowRequest>,
+) -> Result<(StatusCode, Json<DeploymentFreezeWindow>), ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Only admins can create freeze windows
+    if user.role != "admin" {
+        return Err(ApiError::forbidden("Only admins can create freeze windows"));
+    }
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Validate time format (HH:MM)
+    let time_re = regex::Regex::new(r"^\d{2}:\d{2}$").unwrap();
+    if !time_re.is_match(&req.start_time) || !time_re.is_match(&req.end_time) {
+        return Err(ApiError::bad_request(
+            "start_time and end_time must be in HH:MM format (UTC)",
+        ));
+    }
+
+    let window_id = Uuid::new_v4().to_string();
+    let days_of_week = req
+        .days_of_week
+        .unwrap_or_else(|| "0,1,2,3,4,5,6".to_string());
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        r#"
+        INSERT INTO deployment_freeze_windows
+          (id, app_id, team_id, name, start_time, end_time, days_of_week, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(&window_id)
+    .bind(&app_id)
+    .bind(&app.team_id)
+    .bind(&req.name)
+    .bind(&req.start_time)
+    .bind(&req.end_time)
+    .bind(&days_of_week)
+    .bind(req.is_active as i32)
+    .bind(&now)
+    .execute(&state.db)
+    .await?;
+
+    let window = sqlx::query_as::<_, DeploymentFreezeWindow>(
+        "SELECT * FROM deployment_freeze_windows WHERE id = ?",
+    )
+    .bind(&window_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(window)))
+}
+
+/// Delete a freeze window
+/// DELETE /api/apps/:id/freeze-windows/:window_id
+pub async fn delete_freeze_window(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Path((app_id, window_id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+    if let Err(e) = validate_uuid(&window_id, "window_id") {
+        return Err(ApiError::validation_field("window_id", e));
+    }
+
+    // Only admins can delete freeze windows
+    if user.role != "admin" {
+        return Err(ApiError::forbidden("Only admins can delete freeze windows"));
+    }
+
+    let result =
+        sqlx::query("DELETE FROM deployment_freeze_windows WHERE id = ? AND app_id = ?")
+            .bind(&window_id)
+            .bind(&app_id)
+            .execute(&state.db)
+            .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("Freeze window not found"));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }

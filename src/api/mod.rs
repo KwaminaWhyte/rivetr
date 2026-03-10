@@ -26,6 +26,7 @@ mod routes;
 mod s3;
 mod service_templates;
 mod services;
+mod shared_env_vars;
 mod ssh_keys;
 mod system;
 mod teams;
@@ -133,6 +134,32 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/deployments/:id/rollback",
             post(deployments::rollback_deployment),
         )
+        // Deployment approval workflow
+        .route(
+            "/deployments/:id/approve",
+            post(deployments::approve_deployment),
+        )
+        .route(
+            "/deployments/:id/reject",
+            post(deployments::reject_deployment),
+        )
+        .route(
+            "/deployments/pending",
+            get(deployments::list_pending_deployments),
+        )
+        // Deployment freeze windows
+        .route(
+            "/freeze-windows",
+            get(deployments::list_freeze_windows),
+        )
+        .route(
+            "/freeze-windows",
+            post(deployments::create_freeze_window),
+        )
+        .route(
+            "/freeze-windows/:id",
+            delete(deployments::delete_freeze_window),
+        )
         // Build detection
         .route(
             "/build/detect",
@@ -148,6 +175,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Environment Variables
         .route("/apps/:id/env-vars", get(env_vars::list_env_vars))
         .route("/apps/:id/env-vars", post(env_vars::create_env_var))
+        // Resolved env vars endpoint (must be before :key catch-all)
+        .route(
+            "/apps/:id/env-vars/resolved",
+            get(shared_env_vars::get_resolved_env_vars),
+        )
         .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
         .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
         .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
@@ -248,6 +280,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id/apps/upload", post(apps::upload_create_app))
         .route("/projects/:id/costs", get(costs::get_project_costs))
         .route("/apps/:id/project", put(projects::assign_app_project))
+        // Project Shared Env Vars
+        .route(
+            "/projects/:id/env-vars",
+            get(shared_env_vars::list_project_env_vars),
+        )
+        .route(
+            "/projects/:id/env-vars",
+            post(shared_env_vars::create_project_env_var),
+        )
+        .route(
+            "/projects/:id/env-vars/:var_id",
+            put(shared_env_vars::update_project_env_var),
+        )
+        .route(
+            "/projects/:id/env-vars/:var_id",
+            delete(shared_env_vars::delete_project_env_var),
+        )
         // Project Environments
         .route(
             "/projects/:id/environments",
@@ -305,6 +354,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Invitation accept (requires auth)
         .route("/invitations/:token/accept", post(teams::accept_invitation))
+        // Team Shared Env Vars
+        .route(
+            "/teams/:id/env-vars",
+            get(shared_env_vars::list_team_env_vars),
+        )
+        .route(
+            "/teams/:id/env-vars",
+            post(shared_env_vars::create_team_env_var),
+        )
+        .route(
+            "/teams/:id/env-vars/:var_id",
+            put(shared_env_vars::update_team_env_var),
+        )
+        .route(
+            "/teams/:id/env-vars/:var_id",
+            delete(shared_env_vars::delete_team_env_var),
+        )
         // Team Audit Logs
         .route("/teams/:id/audit-logs", get(teams::list_audit_logs))
         // Team Costs

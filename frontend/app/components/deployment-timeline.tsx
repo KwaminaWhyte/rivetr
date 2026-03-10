@@ -25,6 +25,9 @@ import {
   RotateCcw,
   AlertCircle,
   Tag,
+  CalendarClock,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import type { Deployment, DeploymentStatus } from "@/types/api";
 
@@ -281,6 +284,45 @@ function TimelineItem({
                   )}
                 </div>
 
+                {/* Approval status badge */}
+                {deployment.approval_status && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "gap-1 text-xs",
+                      deployment.approval_status === "pending" &&
+                        "border-yellow-400 text-yellow-700",
+                      deployment.approval_status === "approved" &&
+                        "border-green-400 text-green-700",
+                      deployment.approval_status === "rejected" &&
+                        "border-red-400 text-red-700",
+                    )}
+                  >
+                    {deployment.approval_status === "pending" && (
+                      <Clock className="w-3 h-3" />
+                    )}
+                    {deployment.approval_status === "approved" && (
+                      <ThumbsUp className="w-3 h-3" />
+                    )}
+                    {deployment.approval_status === "rejected" && (
+                      <ThumbsDown className="w-3 h-3" />
+                    )}
+                    {deployment.approval_status === "pending"
+                      ? "Awaiting Approval"
+                      : deployment.approval_status === "approved"
+                        ? "Approved"
+                        : "Rejected"}
+                  </Badge>
+                )}
+
+                {/* Scheduled deployment time */}
+                {deployment.scheduled_at && deployment.status === "pending" && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <CalendarClock className="w-3 h-3" />
+                    Scheduled {new Date(deployment.scheduled_at).toLocaleString()}
+                  </span>
+                )}
+
                 {/* Commit info */}
                 {(deployment.commit_sha || deployment.commit_message) && (
                   <div className="mt-2 space-y-1">
@@ -409,6 +451,29 @@ function TimelineItem({
                     <pre className="mt-1 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-700 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
                       {deployment.error_message}
                     </pre>
+                  </div>
+                )}
+
+                {deployment.approval_status === "rejected" &&
+                  deployment.rejection_reason && (
+                    <div className="mt-3">
+                      <span className="text-muted-foreground text-sm">
+                        Rejection Reason
+                      </span>
+                      <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+                        {deployment.rejection_reason}
+                      </p>
+                    </div>
+                  )}
+
+                {deployment.scheduled_at && (
+                  <div className="mt-3">
+                    <span className="text-muted-foreground text-sm">
+                      Scheduled For
+                    </span>
+                    <p className="mt-1 text-xs">
+                      {new Date(deployment.scheduled_at).toLocaleString()}
+                    </p>
                   </div>
                 )}
 

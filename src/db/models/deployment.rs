@@ -66,6 +66,17 @@ pub struct Deployment {
     pub is_auto_rollback: i32,
     /// Git tag name when deploying from a specific tag
     pub git_tag: Option<String>,
+    // Approval workflow fields (added in migration 049)
+    /// Approval status: 'pending', 'approved', or 'rejected'
+    pub approval_status: Option<String>,
+    /// ID of the user who approved/rejected
+    pub approved_by: Option<String>,
+    /// Timestamp when the deployment was approved/rejected
+    pub approved_at: Option<String>,
+    /// Reason for rejection (if rejected)
+    pub rejection_reason: Option<String>,
+    /// Scheduled deployment time (ISO 8601) — scheduler picks this up
+    pub scheduled_at: Option<String>,
 }
 
 impl Deployment {
@@ -81,4 +92,22 @@ pub struct DeploymentLog {
     pub timestamp: String,
     pub level: String,
     pub message: String,
+}
+
+/// Freeze window for preventing deployments during specific time windows.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DeploymentFreezeWindow {
+    pub id: String,
+    pub app_id: Option<String>,
+    pub team_id: Option<String>,
+    pub name: String,
+    /// Start time in HH:MM UTC format
+    pub start_time: String,
+    /// End time in HH:MM UTC format
+    pub end_time: String,
+    /// Comma-separated days of week: 0=Sun, 1=Mon, ..., 6=Sat
+    pub days_of_week: String,
+    #[serde(default)]
+    pub is_active: i32,
+    pub created_at: String,
 }

@@ -20,6 +20,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-03-10
+
+### Added
+
+#### Deployment Enhancements
+- **Approval Workflow** — Apps can require approval before deploys execute; pending deployments await admin/owner sign-off with approve/reject UI and reason field
+- **Scheduled Deployments** — Deploy at a specific time by passing `scheduled_at` in the deploy request; background scheduler picks up due jobs every 60s
+- **Deployment Freeze Windows** — Define time windows (days of week + UTC start/end) when deploys are blocked; returns 409 during frozen periods
+- **Pending Approvals Badge** — Deployments tab shows red badge count when approvals are waiting
+- **Approval Status** — Deployment timeline shows Awaiting/Approved/Rejected badges with rejection reason
+
+#### Bulk Operations & App Management
+- **Bulk Actions** — Multi-select apps in project view, then Start / Stop / Restart / Deploy all at once
+- **App Cloning** — Deep-copy any app (config, env vars, domains) with one click; gets name `{name}-copy`
+- **Config Snapshots** — Save named point-in-time snapshots of app config and env vars; restore any snapshot later
+- **Project Export/Import** — Download a full project as JSON (all apps, env vars, domains); re-import to recreate
+- **Maintenance Mode** — Toggle per-app maintenance mode with custom message; shows badge in header
+
+#### Shared Environment Variables
+- **Team Shared Vars** — Set key/value variables at the team level inherited by all team apps
+- **Project Shared Vars** — Set variables at the project level, overriding team vars
+- **Inheritance Chain** — Resolution order: team → project → environment → app (highest wins)
+- **Resolved Variables View** — New "Resolved" tab in env vars UI shows effective variables with source badges (team/project/environment/app)
+- **Shared Var Management** — Team settings and project settings each have a Shared Variables page
+
+#### Code Organization
+- `src/api/apps.rs` (1990 lines) → `src/api/apps/` (mod + crud/control/sharing/upload/logs)
+- `src/api/teams.rs` (1682 lines) → `src/api/teams/` (mod + crud/members/invitations/audit)
+
+---
+
 ## [0.4.0] - 2026-03-10
 
 ### Added
