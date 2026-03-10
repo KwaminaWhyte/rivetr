@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,8 +116,6 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
   // sentinel and intercept via the exported wsUrl.
   // The cleanest approach: re-export the terminal UI with a wsUrl prop.
   // We implement it inline here.
-  const { useEffect, useRef, useState } = require("react");
-
   const terminalRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const terminalInstance = useRef<any>(null);

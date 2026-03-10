@@ -32,26 +32,26 @@ export function RunningServicesCard() {
   // Fetch apps
   const { data: apps = [] } = useQuery<App[]>({
     queryKey: ["apps", currentTeamId],
-    queryFn: () => api.getApps(currentTeamId ?? undefined),
+    queryFn: () => api.getApps(currentTeamId ? { teamId: currentTeamId } : undefined),
     refetchInterval: 30000,
   });
 
   // Fetch databases
   const { data: databases = [] } = useQuery<ManagedDatabase[]>({
     queryKey: ["databases", currentTeamId],
-    queryFn: () => api.getDatabases(currentTeamId ?? undefined),
+    queryFn: () => api.getDatabases(currentTeamId ? { teamId: currentTeamId } : {}),
     refetchInterval: 30000,
   });
 
   // Fetch services
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: ["services", currentTeamId],
-    queryFn: () => api.getServices(currentTeamId ?? undefined),
+    queryFn: () => api.getServices(currentTeamId ? { teamId: currentTeamId } : undefined),
     refetchInterval: 30000,
   });
 
   // Get stats for running apps
-  const runningApps = apps.filter(app => app.current_deployment?.status === "running");
+  const runningApps = apps;
   const appStatsQueries = useQuery({
     queryKey: ["app-stats", runningApps.map(a => a.id)],
     queryFn: async () => {

@@ -119,7 +119,7 @@ impl std::fmt::Display for CnbBuilder {
 }
 
 /// Configuration for Pack CLI builds
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackConfig {
     /// Which CNB builder to use
     #[serde(default)]
@@ -152,6 +152,21 @@ pub struct PackConfig {
     /// Path to project.toml file
     #[serde(skip_serializing_if = "Option::is_none")]
     pub descriptor: Option<String>,
+}
+
+impl Default for PackConfig {
+    fn default() -> Self {
+        Self {
+            builder: CnbBuilder::default(),
+            custom_builder: None,
+            buildpacks: None,
+            build_env: None,
+            clear_cache: false,
+            trust_builder: true,
+            pull_policy: None,
+            descriptor: None,
+        }
+    }
 }
 
 fn is_false(b: &bool) -> bool {
