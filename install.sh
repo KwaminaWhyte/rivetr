@@ -209,37 +209,29 @@ install_railpack() {
 
     info "Installing Railpack..."
 
-    # Try downloading binary directly from GitHub releases
-    # ARCH is already x86_64 or aarch64 from detect_arch
-    local RAILPACK_ARCH="$ARCH"
+    # Get latest version tag from GitHub API
+    local RAILPACK_VERSION
+    RAILPACK_VERSION=$(curl -fsSL "https://api.github.com/repos/railwayapp/railpack/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
 
-    # Try latest release binary
-    local RAILPACK_URL="https://github.com/railwayapp/railpack/releases/latest/download/railpack-${RAILPACK_ARCH}-unknown-linux-gnu.tar.gz"
-    local TEMP_DIR=$(mktemp -d)
+    if [ -n "$RAILPACK_VERSION" ]; then
+        local TEMP_DIR=$(mktemp -d)
+        # Releases use musl for Linux and include version in filename
+        local RAILPACK_URL="https://github.com/railwayapp/railpack/releases/download/${RAILPACK_VERSION}/railpack-${RAILPACK_VERSION}-${ARCH}-unknown-linux-musl.tar.gz"
 
-    if curl -fsSL -o "$TEMP_DIR/railpack.tar.gz" "$RAILPACK_URL" 2>/dev/null; then
-        if tar -xzf "$TEMP_DIR/railpack.tar.gz" -C "$TEMP_DIR" 2>/dev/null; then
-            if [ -f "$TEMP_DIR/railpack" ]; then
-                mv "$TEMP_DIR/railpack" /usr/local/bin/
-                chmod +x /usr/local/bin/railpack
-                rm -rf "$TEMP_DIR"
-                success "Railpack installed from GitHub releases"
-                return
+        if curl -fsSL -o "$TEMP_DIR/railpack.tar.gz" "$RAILPACK_URL" 2>/dev/null; then
+            if tar -xzf "$TEMP_DIR/railpack.tar.gz" -C "$TEMP_DIR" 2>/dev/null; then
+                local railpack_bin
+                railpack_bin=$(find "$TEMP_DIR" -name "railpack" -type f | head -1)
+                if [ -n "$railpack_bin" ]; then
+                    mv "$railpack_bin" /usr/local/bin/
+                    chmod +x /usr/local/bin/railpack
+                    rm -rf "$TEMP_DIR"
+                    success "Railpack ${RAILPACK_VERSION} installed from GitHub releases"
+                    return
+                fi
             fi
         fi
-    fi
-    rm -rf "$TEMP_DIR"
-
-    # Try alternative URL format (plain binary)
-    RAILPACK_URL="https://github.com/railwayapp/railpack/releases/latest/download/railpack-linux-$ARCH"
-    if curl -fsSL -o /usr/local/bin/railpack "$RAILPACK_URL" 2>/dev/null; then
-        chmod +x /usr/local/bin/railpack
-        if /usr/local/bin/railpack --version >/dev/null 2>&1; then
-            success "Railpack installed from GitHub releases"
-            return
-        else
-            rm -f /usr/local/bin/railpack
-        fi
+        rm -rf "$TEMP_DIR"
     fi
 
     # Try mise if available
