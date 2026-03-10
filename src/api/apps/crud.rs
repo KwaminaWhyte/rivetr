@@ -115,12 +115,11 @@ pub async fn create_app(
         .as_ref()
         .map(|l| serde_json::to_string(l).unwrap_or_default());
 
-    // Generate auto_subdomain if configured
+    // Generate auto_subdomain: sslip (legacy) → base_domain → traefik.me → None
     let auto_subdomain = if state.config.proxy.sslip_enabled {
-        // Generate sslip.io domain
         state.config.proxy.generate_sslip_domain(None)
     } else {
-        state.config.proxy.generate_subdomain(&req.name)
+        state.config.proxy.generate_auto_domain(&req.name)
     };
 
     sqlx::query(

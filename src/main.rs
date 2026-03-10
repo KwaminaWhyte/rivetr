@@ -309,9 +309,12 @@ async fn restore_routes(
     runtime: &Arc<dyn ContainerRuntime>,
     routes: &Arc<ArcSwap<RouteTable>>,
 ) -> Result<()> {
-    // Fetch all apps that have either a legacy domain or the new domains JSON array
-    let apps: Vec<(String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT name, domain, domains, healthcheck FROM apps WHERE (domain IS NOT NULL AND domain != '') OR (domains IS NOT NULL AND domains != '' AND domains != '[]')",
+    // Fetch all apps that have any domain configured (domain, domains JSON, or auto_subdomain)
+    let apps: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT name, domain, domains, healthcheck, auto_subdomain FROM apps \
+         WHERE (domain IS NOT NULL AND domain != '') \
+            OR (domains IS NOT NULL AND domains != '' AND domains != '[]') \
+            OR (auto_subdomain IS NOT NULL AND auto_subdomain != '')",
     )
     .fetch_all(db)
     .await?;
@@ -324,13 +327,13 @@ async fn restore_routes(
     // List all running rivetr containers
     let containers = runtime.list_containers("rivetr-").await?;
 
-    for (app_name, legacy_domain, domains_json, healthcheck) in apps {
+    for (app_name, legacy_domain, domains_json, healthcheck, auto_subdomain) in apps {
         let container_name = format!("rivetr-{}", app_name);
 
         // Find the running container for this app
         if let Some(container) = containers.iter().find(|c| c.name == container_name) {
             if let Some(port) = container.port {
-                // Collect all domain names for this app
+                // Collect all domain names for this app (deduplicated)
                 let mut domain_names: Vec<String> = Vec::new();
 
                 // Legacy domain field
@@ -352,6 +355,13 @@ async fn restore_routes(
                                 }
                             }
                         }
+                    }
+                }
+
+                // Auto-generated subdomain (base_domain or traefik.me)
+                if let Some(ref d) = auto_subdomain {
+                    if !d.is_empty() && !domain_names.contains(d) {
+                        domain_names.push(d.clone());
                     }
                 }
 

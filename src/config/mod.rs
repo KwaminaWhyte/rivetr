@@ -248,7 +248,37 @@ impl Default for ProxyConfig {
 }
 
 impl ProxyConfig {
-    /// Generate a subdomain for an app name
+    /// Generate an auto subdomain for a new app.
+    ///
+    /// Priority:
+    /// 1. If `base_domain` is configured → `{app_name}.{base_domain}`
+    /// 2. Else if `server_ip` is configured → traefik.me style:
+    ///    `{app_name}-{hex6}-{ip-dashes}.traefik.me`
+    /// 3. Otherwise → None
+    pub fn generate_auto_domain(&self, app_name: &str) -> Option<String> {
+        // Option 1: base domain configured
+        if let Some(ref base) = self.base_domain {
+            return Some(format!("{}.{}", app_name, base));
+        }
+
+        // Option 2: server IP configured → traefik.me style (like Dokploy)
+        if let Some(ref ip) = self.server_ip {
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let hex: String = (0..6)
+                .map(|_| {
+                    let chars = b"abcdef0123456789";
+                    chars[rng.random_range(0..chars.len())] as char
+                })
+                .collect();
+            let ip_dashes = ip.replace('.', "-");
+            return Some(format!("{}-{}-{}.traefik.me", app_name, hex, ip_dashes));
+        }
+
+        None
+    }
+
+    /// Generate a subdomain for an app name (legacy, kept for compatibility)
     pub fn generate_subdomain(&self, app_name: &str) -> Option<String> {
         if self.auto_subdomain_enabled {
             self.base_domain
@@ -265,7 +295,6 @@ impl ProxyConfig {
     pub fn generate_sslip_domain(&self, server_ip: Option<&str>) -> Option<String> {
         use rand::Rng;
         let ip = server_ip.or(self.server_ip.as_deref())?;
-        // Generate a random 12-character ID
         let mut rng = rand::rng();
         let id: String = (0..12)
             .map(|_| {
