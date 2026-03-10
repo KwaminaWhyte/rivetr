@@ -165,13 +165,7 @@ pub(super) async fn reconcile_deployments(
     runtime: &Arc<dyn ContainerRuntime>,
 ) -> usize {
     let running_deployments: Vec<Deployment> = match sqlx::query_as(
-        r#"
-        SELECT id, app_id, commit_sha, commit_message, status, container_id,
-               error_message, started_at, finished_at, image_tag,
-               rollback_from_deployment_id, is_auto_rollback
-        FROM deployments
-        WHERE status = 'running' AND container_id IS NOT NULL
-        "#,
+        "SELECT * FROM deployments WHERE status = 'running' AND container_id IS NOT NULL",
     )
     .fetch_all(db)
     .await

@@ -102,8 +102,7 @@ impl DeploymentCleanup {
         // We only clean up deployments that are not "running" status
         let old_deployments: Vec<Deployment> = sqlx::query_as(
             r#"
-            SELECT id, app_id, commit_sha, commit_message, status, container_id, image_tag, error_message, started_at, finished_at
-            FROM deployments
+            SELECT * FROM deployments
             WHERE app_id = ?
               AND status NOT IN ('running', 'pending', 'cloning', 'building', 'starting', 'checking')
             ORDER BY started_at DESC

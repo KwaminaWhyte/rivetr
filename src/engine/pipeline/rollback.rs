@@ -15,7 +15,7 @@ pub async fn trim_old_deployments(db: &DbPool, app_id: &str, retention: i64) -> 
     // Get IDs of successful deployments older than the retention limit
     let old_ids: Vec<String> = sqlx::query_scalar(
         "SELECT id FROM deployments WHERE app_id = ? AND status = 'success' \
-         ORDER BY created_at DESC LIMIT -1 OFFSET ?",
+         ORDER BY started_at DESC LIMIT -1 OFFSET ?",
     )
     .bind(app_id)
     .bind(retention)

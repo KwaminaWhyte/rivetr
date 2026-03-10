@@ -451,6 +451,38 @@ pub async fn update_app(
         .fetch_one(&state.db)
         .await?;
 
+    // Re-register proxy routes if the app is currently running and has domains
+    {
+        let running: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT container_id, image_tag FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+        )
+        .bind(&app.id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+
+        if let Some((container_id, _)) = running {
+            if let Ok(info) = state.runtime.inspect(&container_id).await {
+                if let Some(port) = info.port {
+                    let all_domains = app.get_all_domain_names();
+                    let route_table = state.routes.load();
+                    for domain in &all_domains {
+                        let backend = crate::proxy::Backend::new(
+                            container_id.clone(),
+                            "127.0.0.1".to_string(),
+                            port,
+                        )
+                        .with_healthcheck(app.healthcheck.clone());
+                        route_table.add_route(domain.clone(), backend);
+                    }
+                    if !all_domains.is_empty() {
+                        tracing::info!(domains = ?all_domains, "Proxy routes updated after app settings change");
+                    }
+                }
+            }
+        }
+    }
+
     // Log audit event
     let ip = extract_client_ip(&headers, None);
     audit_log(

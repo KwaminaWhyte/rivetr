@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getAuthToken } from "@/lib/auth";
 
 interface LogEntry {
   id: number;
@@ -27,8 +28,10 @@ const levelColors: Record<string, string> = {
 export function DeploymentLogs({
   deploymentId,
   isActive,
-  token = "",
+  token: propToken,
 }: DeploymentLogsProps) {
+  // Get token from props or localStorage
+  const token = propToken || getAuthToken() || "";
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const [ended, setEnded] = useState(false);
