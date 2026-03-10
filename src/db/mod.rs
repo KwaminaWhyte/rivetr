@@ -715,6 +715,25 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, "ALTER TABLE apps ADD COLUMN maintenance_message TEXT").await?;
     }
 
+    // Migration 051: Add shared environment variables (team, project, environment level)
+    let has_team_env_vars_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_env_vars'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_env_vars_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/051_shared_env_vars.sql")).await?;
+    }
+
+    // Migration 052: Add multi-server support (servers and app_server_assignments tables)
+    let has_servers_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='servers'")
+            .fetch_optional(pool)
+            .await?;
+    if has_servers_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/052_multi_server.sql")).await?;
+    }
+
     // Migration 053: Add OIDC/SSO provider support
     let has_oidc_providers_table: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='oidc_providers'",
@@ -733,6 +752,34 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     if has_oidc_subject.is_none() {
         execute_sql(pool, "ALTER TABLE users ADD COLUMN oidc_subject TEXT").await?;
         execute_sql(pool, "ALTER TABLE users ADD COLUMN oidc_provider_id TEXT REFERENCES oidc_providers(id) ON DELETE SET NULL").await?;
+    }
+
+    // Migration 054: Add container replicas (replica_count on apps, app_replicas table)
+    let has_replica_count: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'replica_count'")
+            .fetch_optional(pool)
+            .await?;
+    if has_replica_count.is_none() {
+        execute_sql(pool, include_str!("../../migrations/054_container_replicas.sql")).await?;
+    }
+
+    // Migration 055: Add backup_schedules table for scheduled backups
+    let has_backup_schedules_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='backup_schedules'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_backup_schedules_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/055_scheduled_backups.sql")).await?;
+    }
+
+    // Migration 056: Add require_2fa column to teams for 2FA enforcement
+    let has_require_2fa: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('teams') WHERE name = 'require_2fa'")
+            .fetch_optional(pool)
+            .await?;
+    if has_require_2fa.is_none() {
+        execute_sql(pool, include_str!("../../migrations/056_2fa_enforcement.sql")).await?;
     }
 
     // Migration 057: Add service_dependencies table for dependency graph visualization
@@ -777,8 +824,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/060_build_servers.sql")).await?;
     }
 
-    // Migration 061: Registry push pipeline (columns already exist, no-op migration)
-    execute_sql(pool, include_str!("../../migrations/061_registry_push.sql")).await?;
+    // Migration 061: Registry push pipeline - no-op, columns already added in earlier migrations
 
     // Migration 062: Add rollback_retention_count to apps
     let has_rollback_retention_count: Option<(String,)> = sqlx::query_as(
@@ -816,6 +862,16 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .await?;
     if has_autoscaling_rules_table.is_none() {
         execute_sql(pool, include_str!("../../migrations/064_autoscaling.sql")).await?;
+    }
+
+    // Migration 065: Add webhook_events table for audit logging
+    let has_webhook_events_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='webhook_events'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_webhook_events_table.is_none() {
+        execute_sql(pool, include_str!("../../migrations/065_webhook_audit.sql")).await?;
     }
 
     // Seed/update built-in templates (runs on every startup to add new templates)
