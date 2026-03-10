@@ -156,7 +156,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(deployments::reject_deployment),
         )
         .route(
-            "/deployments/pending",
+            "/apps/:id/deployments/pending",
             get(deployments::list_pending_deployments),
         )
         // Deployment freeze windows
