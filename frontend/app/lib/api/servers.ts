@@ -3,7 +3,7 @@
  * Handles remote server registration and management for multi-server deployments.
  */
 
-import { apiRequest } from "./core";
+import { apiRequest, getStoredToken } from "./core";
 
 export interface Server {
   id: string;
@@ -76,4 +76,35 @@ export const serversApi = {
   /** Trigger a health check on a server */
   check: (id: string, token?: string) =>
     apiRequest<Server>(`/servers/${id}/check`, { method: "POST" }, token),
+
+  /** List apps assigned to this server */
+  listApps: (id: string, token?: string) =>
+    apiRequest<{ id: string; name: string; server_id?: string }[]>(
+      `/servers/${id}/apps`,
+      {},
+      token
+    ),
+
+  /** Assign an app to a server */
+  assignApp: (serverId: string, appId: string, token?: string) =>
+    apiRequest<void>(
+      `/servers/${serverId}/apps/${appId}`,
+      { method: "POST" },
+      token
+    ),
+
+  /** Unassign an app from a server */
+  unassignApp: (serverId: string, appId: string, token?: string) =>
+    apiRequest<void>(
+      `/servers/${serverId}/apps/${appId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  /** Get the WebSocket URL for an SSH terminal session on a server */
+  getTerminalWsUrl: (serverId: string, token?: string): string => {
+    const authToken = token || getStoredToken() || "";
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/servers/${serverId}/terminal?token=${encodeURIComponent(authToken)}`;
+  },
 };

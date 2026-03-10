@@ -87,6 +87,8 @@ export default [
       route("oauth", "routes/settings/oauth.tsx"),
       route("sso", "routes/settings/sso.tsx"),
       route("servers", "routes/settings/servers.tsx"),
+      route("build-servers", "routes/settings/build-servers.tsx"),
+      route("swarm", "routes/settings/swarm.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

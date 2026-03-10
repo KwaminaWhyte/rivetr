@@ -1,18 +1,24 @@
 //! Multi-server management API endpoints.
 //!
-//! Provides CRUD operations for remote servers and SSH-based health checks.
+//! Provides CRUD operations for remote servers, SSH-based health checks,
+//! app–server assignment management, and a WebSocket SSH terminal.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, State,
+    },
     http::StatusCode,
+    response::IntoResponse,
     Json,
 };
+use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
-use crate::db::{CreateServerRequest, Server, UpdateServerRequest};
+use crate::db::{App, CreateServerRequest, Server, UpdateServerRequest};
 use crate::AppState;
 
 /// Key length for AES-256 encryption
@@ -490,4 +496,331 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
         os_info,
         docker_version,
     })
+}
+
+// ---------------------------------------------------------------------------
+// App–Server Assignment Endpoints
+// ---------------------------------------------------------------------------
+
+/// List all apps assigned to this server (`apps.server_id = :id`).
+pub async fn list_server_apps(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<App>>, StatusCode> {
+    // Verify server exists
+    let _server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let apps = sqlx::query_as::<_, App>(
+        "SELECT * FROM apps WHERE server_id = ? ORDER BY created_at DESC",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list apps for server {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(apps))
+}
+
+/// Assign an app to a server by setting `apps.server_id`.
+pub async fn assign_app_to_server(
+    State(state): State<Arc<AppState>>,
+    Path((id, app_id)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    // Verify server exists
+    let _server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let result = sqlx::query(
+        "UPDATE apps SET server_id = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&id)
+    .bind(&now)
+    .bind(&app_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to assign app {} to server {}: {}", app_id, id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unassign an app from a server by clearing `apps.server_id`.
+pub async fn unassign_app_from_server(
+    State(state): State<Arc<AppState>>,
+    Path((_id, app_id)): Path<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let result = sqlx::query(
+        "UPDATE apps SET server_id = NULL, updated_at = ? WHERE id = ?",
+    )
+    .bind(&now)
+    .bind(&app_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to unassign app {}: {}", app_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket SSH Terminal
+// ---------------------------------------------------------------------------
+
+/// WebSocket endpoint that proxies an interactive SSH terminal session to a
+/// remote server.
+///
+/// GET /api/servers/:id/terminal?token=<auth_token>
+pub async fn server_terminal_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    Path(server_id): Path<String>,
+    Query(query): Query<crate::api::ws::WsAuthQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    if !crate::api::ws::validate_ws_token_pub(&state, &query).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(ws.on_upgrade(move |socket| handle_server_terminal(socket, state, server_id)))
+}
+
+async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, server_id: String) {
+    use std::io::Write;
+    use tokio::process::Command;
+
+    // Fetch server record
+    let server = match sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&server_id)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            let msg = serde_json::json!({"type": "error", "message": "Server not found"});
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            return;
+        }
+        Err(e) => {
+            let msg =
+                serde_json::json!({"type": "error", "message": format!("Database error: {}", e)});
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    // Decrypt SSH private key if present
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        let enc_key = get_encryption_key(&state);
+        match crate::crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
+            Ok(k) => Some(k),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH key for server terminal {}: {}",
+                    server_id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Write key to temp file if available
+    let key_file: Option<tempfile::NamedTempFile> = if let Some(ref key_content) =
+        private_key_content
+    {
+        match tempfile::Builder::new()
+            .prefix("rivetr-ssh-term-")
+            .suffix(".pem")
+            .tempfile()
+        {
+            Ok(mut f) => {
+                if f.write_all(key_content.as_bytes()).is_err() {
+                    None
+                } else {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ = std::fs::set_permissions(
+                            f.path(),
+                            std::fs::Permissions::from_mode(0o600),
+                        );
+                    }
+                    Some(f)
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    // Build SSH args; key_path_str must outlive ssh_args
+    let port_str = server.port.to_string();
+    let target = format!("{}@{}", server.username, server.host);
+    let key_path_str = key_file
+        .as_ref()
+        .map(|kf| kf.path().to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let mut ssh_args: Vec<&str> = vec![
+        "-tt",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "BatchMode=yes",
+        "-p",
+        &port_str,
+    ];
+    if !key_path_str.is_empty() {
+        ssh_args.push("-i");
+        ssh_args.push(&key_path_str);
+    }
+    ssh_args.push(&target);
+
+    // Spawn SSH process
+    let mut child = match Command::new("ssh")
+        .args(&ssh_args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let msg =
+                serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    let connected_msg = serde_json::json!({
+        "type": "connected",
+        "server_id": server_id,
+        "host": server.host,
+    });
+    if socket
+        .send(Message::Text(connected_msg.to_string().into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    let mut child_stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => {
+            let msg =
+                serde_json::json!({"type": "error", "message": "Failed to open stdin"});
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            return;
+        }
+    };
+    let mut child_stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let msg =
+                serde_json::json!({"type": "error", "message": "Failed to open stdout"});
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            return;
+        }
+    };
+
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+
+    // Spawn a task to forward SSH stdout → WebSocket
+    let stdout_task = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut buf = [0u8; 4096];
+        loop {
+            match child_stdout.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let msg = serde_json::json!({"type": "data", "data": data});
+                    if ws_sender
+                        .send(Message::Text(msg.to_string().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        let end_msg = serde_json::json!({"type": "end", "message": "SSH session ended"});
+        let _ = ws_sender
+            .send(Message::Text(end_msg.to_string().into()))
+            .await;
+    });
+
+    // Forward WebSocket messages → SSH stdin
+    loop {
+        match ws_receiver.next().await {
+            Some(Ok(Message::Text(text))) => {
+                #[derive(serde::Deserialize)]
+                struct TermMsg {
+                    #[serde(rename = "type")]
+                    kind: String,
+                    data: Option<String>,
+                }
+                if let Ok(msg) = serde_json::from_str::<TermMsg>(&text) {
+                    if msg.kind == "data" {
+                        if let Some(data) = msg.data {
+                            use tokio::io::AsyncWriteExt;
+                            if child_stdin.write_all(data.as_bytes()).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Some(Ok(Message::Binary(bytes))) => {
+                use tokio::io::AsyncWriteExt;
+                if child_stdin.write_all(&bytes).await.is_err() {
+                    break;
+                }
+            }
+            Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+            Some(Ok(Message::Close(_))) | None => break,
+            _ => {}
+        }
+    }
+
+    stdout_task.abort();
+    let _ = child.kill().await;
+    drop(key_file); // Temp file deleted here
 }

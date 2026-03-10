@@ -926,3 +926,163 @@ pub async fn list_tags(
     // Fallback: return empty list for non-GitHub repos
     Ok(Json(vec![]))
 }
+
+/// Deployment diff response showing what changed between deployments
+#[derive(Debug, Serialize)]
+pub struct DeploymentDiff {
+    pub deployment_id: String,
+    pub previous_deployment_id: Option<String>,
+    pub current_sha: Option<String>,
+    pub previous_sha: Option<String>,
+    /// Number of commits between the two deployments (if calculable)
+    pub commits_count: i64,
+    /// Human-readable summary
+    pub summary: String,
+    /// File paths changed (if available via git provider API)
+    pub files_changed: Vec<String>,
+    /// Commit messages in the range
+    pub commit_messages: Vec<String>,
+}
+
+/// Get the diff between a deployment and the previous successful one
+/// GET /api/deployments/:id/diff
+pub async fn get_deployment_diff(
+    State(state): State<Arc<AppState>>,
+    Path(deployment_id): Path<String>,
+    _user: User,
+) -> Result<Json<DeploymentDiff>, ApiError> {
+    if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
+        return Err(ApiError::validation_field("deployment_id", e));
+    }
+
+    let deployment = sqlx::query_as::<_, Deployment>("SELECT * FROM deployments WHERE id = ?")
+        .bind(&deployment_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Deployment not found"))?;
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&deployment.app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    let previous: Option<Deployment> = sqlx::query_as(
+        r#"SELECT * FROM deployments
+           WHERE app_id = ?
+             AND id != ?
+             AND status IN ('running', 'stopped', 'replaced')
+           ORDER BY started_at DESC
+           LIMIT 1"#,
+    )
+    .bind(&deployment.app_id)
+    .bind(&deployment_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let current_sha = deployment.commit_sha.clone();
+    let previous_sha = previous.as_ref().and_then(|p| p.commit_sha.clone());
+    let previous_deployment_id = previous.as_ref().map(|p| p.id.clone());
+
+    let mut commits_count: i64 = 0;
+    let mut summary = String::new();
+    let mut files_changed: Vec<String> = vec![];
+    let mut commit_messages: Vec<String> = vec![];
+
+    match (&current_sha, &previous_sha) {
+        (Some(cur), Some(prev)) if cur != prev => {
+            if app.github_app_installation_id.is_some() {
+                if let Some((owner, repo)) = parse_owner_repo(&app.git_url) {
+                    match get_github_client_for_app(&state, &app).await {
+                        Ok(client) => {
+                            match client.compare_commits(&owner, &repo, prev, cur).await {
+                                Ok(comparison) => {
+                                    commits_count = comparison.commits.len() as i64;
+                                    commit_messages = comparison
+                                        .commits
+                                        .iter()
+                                        .map(|c| {
+                                            c.commit
+                                                .message
+                                                .lines()
+                                                .next()
+                                                .unwrap_or("")
+                                                .to_string()
+                                        })
+                                        .collect();
+                                    files_changed = comparison
+                                        .files
+                                        .iter()
+                                        .map(|f| f.filename.clone())
+                                        .collect();
+                                    summary = format!(
+                                        "{} commit{}, {} file{} changed",
+                                        commits_count,
+                                        if commits_count == 1 { "" } else { "s" },
+                                        files_changed.len(),
+                                        if files_changed.len() == 1 { "" } else { "s" },
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to get GitHub comparison for deployment {}: {}",
+                                        deployment_id,
+                                        e
+                                    );
+                                    summary = format!(
+                                        "{} -> {} (diff unavailable)",
+                                        &prev[..7.min(prev.len())],
+                                        &cur[..7.min(cur.len())]
+                                    );
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            summary = format!(
+                                "{} -> {}",
+                                &prev[..7.min(prev.len())],
+                                &cur[..7.min(cur.len())]
+                            );
+                        }
+                    }
+                } else {
+                    summary = format!(
+                        "{} -> {}",
+                        &prev[..7.min(prev.len())],
+                        &cur[..7.min(cur.len())]
+                    );
+                }
+            } else {
+                summary = format!(
+                    "{} -> {}",
+                    &prev[..7.min(prev.len())],
+                    &cur[..7.min(cur.len())]
+                );
+            }
+        }
+        (Some(cur), None) => {
+            summary = format!("First deployment ({})", &cur[..7.min(cur.len())]);
+        }
+        (Some(cur), Some(_prev)) => {
+            summary = format!("Same commit ({})", &cur[..7.min(cur.len())]);
+        }
+        _ => {
+            summary = if previous_deployment_id.is_some() {
+                "No commit SHAs available for comparison".to_string()
+            } else {
+                "No previous deployment".to_string()
+            };
+        }
+    }
+
+    Ok(Json(DeploymentDiff {
+        deployment_id,
+        previous_deployment_id,
+        current_sha,
+        previous_sha,
+        commits_count,
+        summary,
+        files_changed,
+        commit_messages,
+    }))
+}

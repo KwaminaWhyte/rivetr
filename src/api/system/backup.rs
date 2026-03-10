@@ -18,6 +18,54 @@ use crate::AppState;
 use super::super::error::ApiError;
 
 // ---------------------------------------------------------------------------
+// S3 upload helpers (used by create_backup and upload_backup_to_s3)
+// ---------------------------------------------------------------------------
+
+/// Build an S3Client from the first available (default) S3 config.
+async fn get_default_s3_client(
+    state: &AppState,
+) -> Option<(crate::backup::s3::S3Client, String)> {
+    use crate::crypto;
+    use crate::db::S3StorageConfig;
+
+    let config: Option<S3StorageConfig> = sqlx::query_as(
+        "SELECT * FROM s3_storage_configs WHERE is_default = 1 LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    let config = config?;
+
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|s| crate::crypto::derive_key(s));
+
+    let access_key = crypto::decrypt_if_encrypted(&config.access_key, encryption_key.as_ref())
+        .ok()?;
+    let secret_key = crypto::decrypt_if_encrypted(&config.secret_key, encryption_key.as_ref())
+        .ok()?;
+
+    let client = crate::backup::s3::S3Client::new(
+        config.endpoint.as_deref(),
+        &config.bucket,
+        &config.region,
+        &access_key,
+        &secret_key,
+        config.path_prefix.as_deref(),
+    )
+    .ok()?;
+
+    // Return the S3 URL prefix for display
+    let url_prefix = format!("s3://{}/{}", config.bucket, config.path_prefix.as_deref().unwrap_or(""));
+    Some((client, url_prefix))
+}
+
+// ---------------------------------------------------------------------------
 // Backup Schedule models
 // ---------------------------------------------------------------------------
 
@@ -204,6 +252,74 @@ pub async fn download_backup(
         .map_err(|e| ApiError::internal(format!("Failed to build response: {}", e)))?;
 
     Ok(response)
+}
+
+/// Response for backup operations that may include an S3 URL
+#[derive(Debug, Serialize)]
+pub struct BackupWithS3Response {
+    pub name: String,
+    pub local_path: String,
+    pub size: u64,
+    /// S3 URL if the backup was uploaded to S3, or null
+    pub s3_url: Option<String>,
+}
+
+/// Upload an existing local backup to S3
+/// POST /api/system/backups/:name/upload-to-s3
+///
+/// Reads a backup file from the local data/backups/ directory and uploads it
+/// to the default S3 storage configuration.
+pub async fn upload_backup_to_s3(
+    State(state): State<Arc<AppState>>,
+    AxumPath(name): AxumPath<String>,
+) -> Result<Json<BackupWithS3Response>, ApiError> {
+    let data_dir = &state.config.server.data_dir;
+
+    // Read the backup file
+    let backup_data = backup::read_backup_file(data_dir, &name).map_err(|e| {
+        tracing::error!(error = %e, "Failed to read backup for S3 upload: {}", name);
+        ApiError::not_found(format!("Backup not found: {}", name))
+    })?;
+
+    let size = backup_data.len() as u64;
+
+    // Get the default S3 client
+    let (s3_client, url_prefix) = get_default_s3_client(&state)
+        .await
+        .ok_or_else(|| ApiError::bad_request("No default S3 storage configuration found. Please configure S3 storage first."))?;
+
+    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let s3_key = format!("backups/instance/{}", name);
+
+    s3_client
+        .upload_backup(&s3_key, backup_data)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to upload backup to S3: {}", name);
+            ApiError::internal(format!("Failed to upload backup to S3: {}", e))
+        })?;
+
+    let s3_url = format!("{}/{}", url_prefix.trim_end_matches('/'), s3_key);
+    let local_path = data_dir
+        .join("backups")
+        .join(&name)
+        .to_string_lossy()
+        .to_string();
+
+    tracing::info!(
+        backup_name = %name,
+        s3_key = %s3_key,
+        "Uploaded instance backup to S3"
+    );
+
+    let _ = timestamp; // suppress unused warning
+
+    Ok(Json(BackupWithS3Response {
+        name,
+        local_path,
+        size,
+        s3_url: Some(s3_url),
+    }))
 }
 
 // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import {
   CalendarClock,
   ThumbsUp,
   ThumbsDown,
+  GitCompare,
 } from "lucide-react";
 import type { Deployment, DeploymentStatus } from "@/types/api";
 
@@ -35,6 +36,7 @@ interface DeploymentTimelineProps {
   deployments: Deployment[];
   onViewLogs: (deploymentId: string) => void;
   onRollback: (deploymentId: string) => void;
+  onViewDiff?: (deploymentId: string) => void;
   canRollback: (deployment: Deployment) => boolean;
   branch: string;
 }
@@ -189,6 +191,7 @@ function TimelineItem({
   isLast,
   onViewLogs,
   onRollback,
+  onViewDiff,
   canRollback,
   branch,
 }: {
@@ -197,6 +200,7 @@ function TimelineItem({
   isLast: boolean;
   onViewLogs: (deploymentId: string) => void;
   onRollback: (deploymentId: string) => void;
+  onViewDiff?: (deploymentId: string) => void;
   canRollback: boolean;
   branch: string;
 }) {
@@ -383,6 +387,23 @@ function TimelineItem({
                   </Tooltip>
                 </TooltipProvider>
 
+                {onViewDiff && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onViewDiff(deployment.id)}
+                        >
+                          <GitCompare className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>View deployment diff</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
                 {canRollback && (
                   <TooltipProvider>
                     <Tooltip>
@@ -487,6 +508,17 @@ function TimelineItem({
                     <FileText className="w-4 h-4" />
                     View Full Logs
                   </Button>
+                  {onViewDiff && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onViewDiff(deployment.id)}
+                      className="flex items-center gap-2"
+                    >
+                      <GitCompare className="w-4 h-4" />
+                      View Diff
+                    </Button>
+                  )}
                 </div>
               </div>
             </CollapsibleContent>
@@ -501,6 +533,7 @@ export function DeploymentTimeline({
   deployments,
   onViewLogs,
   onRollback,
+  onViewDiff,
   canRollback,
   branch,
 }: DeploymentTimelineProps) {
@@ -524,6 +557,7 @@ export function DeploymentTimeline({
           isLast={index === deployments.length - 1}
           onViewLogs={onViewLogs}
           onRollback={onRollback}
+          onViewDiff={onViewDiff}
           canRollback={canRollback(deployment)}
           branch={branch}
         />

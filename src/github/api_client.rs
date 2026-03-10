@@ -283,6 +283,22 @@ impl GitHubClient {
         );
         self.get(&url).await
     }
+
+    /// Compare two commits and return the diff (commits + files changed).
+    /// Uses GitHub's compare API: GET /repos/{owner}/{repo}/compare/{base}...{head}
+    pub async fn compare_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        base: &str,
+        head: &str,
+    ) -> Result<CompareCommitsResponse> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/compare/{}...{}",
+            owner, repo, base, head
+        );
+        self.get(&url).await
+    }
 }
 
 // Response types
@@ -471,4 +487,28 @@ pub struct GitTagInfo {
 pub struct TagCommit {
     pub sha: String,
     pub url: String,
+}
+
+// Compare commits types
+
+/// Response from the GitHub compare commits API
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CompareCommitsResponse {
+    pub status: String,
+    pub ahead_by: u64,
+    pub behind_by: u64,
+    pub total_commits: u64,
+    pub commits: Vec<GitCommitInfo>,
+    #[serde(default)]
+    pub files: Vec<CompareFile>,
+}
+
+/// A file changed in a compare response
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CompareFile {
+    pub filename: String,
+    pub status: String,
+    pub additions: u64,
+    pub deletions: u64,
+    pub changes: u64,
 }

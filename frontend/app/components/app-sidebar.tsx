@@ -58,6 +58,8 @@ const navMain: NavMainItem[] = [
       { title: "Git Integrations", url: "/settings/git-providers" },
       { title: "SSH Keys", url: "/settings/ssh-keys" },
       { title: "Servers", url: "/settings/servers" },
+      { title: "Build Servers", url: "/settings/build-servers" },
+      { title: "Docker Swarm", url: "/settings/swarm" },
       { title: "Webhooks", url: "/settings/webhooks" },
       { title: "API Tokens", url: "/settings/tokens" },
       { title: "Audit Log", url: "/settings/audit" },

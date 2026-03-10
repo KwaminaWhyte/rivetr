@@ -766,6 +766,48 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 058: Add server_id column to apps for preferred-server deployments
+    let has_apps_server_id: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'server_id'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_apps_server_id.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/058_server_deploy.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 059: Add Docker Swarm tables (swarm_nodes, swarm_services, swarm_config)
+    let has_swarm_nodes_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='swarm_nodes'")
+            .fetch_optional(pool)
+            .await?;
+    if has_swarm_nodes_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/059_docker_swarm.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 060: Add build_servers table for remote build servers
+    let has_build_servers_table: Option<(String,)> =
+        sqlx::query_as(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='build_servers'",
+        )
+        .fetch_optional(pool)
+        .await?;
+    if has_build_servers_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/060_build_servers.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

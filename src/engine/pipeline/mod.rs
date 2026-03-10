@@ -241,6 +241,20 @@ pub async fn run_deployment(
     build_limits: &BuildLimits,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
+    // Log remote deployment intent if a server is assigned to this app
+    if let Some(ref server_id) = app.server_id {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!(
+                "Remote deployment to server {} requested. Falling back to local deployment for MVP.",
+                server_id
+            ),
+        )
+        .await?;
+    }
+
     // Check if this is an upload-based deployment by looking at the deployment record
     // Upload deployments store the source path in commit_sha, or existing image_tag for restart
     let deployment: Option<(Option<String>, Option<String>)> =

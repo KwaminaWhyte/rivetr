@@ -29,6 +29,11 @@ fn hash_token(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Validate a token from query params (public wrapper for use by other modules)
+pub async fn validate_ws_token_pub(state: &AppState, query: &WsAuthQuery) -> bool {
+    validate_ws_token(state, query).await
+}
+
 /// Validate a token from query params
 async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
     let token = match &query.token {

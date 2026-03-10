@@ -336,6 +336,9 @@ pub async fn update_app(
         .cloned()
         .or_else(|| existing.maintenance_message.clone());
 
+    // Server assignment - empty string clears the assignment
+    let server_id = merge_optional_string(&req.server_id, &existing.server_id);
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -378,6 +381,7 @@ pub async fn update_app(
             require_approval = ?,
             maintenance_mode = ?,
             maintenance_message = ?,
+            server_id = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -421,6 +425,7 @@ pub async fn update_app(
     .bind(require_approval)
     .bind(maintenance_mode)
     .bind(&maintenance_message)
+    .bind(&server_id)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

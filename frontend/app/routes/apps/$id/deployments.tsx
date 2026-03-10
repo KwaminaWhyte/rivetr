@@ -18,8 +18,20 @@ import {
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
+import { apiRequest } from "@/lib/api/core";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare } from "lucide-react";
+
+interface DeploymentDiff {
+  deployment_id: string;
+  previous_deployment_id: string | null;
+  current_sha: string | null;
+  previous_sha: string | null;
+  commits_count: number;
+  summary: string;
+  files_changed: string[];
+  commit_messages: string[];
+}
 
 const ACTIVE_STATUSES: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -93,6 +105,12 @@ export default function AppDeploymentsTab() {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectDeploymentId, setRejectDeploymentId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
+
+  // Diff dialog state
+  const [showDiffDialog, setShowDiffDialog] = useState(false);
+  const [diffDeploymentId, setDiffDeploymentId] = useState<string | null>(null);
+  const [diffData, setDiffData] = useState<DeploymentDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
 
   // Read pagination params from URL
   const page = parseInt(searchParams.get("page") || "1");
@@ -174,6 +192,23 @@ export default function AppDeploymentsTab() {
       toast.error(error instanceof Error ? error.message : "Failed to approve deployment");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Open diff dialog for a deployment
+  const handleViewDiff = async (deploymentId: string) => {
+    setDiffDeploymentId(deploymentId);
+    setDiffData(null);
+    setShowDiffDialog(true);
+    setDiffLoading(true);
+    try {
+      const data = await apiRequest<DeploymentDiff>(`/deployments/${deploymentId}/diff`);
+      setDiffData(data);
+    } catch (error) {
+      toast.error("Failed to load deployment diff");
+      setShowDiffDialog(false);
+    } finally {
+      setDiffLoading(false);
     }
   };
 
@@ -347,6 +382,7 @@ export default function AppDeploymentsTab() {
                   setSelectedDeploymentId(deploymentId);
                   setShowRollbackDialog(true);
                 }}
+                onViewDiff={handleViewDiff}
                 canRollback={canRollback}
               />
 
@@ -518,6 +554,111 @@ export default function AppDeploymentsTab() {
               setShowBuildLogsDialog(false);
               setSelectedDeploymentId(null);
             }}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deployment diff dialog */}
+      <Dialog open={showDiffDialog} onOpenChange={(open) => {
+        setShowDiffDialog(open);
+        if (!open) {
+          setDiffDeploymentId(null);
+          setDiffData(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitCompare className="h-5 w-5" />
+              Deployment Diff
+            </DialogTitle>
+            <DialogDescription>
+              Changes compared to the previous successful deployment
+              {diffDeploymentId && ` (${diffDeploymentId.slice(0, 8)})`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {diffLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                <RefreshCw className="h-8 w-8 animate-spin" />
+                <span className="text-sm">Loading diff...</span>
+              </div>
+            </div>
+          ) : diffData ? (
+            <div className="space-y-4">
+              {/* SHA range */}
+              {(diffData.current_sha || diffData.previous_sha) && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Commit Range</p>
+                  <div className="flex items-center gap-2 text-sm font-mono">
+                    <span className="text-muted-foreground">
+                      {diffData.previous_sha ? diffData.previous_sha.slice(0, 7) : "—"}
+                    </span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="font-medium">
+                      {diffData.current_sha ? diffData.current_sha.slice(0, 7) : "—"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
+                <p className="text-sm">{diffData.summary}</p>
+                {diffData.commits_count > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {diffData.commits_count} commit{diffData.commits_count !== 1 ? "s" : ""} ahead
+                  </p>
+                )}
+              </div>
+
+              {/* Commit messages */}
+              {diffData.commit_messages.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Commits ({diffData.commit_messages.length})
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto rounded-lg border p-2">
+                    {diffData.commit_messages.map((msg, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm py-1">
+                        <span className="text-muted-foreground mt-0.5 flex-shrink-0">•</span>
+                        <span className="break-words">{msg}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Files changed */}
+              {diffData.files_changed.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Files Changed ({diffData.files_changed.length})
+                  </p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto rounded-lg border p-2 font-mono">
+                    {diffData.files_changed.map((file, i) => (
+                      <div key={i} className="text-xs text-muted-foreground py-0.5 truncate" title={file}>
+                        {file}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {diffData.commit_messages.length === 0 && diffData.files_changed.length === 0 && (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No detailed diff information available for this deployment.
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDiffDialog(false)}>
               Close
             </Button>
           </DialogFooter>

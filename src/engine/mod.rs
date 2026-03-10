@@ -11,6 +11,7 @@ pub mod pack_builder;
 mod pipeline;
 pub mod preview;
 pub mod railpack;
+pub mod remote;
 mod resource_metrics_collector;
 pub mod scheduler;
 pub mod static_builder;

@@ -5,6 +5,7 @@
 pub mod alert_config;
 pub mod alert_event;
 pub mod app;
+pub mod build_server;
 pub mod audit;
 pub mod backup;
 pub mod common;
@@ -35,12 +36,14 @@ pub mod oidc;
 pub mod replica;
 pub mod s3;
 pub mod server;
+pub mod swarm;
 pub mod volume;
 
 // Re-export all types for backwards compatibility
 pub use alert_config::*;
 pub use alert_event::*;
 pub use app::*;
+pub use build_server::*;
 pub use audit::*;
 pub use backup::*;
 pub use common::*;
@@ -65,6 +68,7 @@ pub use s3::*;
 pub use scheduled_job::*;
 pub use server::*;
 pub use service::*;
+pub use swarm::*;
 pub use service_template::*;
 pub use shared_env_var::*;
 pub use ssh_key::*;

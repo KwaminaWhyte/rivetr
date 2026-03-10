@@ -1,5 +1,7 @@
 mod alerts;
 mod apps;
+mod build_servers;
+mod swarm;
 mod audit;
 pub mod auth;
 mod basic_auth;
@@ -104,7 +106,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // WebSocket routes (auth handled in handlers via query param)
     let ws_routes = Router::new()
         .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
-        .route("/apps/:id/terminal", get(ws::terminal_ws));
+        .route("/apps/:id/terminal", get(ws::terminal_ws))
+        .route("/servers/:id/terminal", get(servers::server_terminal_ws));
 
     // Protected API routes
     let api_routes = Router::new()
@@ -133,6 +136,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/tags", get(deployments::list_tags))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
+        .route("/deployments/:id/diff", get(deployments::get_deployment_diff))
         .route(
             "/deployments/:id/rollback",
             post(deployments::rollback_deployment),
@@ -184,6 +188,27 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/:id/check", post(servers::check_server_health))
+        // Server app assignments
+        .route("/servers/:id/apps", get(servers::list_server_apps))
+        .route(
+            "/servers/:id/apps/:app_id",
+            post(servers::assign_app_to_server).delete(servers::unassign_app_from_server),
+        )
+        // Build Servers
+        .route(
+            "/build-servers",
+            get(build_servers::list_build_servers).post(build_servers::create_build_server),
+        )
+        .route(
+            "/build-servers/:id",
+            get(build_servers::get_build_server)
+                .put(build_servers::update_build_server)
+                .delete(build_servers::delete_build_server),
+        )
+        .route(
+            "/build-servers/:id/check",
+            post(build_servers::check_build_server_health),
+        )
         // Environment Variables
         .route("/apps/:id/env-vars", get(env_vars::list_env_vars))
         .route("/apps/:id/env-vars", post(env_vars::create_env_var))
@@ -589,6 +614,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/system/backups/:name/download",
             get(system::download_backup),
         )
+        .route(
+            "/system/backups/:name/upload-to-s3",
+            post(system::upload_backup_to_s3),
+        )
         .route("/system/restore", post(system::restore_backup))
         // Backup schedules
         .route(
@@ -674,6 +703,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/previews/:id", get(previews::get_preview))
         .route("/previews/:id", delete(previews::delete_preview))
         .route("/previews/:id/redeploy", post(previews::redeploy_preview))
+        // Docker Swarm Management
+        .route("/swarm/init", post(swarm::init_swarm))
+        .route("/swarm/status", get(swarm::get_swarm_status))
+        .route("/swarm/leave", post(swarm::leave_swarm))
+        .route("/swarm/nodes", get(swarm::list_nodes))
+        .route("/swarm/sync-nodes", post(swarm::sync_nodes))
+        .route(
+            "/swarm/nodes/:id/availability",
+            put(swarm::update_node_availability),
+        )
+        .route("/swarm/services", get(swarm::list_services))
+        .route("/swarm/services", post(swarm::create_service))
+        .route("/swarm/services/:id", delete(swarm::delete_service))
+        .route("/swarm/services/:id/scale", post(swarm::scale_service))
+        .route("/swarm/services/:id/logs", get(swarm::get_service_logs))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

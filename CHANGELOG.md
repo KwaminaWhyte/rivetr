@@ -8,9 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Docker Swarm integration
-- Build servers (dedicated remote build nodes)
 - SAML 2.0 support
+- Remote build execution (SSH-based)
+- File system browser for remote servers
+- Overlay networking for Docker Swarm
+- Rolling updates with Swarm
+
+---
+
+## [0.9.0] - 2026-03-10
+
+### Added
+
+#### Multi-Server Enhancements
+- **Server App Assignment** — Assign apps to specific registered servers; engine logs remote deployment intent with `RemoteContext` foundation for full remote build pipeline
+- **Remote Server Terminal** — WebSocket SSH terminal embedded in server settings page; uses xterm.js, same UX as container terminal
+- **Server App Management API** — `GET/POST/DELETE /api/servers/:id/apps` endpoints
+
+#### Docker Swarm Integration
+- **Swarm Management** — Initialize/leave Docker Swarm; stores manager/worker join tokens
+- **Node Management** — List, sync from Docker, drain/activate nodes via `docker node update`
+- **Service Scaling** — Create, scale, remove, and inspect logs for Swarm services via `docker service` CLI
+- **Swarm Dashboard** — Full settings page with status card, nodes table, services table
+
+#### Build Servers
+- **Dedicated Build Server Registration** — Separate build servers with encrypted SSH keys, concurrent build limits, health checks
+- **Build Server API** — Full CRUD + health check (`docker version`, CPU, memory stats)
+- **Build Server Dashboard** — Settings page with active/concurrent build counts
+
+#### Deployment Preview Diff
+- **Diff View** — "View Diff" button per deployment shows commit SHA range, commit count, commit messages, and files changed
+- **Diff Dialog** — Modal with scrollable commit messages and file list
+
+#### Instance Backup to S3
+- **Upload to S3** — "Upload to S3" button per backup in the backup list; calls `POST /api/system/backups/:name/upload-to-s3`
 
 ---
 

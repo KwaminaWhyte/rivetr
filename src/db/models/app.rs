@@ -101,6 +101,8 @@ pub struct App {
     /// Number of container replicas to run (for load balancing)
     #[serde(default = "default_replica_count")]
     pub replica_count: i64,
+    /// Preferred server ID for remote deployment (nullable)
+    pub server_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -175,6 +177,8 @@ pub struct AppResponse {
     pub maintenance_message: Option<String>,
     /// Number of container replicas to run (for load balancing)
     pub replica_count: i64,
+    /// Preferred server ID for remote deployment (nullable)
+    pub server_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -229,6 +233,7 @@ impl From<App> for AppResponse {
             maintenance_mode: app.maintenance_mode != 0,
             maintenance_message: app.maintenance_message,
             replica_count: app.replica_count,
+            server_id: app.server_id,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -604,6 +609,8 @@ pub struct UpdateAppRequest {
     pub maintenance_mode: Option<bool>,
     /// Custom maintenance message
     pub maintenance_message: Option<String>,
+    /// Preferred server ID for remote deployment (set to empty string to clear)
+    pub server_id: Option<String>,
 }
 
 /// Request specifically for updating domains

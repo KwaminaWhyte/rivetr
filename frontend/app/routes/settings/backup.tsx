@@ -14,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api";
+import { apiRequest } from "@/lib/api/core";
 import type { BackupInfo, RestoreResult } from "@/types/api";
 import {
   Download,
@@ -25,6 +26,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Loader2,
+  CloudUpload,
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
@@ -65,6 +67,7 @@ export default function BackupPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
+  const [uploadingToS3, setUploadingToS3] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch existing backups
@@ -135,6 +138,21 @@ export default function BackupPage() {
     } catch (error) {
       toast.error("Failed to download backup");
       console.error(error);
+    }
+  };
+
+  // Upload a backup to S3
+  const handleUploadToS3 = async (name: string) => {
+    setUploadingToS3(name);
+    try {
+      await apiRequest(`/system/backups/${encodeURIComponent(name)}/upload-to-s3`, {
+        method: "POST",
+      });
+      toast.success(`Backup "${name}" uploaded to S3`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to upload backup to S3");
+    } finally {
+      setUploadingToS3(null);
     }
   };
 
@@ -254,6 +272,19 @@ export default function BackupPage() {
                       onClick={() => handleDownloadBackup(backup.name)}
                     >
                       <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleUploadToS3(backup.name)}
+                      disabled={uploadingToS3 === backup.name}
+                      title="Upload to S3"
+                    >
+                      {uploadingToS3 === backup.name ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CloudUpload className="h-4 w-4" />
+                      )}
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
