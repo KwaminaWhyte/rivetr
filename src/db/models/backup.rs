@@ -255,7 +255,7 @@ impl DatabaseBackupSchedule {
                     .with_second(0)
                     .unwrap_or(*from);
                 if next <= *from {
-                    next = next + Duration::days(1);
+                    next += Duration::days(1);
                 }
                 next
             }

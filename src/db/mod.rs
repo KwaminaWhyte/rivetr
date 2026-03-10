@@ -637,11 +637,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_s3_storage_configs_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/046_s3_storage.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/046_s3_storage.sql")).await?;
     }
 
     // Migration 047: Add advanced monitoring tables (log retention, uptime, scheduled restarts)
@@ -659,17 +655,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 048: Add log_drains table for forwarding container logs
-    let has_log_drains_table: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='log_drains'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_log_drains_table: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='log_drains'")
+            .fetch_optional(pool)
+            .await?;
     if has_log_drains_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/048_log_drains.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/048_log_drains.sql")).await?;
     }
 
     // Migration 049: Add deployment enhancements (approval workflow, maintenance mode, freeze windows)
@@ -721,11 +712,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             "ALTER TABLE apps ADD COLUMN maintenance_mode INTEGER NOT NULL DEFAULT 0",
         )
         .await?;
-        execute_sql(
-            pool,
-            "ALTER TABLE apps ADD COLUMN maintenance_message TEXT",
-        )
-        .await?;
+        execute_sql(pool, "ALTER TABLE apps ADD COLUMN maintenance_message TEXT").await?;
     }
 
     // Migration 053: Add OIDC/SSO provider support
@@ -735,11 +722,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_oidc_providers_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/053_sso_oidc.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/053_sso_oidc.sql")).await?;
     }
 
     // Add oidc_subject and oidc_provider_id columns to users if missing
@@ -767,17 +750,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 058: Add server_id column to apps for preferred-server deployments
-    let has_apps_server_id: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'server_id'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_apps_server_id: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'server_id'")
+            .fetch_optional(pool)
+            .await?;
     if has_apps_server_id.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/058_server_deploy.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/058_server_deploy.sql")).await?;
     }
 
     // Migration 059: Add Docker Swarm tables (swarm_nodes, swarm_services, swarm_config)
@@ -786,34 +764,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .fetch_optional(pool)
             .await?;
     if has_swarm_nodes_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/059_docker_swarm.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/059_docker_swarm.sql")).await?;
     }
 
     // Migration 060: Add build_servers table for remote build servers
-    let has_build_servers_table: Option<(String,)> =
-        sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='build_servers'",
-        )
-        .fetch_optional(pool)
-        .await?;
+    let has_build_servers_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='build_servers'",
+    )
+    .fetch_optional(pool)
+    .await?;
     if has_build_servers_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/060_build_servers.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/060_build_servers.sql")).await?;
     }
 
     // Migration 061: Registry push pipeline (columns already exist, no-op migration)
-    execute_sql(
-        pool,
-        include_str!("../../migrations/061_registry_push.sql"),
-    )
-    .await?;
+    execute_sql(pool, include_str!("../../migrations/061_registry_push.sql")).await?;
 
     // Migration 062: Add rollback_retention_count to apps
     let has_rollback_retention_count: Option<(String,)> = sqlx::query_as(
@@ -850,11 +815,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_autoscaling_rules_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/064_autoscaling.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/064_autoscaling.sql")).await?;
     }
 
     // Seed/update built-in templates (runs on every startup to add new templates)

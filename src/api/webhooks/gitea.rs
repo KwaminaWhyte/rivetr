@@ -54,9 +54,15 @@ pub struct GiteaCommit {
 }
 
 impl ChangedFiles for &GiteaCommit {
-    fn added_files(&self) -> &[String] { &self.added }
-    fn modified_files(&self) -> &[String] { &self.modified }
-    fn removed_files(&self) -> &[String] { &self.removed }
+    fn added_files(&self) -> &[String] {
+        &self.added
+    }
+    fn modified_files(&self) -> &[String] {
+        &self.modified
+    }
+    fn removed_files(&self) -> &[String] {
+        &self.removed
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,10 +145,7 @@ pub async fn gitea_webhook(
     handle_gitea_push(state, &body).await
 }
 
-async fn handle_gitea_push(
-    state: Arc<AppState>,
-    body: &[u8],
-) -> Result<StatusCode, StatusCode> {
+async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCode, StatusCode> {
     let payload: GiteaPushEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse Gitea push webhook payload: {}", e);
         StatusCode::BAD_REQUEST
@@ -212,7 +215,11 @@ async fn handle_gitea_push(
         first_commit_sha,
         body.len(),
         apps_count,
-        if apps_count > 0 { "processed" } else { "ignored" },
+        if apps_count > 0 {
+            "processed"
+        } else {
+            "ignored"
+        },
         None,
     )
     .await;

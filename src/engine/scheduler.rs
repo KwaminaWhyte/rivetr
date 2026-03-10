@@ -20,6 +20,7 @@ use tokio::time::interval;
 
 /// Row shape returned from the backup_schedules table
 #[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
 struct BackupScheduleRow {
     id: String,
     backup_type: String,
@@ -67,7 +68,6 @@ async fn execute_backup_schedule(db: &DbPool, schedule: &BackupScheduleRow) {
             crate::backup::create_backup(db, &data_dir, &config_path, &acme_cache_dir, None)
                 .await
                 .map(|_| ())
-                .map_err(anyhow::Error::from)
         }
         "s3_database" | "s3_volume" => {
             // S3-based backups require a config and target
@@ -104,14 +104,13 @@ async fn execute_backup_schedule(db: &DbPool, schedule: &BackupScheduleRow) {
     }
 
     // Update last_run_at and next_run_at regardless of success/failure
-    if let Err(e) = sqlx::query(
-        "UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?",
-    )
-    .bind(&now)
-    .bind(&next_run)
-    .bind(&schedule.id)
-    .execute(db)
-    .await
+    if let Err(e) =
+        sqlx::query("UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(&next_run)
+            .bind(&schedule.id)
+            .execute(db)
+            .await
     {
         tracing::warn!(
             schedule_id = %schedule.id,
@@ -541,12 +540,10 @@ async fn check_scheduled_deployments(db: &DbPool, deploy_tx: &mpsc::Sender<(Stri
 
     for (deployment_id, app_id) in rows {
         // Fetch the app record
-        let app: Option<App> = match sqlx::query_as(
-            "SELECT * FROM apps WHERE id = ?",
-        )
-        .bind(&app_id)
-        .fetch_optional(db)
-        .await
+        let app: Option<App> = match sqlx::query_as("SELECT * FROM apps WHERE id = ?")
+            .bind(&app_id)
+            .fetch_optional(db)
+            .await
         {
             Ok(a) => a,
             Err(e) => {
@@ -570,12 +567,10 @@ async fn check_scheduled_deployments(db: &DbPool, deploy_tx: &mpsc::Sender<(Stri
         };
 
         // Clear scheduled_at so this doesn't get picked up again, then queue
-        if let Err(e) = sqlx::query(
-            "UPDATE deployments SET scheduled_at = NULL WHERE id = ?",
-        )
-        .bind(&deployment_id)
-        .execute(db)
-        .await
+        if let Err(e) = sqlx::query("UPDATE deployments SET scheduled_at = NULL WHERE id = ?")
+            .bind(&deployment_id)
+            .execute(db)
+            .await
         {
             tracing::warn!(
                 deployment_id = %deployment_id,
@@ -602,10 +597,7 @@ async fn check_scheduled_deployments(db: &DbPool, deploy_tx: &mpsc::Sender<(Stri
 }
 
 /// Spawn the background task that checks for scheduled deployments every 60 seconds.
-pub fn spawn_scheduled_deployment_checker(
-    db: DbPool,
-    deploy_tx: mpsc::Sender<(String, App)>,
-) {
+pub fn spawn_scheduled_deployment_checker(db: DbPool, deploy_tx: mpsc::Sender<(String, App)>) {
     tracing::info!("Starting scheduled deployment checker (60s interval)");
 
     tokio::spawn(async move {
@@ -677,28 +669,24 @@ async fn autoscaling_cycle(db: &DbPool) {
 
         // Fetch the latest resource metric for this app
         let metric_value: Option<f64> = match rule.metric.as_str() {
-            "cpu" => {
-                sqlx::query_scalar::<_, f64>(
-                    "SELECT cpu_percent FROM resource_metrics WHERE app_id = ? \
+            "cpu" => sqlx::query_scalar::<_, f64>(
+                "SELECT cpu_percent FROM resource_metrics WHERE app_id = ? \
                      ORDER BY recorded_at DESC LIMIT 1",
-                )
-                .bind(&rule.app_id)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-            }
-            "memory" => {
-                sqlx::query_scalar::<_, f64>(
-                    "SELECT memory_percent FROM resource_metrics WHERE app_id = ? \
+            )
+            .bind(&rule.app_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten(),
+            "memory" => sqlx::query_scalar::<_, f64>(
+                "SELECT memory_percent FROM resource_metrics WHERE app_id = ? \
                      ORDER BY recorded_at DESC LIMIT 1",
-                )
-                .bind(&rule.app_id)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-            }
+            )
+            .bind(&rule.app_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten(),
             _ => None, // request_rate not yet implemented
         };
 
@@ -707,16 +695,15 @@ async fn autoscaling_cycle(db: &DbPool) {
         };
 
         // Fetch current replica count
-        let current_replicas: i64 = sqlx::query_scalar::<_, i64>(
-            "SELECT replica_count FROM apps WHERE id = ?",
-        )
-        .bind(&rule.app_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(1)
-        .max(1);
+        let current_replicas: i64 =
+            sqlx::query_scalar::<_, i64>("SELECT replica_count FROM apps WHERE id = ?")
+                .bind(&rule.app_id)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(1)
+                .max(1);
 
         let new_replicas = if value >= rule.scale_up_threshold {
             (current_replicas + 1).min(rule.max_replicas)

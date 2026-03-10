@@ -16,8 +16,8 @@ use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
-use super::{get_user_team_membership, require_team_role, validate_team_role};
 use super::audit::log_team_audit;
+use super::{get_user_team_membership, require_team_role, validate_team_role};
 
 /// List team members
 pub async fn list_members(

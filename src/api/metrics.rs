@@ -201,7 +201,7 @@ async fn update_gauge_metrics(state: &AppState) {
 
     // Count active (running) apps via deployments table
     if let Ok(active_apps) = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(DISTINCT app_id) FROM deployments WHERE status = 'running'"
+        "SELECT COUNT(DISTINCT app_id) FROM deployments WHERE status = 'running'",
     )
     .fetch_one(&state.db)
     .await
@@ -210,11 +210,10 @@ async fn update_gauge_metrics(state: &AppState) {
     }
 
     // Count active (running) databases
-    if let Ok(active_dbs) = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM databases WHERE status = 'running'"
-    )
-    .fetch_one(&state.db)
-    .await
+    if let Ok(active_dbs) =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM databases WHERE status = 'running'")
+            .fetch_one(&state.db)
+            .await
     {
         set_active_databases_total(active_dbs as f64);
     }
@@ -327,7 +326,8 @@ pub fn increment_deployments_total(app_name: &str, status: &str) {
 
 /// Record deployment duration histogram observation.
 pub fn observe_deployment_duration(app_name: &str, duration_secs: f64) {
-    histogram!(RIVETR_DEPLOYMENT_DURATION_SECONDS, "app" => app_name.to_string()).record(duration_secs);
+    histogram!(RIVETR_DEPLOYMENT_DURATION_SECONDS, "app" => app_name.to_string())
+        .record(duration_secs);
 }
 
 /// Set the number of currently running app containers.

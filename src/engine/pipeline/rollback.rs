@@ -6,8 +6,8 @@ use crate::runtime::{ContainerRuntime, PortMapping, RunConfig};
 use crate::DbPool;
 
 use super::super::{add_deployment_log, update_deployment_status, KEY_LENGTH};
-use super::{AutoRollbackTriggered, DeploymentResult};
 use super::start::collect_env_vars;
+use super::{AutoRollbackTriggered, DeploymentResult};
 
 /// Trim old successful deployments to keep only the last `retention` entries.
 /// Also removes deployment logs for the trimmed deployments.

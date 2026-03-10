@@ -291,7 +291,7 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct WebhookConfig {
     /// Secret for verifying GitHub webhook signatures (HMAC-SHA256)
     pub github_secret: Option<String>,
@@ -303,18 +303,7 @@ pub struct WebhookConfig {
     pub bitbucket_secret: Option<String>,
 }
 
-impl Default for WebhookConfig {
-    fn default() -> Self {
-        Self {
-            github_secret: None,
-            gitlab_token: None,
-            gitea_secret: None,
-            bitbucket_secret: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct OAuthConfig {
     #[serde(default)]
     pub github: Option<OAuthProviderConfig>,
@@ -322,16 +311,6 @@ pub struct OAuthConfig {
     pub gitlab: Option<OAuthProviderConfig>,
     #[serde(default)]
     pub bitbucket: Option<OAuthProviderConfig>,
-}
-
-impl Default for OAuthConfig {
-    fn default() -> Self {
-        Self {
-            github: None,
-            gitlab: None,
-            bitbucket: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -767,6 +746,7 @@ impl Config {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn default() -> Self {
         Self {
             server: ServerConfig::default(),

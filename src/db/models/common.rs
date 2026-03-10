@@ -103,16 +103,12 @@ impl PortMapping {
 /// Environment type for applications
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Environment {
+    #[default]
     Development,
     Staging,
     Production,
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Self::Development
-    }
 }
 
 impl std::fmt::Display for Environment {

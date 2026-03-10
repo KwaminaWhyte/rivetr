@@ -48,7 +48,7 @@ impl DiskStats {
             let stat = unsafe { stat.assume_init() };
 
             // Calculate sizes
-            let block_size = stat.f_frsize as u64;
+            let block_size = stat.f_frsize;
             let total_bytes = stat.f_blocks as u64 * block_size;
             let free_bytes = stat.f_bfree as u64 * block_size;
             let available_bytes = stat.f_bavail as u64 * block_size;

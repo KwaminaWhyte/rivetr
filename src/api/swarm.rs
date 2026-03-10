@@ -147,16 +147,10 @@ pub async fn init_swarm(
 pub async fn get_swarm_status(
     State(_state): State<Arc<AppState>>,
 ) -> Result<Json<SwarmStatusResponse>, ApiError> {
-    let raw = run_docker(&[
-        "info",
-        "--format",
-        "{{json .Swarm}}",
-    ])
-    .await?;
+    let raw = run_docker(&["info", "--format", "{{json .Swarm}}"]).await?;
 
-    let info: serde_json::Value = serde_json::from_str(raw.trim()).map_err(|e| {
-        ApiError::internal(format!("Failed to parse docker swarm info: {}", e))
-    })?;
+    let info: serde_json::Value = serde_json::from_str(raw.trim())
+        .map_err(|e| ApiError::internal(format!("Failed to parse docker swarm info: {}", e)))?;
 
     let local_node_state = info["LocalNodeState"]
         .as_str()
@@ -179,9 +173,7 @@ pub async fn get_swarm_status(
 }
 
 /// POST /api/swarm/leave — Leave the swarm (force)
-pub async fn leave_swarm(
-    State(state): State<Arc<AppState>>,
-) -> Result<StatusCode, ApiError> {
+pub async fn leave_swarm(State(state): State<Arc<AppState>>) -> Result<StatusCode, ApiError> {
     run_docker(&["swarm", "leave", "--force"]).await?;
 
     // Clear stored swarm config
@@ -204,15 +196,14 @@ pub async fn leave_swarm(
 pub async fn list_nodes(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SwarmNode>>, ApiError> {
-    let nodes = sqlx::query_as::<_, SwarmNode>(
-        "SELECT * FROM swarm_nodes ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to list swarm nodes: {}", e);
-        ApiError::database("Failed to list swarm nodes")
-    })?;
+    let nodes =
+        sqlx::query_as::<_, SwarmNode>("SELECT * FROM swarm_nodes ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list swarm nodes: {}", e);
+                ApiError::database("Failed to list swarm nodes")
+            })?;
 
     Ok(Json(nodes))
 }
@@ -232,10 +223,8 @@ pub async fn sync_nodes(
             continue;
         }
 
-        let node_info: serde_json::Value =
-            serde_json::from_str(line).map_err(|e| {
-                ApiError::internal(format!("Failed to parse node info: {}", e))
-            })?;
+        let node_info: serde_json::Value = serde_json::from_str(line)
+            .map_err(|e| ApiError::internal(format!("Failed to parse node info: {}", e)))?;
 
         let node_id = node_info["ID"].as_str().unwrap_or("").to_string();
         let hostname = node_info["Hostname"].as_str().unwrap_or("").to_string();
@@ -309,12 +298,11 @@ pub async fn sync_nodes(
     }
 
     // Return updated list
-    let nodes = sqlx::query_as::<_, SwarmNode>(
-        "SELECT * FROM swarm_nodes ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(ApiError::from)?;
+    let nodes =
+        sqlx::query_as::<_, SwarmNode>("SELECT * FROM swarm_nodes ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(ApiError::from)?;
 
     Ok(Json(nodes))
 }
@@ -352,15 +340,13 @@ pub async fn update_node_availability(
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    sqlx::query(
-        "UPDATE swarm_nodes SET availability = ?, last_seen_at = ? WHERE id = ?",
-    )
-    .bind(&req.availability)
-    .bind(&now)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(ApiError::from)?;
+    sqlx::query("UPDATE swarm_nodes SET availability = ?, last_seen_at = ? WHERE id = ?")
+        .bind(&req.availability)
+        .bind(&now)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(ApiError::from)?;
 
     let updated = sqlx::query_as::<_, SwarmNode>("SELECT * FROM swarm_nodes WHERE id = ?")
         .bind(&id)
@@ -379,15 +365,14 @@ pub async fn update_node_availability(
 pub async fn list_services(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<SwarmService>>, ApiError> {
-    let services = sqlx::query_as::<_, SwarmService>(
-        "SELECT * FROM swarm_services ORDER BY created_at DESC",
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to list swarm services: {}", e);
-        ApiError::database("Failed to list swarm services")
-    })?;
+    let services =
+        sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list swarm services: {}", e);
+                ApiError::database("Failed to list swarm services")
+            })?;
 
     Ok(Json(services))
 }
@@ -419,7 +404,14 @@ pub async fn create_service(
     ];
 
     if mode == "global" {
-        args = vec!["service", "create", "--name", &req.service_name, "--mode", "global"];
+        args = vec![
+            "service",
+            "create",
+            "--name",
+            &req.service_name,
+            "--mode",
+            "global",
+        ];
     }
 
     args.push(&req.image);
@@ -463,13 +455,12 @@ pub async fn delete_service(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let service =
-        sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(ApiError::from)?
-            .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    let service = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
 
     // Remove from Docker if we have the service name
     if let Err(e) = run_docker(&["service", "rm", &service.service_name]).await {
@@ -499,35 +490,31 @@ pub async fn scale_service(
         return Err(ApiError::bad_request("replicas must be >= 0"));
     }
 
-    let service =
-        sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(ApiError::from)?
-            .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    let service = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
 
     let scale_arg = format!("{}={}", service.service_name, req.replicas);
     run_docker(&["service", "scale", &scale_arg]).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    sqlx::query(
-        "UPDATE swarm_services SET replicas = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(req.replicas)
-    .bind(&now)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(ApiError::from)?;
+    sqlx::query("UPDATE swarm_services SET replicas = ?, updated_at = ? WHERE id = ?")
+        .bind(req.replicas)
+        .bind(&now)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(ApiError::from)?;
 
-    let updated =
-        sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(ApiError::from)?;
+    let updated = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?;
 
     Ok(Json(updated))
 }
@@ -537,13 +524,12 @@ pub async fn get_service_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let service =
-        sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(ApiError::from)?
-            .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    let service = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
 
     let output = run_docker(&[
         "service",

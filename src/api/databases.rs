@@ -726,7 +726,7 @@ pub async fn update_database(
 
     // Validate external port if provided
     if let Some(port) = req.external_port {
-        if port != 0 && (port < 1024 || port > 65535) {
+        if port != 0 && !(1024..=65535).contains(&port) {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({

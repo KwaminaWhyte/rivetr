@@ -12,8 +12,7 @@ use super::error::{ApiError, ValidationErrorBuilder};
 // Re-export public handlers
 pub use audit::{list_audit_logs, log_team_audit};
 pub use crud::{
-    check_2fa_enforcement, create_team, delete_team, get_team, list_teams,
-    toggle_2fa_enforcement, update_team,
+    create_team, delete_team, get_team, list_teams, toggle_2fa_enforcement, update_team,
 };
 pub use invitations::{
     accept_invitation, create_invitation, delete_invitation, list_invitations, resend_invitation,
@@ -42,15 +41,7 @@ pub struct ListAuditLogsQuery {
 fn generate_slug(name: &str) -> String {
     name.to_lowercase()
         .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c
-            } else if c.is_whitespace() || c == '-' || c == '_' {
-                '-'
-            } else {
-                '-'
-            }
-        })
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())

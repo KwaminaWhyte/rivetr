@@ -15,6 +15,12 @@ use super::{
 
 pub struct PodmanRuntime;
 
+impl Default for PodmanRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PodmanRuntime {
     pub fn new() -> Self {
         Self
@@ -339,7 +345,7 @@ impl ContainerRuntime for PodmanRuntime {
                     ports
                         .split("->")
                         .next()
-                        .and_then(|host_part| host_part.split(':').last())
+                        .and_then(|host_part| host_part.split(':').next_back())
                         .and_then(|p| p.parse().ok())
                 });
 
@@ -380,7 +386,7 @@ impl ContainerRuntime for PodmanRuntime {
                     ports
                         .split("->")
                         .next()
-                        .and_then(|host_part| host_part.split(':').last())
+                        .and_then(|host_part| host_part.split(':').next_back())
                         .and_then(|p| p.parse().ok())
                 });
 

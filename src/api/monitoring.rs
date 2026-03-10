@@ -104,13 +104,15 @@ pub async fn search_logs(
 
     let results: Vec<LogSearchResult> = rows
         .into_iter()
-        .map(|(id, deployment_id, timestamp, level, message)| LogSearchResult {
-            id,
-            deployment_id,
-            timestamp,
-            level,
-            message,
-        })
+        .map(
+            |(id, deployment_id, timestamp, level, message)| LogSearchResult {
+                id,
+                deployment_id,
+                timestamp,
+                level,
+                message,
+            },
+        )
         .collect();
 
     Ok(Json(results))
@@ -191,15 +193,12 @@ pub async fn update_log_retention(
     }
 
     let retention_days = req.retention_days.unwrap_or(30);
-    if retention_days < 1 || retention_days > 365 {
+    if !(1..=365).contains(&retention_days) {
         tracing::warn!("Invalid retention_days: {}", retention_days);
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let max_size_mb = match req.max_size_mb {
-        Some(val) => val,
-        None => None,
-    };
+    let max_size_mb = req.max_size_mb.unwrap_or_default();
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -278,8 +277,7 @@ pub async fn trigger_log_cleanup(
     let apps_processed = policies.len() as i64;
 
     for policy in &policies {
-        let cutoff = chrono::Utc::now()
-            - chrono::Duration::days(policy.retention_days as i64);
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(policy.retention_days as i64);
         let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
         let result = sqlx::query(
@@ -303,8 +301,7 @@ pub async fn trigger_log_cleanup(
     }
 
     // Also clean up apps without a policy using default 30-day retention
-    let default_cutoff =
-        chrono::Utc::now() - chrono::Duration::days(30);
+    let default_cutoff = chrono::Utc::now() - chrono::Duration::days(30);
     let default_cutoff_str = default_cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let default_result = sqlx::query(
@@ -633,8 +630,7 @@ pub async fn list_scheduled_restarts(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let responses: Vec<ScheduledRestartResponse> =
-        restarts.into_iter().map(|r| r.into()).collect();
+    let responses: Vec<ScheduledRestartResponse> = restarts.into_iter().map(|r| r.into()).collect();
 
     Ok(Json(responses))
 }
@@ -666,7 +662,10 @@ pub async fn update_scheduled_restart(
     }
 
     let new_cron = req.cron_expression.unwrap_or(existing.cron_expression);
-    let new_enabled = req.enabled.map(|e| if e { 1 } else { 0 }).unwrap_or(existing.enabled);
+    let new_enabled = req
+        .enabled
+        .map(|e| if e { 1 } else { 0 })
+        .unwrap_or(existing.enabled);
 
     // Validate cron if changed
     if cron::Schedule::from_str(&new_cron).is_err() {

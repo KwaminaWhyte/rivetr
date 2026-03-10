@@ -36,14 +36,14 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
 fn build_s3_client(config: &S3StorageConfig, state: &AppState) -> Result<S3Client, StatusCode> {
     let encryption_key = get_encryption_key(state);
 
-    let access_key =
-        crypto::decrypt_if_encrypted(&config.access_key, encryption_key.as_ref()).map_err(|e| {
+    let access_key = crypto::decrypt_if_encrypted(&config.access_key, encryption_key.as_ref())
+        .map_err(|e| {
             tracing::error!("Failed to decrypt S3 access key: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let secret_key =
-        crypto::decrypt_if_encrypted(&config.secret_key, encryption_key.as_ref()).map_err(|e| {
+    let secret_key = crypto::decrypt_if_encrypted(&config.secret_key, encryption_key.as_ref())
+        .map_err(|e| {
             tracing::error!("Failed to decrypt S3 secret key: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
@@ -83,16 +83,20 @@ pub async fn create_config(
 
     // Encrypt access key and secret key before storing
     let encrypted_access_key =
-        crypto::encrypt_if_key_available(&req.access_key, encryption_key.as_ref()).map_err(|e| {
-            tracing::error!("Failed to encrypt access key: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        crypto::encrypt_if_key_available(&req.access_key, encryption_key.as_ref()).map_err(
+            |e| {
+                tracing::error!("Failed to encrypt access key: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
 
     let encrypted_secret_key =
-        crypto::encrypt_if_key_available(&req.secret_key, encryption_key.as_ref()).map_err(|e| {
-            tracing::error!("Failed to encrypt secret key: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        crypto::encrypt_if_key_available(&req.secret_key, encryption_key.as_ref()).map_err(
+            |e| {
+                tracing::error!("Failed to encrypt secret key: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
 
     let is_default: i32 = if req.is_default { 1 } else { 0 };
     let path_prefix = req.path_prefix.unwrap_or_default();
@@ -140,16 +144,15 @@ pub async fn create_config(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let config = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch created S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let config =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch created S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     Ok(Json(config.to_response(false)))
 }
@@ -193,16 +196,15 @@ pub async fn update_config(
     Json(req): Json<UpdateS3StorageConfigRequest>,
 ) -> Result<Json<S3StorageConfigResponse>, StatusCode> {
     // Check it exists
-    let existing = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let existing =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     let existing = existing.ok_or(StatusCode::NOT_FOUND)?;
     let encryption_key = get_encryption_key(&state);
@@ -283,16 +285,15 @@ pub async fn update_config(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let updated = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch updated S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let updated =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch updated S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     Ok(Json(updated.to_response(false)))
 }
@@ -303,16 +304,15 @@ pub async fn delete_config(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Check for existing backups using this config
-    let backup_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM s3_backups WHERE storage_config_id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to count backups: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let backup_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM s3_backups WHERE storage_config_id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to count backups: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     if backup_count > 0 {
         return Err(StatusCode::CONFLICT);
@@ -331,7 +331,9 @@ pub async fn delete_config(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    Ok(Json(serde_json::json!({ "message": "S3 storage config deleted" })))
+    Ok(Json(
+        serde_json::json!({ "message": "S3 storage config deleted" }),
+    ))
 }
 
 /// Test an S3 storage configuration's connection
@@ -339,17 +341,16 @@ pub async fn test_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let config = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let config =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     let client = build_s3_client(&config, &state)?;
 
@@ -380,17 +381,16 @@ pub async fn trigger_backup(
     }
 
     // Fetch the storage config
-    let config = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&req.storage_config_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let config =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&req.storage_config_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     let backup_id = Uuid::new_v4().to_string();
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
@@ -463,7 +463,8 @@ pub async fn trigger_backup(
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
                     // Read the backup file
-                    std::fs::read(&backup_result.path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                    std::fs::read(&backup_result.path)
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
                 }
                 _ => {
                     // For database/volume types, we read from the local backup directory
@@ -505,15 +506,14 @@ pub async fn trigger_backup(
     });
 
     // Return the pending backup record
-    let backup =
-        sqlx::query_as::<_, S3Backup>("SELECT * FROM s3_backups WHERE id = ?")
-            .bind(&backup_id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch backup record: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let backup = sqlx::query_as::<_, S3Backup>("SELECT * FROM s3_backups WHERE id = ?")
+        .bind(&backup_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch backup record: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(backup.to_response(Some(config_name))))
 }
@@ -543,16 +543,15 @@ pub async fn list_backups(
     // Fetch config names for the response
     let mut responses = Vec::with_capacity(backups.len());
     for backup in &backups {
-        let config_name: Option<String> = sqlx::query_scalar(
-            "SELECT name FROM s3_storage_configs WHERE id = ?",
-        )
-        .bind(&backup.storage_config_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch config name: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        let config_name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM s3_storage_configs WHERE id = ?")
+                .bind(&backup.storage_config_id)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to fetch config name: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
 
         responses.push(backup.to_response(config_name));
     }
@@ -580,17 +579,16 @@ pub async fn restore_backup(
     }
 
     // Get the storage config
-    let config = sqlx::query_as::<_, S3StorageConfig>(
-        "SELECT * FROM s3_storage_configs WHERE id = ?",
-    )
-    .bind(&backup.storage_config_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch S3 config: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let config =
+        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+            .bind(&backup.storage_config_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch S3 config: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     let client = build_s3_client(&config, &state)?;
 
@@ -607,17 +605,13 @@ pub async fn restore_backup(
             let config_path = data_dir.join("../rivetr.toml");
             let acme_cache_dir = &state.config.proxy.acme_cache_dir;
 
-            let result = crate::backup::restore_from_backup(
-                &data,
-                data_dir,
-                &config_path,
-                acme_cache_dir,
-            )
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to restore from S3 backup: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            let result =
+                crate::backup::restore_from_backup(&data, data_dir, &config_path, acme_cache_dir)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to restore from S3 backup: {}", e);
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })?;
 
             Ok(Json(serde_json::json!({
                 "message": "Restore completed. Server restart recommended.",
@@ -651,16 +645,15 @@ pub async fn delete_backup(
 
     // Try to delete from S3 if the backup was completed
     if backup.status == "completed" {
-        let config = sqlx::query_as::<_, S3StorageConfig>(
-            "SELECT * FROM s3_storage_configs WHERE id = ?",
-        )
-        .bind(&backup.storage_config_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch S3 config: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        let config =
+            sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
+                .bind(&backup.storage_config_id)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to fetch S3 config: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
 
         if let Some(config) = config {
             if let Ok(client) = build_s3_client(&config, &state) {
@@ -681,7 +674,5 @@ pub async fn delete_backup(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    Ok(Json(
-        serde_json::json!({ "message": "S3 backup deleted" }),
-    ))
+    Ok(Json(serde_json::json!({ "message": "S3 backup deleted" })))
 }

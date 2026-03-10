@@ -76,11 +76,15 @@ pub(super) fn cleanup_stale_states(
 }
 
 /// Mark a deployment as failed in the database
-pub(super) async fn mark_deployment_failed(db: &DbPool, deployment_id: &str, error: &str) -> Result<()> {
+pub(super) async fn mark_deployment_failed(
+    db: &DbPool,
+    deployment_id: &str,
+    error: &str,
+) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
-        "UPDATE deployments SET status = 'failed', error_message = ?, finished_at = ? WHERE id = ?"
+        "UPDATE deployments SET status = 'failed', error_message = ?, finished_at = ? WHERE id = ?",
     )
     .bind(error)
     .bind(&now)
@@ -92,15 +96,19 @@ pub(super) async fn mark_deployment_failed(db: &DbPool, deployment_id: &str, err
 }
 
 /// Add a log entry for a deployment
-pub(super) async fn add_deployment_log(db: &DbPool, deployment_id: &str, level: &str, message: &str) {
-    if let Err(e) = sqlx::query(
-        "INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)",
-    )
-    .bind(deployment_id)
-    .bind(level)
-    .bind(message)
-    .execute(db)
-    .await
+pub(super) async fn add_deployment_log(
+    db: &DbPool,
+    deployment_id: &str,
+    level: &str,
+    message: &str,
+) {
+    if let Err(e) =
+        sqlx::query("INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)")
+            .bind(deployment_id)
+            .bind(level)
+            .bind(message)
+            .execute(db)
+            .await
     {
         tracing::warn!(
             deployment = %deployment_id,
@@ -123,7 +131,11 @@ pub(super) async fn mark_database_stopped(db: &DbPool, database_id: &str) -> Res
 }
 
 /// Mark a database as failed in the database
-pub(super) async fn mark_database_failed(db: &DbPool, database_id: &str, error: &str) -> Result<()> {
+pub(super) async fn mark_database_failed(
+    db: &DbPool,
+    database_id: &str,
+    error: &str,
+) -> Result<()> {
     sqlx::query(
         "UPDATE databases SET status = 'failed', error_message = ?, updated_at = datetime('now') WHERE id = ?"
     )
@@ -148,7 +160,10 @@ pub(super) async fn mark_service_stopped(db: &DbPool, service_id: &str) -> Resul
 }
 
 /// Reconcile deployment container status on startup
-pub(super) async fn reconcile_deployments(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -> usize {
+pub(super) async fn reconcile_deployments(
+    db: &DbPool,
+    runtime: &Arc<dyn ContainerRuntime>,
+) -> usize {
     let running_deployments: Vec<Deployment> = match sqlx::query_as(
         r#"
         SELECT id, app_id, commit_sha, commit_message, status, container_id,

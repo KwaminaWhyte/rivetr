@@ -1,11 +1,15 @@
 //! DockerHub webhook handler — deploy apps when an image is pushed.
 
-use axum::{extract::State, http::{HeaderMap, StatusCode}, body::Bytes};
+use super::{incr_webhooks, log_wh_event};
+use crate::{db::App, AppState};
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::{db::App, AppState};
-use super::{incr_webhooks, log_wh_event};
 
 #[derive(Debug, Deserialize)]
 pub struct DockerHubWebhookPayload {
@@ -22,11 +26,11 @@ pub struct DockerHubPushData {
 
 #[derive(Debug, Deserialize)]
 pub struct DockerHubRepository {
-    pub repo_name: String,     // e.g. "myuser/myimage"
+    pub repo_name: String, // e.g. "myuser/myimage"
     #[allow(dead_code)]
-    pub name: String,          // image name
+    pub name: String, // image name
     #[allow(dead_code)]
-    pub namespace: String,     // user/org
+    pub namespace: String, // user/org
     #[allow(dead_code)]
     pub is_private: bool,
 }
@@ -57,7 +61,7 @@ pub async fn dockerhub_webhook(
     // Find apps that use this Docker image as their source.
     // Match on docker_image field: either exact "image:tag" or "image:latest" when tag is "latest".
     let apps = sqlx::query_as::<_, App>(
-        "SELECT * FROM apps WHERE (docker_image LIKE ? OR docker_image LIKE ?)"
+        "SELECT * FROM apps WHERE (docker_image LIKE ? OR docker_image LIKE ?)",
     )
     .bind(format!("{}:{}", image_name, tag))
     .bind(format!("{}:latest", image_name)) // also match :latest when 'latest' tag pushed
@@ -100,7 +104,11 @@ pub async fn dockerhub_webhook(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        if let Err(e) = state.deploy_tx.send((deployment_id.clone(), app.clone())).await {
+        if let Err(e) = state
+            .deploy_tx
+            .send((deployment_id.clone(), app.clone()))
+            .await
+        {
             tracing::error!("Failed to queue deployment: {}", e);
         }
 

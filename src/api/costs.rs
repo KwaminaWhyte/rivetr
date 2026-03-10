@@ -83,7 +83,7 @@ pub async fn get_app_costs(
             tracing::error!("Failed to get app costs: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .unwrap_or_else(|| CostSummary {
+        .unwrap_or(CostSummary {
             cpu_cost: 0.0,
             memory_cost: 0.0,
             disk_cost: 0.0,
@@ -133,7 +133,7 @@ pub async fn get_project_costs(
             tracing::error!("Failed to get project costs: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .unwrap_or_else(|| CostSummary {
+        .unwrap_or(CostSummary {
             cpu_cost: 0.0,
             memory_cost: 0.0,
             disk_cost: 0.0,
@@ -190,7 +190,7 @@ pub async fn get_team_costs(
             tracing::error!("Failed to get team costs: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .unwrap_or_else(|| CostSummary {
+        .unwrap_or(CostSummary {
             cpu_cost: 0.0,
             memory_cost: 0.0,
             disk_cost: 0.0,
@@ -244,6 +244,7 @@ pub struct DashboardCostResponse {
 /// GET /api/system/costs?period=7d|30d|90d
 ///
 /// Returns total cost across all apps, top 5 apps by cost, and daily trend.
+#[allow(clippy::type_complexity)]
 pub async fn get_dashboard_costs(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CostQueryParams>,

@@ -29,10 +29,14 @@ impl RemoteContext {
         let target = format!("{}@{}", self.username, self.host);
 
         let mut args: Vec<&str> = vec![
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=10",
-            "-o", "BatchMode=yes",
-            "-p", &port_str,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "BatchMode=yes",
+            "-p",
+            &port_str,
         ];
 
         if let Some(ref key) = self.key_path {

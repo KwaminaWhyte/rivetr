@@ -18,8 +18,8 @@ use crate::AppState;
 
 use super::super::error::{ApiError, ValidationErrorBuilder};
 use super::super::validation::validate_uuid;
-use super::{get_user_team_membership, require_team_role, validate_team_role};
 use super::audit::log_team_audit;
+use super::{get_user_team_membership, require_team_role, validate_team_role};
 
 /// Generate a secure random token for invitations
 fn generate_invitation_token() -> String {

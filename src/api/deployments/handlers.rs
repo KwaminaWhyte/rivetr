@@ -946,6 +946,7 @@ pub struct DeploymentDiff {
 
 /// Get the diff between a deployment and the previous successful one
 /// GET /api/deployments/:id/diff
+#[allow(unused_assignments)]
 pub async fn get_deployment_diff(
     State(state): State<Arc<AppState>>,
     Path(deployment_id): Path<String>,

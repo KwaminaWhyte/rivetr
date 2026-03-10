@@ -175,7 +175,8 @@ impl RouteTable {
             // Store the primary backend in routes as the canonical backend (for health checks, etc.)
             self.routes.insert(domain.clone(), primary_backend);
             // Store round-robin pool
-            self.multi_routes.insert(domain, RoundRobinBackend::new(backends));
+            self.multi_routes
+                .insert(domain, RoundRobinBackend::new(backends));
         }
     }
 
@@ -198,11 +199,8 @@ impl RouteTable {
                     let port: u16 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(80);
                     // Use primary backend metadata (healthcheck, auth) from routes
                     if let Some(primary) = self.routes.get(d) {
-                        let mut replica_backend = Backend::new(
-                            primary.container_id.clone(),
-                            host,
-                            port,
-                        );
+                        let mut replica_backend =
+                            Backend::new(primary.container_id.clone(), host, port);
                         replica_backend.healthy = primary.healthy;
                         replica_backend.healthcheck_path = primary.healthcheck_path.clone();
                         replica_backend.basic_auth = primary.basic_auth.clone();

@@ -260,10 +260,7 @@ impl LogDrainManager {
             })
             .collect();
 
-        let url = format!(
-            "https://api.axiom.co/v1/datasets/{}/ingest",
-            config.dataset
-        );
+        let url = format!("https://api.axiom.co/v1/datasets/{}/ingest", config.dataset);
 
         http_client
             .post(&url)
@@ -341,10 +338,7 @@ impl LogDrainManager {
             })
             .collect();
 
-        let url = format!(
-            "https://http-intake.logs.{}/api/v2/logs",
-            config.site
-        );
+        let url = format!("https://http-intake.logs.{}/api/v2/logs", config.site);
 
         http_client
             .post(&url)

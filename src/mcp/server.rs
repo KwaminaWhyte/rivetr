@@ -38,11 +38,10 @@ pub async fn mcp_handler(
 
             match tool_name.as_str() {
                 "list_apps" => {
-                    let apps =
-                        sqlx::query_as::<_, crate::db::App>("SELECT * FROM apps LIMIT 50")
-                            .fetch_all(&state.db)
-                            .await
-                            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    let apps = sqlx::query_as::<_, crate::db::App>("SELECT * FROM apps LIMIT 50")
+                        .fetch_all(&state.db)
+                        .await
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
                     Ok(Json(McpResponse {
                         result: Some(serde_json::to_value(apps).unwrap_or_default()),
                         error: None,

@@ -1,12 +1,10 @@
 mod alerts;
 mod apps;
-mod autoscaling;
-mod build_servers;
-mod swarm;
 mod audit;
-mod webhook_events;
 pub mod auth;
+mod autoscaling;
 mod basic_auth;
+mod build_servers;
 mod cost_rates;
 mod costs;
 mod database_backups;
@@ -29,17 +27,19 @@ pub mod rate_limit;
 mod replicas;
 mod routes;
 mod s3;
+mod servers;
 mod service_templates;
 mod services;
-mod servers;
 mod shared_env_vars;
-mod sso;
 mod ssh_keys;
+mod sso;
+mod swarm;
 mod system;
 mod teams;
 mod two_factor;
 mod validation;
 mod volumes;
+mod webhook_events;
 mod webhooks;
 mod ws;
 
@@ -138,7 +138,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/tags", get(deployments::list_tags))
         .route("/deployments/:id", get(deployments::get_deployment))
         .route("/deployments/:id/logs", get(deployments::get_logs))
-        .route("/deployments/:id/diff", get(deployments::get_deployment_diff))
+        .route(
+            "/deployments/:id/diff",
+            get(deployments::get_deployment_diff),
+        )
         .route(
             "/deployments/:id/rollback",
             post(deployments::rollback_deployment),
@@ -157,14 +160,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(deployments::list_pending_deployments),
         )
         // Deployment freeze windows
-        .route(
-            "/freeze-windows",
-            get(deployments::list_freeze_windows),
-        )
-        .route(
-            "/freeze-windows",
-            post(deployments::create_freeze_window),
-        )
+        .route("/freeze-windows", get(deployments::list_freeze_windows))
+        .route("/freeze-windows", post(deployments::create_freeze_window))
         .route(
             "/freeze-windows/:id",
             delete(deployments::delete_freeze_window),
@@ -182,7 +179,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/ssh-keys/:id", delete(ssh_keys::delete_ssh_key))
         .route("/apps/:id/ssh-keys", get(ssh_keys::get_app_ssh_keys))
         // Remote Servers
-        .route("/servers", get(servers::list_servers).post(servers::create_server))
+        .route(
+            "/servers",
+            get(servers::list_servers).post(servers::create_server),
+        )
         .route(
             "/servers/:id",
             get(servers::get_server)
@@ -262,7 +262,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Monitoring: Log Search, Retention, Uptime, Scheduled Restarts
         .route("/apps/:id/logs/search", get(monitoring::search_logs))
-        .route("/apps/:id/log-retention", get(monitoring::get_log_retention))
+        .route(
+            "/apps/:id/log-retention",
+            get(monitoring::get_log_retention),
+        )
         .route(
             "/apps/:id/log-retention",
             put(monitoring::update_log_retention),
@@ -602,10 +605,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             delete(oauth::delete_user_connection),
         )
         // SSO / OIDC Provider Settings (admin)
-        .route("/sso/providers", get(sso::list_providers).post(sso::create_provider))
+        .route(
+            "/sso/providers",
+            get(sso::list_providers).post(sso::create_provider),
+        )
         .route(
             "/sso/providers/:id",
-            get(sso::get_provider).put(sso::update_provider).delete(sso::delete_provider),
+            get(sso::get_provider)
+                .put(sso::update_provider)
+                .delete(sso::delete_provider),
         )
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
@@ -647,10 +655,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(system::toggle_backup_schedule),
         )
         // System log cleanup
-        .route(
-            "/system/log-cleanup",
-            post(monitoring::trigger_log_cleanup),
-        )
+        .route("/system/log-cleanup", post(monitoring::trigger_log_cleanup))
         // S3 Storage Configs
         .route("/s3/configs", post(s3::create_config))
         .route("/s3/configs", get(s3::list_configs))
@@ -771,10 +776,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     // SSO/OIDC auth flow routes (public - no auth required, browser redirects)
     let sso_routes = Router::new()
-        .route(
-            "/auth/sso/:provider_id/login",
-            get(sso::initiate_sso_login),
-        )
+        .route("/auth/sso/:provider_id/login", get(sso::initiate_sso_login))
         .route(
             "/auth/sso/:provider_id/callback",
             get(sso::handle_sso_callback),

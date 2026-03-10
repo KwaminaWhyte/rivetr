@@ -7,21 +7,21 @@
 
 ## Server Access
 
-- **Host:** (fill in)
-- **IP:** (fill in)
-- **OS:** Ubuntu 22.04 / 24.04 (circle one)
-- **SSH:** `ssh root@IP`
-- **SSH Key:** (path to private key, or "password auth")
-- **Root Password:** (fill in, or leave blank if key-only)
+- **Host:** rivetr.site
+- **IP:** 64.226.112.14
+- **OS:** Ubuntu 24.04 LTS
+- **SSH:** `ssh root@64.226.112.14`
+- **Root Password:** df4H54vFD.6TrH!A
+- **DNS:** A record @ → 64.226.112.14, wildcard *.rivetr.site → 64.226.112.14
 
 ---
 
 ## Rivetr Admin
 
-- **Dashboard:** `http://IP:8080`
-- **Email:** (fill in)
-- **Password:** (fill in)
-- **API Token:** (from `/opt/rivetr/rivetr.toml` — `admin_token` field)
+- **Dashboard:** `http://rivetr.site:8080`
+- **Email:** stanleykwaminaotabil@gmail.com
+- **Password:** Famous10@3310
+- **API Token:** (fill in after install — see command below)
 
 To read the token from the server:
 ```bash

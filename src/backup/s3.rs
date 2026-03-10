@@ -44,9 +44,7 @@ impl S3Client {
 
         // For custom endpoints (MinIO, R2, etc.), force path-style addressing
         if let Some(ep) = endpoint {
-            config_builder = config_builder
-                .endpoint_url(ep)
-                .force_path_style(true);
+            config_builder = config_builder.endpoint_url(ep).force_path_style(true);
         }
 
         let config = config_builder.build();
@@ -79,7 +77,9 @@ impl S3Client {
             .bucket(&self.bucket)
             .send()
             .await
-            .context("Failed to connect to S3 bucket. Check credentials, bucket name, and endpoint.")?;
+            .context(
+                "Failed to connect to S3 bucket. Check credentials, bucket name, and endpoint.",
+            )?;
         info!("S3 connection test successful for bucket: {}", self.bucket);
         Ok(())
     }
@@ -151,9 +151,10 @@ impl S3Client {
             .map(|obj| S3Object {
                 key: obj.key().unwrap_or_default().to_string(),
                 size: obj.size().unwrap_or(0),
-                last_modified: obj
-                    .last_modified()
-                    .map(|dt| dt.fmt(aws_sdk_s3::primitives::DateTimeFormat::DateTime).unwrap_or_default()),
+                last_modified: obj.last_modified().map(|dt| {
+                    dt.fmt(aws_sdk_s3::primitives::DateTimeFormat::DateTime)
+                        .unwrap_or_default()
+                }),
             })
             .collect();
 

@@ -61,11 +61,7 @@ pub async fn get_app_status(
             } else {
                 None
             };
-            (
-                phase.to_string(),
-                Some(dep_id.clone()),
-                uptime,
-            )
+            (phase.to_string(), Some(dep_id.clone()), uptime)
         } else {
             ("stable".to_string(), None, None)
         };
@@ -145,7 +141,7 @@ pub async fn start_app(
     // Start the container
     state.runtime.start(&container_id).await.map_err(|e| {
         tracing::error!(container = %container_id, error = %e, "Failed to start container");
-        ApiError::internal(&format!("Failed to start container: {}", e))
+        ApiError::internal(format!("Failed to start container: {}", e))
     })?;
 
     tracing::info!(app = %app.name, container = %container_id, "App container started");
@@ -232,7 +228,7 @@ pub async fn stop_app(
     // Stop the container
     state.runtime.stop(&container_id).await.map_err(|e| {
         tracing::error!(container = %container_id, error = %e, "Failed to stop container");
-        ApiError::internal(&format!("Failed to stop container: {}", e))
+        ApiError::internal(format!("Failed to stop container: {}", e))
     })?;
 
     tracing::info!(app = %app.name, container = %container_id, "App container stopped");
@@ -315,7 +311,7 @@ pub async fn restart_app(
     // Start the container
     state.runtime.start(&container_id).await.map_err(|e| {
         tracing::error!(container = %container_id, error = %e, "Failed to restart container");
-        ApiError::internal(&format!("Failed to restart container: {}", e))
+        ApiError::internal(format!("Failed to restart container: {}", e))
     })?;
 
     tracing::info!(app = %app.name, container = %container_id, "App container restarted");

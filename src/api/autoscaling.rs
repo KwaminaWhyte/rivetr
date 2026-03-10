@@ -75,7 +75,11 @@ pub async fn create_rule(
     let min_replicas = req.min_replicas.unwrap_or(1).clamp(1, 100);
     let max_replicas = req.max_replicas.unwrap_or(10).clamp(1, 100);
     let cooldown = req.cooldown_seconds.unwrap_or(300);
-    let enabled = if req.enabled.unwrap_or(true) { 1_i64 } else { 0_i64 };
+    let enabled = if req.enabled.unwrap_or(true) {
+        1_i64
+    } else {
+        0_i64
+    };
 
     sqlx::query(
         r#"
@@ -102,12 +106,11 @@ pub async fn create_rule(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let rule =
-        sqlx::query_as::<_, AutoscalingRule>("SELECT * FROM autoscaling_rules WHERE id = ?")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rule = sqlx::query_as::<_, AutoscalingRule>("SELECT * FROM autoscaling_rules WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((StatusCode::CREATED, Json(rule)))
 }
@@ -126,7 +129,11 @@ pub async fn update_rule(
     let min_replicas = req.min_replicas.unwrap_or(1).clamp(1, 100);
     let max_replicas = req.max_replicas.unwrap_or(10).clamp(1, 100);
     let cooldown = req.cooldown_seconds.unwrap_or(300);
-    let enabled = if req.enabled.unwrap_or(true) { 1_i64 } else { 0_i64 };
+    let enabled = if req.enabled.unwrap_or(true) {
+        1_i64
+    } else {
+        0_i64
+    };
 
     let result = sqlx::query(
         r#"
@@ -161,12 +168,11 @@ pub async fn update_rule(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let rule =
-        sqlx::query_as::<_, AutoscalingRule>("SELECT * FROM autoscaling_rules WHERE id = ?")
-            .bind(&rule_id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rule = sqlx::query_as::<_, AutoscalingRule>("SELECT * FROM autoscaling_rules WHERE id = ?")
+        .bind(&rule_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(rule))
 }

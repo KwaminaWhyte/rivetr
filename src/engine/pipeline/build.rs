@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::db::App;
@@ -48,7 +48,11 @@ pub(super) async fn push_image_to_registry(
     } else {
         deployment_id
     };
-    let remote_tag = format!("{}/{app_name}:{short_id}", registry_url, app_name = app.name);
+    let remote_tag = format!(
+        "{}/{app_name}:{short_id}",
+        registry_url,
+        app_name = app.name
+    );
 
     add_deployment_log(
         db,
@@ -73,8 +77,8 @@ pub(super) async fn push_image_to_registry(
     // Step 2: docker login (only if credentials are provided)
     if let Some(username) = app.registry_username.as_deref().filter(|s| !s.is_empty()) {
         let raw_password = app.registry_password.clone().unwrap_or_default();
-        let password = crypto::decrypt_if_encrypted(&raw_password, encryption_key)
-            .unwrap_or(raw_password);
+        let password =
+            crypto::decrypt_if_encrypted(&raw_password, encryption_key).unwrap_or(raw_password);
 
         if !password.is_empty() {
             let login_output = Command::new("docker")
@@ -253,7 +257,7 @@ pub(super) async fn build_git_image(
     runtime: Arc<dyn ContainerRuntime>,
     deployment_id: &str,
     app: &App,
-    build_path: &PathBuf,
+    build_path: &Path,
     build_limits: &BuildLimits,
 ) -> Result<String> {
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
@@ -605,7 +609,7 @@ pub(super) async fn build_upload_image(
     runtime: Arc<dyn ContainerRuntime>,
     deployment_id: &str,
     app: &App,
-    build_path: &PathBuf,
+    build_path: &Path,
     build_limits: &BuildLimits,
 ) -> Result<String> {
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);

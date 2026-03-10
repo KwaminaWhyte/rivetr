@@ -16,7 +16,9 @@ use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
 use super::super::teams::log_team_audit;
-use super::compose::{get_compose_dir, run_compose_command, validate_compose_content, write_compose_file};
+use super::compose::{
+    get_compose_dir, run_compose_command, validate_compose_content, write_compose_file,
+};
 
 /// Query parameters for listing services
 #[derive(Debug, serde::Deserialize, Default)]

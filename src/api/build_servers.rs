@@ -81,11 +81,10 @@ pub async fn create_build_server(
     // Encrypt SSH private key if provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
         let enc_key = get_encryption_key(&state);
-        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref())
-            .map_err(|e| {
-                tracing::error!("Failed to encrypt SSH private key: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH private key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         Some(encrypted)
     } else {
         None
@@ -131,16 +130,15 @@ pub async fn get_build_server(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<BuildServer>, StatusCode> {
-    let mut server =
-        sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get build server: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let mut server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get build server: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     // Mask SSH key in response
     server.ssh_private_key = server.ssh_private_key.map(|_| "[encrypted]".to_string());
@@ -155,24 +153,22 @@ pub async fn update_build_server(
     Json(req): Json<UpdateBuildServerRequest>,
 ) -> Result<Json<BuildServer>, StatusCode> {
     // Verify server exists
-    let _existing =
-        sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let _existing = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
     // Encrypt SSH private key if a new one is provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
         let enc_key = get_encryption_key(&state);
-        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref())
-            .map_err(|e| {
-                tracing::error!("Failed to encrypt SSH private key: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH private key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         Some(encrypted)
     } else {
         None
@@ -312,26 +308,23 @@ pub async fn check_build_server_health(
         }
         Err(e) => {
             tracing::warn!("Health check failed for build server {}: {}", id, e);
-            sqlx::query(
-                "UPDATE build_servers SET status = 'offline', updated_at = ? WHERE id = ?",
-            )
-            .bind(&now)
-            .bind(&id)
-            .execute(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to update build server status to offline: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            sqlx::query("UPDATE build_servers SET status = 'offline', updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(&id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to update build server status to offline: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
         }
     }
 
-    let mut updated =
-        sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut updated = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Mask SSH key in response
     updated.ssh_private_key = updated.ssh_private_key.map(|_| "[encrypted]".to_string());
@@ -398,8 +391,7 @@ async fn run_build_server_health_check(
         cmd.arg("-i").arg(key_file.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host))
-        .arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
 
     let output = cmd.output().await?;
 

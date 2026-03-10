@@ -11,12 +11,12 @@ use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 
 use super::recovery::ContainerRestartState;
-use super::stats::check_compose_service_running;
-use super::MonitorResult;
 use super::recovery::{
     add_deployment_log, mark_database_failed, mark_database_stopped, mark_deployment_failed,
     mark_service_stopped,
 };
+use super::stats::check_compose_service_running;
+use super::MonitorResult;
 
 /// Run a single monitoring cycle: check all deployments, databases, and services.
 pub(super) async fn check_and_restart(
@@ -112,7 +112,9 @@ pub(super) async fn check_and_restart(
                     error = %e,
                     "Failed to inspect container"
                 );
-                if let Err(e) = mark_deployment_failed(db, &deployment.id, "Container not found").await {
+                if let Err(e) =
+                    mark_deployment_failed(db, &deployment.id, "Container not found").await
+                {
                     tracing::warn!(
                         deployment = %deployment.id,
                         error = %e,
@@ -166,6 +168,7 @@ fn handle_running_container(
 }
 
 /// Handle a crashed container
+#[allow(clippy::too_many_arguments)]
 async fn handle_crashed_container(
     db: &DbPool,
     runtime: &Arc<dyn ContainerRuntime>,
@@ -390,7 +393,8 @@ pub(super) async fn check_databases(
 
                 result.databases_stopped += 1;
 
-                if let Err(e) = mark_database_failed(db, &database.id, "Container not found").await {
+                if let Err(e) = mark_database_failed(db, &database.id, "Container not found").await
+                {
                     tracing::warn!(
                         database = %database.id,
                         error = %e,
@@ -430,8 +434,7 @@ pub(super) async fn check_services(
     for service in &running_services {
         let project_name = service.compose_project_name();
 
-        let is_running =
-            check_compose_service_running(&project_name, &service.name, runtime).await;
+        let is_running = check_compose_service_running(&project_name, &service.name, runtime).await;
 
         if is_running {
             result.services_running += 1;

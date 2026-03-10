@@ -22,19 +22,16 @@ use super::super::error::ApiError;
 // ---------------------------------------------------------------------------
 
 /// Build an S3Client from the first available (default) S3 config.
-async fn get_default_s3_client(
-    state: &AppState,
-) -> Option<(crate::backup::s3::S3Client, String)> {
+async fn get_default_s3_client(state: &AppState) -> Option<(crate::backup::s3::S3Client, String)> {
     use crate::crypto;
     use crate::db::S3StorageConfig;
 
-    let config: Option<S3StorageConfig> = sqlx::query_as(
-        "SELECT * FROM s3_storage_configs WHERE is_default = 1 LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
+    let config: Option<S3StorageConfig> =
+        sqlx::query_as("SELECT * FROM s3_storage_configs WHERE is_default = 1 LIMIT 1")
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
 
     let config = config?;
 
@@ -45,10 +42,10 @@ async fn get_default_s3_client(
         .as_ref()
         .map(|s| crate::crypto::derive_key(s));
 
-    let access_key = crypto::decrypt_if_encrypted(&config.access_key, encryption_key.as_ref())
-        .ok()?;
-    let secret_key = crypto::decrypt_if_encrypted(&config.secret_key, encryption_key.as_ref())
-        .ok()?;
+    let access_key =
+        crypto::decrypt_if_encrypted(&config.access_key, encryption_key.as_ref()).ok()?;
+    let secret_key =
+        crypto::decrypt_if_encrypted(&config.secret_key, encryption_key.as_ref()).ok()?;
 
     let client = crate::backup::s3::S3Client::new(
         config.endpoint.as_deref(),
@@ -61,7 +58,11 @@ async fn get_default_s3_client(
     .ok()?;
 
     // Return the S3 URL prefix for display
-    let url_prefix = format!("s3://{}/{}", config.bucket, config.path_prefix.as_deref().unwrap_or(""));
+    let url_prefix = format!(
+        "s3://{}/{}",
+        config.bucket,
+        config.path_prefix.as_deref().unwrap_or("")
+    );
     Some((client, url_prefix))
 }
 
@@ -284,9 +285,11 @@ pub async fn upload_backup_to_s3(
     let size = backup_data.len() as u64;
 
     // Get the default S3 client
-    let (s3_client, url_prefix) = get_default_s3_client(&state)
-        .await
-        .ok_or_else(|| ApiError::bad_request("No default S3 storage configuration found. Please configure S3 storage first."))?;
+    let (s3_client, url_prefix) = get_default_s3_client(&state).await.ok_or_else(|| {
+        ApiError::bad_request(
+            "No default S3 storage configuration found. Please configure S3 storage first.",
+        )
+    })?;
 
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
     let s3_key = format!("backups/instance/{}", name);
@@ -382,16 +385,15 @@ pub async fn create_backup_schedule(
         ApiError::internal("Failed to create backup schedule")
     })?;
 
-    let schedule = sqlx::query_as::<_, BackupSchedule>(
-        "SELECT * FROM backup_schedules WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to fetch created backup schedule");
-        ApiError::internal("Failed to fetch created backup schedule")
-    })?;
+    let schedule =
+        sqlx::query_as::<_, BackupSchedule>("SELECT * FROM backup_schedules WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to fetch created backup schedule");
+                ApiError::internal("Failed to fetch created backup schedule")
+            })?;
 
     tracing::info!(
         schedule_id = %id,
@@ -447,16 +449,15 @@ pub async fn toggle_backup_schedule(
         return Err(ApiError::not_found("Backup schedule not found"));
     }
 
-    let schedule = sqlx::query_as::<_, BackupSchedule>(
-        "SELECT * FROM backup_schedules WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to fetch backup schedule after toggle");
-        ApiError::internal("Failed to fetch backup schedule")
-    })?;
+    let schedule =
+        sqlx::query_as::<_, BackupSchedule>("SELECT * FROM backup_schedules WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to fetch backup schedule after toggle");
+                ApiError::internal("Failed to fetch backup schedule")
+            })?;
 
     Ok(Json(schedule))
 }
@@ -474,9 +475,7 @@ fn compute_next_run(cron_expression: &str) -> Option<String> {
             .map(|t| t.to_rfc3339()),
         Err(_) => {
             // Fall back to 24 hours from now for unrecognised expressions
-            Some(
-                (chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339(),
-            )
+            Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())
         }
     }
 }

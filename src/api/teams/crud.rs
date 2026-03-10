@@ -9,18 +9,18 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    CreateTeamRequest, Team, TeamAuditAction, TeamAuditResourceType, TeamDetail, TeamMemberWithUser,
-    TeamRole, TeamWithMemberCount, UpdateTeamRequest, User,
+    CreateTeamRequest, Team, TeamAuditAction, TeamAuditResourceType, TeamDetail,
+    TeamMemberWithUser, TeamRole, TeamWithMemberCount, UpdateTeamRequest, User,
 };
 use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
+use super::audit::log_team_audit;
 use super::{
     generate_slug, get_user_team_membership, require_team_role, validate_create_request,
     validate_team_slug, validate_update_request,
 };
-use super::audit::log_team_audit;
 
 /// List teams for the current user
 pub async fn list_teams(
@@ -378,18 +378,16 @@ pub async fn toggle_2fa_enforcement(
     let new_value = if team.require_2fa == 1 { 0_i64 } else { 1_i64 };
     let now = chrono::Utc::now().to_rfc3339();
 
-    sqlx::query(
-        "UPDATE teams SET require_2fa = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(new_value)
-    .bind(&now)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to update team 2FA enforcement");
-        ApiError::database("Failed to update 2FA enforcement setting")
-    })?;
+    sqlx::query("UPDATE teams SET require_2fa = ?, updated_at = ? WHERE id = ?")
+        .bind(new_value)
+        .bind(&now)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to update team 2FA enforcement");
+            ApiError::database("Failed to update 2FA enforcement setting")
+        })?;
 
     let updated = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
         .bind(&id)

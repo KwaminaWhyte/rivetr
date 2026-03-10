@@ -508,10 +508,8 @@ pub async fn delete_app(
     }
 
     // For system user (API token auth), skip password verification
-    if user.id != "system" {
-        if !verify_password(&req.password, &user.password_hash) {
-            return Err(ApiError::forbidden("Invalid password"));
-        }
+    if user.id != "system" && !verify_password(&req.password, &user.password_hash) {
+        return Err(ApiError::forbidden("Invalid password"));
     }
 
     // Check if app exists before deleting

@@ -63,15 +63,27 @@ pub struct GitHubCommitDetail {
 }
 
 impl ChangedFiles for GitHubCommitDetail {
-    fn added_files(&self) -> &[String] { &self.added }
-    fn modified_files(&self) -> &[String] { &self.modified }
-    fn removed_files(&self) -> &[String] { &self.removed }
+    fn added_files(&self) -> &[String] {
+        &self.added
+    }
+    fn modified_files(&self) -> &[String] {
+        &self.modified
+    }
+    fn removed_files(&self) -> &[String] {
+        &self.removed
+    }
 }
 
 impl ChangedFiles for &GitHubCommitDetail {
-    fn added_files(&self) -> &[String] { &self.added }
-    fn modified_files(&self) -> &[String] { &self.modified }
-    fn removed_files(&self) -> &[String] { &self.removed }
+    fn added_files(&self) -> &[String] {
+        &self.added
+    }
+    fn modified_files(&self) -> &[String] {
+        &self.modified
+    }
+    fn removed_files(&self) -> &[String] {
+        &self.removed
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,10 +161,7 @@ pub async fn github_webhook(
     }
 }
 
-async fn handle_github_push(
-    state: Arc<AppState>,
-    body: &[u8],
-) -> Result<StatusCode, StatusCode> {
+async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCode, StatusCode> {
     let payload: GitHubPushEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
         StatusCode::BAD_REQUEST
@@ -414,8 +423,7 @@ async fn handle_preview_deploy(
 
                 if let Some(updated) = updated_preview {
                     if let Err(comment_err) =
-                        post_preview_comment(&db, &updated, "failed", encryption_key.as_ref())
-                            .await
+                        post_preview_comment(&db, &updated, "failed", encryption_key.as_ref()).await
                     {
                         tracing::warn!(
                             preview_id = %preview.id,

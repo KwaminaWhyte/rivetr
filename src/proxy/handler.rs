@@ -306,6 +306,7 @@ impl ProxyHandler {
 
     /// Check HTTP Basic Auth credentials
     /// Returns Ok(()) if auth is valid, or Err(response) with 401 response
+    #[allow(clippy::result_large_err)]
     fn check_basic_auth<T>(
         &self,
         req: &Request<T>,

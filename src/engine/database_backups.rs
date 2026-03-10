@@ -304,7 +304,7 @@ impl DatabaseBackupTask {
         creds: &DatabaseCredentials,
         backup_path: &PathBuf,
     ) -> Result<()> {
-        let cmd = vec![
+        let cmd = [
             "pg_dump".to_string(),
             "-U".to_string(),
             creds.username.clone(),

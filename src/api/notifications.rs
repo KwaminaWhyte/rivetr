@@ -238,7 +238,7 @@ pub async fn test_channel(
         .await
         .map_err(|e| {
             tracing::error!("Test notification failed: {}", e);
-            ApiError::internal(&format!("Failed to send test notification: {}", e))
+            ApiError::internal(format!("Failed to send test notification: {}", e))
         })?;
 
     Ok(StatusCode::OK)
@@ -967,7 +967,7 @@ pub async fn test_team_channel(
         .await
         .map_err(|e| {
             tracing::error!("Test notification failed for team channel: {}", e);
-            ApiError::internal(&format!("Failed to send test notification: {}", e))
+            ApiError::internal(format!("Failed to send test notification: {}", e))
         })?;
 
     tracing::info!(

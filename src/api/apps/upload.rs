@@ -48,7 +48,7 @@ pub async fn upload_create_app(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| ApiError::bad_request(&format!("Failed to read multipart: {}", e)))?
+        .map_err(|e| ApiError::bad_request(format!("Failed to read multipart: {}", e)))?
     {
         let name = field.name().unwrap_or("").to_string();
 
@@ -57,16 +57,16 @@ pub async fn upload_create_app(
             let data = field
                 .bytes()
                 .await
-                .map_err(|e| ApiError::bad_request(&format!("Failed to read file: {}", e)))?;
+                .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?;
             file_data = Some(data.to_vec());
         } else if name == "config" {
             let text = field
                 .text()
                 .await
-                .map_err(|e| ApiError::bad_request(&format!("Failed to read config: {}", e)))?;
+                .map_err(|e| ApiError::bad_request(format!("Failed to read config: {}", e)))?;
             config = Some(
                 serde_json::from_str(&text)
-                    .map_err(|e| ApiError::bad_request(&format!("Invalid config JSON: {}", e)))?,
+                    .map_err(|e| ApiError::bad_request(format!("Invalid config JSON: {}", e)))?,
             );
         }
     }
@@ -93,12 +93,12 @@ pub async fn upload_create_app(
     // Extract ZIP and find project root
     let project_root = extract_zip_and_find_root(&file_data, &work_dir)
         .await
-        .map_err(|e| ApiError::bad_request(&format!("Failed to extract ZIP: {}", e)))?;
+        .map_err(|e| ApiError::bad_request(format!("Failed to extract ZIP: {}", e)))?;
 
     // Auto-detect build type
     let detected = detect_build_type(&project_root)
         .await
-        .map_err(|e| ApiError::internal(&format!("Failed to detect build type: {}", e)))?;
+        .map_err(|e| ApiError::internal(format!("Failed to detect build type: {}", e)))?;
     tracing::info!(
         build_type = %detected.build_type,
         confidence = %detected.confidence,

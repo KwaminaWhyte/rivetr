@@ -128,6 +128,7 @@ impl CostSnapshot {
     }
 
     /// Get aggregated cost summary for an app
+    #[allow(clippy::type_complexity)]
     pub async fn get_summary_for_app(
         db: &SqlitePool,
         app_id: &str,
@@ -183,6 +184,7 @@ impl CostSnapshot {
     }
 
     /// Get aggregated cost summary for a project (all apps in the project)
+    #[allow(clippy::type_complexity)]
     pub async fn get_summary_for_project(
         db: &SqlitePool,
         project_id: &str,
@@ -238,6 +240,7 @@ impl CostSnapshot {
     }
 
     /// Get aggregated cost summary for a team (all apps owned by the team)
+    #[allow(clippy::type_complexity)]
     pub async fn get_summary_for_team(
         db: &SqlitePool,
         team_id: &str,

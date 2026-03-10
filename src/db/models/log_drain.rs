@@ -111,9 +111,7 @@ pub struct LogDrain {
 impl LogDrain {
     /// Get the provider type enum
     pub fn get_provider(&self) -> LogDrainProvider {
-        self.provider
-            .parse()
-            .unwrap_or(LogDrainProvider::Http)
+        self.provider.parse().unwrap_or(LogDrainProvider::Http)
     }
 
     /// Check if the drain is enabled

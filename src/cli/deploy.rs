@@ -356,8 +356,7 @@ pub async fn cmd_logs(cli: &Cli, app_identifier: &str, _lines: u32, follow: bool
                                             if let Some(msg) = event.message {
                                                 if let Some(ts) = event.timestamp {
                                                     // Parse and format timestamp
-                                                    let short_ts =
-                                                        ts.get(11..19).unwrap_or(&ts);
+                                                    let short_ts = ts.get(11..19).unwrap_or(&ts);
                                                     println!("{} | {}", short_ts, msg);
                                                 } else {
                                                     println!("{}", msg);

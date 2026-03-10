@@ -50,8 +50,7 @@ pub async fn run_log_cleanup(db: &DbPool) {
 
     for policy in &policies {
         // Time-based cleanup
-        let cutoff = chrono::Utc::now()
-            - chrono::Duration::days(policy.retention_days as i64);
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(policy.retention_days as i64);
         let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
         match sqlx::query(
@@ -95,8 +94,7 @@ pub async fn run_log_cleanup(db: &DbPool) {
     }
 
     // Default cleanup for apps without a policy (30-day default)
-    let default_cutoff =
-        chrono::Utc::now() - chrono::Duration::days(30);
+    let default_cutoff = chrono::Utc::now() - chrono::Duration::days(30);
     let default_cutoff_str = default_cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
     match sqlx::query(

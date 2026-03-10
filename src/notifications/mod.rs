@@ -612,7 +612,7 @@ impl NotificationService {
                 let color_str = payload.color();
                 json!({
                     "embeds": [{
-                        "color": match color_str.as_ref() {
+                        "color": match color_str {
                             "#36a64f" => 0x36a64f,
                             "#dc3545" => 0xdc3545,
                             "#0d6efd" => 0x0d6efd,

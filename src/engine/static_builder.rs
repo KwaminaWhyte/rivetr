@@ -212,8 +212,8 @@ impl StaticSiteBuilder {
                 let dev_deps = json.get("devDependencies").and_then(|d| d.as_object());
 
                 let has_dep = |name: &str| -> bool {
-                    deps.map_or(false, |d| d.contains_key(name))
-                        || dev_deps.map_or(false, |d| d.contains_key(name))
+                    deps.is_some_and(|d| d.contains_key(name))
+                        || dev_deps.is_some_and(|d| d.contains_key(name))
                 };
 
                 if has_dep("react-scripts") {
@@ -352,14 +352,12 @@ CMD ["nginx", "-g", "daemon off;"]
 
         let install_cmd = config
             .custom_install_command
-            .as_ref()
-            .map(|s| s.as_str())
+            .as_deref()
             .unwrap_or_else(|| package_manager.install_command());
 
         let build_cmd = config
             .custom_build_command
-            .as_ref()
-            .map(|s| s.as_str())
+            .as_deref()
             .unwrap_or_else(|| package_manager.build_command());
 
         // Build environment variables string

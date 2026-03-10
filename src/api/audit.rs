@@ -40,6 +40,7 @@ pub fn extract_client_ip(headers: &HeaderMap, conn_info: Option<&SocketAddr>) ->
 
 /// Helper function to log an audit event with common patterns.
 /// This is a convenience wrapper around db::log_audit that handles errors gracefully.
+#[allow(clippy::too_many_arguments)]
 pub async fn audit_log(
     state: &AppState,
     action: &str,

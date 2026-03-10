@@ -66,33 +66,34 @@ async fn uptime_cycle(db: &DbPool, client: &reqwest::Client) {
 
         // Determine the actual URL to check
         // If it starts with http, use as-is; otherwise, look up the running container's port
-        let url = if healthcheck_url.starts_with("http://") || healthcheck_url.starts_with("https://") {
-            healthcheck_url.clone()
-        } else {
-            // Try to build URL from domain or just skip if healthcheck is a path
-            // Look up the app domain first
-            let domain: Option<(Option<String>,)> =
-                sqlx::query_as("SELECT domain FROM apps WHERE id = ?")
-                    .bind(&app_id)
-                    .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
+        let url =
+            if healthcheck_url.starts_with("http://") || healthcheck_url.starts_with("https://") {
+                healthcheck_url.clone()
+            } else {
+                // Try to build URL from domain or just skip if healthcheck is a path
+                // Look up the app domain first
+                let domain: Option<(Option<String>,)> =
+                    sqlx::query_as("SELECT domain FROM apps WHERE id = ?")
+                        .bind(&app_id)
+                        .fetch_optional(db)
+                        .await
+                        .unwrap_or(None);
 
-            match domain {
-                Some((Some(d),)) if !d.is_empty() => {
-                    let path = if healthcheck_url.starts_with('/') {
-                        healthcheck_url.clone()
-                    } else {
-                        format!("/{}", healthcheck_url)
-                    };
-                    format!("http://{}{}", d, path)
+                match domain {
+                    Some((Some(d),)) if !d.is_empty() => {
+                        let path = if healthcheck_url.starts_with('/') {
+                            healthcheck_url.clone()
+                        } else {
+                            format!("/{}", healthcheck_url)
+                        };
+                        format!("http://{}{}", d, path)
+                    }
+                    _ => {
+                        // Can't construct a URL without a domain; skip this app
+                        continue;
+                    }
                 }
-                _ => {
-                    // Can't construct a URL without a domain; skip this app
-                    continue;
-                }
-            }
-        };
+            };
 
         let db = db.clone();
         let client = client.clone();
@@ -146,11 +147,7 @@ async fn check_app_uptime(
                 )
             }
         }
-        Err(e) => (
-            "down".to_string(),
-            None,
-            Some(e.to_string()),
-        ),
+        Err(e) => ("down".to_string(), None, Some(e.to_string())),
     };
 
     let id = uuid::Uuid::new_v4().to_string();

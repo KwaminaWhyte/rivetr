@@ -24,8 +24,7 @@ fn namespace_container_names(content: &str, service_name: &str) -> Result<String
     let prefix = format!("rivetr-{}-", service_name);
 
     if let Some(mapping) = yaml.as_mapping_mut() {
-        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string()))
-        {
+        if let Some(services) = mapping.get_mut(serde_yaml::Value::String("services".to_string())) {
             if let Some(services_map) = services.as_mapping_mut() {
                 for (_service_key, service_config) in services_map.iter_mut() {
                     if let Some(config_map) = service_config.as_mapping_mut() {
@@ -414,13 +413,12 @@ pub async fn suggest_template(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let suggestion = sqlx::query_as::<_, TemplateSuggestion>(
-        "SELECT * FROM template_suggestions WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let suggestion =
+        sqlx::query_as::<_, TemplateSuggestion>("SELECT * FROM template_suggestions WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((StatusCode::CREATED, Json(suggestion)))
 }
@@ -448,14 +446,13 @@ pub async fn approve_template_suggestion(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Fetch the suggestion
-    let suggestion = sqlx::query_as::<_, TemplateSuggestion>(
-        "SELECT * FROM template_suggestions WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let suggestion =
+        sqlx::query_as::<_, TemplateSuggestion>("SELECT * FROM template_suggestions WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     // Build a minimal compose template from the docker image
     let compose_template = format!(

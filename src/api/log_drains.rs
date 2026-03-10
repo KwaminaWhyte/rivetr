@@ -27,11 +27,10 @@ pub async fn list_log_drains(
     }
 
     // Verify app exists
-    let app_exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM apps WHERE id = ?")
-            .bind(&app_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
     if app_exists.is_none() {
         return Err(ApiError::not_found("App not found"));
     }
@@ -58,11 +57,10 @@ pub async fn create_log_drain(
     }
 
     // Verify app exists
-    let app_exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM apps WHERE id = ?")
-            .bind(&app_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
     if app_exists.is_none() {
         return Err(ApiError::not_found("App not found"));
     }
@@ -125,14 +123,13 @@ pub async fn update_log_drain(
     }
 
     // Verify drain exists and belongs to the app
-    let drain = sqlx::query_as::<_, LogDrain>(
-        "SELECT * FROM log_drains WHERE id = ? AND app_id = ?",
-    )
-    .bind(&drain_id)
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Log drain not found"))?;
+    let drain =
+        sqlx::query_as::<_, LogDrain>("SELECT * FROM log_drains WHERE id = ? AND app_id = ?")
+            .bind(&drain_id)
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Log drain not found"))?;
 
     // Build update query
     let now = chrono::Utc::now().to_rfc3339();
@@ -155,7 +152,10 @@ pub async fn update_log_drain(
         drain.config
     };
 
-    let enabled = req.enabled.map(|e| if e { 1 } else { 0 }).unwrap_or(drain.enabled);
+    let enabled = req
+        .enabled
+        .map(|e| if e { 1 } else { 0 })
+        .unwrap_or(drain.enabled);
 
     sqlx::query(
         "UPDATE log_drains SET name = ?, config = ?, enabled = ?, updated_at = ? WHERE id = ?",
@@ -213,14 +213,13 @@ pub async fn test_log_drain(
         return Err(ApiError::validation_field("drain_id", e));
     }
 
-    let drain = sqlx::query_as::<_, LogDrain>(
-        "SELECT * FROM log_drains WHERE id = ? AND app_id = ?",
-    )
-    .bind(&drain_id)
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Log drain not found"))?;
+    let drain =
+        sqlx::query_as::<_, LogDrain>("SELECT * FROM log_drains WHERE id = ? AND app_id = ?")
+            .bind(&drain_id)
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Log drain not found"))?;
 
     let manager = LogDrainManager::new(state.db.clone());
 

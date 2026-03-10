@@ -325,7 +325,7 @@ impl UpdateChecker {
 
         // Replace binary - on some systems we need to remove first then copy
         // because the running binary may be locked
-        if let Err(_) = tokio::fs::copy(new_binary, &current_exe).await {
+        if tokio::fs::copy(new_binary, &current_exe).await.is_err() {
             // Try remove-then-rename approach
             warn!("Direct copy failed, trying remove-then-rename approach");
             let _ = tokio::fs::remove_file(&current_exe).await;

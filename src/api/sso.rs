@@ -66,8 +66,10 @@ pub async fn list_providers(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let responses: Vec<OidcProviderResponse> =
-        providers.into_iter().map(OidcProviderResponse::from).collect();
+    let responses: Vec<OidcProviderResponse> = providers
+        .into_iter()
+        .map(OidcProviderResponse::from)
+        .collect();
 
     Ok(Json(responses))
 }
@@ -90,10 +92,16 @@ pub async fn create_provider(
         return Err((StatusCode::BAD_REQUEST, "Client ID is required".to_string()));
     }
     if req.client_secret.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Client Secret is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Client Secret is required".to_string(),
+        ));
     }
     if req.discovery_url.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Discovery URL is required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Discovery URL is required".to_string(),
+        ));
     }
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -110,7 +118,9 @@ pub async fn create_provider(
         .redirect_uri
         .unwrap_or_else(|| format!("{}/auth/sso/{}/callback", base_url, id));
 
-    let scopes = req.scopes.unwrap_or_else(|| "openid email profile".to_string());
+    let scopes = req
+        .scopes
+        .unwrap_or_else(|| "openid email profile".to_string());
     let enabled = req.enabled.unwrap_or(true);
 
     // Encrypt client_secret if encryption key is available
@@ -210,14 +220,18 @@ pub async fn update_provider(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let existing = existing.ok_or((StatusCode::NOT_FOUND, "OIDC provider not found".to_string()))?;
+    let existing =
+        existing.ok_or((StatusCode::NOT_FOUND, "OIDC provider not found".to_string()))?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let enabled = req.enabled.unwrap_or(existing.enabled != 0);
     let scopes = req.scopes.unwrap_or_else(|| existing.scopes.clone());
-    let redirect_uri = req.redirect_uri.unwrap_or_else(|| existing.redirect_uri.clone());
+    let redirect_uri = req
+        .redirect_uri
+        .unwrap_or_else(|| existing.redirect_uri.clone());
 
-    let secret_unchanged = req.client_secret.trim() == "unchanged" || req.client_secret.trim().is_empty();
+    let secret_unchanged =
+        req.client_secret.trim() == "unchanged" || req.client_secret.trim().is_empty();
 
     if secret_unchanged {
         sqlx::query(
@@ -433,14 +447,13 @@ pub async fn handle_sso_callback(
     ))?;
 
     // Verify CSRF state
-    let valid_state: Option<(String,)> = sqlx::query_as(
-        "SELECT state FROM sso_states WHERE state = ? AND provider_id = ?",
-    )
-    .bind(&state_param)
-    .bind(&provider_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let valid_state: Option<(String,)> =
+        sqlx::query_as("SELECT state FROM sso_states WHERE state = ? AND provider_id = ?")
+            .bind(&state_param)
+            .bind(&provider_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if valid_state.is_none() {
         return Err((
@@ -456,11 +469,9 @@ pub async fn handle_sso_callback(
         .await;
 
     // Clean up old states older than 10 minutes
-    let _ = sqlx::query(
-        "DELETE FROM sso_states WHERE created_at < datetime('now', '-10 minutes')",
-    )
-    .execute(&state.db)
-    .await;
+    let _ = sqlx::query("DELETE FROM sso_states WHERE created_at < datetime('now', '-10 minutes')")
+        .execute(&state.db)
+        .await;
 
     // Look up provider
     let provider: Option<OidcProvider> =
@@ -620,14 +631,13 @@ async fn find_or_create_sso_user(
     name: Option<&str>,
 ) -> Result<String, (StatusCode, String)> {
     // Check if user already linked to this OIDC provider and subject
-    let existing_by_oidc: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM users WHERE oidc_subject = ? AND oidc_provider_id = ?",
-    )
-    .bind(oidc_subject)
-    .bind(provider_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let existing_by_oidc: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM users WHERE oidc_subject = ? AND oidc_provider_id = ?")
+            .bind(oidc_subject)
+            .bind(provider_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if let Some((user_id,)) = existing_by_oidc {
         return Ok(user_id);
@@ -727,7 +737,11 @@ async fn find_or_create_sso_user(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    tracing::info!("Created new user via SSO login: {} (provider: {})", email, provider_id);
+    tracing::info!(
+        "Created new user via SSO login: {} (provider: {})",
+        email,
+        provider_id
+    );
 
     Ok(new_user_id)
 }

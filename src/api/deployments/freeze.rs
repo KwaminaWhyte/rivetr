@@ -62,12 +62,10 @@ pub async fn check_freeze_windows(
         .fetch_all(&state.db)
         .await?
     } else {
-        sqlx::query_as(
-            "SELECT * FROM deployment_freeze_windows WHERE is_active = 1 AND app_id = ?",
-        )
-        .bind(&app.id)
-        .fetch_all(&state.db)
-        .await?
+        sqlx::query_as("SELECT * FROM deployment_freeze_windows WHERE is_active = 1 AND app_id = ?")
+            .bind(&app.id)
+            .fetch_all(&state.db)
+            .await?
     };
 
     for window in &windows {
@@ -210,12 +208,11 @@ pub async fn delete_freeze_window(
         return Err(ApiError::forbidden("Only admins can delete freeze windows"));
     }
 
-    let result =
-        sqlx::query("DELETE FROM deployment_freeze_windows WHERE id = ? AND app_id = ?")
-            .bind(&window_id)
-            .bind(&app_id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM deployment_freeze_windows WHERE id = ? AND app_id = ?")
+        .bind(&window_id)
+        .bind(&app_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Freeze window not found"));

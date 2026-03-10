@@ -220,6 +220,7 @@ pub async fn fetch_repos(
 }
 
 /// Fetch GitLab repos using Personal Access Token (PAT-specific endpoint)
+#[allow(dead_code)]
 pub async fn fetch_repos_with_pat(
     access_token: &str,
     page: u32,

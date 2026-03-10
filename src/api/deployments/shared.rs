@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::crypto;
+use crate::AppState;
 
 /// Key length for AES-256 encryption
 pub const KEY_LENGTH: usize = 32;

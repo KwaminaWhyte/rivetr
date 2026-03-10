@@ -426,7 +426,7 @@ impl AcmeClient {
         hasher.update(jwk_json.as_bytes());
         let hash = hasher.finalize();
 
-        Ok(URL_SAFE_NO_PAD.encode(&hash))
+        Ok(URL_SAFE_NO_PAD.encode(hash))
     }
 
     /// Request a certificate for the given domains

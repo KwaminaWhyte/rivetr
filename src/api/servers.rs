@@ -86,11 +86,10 @@ pub async fn create_server(
     // Encrypt SSH private key if provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
         let enc_key = get_encryption_key(&state);
-        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref())
-            .map_err(|e| {
-                tracing::error!("Failed to encrypt SSH private key: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH private key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         Some(encrypted)
     } else {
         None
@@ -170,11 +169,10 @@ pub async fn update_server(
     // Encrypt SSH private key if a new one is provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
         let enc_key = get_encryption_key(&state);
-        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref())
-            .map_err(|e| {
-                tracing::error!("Failed to encrypt SSH private key: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH private key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         Some(encrypted)
     } else {
         None
@@ -273,8 +271,13 @@ pub async fn check_server_health(
     };
 
     // Run the health check
-    let health_result =
-        run_ssh_health_check(&server.host, server.port as u16, &server.username, private_key_content.as_deref()).await;
+    let health_result = run_ssh_health_check(
+        &server.host,
+        server.port as u16,
+        &server.username,
+        private_key_content.as_deref(),
+    )
+    .await;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -317,17 +320,15 @@ pub async fn check_server_health(
         Err(e) => {
             tracing::warn!("Health check failed for server {}: {}", id, e);
             // Mark as offline
-            sqlx::query(
-                "UPDATE servers SET status = 'offline', updated_at = ? WHERE id = ?",
-            )
-            .bind(&now)
-            .bind(&id)
-            .execute(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to update server status to offline: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            sqlx::query("UPDATE servers SET status = 'offline', updated_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(&id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to update server status to offline: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
         }
     }
 
@@ -411,8 +412,7 @@ async fn run_ssh_health_check(
         cmd.arg("-i").arg(key_file.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host))
-        .arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -518,16 +518,15 @@ pub async fn list_server_apps(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let apps = sqlx::query_as::<_, App>(
-        "SELECT * FROM apps WHERE server_id = ? ORDER BY created_at DESC",
-    )
-    .bind(&id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to list apps for server {}: {}", id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let apps =
+        sqlx::query_as::<_, App>("SELECT * FROM apps WHERE server_id = ? ORDER BY created_at DESC")
+            .bind(&id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list apps for server {}: {}", id, e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     Ok(Json(apps))
 }
@@ -547,18 +546,16 @@ pub async fn assign_app_to_server(
 
     let now = chrono::Utc::now().to_rfc3339();
 
-    let result = sqlx::query(
-        "UPDATE apps SET server_id = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(&id)
-    .bind(&now)
-    .bind(&app_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to assign app {} to server {}: {}", app_id, id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let result = sqlx::query("UPDATE apps SET server_id = ?, updated_at = ? WHERE id = ?")
+        .bind(&id)
+        .bind(&now)
+        .bind(&app_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to assign app {} to server {}: {}", app_id, id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
@@ -574,17 +571,15 @@ pub async fn unassign_app_from_server(
 ) -> Result<StatusCode, StatusCode> {
     let now = chrono::Utc::now().to_rfc3339();
 
-    let result = sqlx::query(
-        "UPDATE apps SET server_id = NULL, updated_at = ? WHERE id = ?",
-    )
-    .bind(&now)
-    .bind(&app_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to unassign app {}: {}", app_id, e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let result = sqlx::query("UPDATE apps SET server_id = NULL, updated_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&app_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to unassign app {}: {}", app_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
@@ -626,13 +621,13 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         Ok(Some(s)) => s,
         Ok(None) => {
             let msg = serde_json::json!({"type": "error", "message": "Server not found"});
-            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let _ = socket.send(Message::Text(msg.to_string())).await;
             return;
         }
         Err(e) => {
             let msg =
                 serde_json::json!({"type": "error", "message": format!("Database error: {}", e)});
-            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let _ = socket.send(Message::Text(msg.to_string())).await;
             return;
         }
     };
@@ -656,34 +651,33 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
     };
 
     // Write key to temp file if available
-    let key_file: Option<tempfile::NamedTempFile> = if let Some(ref key_content) =
-        private_key_content
-    {
-        match tempfile::Builder::new()
-            .prefix("rivetr-ssh-term-")
-            .suffix(".pem")
-            .tempfile()
-        {
-            Ok(mut f) => {
-                if f.write_all(key_content.as_bytes()).is_err() {
-                    None
-                } else {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let _ = std::fs::set_permissions(
-                            f.path(),
-                            std::fs::Permissions::from_mode(0o600),
-                        );
+    let key_file: Option<tempfile::NamedTempFile> =
+        if let Some(ref key_content) = private_key_content {
+            match tempfile::Builder::new()
+                .prefix("rivetr-ssh-term-")
+                .suffix(".pem")
+                .tempfile()
+            {
+                Ok(mut f) => {
+                    if f.write_all(key_content.as_bytes()).is_err() {
+                        None
+                    } else {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            let _ = std::fs::set_permissions(
+                                f.path(),
+                                std::fs::Permissions::from_mode(0o600),
+                            );
+                        }
+                        Some(f)
                     }
-                    Some(f)
                 }
+                Err(_) => None,
             }
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // Build SSH args; key_path_str must outlive ssh_args
     let port_str = server.port.to_string();
@@ -720,9 +714,8 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
     {
         Ok(c) => c,
         Err(e) => {
-            let msg =
-                serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
-            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let msg = serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
+            let _ = socket.send(Message::Text(msg.to_string())).await;
             return;
         }
     };
@@ -733,7 +726,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         "host": server.host,
     });
     if socket
-        .send(Message::Text(connected_msg.to_string().into()))
+        .send(Message::Text(connected_msg.to_string()))
         .await
         .is_err()
     {
@@ -743,18 +736,16 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
     let mut child_stdin = match child.stdin.take() {
         Some(s) => s,
         None => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "Failed to open stdin"});
-            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let msg = serde_json::json!({"type": "error", "message": "Failed to open stdin"});
+            let _ = socket.send(Message::Text(msg.to_string())).await;
             return;
         }
     };
     let mut child_stdout = match child.stdout.take() {
         Some(s) => s,
         None => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "Failed to open stdout"});
-            let _ = socket.send(Message::Text(msg.to_string().into())).await;
+            let msg = serde_json::json!({"type": "error", "message": "Failed to open stdout"});
+            let _ = socket.send(Message::Text(msg.to_string())).await;
             return;
         }
     };
@@ -772,7 +763,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
                     let data = String::from_utf8_lossy(&buf[..n]).to_string();
                     let msg = serde_json::json!({"type": "data", "data": data});
                     if ws_sender
-                        .send(Message::Text(msg.to_string().into()))
+                        .send(Message::Text(msg.to_string()))
                         .await
                         .is_err()
                     {
@@ -782,9 +773,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
             }
         }
         let end_msg = serde_json::json!({"type": "end", "message": "SSH session ended"});
-        let _ = ws_sender
-            .send(Message::Text(end_msg.to_string().into()))
-            .await;
+        let _ = ws_sender.send(Message::Text(end_msg.to_string())).await;
     });
 
     // Forward WebSocket messages → SSH stdin

@@ -215,9 +215,8 @@ pub async fn update_team_env_var(
 
     let encryption_key = get_encryption_key(&state);
 
-    let existing_decrypted =
-        crypto::decrypt_if_encrypted(&existing.value, encryption_key.as_ref())
-            .unwrap_or_else(|_| existing.value.clone());
+    let existing_decrypted = crypto::decrypt_if_encrypted(&existing.value, encryption_key.as_ref())
+        .unwrap_or_else(|_| existing.value.clone());
 
     let new_plaintext_value = req.value.unwrap_or(existing_decrypted);
     let new_is_secret = req
@@ -288,12 +287,11 @@ pub async fn delete_team_env_var(
         return Err(ApiError::validation_field("var_id", e));
     }
 
-    let result =
-        sqlx::query("DELETE FROM team_env_vars WHERE id = ? AND team_id = ?")
-            .bind(&var_id)
-            .bind(&team_id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM team_env_vars WHERE id = ? AND team_id = ?")
+        .bind(&var_id)
+        .bind(&team_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Team environment variable not found"));
@@ -457,9 +455,8 @@ pub async fn update_project_env_var(
 
     let encryption_key = get_encryption_key(&state);
 
-    let existing_decrypted =
-        crypto::decrypt_if_encrypted(&existing.value, encryption_key.as_ref())
-            .unwrap_or_else(|_| existing.value.clone());
+    let existing_decrypted = crypto::decrypt_if_encrypted(&existing.value, encryption_key.as_ref())
+        .unwrap_or_else(|_| existing.value.clone());
 
     let new_plaintext_value = req.value.unwrap_or(existing_decrypted);
     let new_is_secret = req
@@ -530,15 +527,16 @@ pub async fn delete_project_env_var(
         return Err(ApiError::validation_field("var_id", e));
     }
 
-    let result =
-        sqlx::query("DELETE FROM project_env_vars WHERE id = ? AND project_id = ?")
-            .bind(&var_id)
-            .bind(&project_id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM project_env_vars WHERE id = ? AND project_id = ?")
+        .bind(&var_id)
+        .bind(&project_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
-        return Err(ApiError::not_found("Project environment variable not found"));
+        return Err(ApiError::not_found(
+            "Project environment variable not found",
+        ));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -562,13 +560,11 @@ pub async fn get_resolved_env_vars(
     }
 
     // Fetch the app to get project_id, environment_id, and team_id
-    let app = sqlx::query_as::<_, crate::db::App>(
-        "SELECT * FROM apps WHERE id = ?",
-    )
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("App not found"))?;
+    let app = sqlx::query_as::<_, crate::db::App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
 
     // We build a map: key → ResolvedEnvVar.
     // We insert in priority order lowest first, then higher priority overwrites.
@@ -593,7 +589,9 @@ pub async fn get_resolved_env_vars(
                 v.key.clone(),
                 ResolvedEnvVar {
                     key: v.key,
-                    value: if v.is_secret != 0 { "***".to_string() } else {
+                    value: if v.is_secret != 0 {
+                        "***".to_string()
+                    } else {
                         crypto::decrypt_if_encrypted(&v.value, encryption_key.as_ref())
                             .unwrap_or_else(|_| v.value.clone())
                     },
@@ -621,7 +619,9 @@ pub async fn get_resolved_env_vars(
                 v.key.clone(),
                 ResolvedEnvVar {
                     key: v.key,
-                    value: if v.is_secret != 0 { "***".to_string() } else {
+                    value: if v.is_secret != 0 {
+                        "***".to_string()
+                    } else {
                         crypto::decrypt_if_encrypted(&v.value, encryption_key.as_ref())
                             .unwrap_or_else(|_| v.value.clone())
                     },
@@ -649,9 +649,11 @@ pub async fn get_resolved_env_vars(
                 key.clone(),
                 ResolvedEnvVar {
                     key,
-                    value: if is_secret != 0 { "***".to_string() } else {
+                    value: if is_secret != 0 {
+                        "***".to_string()
+                    } else {
                         crypto::decrypt_if_encrypted(&value, encryption_key.as_ref())
-                            .unwrap_or_else(|_| value)
+                            .unwrap_or(value)
                     },
                     is_secret: is_secret != 0,
                     source: EnvVarSource::Environment,
@@ -675,9 +677,10 @@ pub async fn get_resolved_env_vars(
             key.clone(),
             ResolvedEnvVar {
                 key,
-                value: if is_secret != 0 { "***".to_string() } else {
-                    crypto::decrypt_if_encrypted(&value, encryption_key.as_ref())
-                        .unwrap_or_else(|_| value)
+                value: if is_secret != 0 {
+                    "***".to_string()
+                } else {
+                    crypto::decrypt_if_encrypted(&value, encryption_key.as_ref()).unwrap_or(value)
                 },
                 is_secret: is_secret != 0,
                 source: EnvVarSource::App,

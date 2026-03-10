@@ -165,13 +165,8 @@ async fn run_git_deployment(
 
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
-        clone::clone_repository_full(
-            &app.git_url,
-            &app.branch,
-            &work_dir,
-            ssh_key.as_ref(),
-        )
-        .await?;
+        clone::clone_repository_full(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref())
+            .await?;
     } else {
         clone::clone_repository(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
     }
@@ -294,16 +289,15 @@ pub async fn run_deployment(
         existing_tag.clone()
     } else if let Some(source_path) = upload_source_path {
         // Upload-based deployment: use pre-extracted source
-        let tag =
-            run_upload_deployment(
-                db,
-                runtime.clone(),
-                deployment_id,
-                app,
-                &source_path,
-                build_limits,
-            )
-            .await?;
+        let tag = run_upload_deployment(
+            db,
+            runtime.clone(),
+            deployment_id,
+            app,
+            &source_path,
+            build_limits,
+        )
+        .await?;
         // Optionally push to registry after upload build
         if let Err(e) =
             build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
@@ -319,8 +313,7 @@ pub async fn run_deployment(
         tag
     } else {
         // Git-based deployment: clone and build
-        let tag =
-            run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?;
+        let tag = run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?;
         // Optionally push to registry after git build
         if let Err(e) =
             build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await

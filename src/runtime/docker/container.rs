@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
+use bollard::container::LogOutput;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions, StatsOptions,
     StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
 use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
-use bollard::container::LogOutput;
 use bytes::Bytes;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -292,7 +292,7 @@ pub async fn list_containers(
             ports
                 .iter()
                 .find(|p| p.public_port.is_some())
-                .and_then(|p| p.public_port.map(|port| port as u16))
+                .and_then(|p| p.public_port)
         });
 
         // Check if running based on status
@@ -349,7 +349,7 @@ pub async fn list_compose_containers(
             ports
                 .iter()
                 .find(|p| p.public_port.is_some())
-                .and_then(|p| p.public_port.map(|port| port as u16))
+                .and_then(|p| p.public_port)
         });
 
         let status = container.state.clone().unwrap_or_default();
@@ -429,7 +429,7 @@ pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<Contai
     let (network_rx, network_tx) = if let Some(networks) = &second_stats.networks {
         let mut rx: u64 = 0;
         let mut tx: u64 = 0;
-        for (_name, net_stats) in networks {
+        for net_stats in networks.values() {
             rx += net_stats.rx_bytes;
             tx += net_stats.tx_bytes;
         }
@@ -697,7 +697,9 @@ pub async fn pull_image(
         }
     });
 
-    let mut stream = runtime.client.create_image(Some(options), None, credentials);
+    let mut stream = runtime
+        .client
+        .create_image(Some(options), None, credentials);
 
     while let Some(result) = stream.next().await {
         match result {

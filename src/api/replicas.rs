@@ -54,7 +54,9 @@ pub async fn set_replica_count(
     }
 
     if req.count < 1 || req.count > 10 {
-        return Err(ApiError::bad_request("Replica count must be between 1 and 10"));
+        return Err(ApiError::bad_request(
+            "Replica count must be between 1 and 10",
+        ));
     }
 
     // Fetch app
@@ -102,13 +104,12 @@ pub async fn set_replica_count(
                 let replica_name = format!("rivetr-{}-{}", app.name, i);
 
                 // Get env vars for new replicas (reuse app's env vars)
-                let env_vars: Vec<(String, String)> = sqlx::query_as(
-                    "SELECT key, value FROM env_vars WHERE app_id = ?",
-                )
-                .bind(&app.id)
-                .fetch_all(&state.db)
-                .await
-                .unwrap_or_default();
+                let env_vars: Vec<(String, String)> =
+                    sqlx::query_as("SELECT key, value FROM env_vars WHERE app_id = ?")
+                        .bind(&app.id)
+                        .fetch_all(&state.db)
+                        .await
+                        .unwrap_or_default();
 
                 let run_config = crate::runtime::RunConfig {
                     image: image_tag.clone(),
@@ -281,12 +282,10 @@ pub async fn restart_replica(
     };
 
     // Update status to starting
-    sqlx::query(
-        "UPDATE app_replicas SET status = 'starting', container_id = NULL WHERE id = ?",
-    )
-    .bind(&replica.id)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE app_replicas SET status = 'starting', container_id = NULL WHERE id = ?")
+        .bind(&replica.id)
+        .execute(&state.db)
+        .await?;
 
     match state.runtime.run(&run_config).await {
         Ok(new_container_id) => {
@@ -305,23 +304,23 @@ pub async fn restart_replica(
             );
         }
         Err(e) => {
-            sqlx::query(
-                "UPDATE app_replicas SET status = 'error' WHERE id = ?",
-            )
-            .bind(&replica.id)
-            .execute(&state.db)
-            .await?;
+            sqlx::query("UPDATE app_replicas SET status = 'error' WHERE id = ?")
+                .bind(&replica.id)
+                .execute(&state.db)
+                .await?;
 
-            return Err(ApiError::internal(&format!("Failed to restart replica: {}", e)));
+            return Err(ApiError::internal(format!(
+                "Failed to restart replica: {}",
+                e
+            )));
         }
     }
 
-    let updated_replica = sqlx::query_as::<_, AppReplica>(
-        "SELECT * FROM app_replicas WHERE id = ?",
-    )
-    .bind(&replica.id)
-    .fetch_one(&state.db)
-    .await?;
+    let updated_replica =
+        sqlx::query_as::<_, AppReplica>("SELECT * FROM app_replicas WHERE id = ?")
+            .bind(&replica.id)
+            .fetch_one(&state.db)
+            .await?;
 
     Ok(Json(updated_replica))
 }

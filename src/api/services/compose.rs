@@ -1,6 +1,6 @@
 //! Docker Compose helper utilities used by CRUD and control handlers.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 /// Validate docker-compose content
@@ -21,7 +21,7 @@ pub fn validate_compose_content(content: &str) -> Result<(), String> {
         .ok_or_else(|| "Compose file must be a YAML mapping".to_string())?;
 
     // Check for 'services' key (required in docker-compose)
-    if !mapping.contains_key(&serde_yaml::Value::String("services".to_string())) {
+    if !mapping.contains_key(serde_yaml::Value::String("services".to_string())) {
         return Err("Compose file must contain a 'services' key".to_string());
     }
 
@@ -29,12 +29,12 @@ pub fn validate_compose_content(content: &str) -> Result<(), String> {
 }
 
 /// Get the compose file path for a service
-pub fn get_compose_dir(data_dir: &PathBuf, service_name: &str) -> PathBuf {
+pub fn get_compose_dir(data_dir: &Path, service_name: &str) -> PathBuf {
     data_dir.join("services").join(service_name)
 }
 
 /// Get the compose directory for a service, checking both data dir and temp dir
-pub fn get_service_compose_dir(data_dir: &PathBuf, service_name: &str) -> PathBuf {
+pub fn get_service_compose_dir(data_dir: &Path, service_name: &str) -> PathBuf {
     // First try the standard data directory
     let data_compose_dir = get_compose_dir(data_dir, service_name);
     if data_compose_dir.join("docker-compose.yml").exists() {
@@ -60,8 +60,7 @@ pub fn namespace_container_names(content: &str, service_name: &str) -> Result<St
     let prefix = format!("rivetr-{}-", service_name);
 
     if let Some(mapping) = yaml.as_mapping_mut() {
-        if let Some(services) = mapping.get_mut(&serde_yaml::Value::String("services".to_string()))
-        {
+        if let Some(services) = mapping.get_mut(serde_yaml::Value::String("services".to_string())) {
             if let Some(services_map) = services.as_mapping_mut() {
                 for (_service_key, service_config) in services_map.iter_mut() {
                     if let Some(config_map) = service_config.as_mapping_mut() {
@@ -88,7 +87,7 @@ pub fn namespace_container_names(content: &str, service_name: &str) -> Result<St
 /// Write compose content to file
 /// Namespaces container names to prevent global conflicts
 pub async fn write_compose_file(
-    data_dir: &PathBuf,
+    data_dir: &Path,
     service_name: &str,
     content: &str,
 ) -> Result<PathBuf, std::io::Error> {

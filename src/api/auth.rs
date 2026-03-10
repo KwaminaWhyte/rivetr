@@ -262,8 +262,8 @@ pub async fn auth_middleware(
 
     // First try Authorization header
     let token = if let Some(header) = auth_header {
-        if header.starts_with("Bearer ") {
-            header[7..].to_string()
+        if let Some(stripped) = header.strip_prefix("Bearer ") {
+            stripped.to_string()
         } else {
             header.to_string()
         }
@@ -282,9 +282,8 @@ pub async fn auth_middleware(
             .and_then(|q| {
                 // Simple query string parsing: find token=value
                 q.split('&').find_map(|pair| {
-                    let mut parts = pair.splitn(2, '=');
-                    let key = parts.next()?;
-                    let value = parts.next()?;
+                    let (key, value) = pair.split_once('=')?;
+
                     if key == "token" {
                         Some(value.to_string())
                     } else {
@@ -467,8 +466,8 @@ pub async fn setup(
 fn extract_token(headers: &axum::http::HeaderMap) -> Option<String> {
     // Try Authorization header first
     if let Some(auth_header) = headers.get("Authorization").and_then(|h| h.to_str().ok()) {
-        if auth_header.starts_with("Bearer ") {
-            return Some(auth_header[7..].to_string());
+        if let Some(stripped) = auth_header.strip_prefix("Bearer ") {
+            return Some(stripped.to_string());
         }
     }
 

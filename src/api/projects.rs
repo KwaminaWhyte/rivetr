@@ -51,6 +51,7 @@ pub struct DependencyGraph {
 /// Raw row from service_dependencies table
 #[derive(Debug, sqlx::FromRow)]
 struct DependencyRow {
+    #[allow(dead_code)]
     id: String,
     app_id: String,
     depends_on_app_id: Option<String>,
@@ -724,12 +725,11 @@ pub async fn delete_dependency(
         return Err(ApiError::validation_field("app_id", e));
     }
 
-    let result =
-        sqlx::query("DELETE FROM service_dependencies WHERE id = ? AND app_id = ?")
-            .bind(&dep_id)
-            .bind(&app_id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM service_dependencies WHERE id = ? AND app_id = ?")
+        .bind(&dep_id)
+        .bind(&app_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Dependency not found"));

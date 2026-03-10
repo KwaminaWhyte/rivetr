@@ -15,8 +15,8 @@ pub use gitea::gitea_webhook;
 pub use github::github_webhook;
 pub use gitlab::gitlab_webhook;
 
-pub(super) use crate::api::webhook_events::log_webhook_event as log_wh_event;
 pub(super) use crate::api::metrics::increment_webhooks_received as incr_webhooks;
+pub(super) use crate::api::webhook_events::log_webhook_event as log_wh_event;
 
 use axum::http::StatusCode;
 use glob::Pattern;
@@ -56,11 +56,7 @@ pub(super) fn verify_github_signature(
 }
 
 /// Verify Gitea webhook signature (X-Gitea-Signature header) - plain hex HMAC-SHA256
-pub(super) fn verify_gitea_signature(
-    secret: &str,
-    signature_header: &str,
-    payload: &[u8],
-) -> bool {
+pub(super) fn verify_gitea_signature(secret: &str, signature_header: &str, payload: &[u8]) -> bool {
     let expected = match hex::decode(signature_header) {
         Ok(bytes) => bytes,
         Err(_) => return false,

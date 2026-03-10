@@ -53,17 +53,15 @@ pub fn validate_git_url(url: &str) -> Result<(), String> {
     }
 
     // Check HTTP/HTTPS URL
-    if url.starts_with("http://") || url.starts_with("https://") {
-        if GIT_HTTP_URL_REGEX.is_match(url) {
-            return Ok(());
-        }
+    if (url.starts_with("http://") || url.starts_with("https://"))
+        && GIT_HTTP_URL_REGEX.is_match(url)
+    {
+        return Ok(());
     }
 
     // Check SSH URL
-    if url.starts_with("git@") || url.starts_with("ssh://") {
-        if GIT_SSH_URL_REGEX.is_match(url) {
-            return Ok(());
-        }
+    if (url.starts_with("git@") || url.starts_with("ssh://")) && GIT_SSH_URL_REGEX.is_match(url) {
+        return Ok(());
     }
 
     Err("Invalid Git URL format. Must be HTTP(S) or SSH URL".to_string())
@@ -71,7 +69,7 @@ pub fn validate_git_url(url: &str) -> Result<(), String> {
 
 /// Validate a port number
 pub fn validate_port(port: i32) -> Result<(), String> {
-    if port < 1 || port > 65535 {
+    if !(1..=65535).contains(&port) {
         return Err("Port must be between 1 and 65535".to_string());
     }
 

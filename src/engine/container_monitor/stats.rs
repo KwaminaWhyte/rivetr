@@ -118,9 +118,7 @@ pub(super) async fn check_compose_service_running(
                 check_compose_service_running_legacy(project_name, service_name, runtime).await
             }
         }
-        Err(_) => {
-            check_compose_service_running_legacy(project_name, service_name, runtime).await
-        }
+        Err(_) => check_compose_service_running_legacy(project_name, service_name, runtime).await,
     }
 }
 

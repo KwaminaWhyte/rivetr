@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::db::{App, SshKey};
 use crate::DbPool;
@@ -89,7 +89,7 @@ pub(super) fn is_ssh_url(url: &str) -> bool {
 pub(super) async fn clone_with_ssh_key(
     url: &str,
     branch: &str,
-    dest: &PathBuf,
+    dest: &Path,
     ssh_key: &SshKey,
 ) -> Result<()> {
     use std::process::Stdio;
@@ -184,7 +184,7 @@ pub(super) async fn clone_repository_full(
 pub(super) async fn clone_with_ssh_key_full(
     url: &str,
     branch: &str,
-    dest: &PathBuf,
+    dest: &Path,
     ssh_key: &SshKey,
 ) -> Result<()> {
     use std::process::Stdio;

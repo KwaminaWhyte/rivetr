@@ -12,7 +12,7 @@ use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
-use super::{ListAuditLogsQuery, require_team_role};
+use super::{require_team_role, ListAuditLogsQuery};
 
 /// Helper function to log audit events
 pub async fn log_team_audit(

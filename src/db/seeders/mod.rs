@@ -1,14 +1,14 @@
 //! Database seeders for built-in service templates.
 
-mod infrastructure;
 mod ai_ml;
 mod analytics_automation;
 mod cms_communication;
 mod devtools;
 mod documentation;
+mod infrastructure;
 mod media_monitoring;
-mod security_search;
 mod project_mgmt;
+mod security_search;
 
 use anyhow::Result;
 use sqlx::SqlitePool;

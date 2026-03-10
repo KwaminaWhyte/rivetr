@@ -286,6 +286,7 @@ pub async fn fetch_repos(
 }
 
 /// Fetch Bitbucket repos using App Password (basic auth variant)
+#[allow(dead_code)]
 pub async fn fetch_repos_with_app_password(
     username: &str,
     app_password: &str,

@@ -484,12 +484,11 @@ async fn add_deployment_log(
 
     // Also forward to log drains for the app
     // Look up the app_id from the deployment
-    let app_id: Option<(String,)> =
-        sqlx::query_as("SELECT app_id FROM deployments WHERE id = ?")
-            .bind(deployment_id)
-            .fetch_optional(db)
-            .await
-            .unwrap_or(None);
+    let app_id: Option<(String,)> = sqlx::query_as("SELECT app_id FROM deployments WHERE id = ?")
+        .bind(deployment_id)
+        .fetch_optional(db)
+        .await
+        .unwrap_or(None);
 
     if let Some((app_id,)) = app_id {
         let db_clone = db.clone();
@@ -500,7 +499,9 @@ async fn add_deployment_log(
         tokio::spawn(async move {
             let manager = crate::logging::LogDrainManager::new(db_clone);
             let timestamp = chrono::Utc::now().to_rfc3339();
-            manager.send_log(&app_id, &message, &level, &timestamp).await;
+            manager
+                .send_log(&app_id, &message, &level, &timestamp)
+                .await;
         });
     }
 

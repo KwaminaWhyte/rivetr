@@ -150,6 +150,7 @@ pub mod resource_types {
 }
 
 /// Log an audit event to the database
+#[allow(clippy::too_many_arguments)]
 pub async fn log_audit(
     db: &SqlitePool,
     action: &str,
@@ -207,32 +208,32 @@ pub async fn list_audit_logs(
     let mut bindings: Vec<String> = Vec::new();
 
     if let Some(action) = &query.action {
-        conditions.push(format!("action = ?"));
+        conditions.push("action = ?".to_string());
         bindings.push(action.clone());
     }
 
     if let Some(resource_type) = &query.resource_type {
-        conditions.push(format!("resource_type = ?"));
+        conditions.push("resource_type = ?".to_string());
         bindings.push(resource_type.clone());
     }
 
     if let Some(resource_id) = &query.resource_id {
-        conditions.push(format!("resource_id = ?"));
+        conditions.push("resource_id = ?".to_string());
         bindings.push(resource_id.clone());
     }
 
     if let Some(user_id) = &query.user_id {
-        conditions.push(format!("user_id = ?"));
+        conditions.push("user_id = ?".to_string());
         bindings.push(user_id.clone());
     }
 
     if let Some(start_date) = &query.start_date {
-        conditions.push(format!("created_at >= ?"));
+        conditions.push("created_at >= ?".to_string());
         bindings.push(start_date.clone());
     }
 
     if let Some(end_date) = &query.end_date {
-        conditions.push(format!("created_at <= ?"));
+        conditions.push("created_at <= ?".to_string());
         bindings.push(end_date.clone());
     }
 

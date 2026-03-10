@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -215,7 +215,7 @@ pub async fn run_preview_deployment(
         )
         .await?;
         let _ = tokio::fs::remove_dir_all(&work_dir).await;
-        return Err(e.into());
+        return Err(e);
     }
 
     // Cleanup work directory
@@ -295,7 +295,7 @@ pub async fn run_preview_deployment(
                 Some(&format!("Container start failed: {}", e)),
             )
             .await?;
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -475,12 +475,7 @@ fn is_ssh_url(url: &str) -> bool {
 }
 
 /// Clone a repository using SSH key authentication
-async fn clone_with_ssh_key(
-    url: &str,
-    branch: &str,
-    dest: &PathBuf,
-    ssh_key: &SshKey,
-) -> Result<()> {
+async fn clone_with_ssh_key(url: &str, branch: &str, dest: &Path, ssh_key: &SshKey) -> Result<()> {
     use std::process::Stdio;
     use tokio::process::Command;
 
@@ -765,13 +760,10 @@ pub async fn post_preview_comment(
                 preview.error_message.as_deref().unwrap_or("Unknown error"),
             )
         }
-        "closed" => {
-            format!(
-                "## Preview Deployment Closed\n\n\
+        "closed" => "## Preview Deployment Closed\n\n\
                  The preview deployment for this PR has been removed.\n\n\
                  > Deployed by [Rivetr](https://github.com/KwaminaWhyte/rivetr)"
-            )
-        }
+            .to_string(),
         _ => {
             format!(
                 "## Preview Deployment\n\n\

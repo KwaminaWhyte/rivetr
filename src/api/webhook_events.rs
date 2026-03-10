@@ -36,6 +36,7 @@ pub struct WebhookEvent {
 
 /// Persist an incoming webhook event to the audit table.
 /// Errors are silently ignored so callers are never blocked.
+#[allow(clippy::too_many_arguments)]
 pub async fn log_webhook_event(
     db: &crate::DbPool,
     provider: &str,

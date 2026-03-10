@@ -18,7 +18,9 @@ use crate::db::{actions, resource_types, Service, ServiceResponse, ServiceStatus
 use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
-use super::compose::{get_compose_dir, get_service_compose_dir, run_compose_command, write_compose_file};
+use super::compose::{
+    get_compose_dir, get_service_compose_dir, run_compose_command, write_compose_file,
+};
 
 /// Service log entry
 #[derive(serde::Serialize)]

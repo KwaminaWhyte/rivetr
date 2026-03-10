@@ -54,9 +54,15 @@ pub struct GitLabCommit {
 }
 
 impl ChangedFiles for &GitLabCommit {
-    fn added_files(&self) -> &[String] { &self.added }
-    fn modified_files(&self) -> &[String] { &self.modified }
-    fn removed_files(&self) -> &[String] { &self.removed }
+    fn added_files(&self) -> &[String] {
+        &self.added
+    }
+    fn modified_files(&self) -> &[String] {
+        &self.modified
+    }
+    fn removed_files(&self) -> &[String] {
+        &self.removed
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,10 +144,7 @@ pub async fn gitlab_webhook(
     }
 }
 
-async fn handle_gitlab_push(
-    state: Arc<AppState>,
-    body: &[u8],
-) -> Result<StatusCode, StatusCode> {
+async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCode, StatusCode> {
     let payload: GitLabPushEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse GitLab push webhook payload: {}", e);
         StatusCode::BAD_REQUEST
@@ -246,8 +249,7 @@ async fn handle_gitlab_merge_request(
         }
         "close" | "merge" => {
             for app in apps {
-                handle_generic_preview_cleanup(&state, &app, payload.object_attributes.iid)
-                    .await?;
+                handle_generic_preview_cleanup(&state, &app, payload.object_attributes.iid).await?;
             }
         }
         _ => {
