@@ -12,7 +12,7 @@ Track which feature areas have been fully tested. Update after each testing sess
 | 6 | App Deployment — Other Sources | [~] | 2026-03-10 | claude | v0.10.1 | Upload deploy endpoint exists; Docker image source untested |
 | 7 | Webhooks | [~] | 2026-03-10 | claude | v0.10.1 | Webhook routes registered; full webhook trigger not tested end-to-end |
 | 8 | App Settings & Control | [x] | 2026-03-10 | claude | v0.10.1 | Start/stop/restart/update/delete/clone all work; maintenance mode ✓ |
-| 9 | Deployment Management | [x] | 2026-03-10 | claude | v0.10.1 | List, rollback, approve/pending endpoints work; rollback proxy routing fixed |
+| 9 | Deployment Management | [x] | 2026-03-10 | claude | v0.10.1 | List, rollback, approve/reject/pending all work; non-admin→pending, admin approve/reject confirmed (fixed approved_by FK in cf9521a) |
 | 10 | Container Replicas & Auto-scaling | [x] | 2026-03-10 | claude | v0.10.1 | Replicas list returns running replica correctly |
 | 11 | Container Terminal & Logs | [x] | 2026-03-10 | claude | v0.10.1 | Terminal WebSocket asks for upgrade ✓; deployment logs return 7 entries ✓ |
 | 12 | Managed Databases | [x] | 2026-03-10 | claude | v0.10.1 | PostgreSQL 16 created and running; env var injection confirmed |
@@ -26,7 +26,7 @@ Track which feature areas have been fully tested. Update after each testing sess
 | 20 | Build Servers | [s] | 2026-03-10 | claude | v0.10.1 | Skipped: requires second server |
 | 21 | Scheduled Jobs | [x] | 2026-03-10 | claude | v0.10.1 | Create/list jobs ✓; 5-field cron normalized to 6-field ✓; last_run and next_run correct |
 | 22 | System | [x] | 2026-03-10 | claude | v0.10.1 | Health ✓; stats ✓; version ✓; Prometheus metrics at /metrics ✓; audit logs ✓ |
-| 23 | Security | [~] | 2026-03-10 | claude | v0.10.1 | Rate limiting headers ✓; security headers ✓; admin token auth ✓; JWT session auth not tested end-to-end |
+| 23 | Security | [x] | 2026-03-10 | claude | v0.10.1 | Rate limiting headers ✓; security headers ✓; admin token auth ✓; JWT session auth ✓ (non-admin login + deploy tested) |
 
 ---
 
@@ -83,13 +83,13 @@ Record each testing session here.
   7. **Bulk operations not registered** — `mod bulk` missing from api/mod.rs. Fixed: added module, routes, and db models (commit: b10b12e)
   8. **System memory reporting 512 MB** — `memory_total_bytes` used container cgroup limits instead of actual server RAM. Fixed: always use `get_system_memory()` (commit: 06003d9)
   9. **Teams list 409 Conflict with admin token** — synthetic "system" user caused orphaned Personal team creation (FK fail + UNIQUE retry). Fixed: skip auto-create for "system" user + INSERT OR IGNORE (commit: cff39b5)
+  10. **Approve/reject deployment 400 with admin token** — `approved_by = "system"` violated FK `REFERENCES users(id)`. Fixed: use NULL when `user.id == "system"` (commit: cf9521a)
 - **Areas Skipped:**
   - GitHub App (no app configured)
   - SSL/TLS (no DNS for custom domain test)
   - Multi-Server (requires second server)
   - Docker Swarm active (single node, swarm inactive)
   - Build Servers (requires second server)
-  - Non-admin approval workflow (couldn't create non-admin user without team invite email)
 
 ---
 
