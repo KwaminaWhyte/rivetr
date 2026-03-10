@@ -251,7 +251,7 @@ async fn main() -> Result<()> {
 
     let app = api_router;
 
-    // Start HTTPS proxy + ACME if configured
+    // Start HTTP proxy server and optionally HTTPS with ACME
     let https_port = config.server.proxy_https_port;
     let acme_enabled = config.proxy.acme_enabled
         && config.proxy.acme_email.is_some()
@@ -271,10 +271,27 @@ async fn main() -> Result<()> {
                 let acme_client = std::sync::Arc::new(acme_client);
                 let acme_challenges = acme_client.challenges();
 
-                // Request initial cert for instance_domain if not cached
+                // IMPORTANT: Start HTTP proxy FIRST so ACME HTTP-01 challenges can be served
+                // The proxy must be listening on port 80 before Let's Encrypt tries to verify.
+                // HTTP→HTTPS redirect is enabled — ACME challenges bypass the redirect automatically.
+                let http_challenges = acme_challenges.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = proxy_server
+                        .run_with_options(Some(http_challenges), true, https_port)
+                        .await
+                    {
+                        tracing::error!(error = %e, "HTTP proxy server error");
+                    }
+                });
+
+                // Give the HTTP proxy a moment to start listening
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                // Now request or load the certificate
                 let domains = vec![instance_domain.clone()];
                 let cert_dir = acme_client.cert_dir(&instance_domain);
-                let tls_config = if cert_dir.join("fullchain.pem").exists() {
+                let tls_config_result = if cert_dir.join("fullchain.pem").exists() {
+                    tracing::info!(domain = %instance_domain, "Loading cached TLS certificate");
                     AcmeClient::load_certificate(&cert_dir).await.ok()
                 } else {
                     tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
@@ -287,13 +304,13 @@ async fn main() -> Result<()> {
                             ).ok()
                         }
                         Err(e) => {
-                            tracing::error!(error = %e, "Failed to get Let's Encrypt certificate");
+                            tracing::error!(error = %e, "Failed to get Let's Encrypt certificate; running HTTP-only");
                             None
                         }
                     }
                 };
 
-                if let Some(tls_config) = tls_config {
+                if let Some(tls_config) = tls_config_result {
                     let https_addr: SocketAddr =
                         format!("{}:{}", config.server.host, https_port)
                             .parse()
@@ -310,30 +327,15 @@ async fn main() -> Result<()> {
                     // Start certificate renewal manager
                     let renewal_mgr = CertificateRenewalManager::new(acme_client);
                     tokio::spawn(async move { renewal_mgr.run().await });
-
-                    // HTTP proxy redirects to HTTPS (ACME challenges bypass redirect)
-                    tokio::spawn(async move {
-                        if let Err(e) = proxy_server
-                            .run_with_options(Some(acme_challenges), true, https_port)
-                            .await
-                        {
-                            tracing::error!(error = %e, "HTTP proxy server error");
-                        }
-                    });
                 } else {
-                    tracing::warn!("Could not get TLS cert, starting HTTP-only proxy");
-                    tokio::spawn(async move {
-                        if let Err(e) = proxy_server
-                            .run_with_options(Some(acme_challenges), false, https_port)
-                            .await
-                        {
-                            tracing::error!(error = %e, "Proxy server error");
-                        }
-                    });
+                    tracing::warn!("Running HTTP-only (no TLS certificate available)");
+                    // Start renewal manager anyway — it will retry on next cycle
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client);
+                    tokio::spawn(async move { renewal_mgr.run().await });
                 }
             }
             Err(e) => {
-                tracing::error!(error = %e, "Failed to initialize ACME client, starting HTTP-only");
+                tracing::error!(error = %e, "ACME client init failed, starting HTTP-only proxy");
                 tokio::spawn(async move {
                     if let Err(e) = proxy_server.run().await {
                         tracing::error!(error = %e, "Proxy server error");
