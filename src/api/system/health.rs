@@ -1,24 +1,18 @@
-//! System-level API endpoints for dashboard statistics.
-//!
-//! Provides aggregate system stats, disk stats, recent events, and instance backup/restore.
+//! Health checks, system stats, recent events, and disk stats.
 
 use axum::{
-    body::Body,
-    extract::{Multipart, Path as AxumPath, Query, State},
-    http::{header, StatusCode},
-    response::Response,
+    extract::{Query, State},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::backup::{self, BackupInfo, RestoreResult};
 use crate::db::{App, Deployment, ManagedDatabase, Service};
 use crate::engine::get_current_disk_stats;
 use crate::startup::{get_system_health, SystemHealthStatus};
 use crate::AppState;
 
-use super::error::ApiError;
+use super::super::error::ApiError;
 
 /// System-wide statistics for the dashboard
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +65,84 @@ pub struct RecentEvent {
 pub struct SystemStatsQuery {
     /// Optional team ID to filter stats by team
     pub team_id: Option<String>,
+}
+
+/// Get total system memory in bytes
+pub fn get_system_memory() -> u64 {
+    #[cfg(windows)]
+    {
+        use std::mem::MaybeUninit;
+
+        #[repr(C)]
+        struct MemoryStatusEx {
+            dw_length: u32,
+            dw_memory_load: u32,
+            ull_total_phys: u64,
+            ull_avail_phys: u64,
+            ull_total_page_file: u64,
+            ull_avail_page_file: u64,
+            ull_total_virtual: u64,
+            ull_avail_virtual: u64,
+            ull_avail_extended_virtual: u64,
+        }
+
+        extern "system" {
+            fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
+        }
+
+        let mut status: MaybeUninit<MemoryStatusEx> = MaybeUninit::uninit();
+        unsafe {
+            let ptr = status.as_mut_ptr();
+            (*ptr).dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
+            if GlobalMemoryStatusEx(ptr) != 0 {
+                return (*ptr).ull_total_phys;
+            }
+        }
+        0
+    }
+
+    #[cfg(unix)]
+    {
+        use std::fs;
+        // Read from /proc/meminfo on Linux
+        if let Ok(content) = fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(kb_str) = line.split_whitespace().nth(1) {
+                        if let Ok(kb) = kb_str.parse::<u64>() {
+                            return kb * 1024; // Convert KB to bytes
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    #[cfg(not(any(windows, unix)))]
+    {
+        0
+    }
+}
+
+/// Format bytes to human-readable string
+pub fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    const TB: u64 = GB * 1024;
+
+    if bytes >= TB {
+        format!("{:.2} TB", bytes as f64 / TB as f64)
+    } else if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }
 
 /// Get system-wide statistics
@@ -473,84 +545,6 @@ pub async fn get_disk_stats(
     }))
 }
 
-/// Format bytes to human-readable string
-fn format_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    const TB: u64 = GB * 1024;
-
-    if bytes >= TB {
-        format!("{:.2} TB", bytes as f64 / TB as f64)
-    } else if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-/// Get total system memory in bytes
-fn get_system_memory() -> u64 {
-    #[cfg(windows)]
-    {
-        use std::mem::MaybeUninit;
-
-        #[repr(C)]
-        struct MemoryStatusEx {
-            dw_length: u32,
-            dw_memory_load: u32,
-            ull_total_phys: u64,
-            ull_avail_phys: u64,
-            ull_total_page_file: u64,
-            ull_avail_page_file: u64,
-            ull_total_virtual: u64,
-            ull_avail_virtual: u64,
-            ull_avail_extended_virtual: u64,
-        }
-
-        extern "system" {
-            fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
-        }
-
-        let mut status: MaybeUninit<MemoryStatusEx> = MaybeUninit::uninit();
-        unsafe {
-            let ptr = status.as_mut_ptr();
-            (*ptr).dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
-            if GlobalMemoryStatusEx(ptr) != 0 {
-                return (*ptr).ull_total_phys;
-            }
-        }
-        0
-    }
-
-    #[cfg(unix)]
-    {
-        use std::fs;
-        // Read from /proc/meminfo on Linux
-        if let Ok(content) = fs::read_to_string("/proc/meminfo") {
-            for line in content.lines() {
-                if line.starts_with("MemTotal:") {
-                    if let Some(kb_str) = line.split_whitespace().nth(1) {
-                        if let Ok(kb) = kb_str.parse::<u64>() {
-                            return kb * 1024; // Convert KB to bytes
-                        }
-                    }
-                }
-            }
-        }
-        0
-    }
-
-    #[cfg(not(any(windows, unix)))]
-    {
-        0
-    }
-}
-
 /// Get detailed system health status
 /// GET /api/system/health
 ///
@@ -755,274 +749,4 @@ pub async fn get_stats_summary(
         .map_err(|e| ApiError::internal(format!("Failed to get stats summary: {}", e)))?;
 
     Ok(Json(summary))
-}
-
-/// Get system version and update status
-/// GET /api/system/version
-///
-/// Returns the current version, latest available version, and update status.
-pub async fn get_version_info(
-    State(state): State<Arc<AppState>>,
-) -> Json<crate::engine::updater::UpdateStatus> {
-    let status = state.update_checker.get_status();
-    Json(status)
-}
-
-/// Check for updates
-/// POST /api/system/update/check
-///
-/// Triggers an immediate update check and returns the result.
-pub async fn check_for_updates(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<crate::engine::updater::UpdateStatus>, ApiError> {
-    state.update_checker.run_check().await;
-    let status = state.update_checker.get_status();
-    Ok(Json(status))
-}
-
-/// Download update response
-#[derive(Debug, Clone, Serialize)]
-pub struct DownloadUpdateResponse {
-    pub success: bool,
-    pub message: String,
-    pub version: Option<String>,
-    pub download_path: Option<String>,
-}
-
-/// Download update binary
-/// POST /api/system/update/download
-///
-/// Downloads the latest update binary to a temporary location.
-/// Does not apply the update - use /api/system/update/apply for that.
-pub async fn download_update(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<DownloadUpdateResponse>, ApiError> {
-    // Check if update is available
-    let status = state.update_checker.get_status();
-    if !status.update_available {
-        return Ok(Json(DownloadUpdateResponse {
-            success: false,
-            message: "No update available".to_string(),
-            version: None,
-            download_path: None,
-        }));
-    }
-
-    let version = status.latest_version.clone();
-
-    match state.update_checker.download_update().await {
-        Ok(path) => Ok(Json(DownloadUpdateResponse {
-            success: true,
-            message: format!("Update downloaded to {}", path.display()),
-            version,
-            download_path: Some(path.display().to_string()),
-        })),
-        Err(e) => Err(ApiError::internal(format!(
-            "Failed to download update: {}",
-            e
-        ))),
-    }
-}
-
-/// Apply update response
-#[derive(Debug, Clone, Serialize)]
-pub struct ApplyUpdateResponse {
-    pub success: bool,
-    pub message: String,
-    pub backup_path: Option<String>,
-    pub restart_required: bool,
-}
-
-/// Apply downloaded update
-/// POST /api/system/update/apply
-///
-/// Applies a previously downloaded update by replacing the binary.
-/// Requires service restart to take effect.
-pub async fn apply_update(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<ApplyUpdateResponse>, ApiError> {
-    let temp_path = std::env::temp_dir().join("rivetr-update");
-
-    if !temp_path.exists() {
-        return Ok(Json(ApplyUpdateResponse {
-            success: false,
-            message: "No downloaded update found. Run download first.".to_string(),
-            backup_path: None,
-            restart_required: false,
-        }));
-    }
-
-    match state.update_checker.apply_update(&temp_path).await {
-        Ok(backup_path) => Ok(Json(ApplyUpdateResponse {
-            success: true,
-            message: "Update applied successfully. Service restart required.".to_string(),
-            backup_path: Some(backup_path.display().to_string()),
-            restart_required: true,
-        })),
-        Err(e) => Err(ApiError::internal(format!("Failed to apply update: {}", e))),
-    }
-}
-
-// =============================================================================
-// Instance Backup & Restore
-// =============================================================================
-
-/// Create a backup of the Rivetr instance and return it as a file download
-/// POST /api/system/backup
-///
-/// Creates a .tar.gz archive containing:
-/// - SQLite database (after WAL checkpoint)
-/// - Configuration file (rivetr.toml)
-/// - SSL/ACME certificates (if present)
-pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-    let acme_cache_dir = &state.config.proxy.acme_cache_dir;
-
-    // Determine the config file path - use the same logic as main.rs
-    // The config path is stored in the Config, but we default to "rivetr.toml"
-    let config_path = std::path::PathBuf::from("rivetr.toml");
-
-    let result = backup::create_backup(&state.db, data_dir, &config_path, acme_cache_dir, None)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to create backup");
-            ApiError::internal(format!("Failed to create backup: {}", e))
-        })?;
-
-    // Read the backup file and return it as a download
-    let backup_data = std::fs::read(&result.path)
-        .map_err(|e| ApiError::internal(format!("Failed to read backup file: {}", e)))?;
-
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/gzip")
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", result.name),
-        )
-        .header(header::CONTENT_LENGTH, backup_data.len().to_string())
-        .body(Body::from(backup_data))
-        .map_err(|e| ApiError::internal(format!("Failed to build response: {}", e)))?;
-
-    Ok(response)
-}
-
-/// List existing backups
-/// GET /api/system/backups
-///
-/// Returns a list of backup files in the data/backups/ directory.
-pub async fn list_backups(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<BackupInfo>>, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-
-    let backups = backup::list_backups(data_dir).map_err(|e| {
-        tracing::error!(error = %e, "Failed to list backups");
-        ApiError::internal(format!("Failed to list backups: {}", e))
-    })?;
-
-    Ok(Json(backups))
-}
-
-/// Delete a specific backup
-/// DELETE /api/system/backups/:name
-///
-/// Deletes a backup file from the data/backups/ directory.
-pub async fn delete_backup(
-    State(state): State<Arc<AppState>>,
-    AxumPath(name): AxumPath<String>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-
-    backup::delete_backup(data_dir, &name).map_err(|e| {
-        tracing::error!(error = %e, "Failed to delete backup: {}", name);
-        ApiError::internal(format!("Failed to delete backup: {}", e))
-    })?;
-
-    Ok(Json(serde_json::json!({
-        "message": format!("Backup '{}' deleted successfully", name)
-    })))
-}
-
-/// Restore from an uploaded backup archive
-/// POST /api/system/restore
-///
-/// Accepts a multipart file upload of a .tar.gz backup archive.
-/// Extracts and restores the database, config, and SSL certificates.
-///
-/// WARNING: This replaces the current database and config. A server restart is recommended.
-pub async fn restore_backup(
-    State(state): State<Arc<AppState>>,
-    mut multipart: Multipart,
-) -> Result<Json<RestoreResult>, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-    let acme_cache_dir = &state.config.proxy.acme_cache_dir;
-    let config_path = std::path::PathBuf::from("rivetr.toml");
-
-    // Read the uploaded file
-    let mut backup_data: Option<Vec<u8>> = None;
-
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::bad_request(format!("Failed to read upload: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        if name == "file" || name == "backup" {
-            let data = field
-                .bytes()
-                .await
-                .map_err(|e| ApiError::bad_request(format!("Failed to read file data: {}", e)))?;
-            backup_data = Some(data.to_vec());
-            break;
-        }
-    }
-
-    let data = backup_data.ok_or_else(|| {
-        ApiError::bad_request(
-            "No backup file provided. Upload a .tar.gz file with field name 'file' or 'backup'",
-        )
-    })?;
-
-    if data.is_empty() {
-        return Err(ApiError::bad_request("Uploaded file is empty"));
-    }
-
-    let result = backup::restore_from_backup(&data, data_dir, &config_path, acme_cache_dir)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to restore backup");
-            ApiError::internal(format!("Failed to restore backup: {}", e))
-        })?;
-
-    Ok(Json(result))
-}
-
-/// Download a specific backup file
-/// GET /api/system/backups/:name/download
-///
-/// Returns the backup file as a download.
-pub async fn download_backup(
-    State(state): State<Arc<AppState>>,
-    AxumPath(name): AxumPath<String>,
-) -> Result<Response, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-
-    let backup_data = backup::read_backup_file(data_dir, &name).map_err(|e| {
-        tracing::error!(error = %e, "Failed to read backup: {}", name);
-        ApiError::not_found(format!("Backup not found: {}", name))
-    })?;
-
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/gzip")
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", name),
-        )
-        .header(header::CONTENT_LENGTH, backup_data.len().to_string())
-        .body(Body::from(backup_data))
-        .map_err(|e| ApiError::internal(format!("Failed to build response: {}", e)))?;
-
-    Ok(response)
 }

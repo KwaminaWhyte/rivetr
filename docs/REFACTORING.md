@@ -50,6 +50,12 @@ frontend/app/types/api.ts   →   frontend/app/types/
 | `src/api/git_providers.rs` (1263 lines) | `src/api/git_providers/` (mod + github/gitlab/bitbucket) | ✅ Complete |
 | `src/engine/pipeline.rs` (1906 lines) | `src/engine/pipeline/` (mod + clone/build/start/rollback) | ✅ Complete |
 | `src/engine/container_monitor.rs` (1183 lines) | `src/engine/container_monitor/` (mod + health/stats/recovery) | ✅ Complete |
+| `src/api/services.rs` (1038 lines) | `src/api/services/` (mod + crud/compose/control) | ✅ Complete |
+| `src/api/system.rs` (1028 lines) | `src/api/system/` (mod + health/backup/updates) | ✅ Complete |
+| `src/notifications/alert_notifications.rs` (1225 lines) | `src/notifications/alert_notifications/` (mod + email/slack/discord/channels) | ✅ Complete |
+| `src/api/deployments.rs` (1557 lines) | `src/api/deployments/` (mod + handlers/rollback/approval/freeze/shared) | ✅ Complete |
+| `src/api/validation.rs` (1073 lines) | `src/api/validation/` (mod + apps/databases/services) | ✅ Complete |
+| `src/cli/mod.rs` (1275 lines) | `src/cli/` (mod + deploy/backup/database/server) | ✅ Complete |
 
 ### Queued (after Sprint 4 agents finish)
 
@@ -57,24 +63,23 @@ frontend/app/types/api.ts   →   frontend/app/types/
 |---|---|---|---|
 | `src/api/apps.rs` | 1990 | `crud.rs`, `control.rs`, `sharing.rs`, `upload.rs` | None |
 | `src/api/teams.rs` | 1682 | `crud.rs`, `members.rs`, `invitations.rs`, `audit.rs` | None |
-| `src/cli/mod.rs` | 1275 | `deploy.rs`, `backup.rs`, `database.rs`, `server.rs` | None |
-| `src/notifications/alert_notifications.rs` | 1225 | `email.rs`, `slack.rs`, `discord.rs`, `channels.rs` | None |
-| `src/api/deployments.rs` | 1119 | `handlers.rs`, `rollback.rs`, `commits.rs` | None |
-| `src/api/validation.rs` | 1073 | `apps.rs`, `databases.rs`, `services.rs` | None |
-| `src/api/services.rs` | 1038 | `crud.rs`, `compose.rs`, `control.rs` | None |
-| `src/api/system.rs` | 1028 | `health.rs`, `backup.rs`, `updates.rs` | None |
 | `src/engine/build_detect.rs` | 1004 | `detectors.rs`, `languages.rs`, `config.rs` | None |
 
 ---
 
 ## Frontend Splits
 
+### ✅ Done
+
+| Original File | Split Into | Status |
+|---|---|---|
+| `frontend/app/types/api.ts` (1812 lines) | `frontend/app/types/` (api.ts barrel + apps/deployments/databases/services/teams/notifications/system) | ✅ Complete |
+
 ### Queued (after Sprint 4 agents finish)
 
 | File | Lines | Split Plan |
 |---|---|---|
 | `frontend/app/routes/projects/$id.tsx` | 1952 | Extract tab panels as separate components in `$id/` folder |
-| `frontend/app/types/api.ts` | 1812 | Split into `types/apps.ts`, `types/deployments.ts`, `types/teams.ts`, etc. with `types/index.ts` re-exporting all |
 | `frontend/app/routes/settings/teams/$id.tsx` | 1311 | Extract `MembersTab`, `InvitationsTab`, `AuditTab` components |
 | `frontend/app/routes/settings/notifications.tsx` | 1058 | Extract per-channel config cards as separate components |
 | `frontend/app/components/team-notification-channels-card.tsx` | 1058 | Split per-provider cards into `notifications/` subfolder |
