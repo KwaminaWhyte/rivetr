@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, FileText, LayoutList, GitGraph } from "lucide-react";
 import { api } from "@/lib/api";
+import { getPrimaryDomain } from "@/lib/utils";
 import type {
   App,
   AppEnvironment,
@@ -298,7 +299,7 @@ export default function AppDetailPage() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Domain</div>
-                <div className="font-medium">{app.domain || "-"}</div>
+                <div className="font-medium">{getPrimaryDomain(app) || "-"}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Healthcheck</div>

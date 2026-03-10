@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { getPrimaryDomain } from "@/lib/utils";
 import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -380,10 +381,10 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                       </CardHeader>
                       <CardContent className="pt-0 pb-4">
                         <div className="space-y-2 text-sm text-muted-foreground">
-                          {(app.domain || app.auto_subdomain) && (
+                          {getPrimaryDomain(app) && (
                             <div className="flex items-center gap-2 truncate">
                               <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{app.domain || app.auto_subdomain}</span>
+                              <span className="truncate">{getPrimaryDomain(app)}</span>
                             </div>
                           )}
                           {app.git_url && (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { getPrimaryDomain } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -145,7 +146,7 @@ export function ContainerLabelsCard({
   // Apply a preset
   const applyPreset = (presetType: string) => {
     const appName = app.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    const domain = app.domain || app.auto_subdomain || "example.com";
+    const domain = getPrimaryDomain(app) || "example.com";
 
     let preset: LabelPreset;
     switch (presetType) {

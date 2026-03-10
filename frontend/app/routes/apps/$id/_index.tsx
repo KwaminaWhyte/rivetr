@@ -1,4 +1,5 @@
 import { useOutletContext } from "react-router";
+import { getPrimaryDomain } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
@@ -48,7 +49,7 @@ export default function AppGeneralTab() {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Domain</div>
-                <div className="font-medium">{app.domain || "-"}</div>
+                <div className="font-medium">{getPrimaryDomain(app) || "-"}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Healthcheck</div>

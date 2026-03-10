@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { getPrimaryDomain } from "@/lib/utils";
 import { useTeamContext } from "@/lib/team-context";
 import type { AppWithSharing } from "@/types/api";
 
@@ -112,10 +113,10 @@ export function NavApps() {
                         </DropdownMenuItem>
                       </>
                     )}
-                    {(app.domain || app.auto_subdomain) && (
+                    {getPrimaryDomain(app) && (
                       <DropdownMenuItem asChild>
                         <a
-                          href={`http://${app.domain || app.auto_subdomain}`}
+                          href={`https://${getPrimaryDomain(app)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

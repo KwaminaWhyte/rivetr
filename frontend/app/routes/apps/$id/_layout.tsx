@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
+import { getPrimaryDomain } from "@/lib/utils";
 import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project, GitCommit, GitTag, DeploymentFreezeWindow } from "@/types/api";
@@ -493,11 +494,11 @@ export default function AppDetailLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Open App button - prefer domain > auto_subdomain > host_port */}
-          {appStatus?.running && (app.domain || app.auto_subdomain || appStatus.host_port) && (() => {
-            const primaryDomain = app.domain || app.auto_subdomain;
+          {/* Open App button - prefer domains JSON > domain > auto_subdomain > host_port */}
+          {appStatus?.running && (getPrimaryDomain(app) || appStatus.host_port) && (() => {
+            const primaryDomain = getPrimaryDomain(app);
             const href = primaryDomain
-              ? `http://${primaryDomain}`
+              ? `https://${primaryDomain}`
               : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${appStatus.host_port}`;
             return (
               <Button variant="outline" asChild className="gap-2">
