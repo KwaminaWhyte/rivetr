@@ -19,9 +19,21 @@ use crate::db::{
 };
 use crate::AppState;
 
+/// Normalize a cron expression to the 6-field format expected by the `cron` crate.
+/// Standard 5-field cron (min hour dom month dow) is prefixed with "0 " (seconds=0).
+fn normalize_cron(expr: &str) -> String {
+    let parts: Vec<&str> = expr.split_whitespace().collect();
+    if parts.len() == 5 {
+        format!("0 {}", expr)
+    } else {
+        expr.to_string()
+    }
+}
+
 /// Calculate the next run time from a cron expression
 fn next_run_from_cron(cron_expression: &str) -> Option<String> {
-    let schedule = Schedule::from_str(cron_expression).ok()?;
+    let normalized = normalize_cron(cron_expression);
+    let schedule = Schedule::from_str(&normalized).ok()?;
     let next = schedule.upcoming(chrono::Utc).next()?;
     Some(next.to_rfc3339())
 }
@@ -110,8 +122,9 @@ pub async fn create_job(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Validate cron expression
-    if Schedule::from_str(&req.cron_expression).is_err() {
+    // Normalize and validate cron expression
+    let cron_expr = normalize_cron(&req.cron_expression);
+    if Schedule::from_str(&cron_expr).is_err() {
         tracing::warn!("Invalid cron expression: {}", req.cron_expression);
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -119,7 +132,7 @@ pub async fn create_job(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let next_run = if req.enabled {
-        next_run_from_cron(&req.cron_expression)
+        next_run_from_cron(&cron_expr)
     } else {
         None
     };
@@ -134,7 +147,7 @@ pub async fn create_job(
     .bind(&app_id)
     .bind(&req.name)
     .bind(&req.command)
-    .bind(&req.cron_expression)
+    .bind(&cron_expr)
     .bind(if req.enabled { 1 } else { 0 })
     .bind(&next_run)
     .bind(&now)
@@ -213,9 +226,10 @@ pub async fn update_job(
 
     let new_name = req.name.unwrap_or(existing.name);
     let new_command = req.command.unwrap_or(existing.command);
-    let new_cron = req
-        .cron_expression
-        .unwrap_or(existing.cron_expression.clone());
+    let new_cron = normalize_cron(
+        &req.cron_expression
+            .unwrap_or(existing.cron_expression.clone()),
+    );
     let new_enabled = req
         .enabled
         .map(|b| if b { 1 } else { 0 })

@@ -145,19 +145,23 @@ pub async fn rollback_deployment(
         .await
         {
             Ok(result) => {
-                // Update proxy routes on successful rollback
-                if let Some(domain) = &app_clone.domain {
-                    if let Some(port) = result.port {
-                        let backend = Backend::new(
-                            result.container_id.clone(),
-                            "127.0.0.1".to_string(),
-                            port,
-                        );
-                        routes.load().add_route(domain.clone(), backend);
+                // Update proxy routes on successful rollback for all domains
+                if let Some(port) = result.port {
+                    let all_domains = app_clone.get_all_domain_names();
+                    if !all_domains.is_empty() {
+                        let route_table = routes.load();
+                        for domain in &all_domains {
+                            let backend = Backend::new(
+                                result.container_id.clone(),
+                                "127.0.0.1".to_string(),
+                                port,
+                            );
+                            route_table.add_route(domain.clone(), backend);
+                        }
                         tracing::info!(
-                            domain = %domain,
+                            domains = ?all_domains,
                             port = port,
-                            "Proxy route updated after rollback for app {}",
+                            "Proxy routes updated after rollback for app {}",
                             app_clone.name
                         );
                     }

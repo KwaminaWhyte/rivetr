@@ -57,17 +57,19 @@ import {
   Calendar,
 } from "lucide-react";
 
-/** Common cron presets for the create/edit dialog */
+/** Common cron presets for the create/edit dialog.
+ * Format: sec min hour dom month dow (6 fields required by cron crate)
+ */
 const CRON_PRESETS = [
-  { label: "Every minute", value: "* * * * *" },
-  { label: "Every 5 minutes", value: "*/5 * * * *" },
-  { label: "Every 15 minutes", value: "*/15 * * * *" },
-  { label: "Every hour", value: "0 * * * *" },
-  { label: "Every 6 hours", value: "0 */6 * * *" },
-  { label: "Daily at midnight", value: "0 0 * * *" },
-  { label: "Daily at 3 AM", value: "0 3 * * *" },
-  { label: "Weekly (Sunday midnight)", value: "0 0 * * 0" },
-  { label: "Monthly (1st at midnight)", value: "0 0 1 * *" },
+  { label: "Every minute", value: "0 * * * * *" },
+  { label: "Every 5 minutes", value: "0 */5 * * * *" },
+  { label: "Every 15 minutes", value: "0 */15 * * * *" },
+  { label: "Every hour", value: "0 0 * * * *" },
+  { label: "Every 6 hours", value: "0 0 */6 * * *" },
+  { label: "Daily at midnight", value: "0 0 0 * * *" },
+  { label: "Daily at 3 AM", value: "0 0 3 * * *" },
+  { label: "Weekly (Sunday midnight)", value: "0 0 0 * * 0" },
+  { label: "Monthly (1st at midnight)", value: "0 0 0 1 * *" },
 ];
 
 function formatDuration(ms: number | null): string {
@@ -191,7 +193,7 @@ export default function JobsPage() {
   // Form state
   const [formName, setFormName] = useState("");
   const [formCommand, setFormCommand] = useState("");
-  const [formCron, setFormCron] = useState("0 * * * *");
+  const [formCron, setFormCron] = useState("0 0 * * * *");
   const [formEnabled, setFormEnabled] = useState(true);
 
   // Expanded job runs
@@ -273,7 +275,7 @@ export default function JobsPage() {
   function resetForm() {
     setFormName("");
     setFormCommand("");
-    setFormCron("0 * * * *");
+    setFormCron("0 0 * * * *");
     setFormEnabled(true);
   }
 
@@ -504,7 +506,7 @@ export default function JobsPage() {
                 id="cron"
                 value={formCron}
                 onChange={(e) => setFormCron(e.target.value)}
-                placeholder="0 * * * *"
+                placeholder="0 0 * * * *"
                 className="font-mono text-sm"
               />
               <div className="flex flex-wrap gap-1.5 mt-1">
