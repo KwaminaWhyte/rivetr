@@ -160,9 +160,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/apps/:id/deployments/pending",
             get(deployments::list_pending_deployments),
         )
-        // Deployment freeze windows
-        .route("/freeze-windows", get(deployments::list_freeze_windows))
-        .route("/freeze-windows", post(deployments::create_freeze_window))
+        // Deployment freeze windows (app-scoped)
+        .route(
+            "/apps/:id/freeze-windows",
+            get(deployments::list_freeze_windows),
+        )
+        .route(
+            "/apps/:id/freeze-windows",
+            post(deployments::create_freeze_window),
+        )
         .route(
             "/freeze-windows/:id",
             delete(deployments::delete_freeze_window),
