@@ -1,11 +1,11 @@
 [package]
 name = "rivetr"
-version = "0.2.16"
+version = "0.10.1"
 edition = "2021"
 rust-version = "1.75"
 description = "A fast, lightweight deployment engine"
 license = "MIT"
-repository = "https://github.com/yourusername/rivetr"
+repository = "https://github.com/KwaminaWhyte/rivetr"
 keywords = ["deployment", "paas", "docker", "devops"]
 categories = ["command-line-utilities", "development-tools"]
 
