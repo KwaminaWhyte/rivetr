@@ -290,15 +290,30 @@ async fn main() -> Result<()> {
                 // Give the HTTP proxy a moment to start listening
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
+                // Collect all domains to include in the TLS cert (SAN list)
+                // Start with the instance_domain, then add all app domains from DB
+                let mut all_cert_domains: Vec<String> = vec![instance_domain.clone()];
+                if let Ok(app_domains) = collect_all_app_domains(&db).await {
+                    for d in app_domains {
+                        if !all_cert_domains.contains(&d) && all_cert_domains.len() < 100 {
+                            all_cert_domains.push(d);
+                        }
+                    }
+                }
+                tracing::info!(
+                    "Requesting TLS cert covering {} domain(s): {:?}",
+                    all_cert_domains.len(),
+                    all_cert_domains
+                );
+
                 // Now request or load the certificate
-                let domains = vec![instance_domain.clone()];
                 let cert_dir = acme_client.cert_dir(&instance_domain);
                 let tls_config_result = if cert_dir.join("fullchain.pem").exists() {
                     tracing::info!(domain = %instance_domain, "Loading cached TLS certificate");
                     AcmeClient::load_certificate(&cert_dir).await.ok()
                 } else {
                     tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
-                    match acme_client.request_certificate(&domains).await {
+                    match acme_client.request_certificate(&all_cert_domains).await {
                         Ok(result) => {
                             let _ = acme_client.save_certificate(&result).await;
                             rivetr::proxy::TlsConfig::from_pem(
@@ -401,6 +416,44 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("Shutdown signal received");
+}
+
+/// Collect all configured domain names across all apps (for TLS SAN list)
+async fn collect_all_app_domains(db: &DbPool) -> Result<Vec<String>> {
+    let apps: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT domain, domains, auto_subdomain FROM apps",
+    )
+    .fetch_all(db)
+    .await?;
+
+    let mut result: Vec<String> = Vec::new();
+    for (legacy_domain, domains_json, auto_subdomain) in apps {
+        if let Some(d) = legacy_domain {
+            if !d.is_empty() && !result.contains(&d) {
+                result.push(d);
+            }
+        }
+        if let Some(ref json) = domains_json {
+            if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
+                if let Some(list) = arr.as_array() {
+                    for entry in list {
+                        if let Some(d) = entry.get("domain").and_then(|v| v.as_str()) {
+                            let d = d.to_string();
+                            if !d.is_empty() && !result.contains(&d) {
+                                result.push(d);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(d) = auto_subdomain {
+            if !d.is_empty() && !result.contains(&d) && !d.ends_with(".traefik.me") && !d.ends_with(".sslip.io") {
+                result.push(d);
+            }
+        }
+    }
+    Ok(result)
 }
 
 /// Restore proxy routes from running containers on startup
