@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **servers.tsx** — Replaced `require("react")` inside component body with proper top-level imports (`useEffect`, `useRef`)
 - **Cargo.toml** — Bumped version to `0.10.1` and fixed repository URL to `KwaminaWhyte/rivetr`
 - **install.sh** — Fixed Railpack download URL (uses `-musl` not `-gnu`, includes version tag from GitHub API)
+- **Database migrations** — Fixed startup crash: `execute_sql` split-on-semicolon parser now handles migration comments correctly; removed semicolon from comment in `061_registry_push.sql`
+- **Database migrations** — Added missing migrations 051 (shared env vars), 052 (multi-server), 054 (container replicas), 055 (scheduled backups), 056 (2FA enforcement), 065 (webhook audit) to the migration runner
 
 ---
 
