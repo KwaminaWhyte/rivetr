@@ -3,6 +3,7 @@ mod apps;
 mod audit;
 pub mod auth;
 mod autoscaling;
+mod bulk;
 mod basic_auth;
 mod build_servers;
 mod cost_rates;
@@ -748,6 +749,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/swarm/services/:id", delete(swarm::delete_service))
         .route("/swarm/services/:id/scale", post(swarm::scale_service))
         .route("/swarm/services/:id/logs", get(swarm::get_service_logs))
+        // Bulk operations
+        .route("/bulk/start", post(bulk::bulk_start))
+        .route("/bulk/stop", post(bulk::bulk_stop))
+        .route("/bulk/restart", post(bulk::bulk_restart))
+        .route("/bulk/deploy", post(bulk::bulk_deploy))
+        // App clone, snapshots, maintenance mode
+        .route("/apps/:id/clone", post(bulk::clone_app))
+        .route("/apps/:id/snapshots", post(bulk::create_snapshot))
+        .route("/apps/:id/snapshots", get(bulk::list_snapshots))
+        .route(
+            "/apps/:id/snapshots/:sid/restore",
+            post(bulk::restore_snapshot),
+        )
+        .route("/apps/:id/snapshots/:sid", delete(bulk::delete_snapshot))
+        .route("/apps/:id/maintenance", put(bulk::set_maintenance_mode))
+        // Project import/export
+        .route("/projects/:id/export", get(bulk::export_project))
+        .route("/projects/:id/import", post(bulk::import_project))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),
