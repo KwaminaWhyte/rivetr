@@ -5,13 +5,13 @@ Track which feature areas have been fully tested. Update after each testing sess
 | # | Feature Area | Status | Date | Tester | Version | Notes |
 |---|-------------|--------|------|--------|---------|-------|
 | 1 | Installation & Startup | [x] | 2026-03-10 | claude | v0.10.1 | Binary starts, all subsystems initialize correctly |
-| 2 | Authentication | [x] | 2026-03-10 | claude | v0.10.1 | Login, validate, admin token, 2FA setup endpoints all work |
-| 3 | Team Management | [!] | 2026-03-10 | claude | v0.10.1 | CRUD works; bug: list_teams with admin token was creating orphaned team (fixed in cff39b5) |
+| 2 | Authentication | [x] | 2026-03-11 | claude | v0.10.1 | Login/logout/validate ✓; logout now invalidates session server-side (dbdce88); missing API routes return 404 JSON (not SPA HTML) |
+| 3 | Team Management | [x] | 2026-03-11 | claude | v0.10.1 | CRUD works with both session + admin token (2102567); admin token = system user sees all teams as owner |
 | 4 | Project Management | [x] | 2026-03-10 | claude | v0.10.1 | Create, list, update, delete, export all work |
 | 5 | App Deployment — Git | [x] | 2026-03-10 | claude | v0.10.1 | Nixpacks build from GitHub deployed successfully |
 | 6 | App Deployment — Other Sources | [~] | 2026-03-10 | claude | v0.10.1 | Upload deploy endpoint exists; Docker image source untested |
 | 7 | Webhooks | [~] | 2026-03-10 | claude | v0.10.1 | Webhook routes registered; full webhook trigger not tested end-to-end |
-| 8 | App Settings & Control | [x] | 2026-03-10 | claude | v0.10.1 | Start/stop/restart/update/delete/clone all work; maintenance mode ✓ |
+| 8 | App Settings & Control | [x] | 2026-03-11 | claude | v0.10.1 | Start/stop/restart/update/delete/clone all work; maintenance mode ✓; delete with admin token (c13c0c4) |
 | 9 | Deployment Management | [x] | 2026-03-10 | claude | v0.10.1 | List, rollback, approve/reject/pending all work; non-admin→pending, admin approve/reject confirmed (fixed approved_by FK in cf9521a) |
 | 10 | Container Replicas & Auto-scaling | [x] | 2026-03-10 | claude | v0.10.1 | Replicas list returns running replica correctly |
 | 11 | Container Terminal & Logs | [x] | 2026-03-10 | claude | v0.10.1 | Terminal WebSocket asks for upgrade ✓; deployment logs return 7 entries ✓ |
@@ -68,6 +68,21 @@ Record each testing session here.
   - Container monitor missing team_id column (fixed in v0.2.14)
   - Notification channel missing 'webhook' CHECK constraint (fixed in v0.2.14)
 - **Areas Skipped:** GitHub App (no GitHub App configured), SSL/TLS (no custom domain), Preview Deployments full test (needs GitHub App)
+
+### 2026-03-11 — v0.10.1 (Sprint 12 Follow-up Bug Fixes)
+- **Server:** 64.226.112.14:8080
+- **Tester:** claude (automated)
+- **Areas Covered:** Auth, Teams, Apps CRUD, Databases, Volumes, Jobs, Notification Channels, Bulk Ops
+- **Issues Found & Fixed:**
+  1. **Deployment logs not showing** — `DeploymentLogs` component only loaded via WebSocket when active; returned null for finished deployments. Fixed: always fetch via REST on mount (commit: 8619a83)
+  2. **Stuck in-progress deployments on restart** — server restart left deployments in "building" state forever. Fixed: startup cleanup marks them failed (commit: 8619a83)
+  3. **Teams 403 with admin API token** — `user.id == "system"` has no team memberships; `list_teams` returned `[]` and `require_team_role` returned 403. Fixed: system user sees all teams as owner (commit: 2102567)
+  4. **`create_team` with admin token fails with FK error** — system user can't be inserted into team_members (no DB row). Fixed: skip member insertion for system user (commit: 2102567)
+  5. **Delete app with admin token requires password** — empty password check ran before system user bypass. Fixed: moved password validation inside `user.id != "system"` guard (commit: c13c0c4)
+  6. **`DeleteAppRequest` missing field error** — password field required by serde even when body is `{}`. Fixed: `#[serde(default)]` on password field (commit: c13c0c4)
+  7. **`POST /api/auth/logout` not registered** — frontend called it for session invalidation but route didn't exist. Fixed: added logout handler that deletes session from DB (commit: dbdce88)
+  8. **Missing API routes return 200+HTML** — SPA fallback served index.html for all unmatched paths. Fixed: `/api/*` paths now return 404 JSON (commit: dbdce88)
+- **Areas Skipped:** GitHub App, SSL/TLS, Multi-Server, Swarm active, S3
 
 ### 2026-03-11 — v0.10.1 (Sprint 12 Comprehensive Retest)
 - **Server:** 64.226.112.14:8080
