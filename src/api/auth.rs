@@ -216,6 +216,34 @@ pub async fn login(
     }))
 }
 
+/// Logout endpoint — invalidates the current session token
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+) -> impl IntoResponse {
+    let auth_header = request
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok());
+
+    if let Some(header) = auth_header {
+        let token = if header.starts_with("Bearer ") {
+            &header[7..]
+        } else {
+            header
+        };
+
+        // Delete the session from the database
+        let token_hash = hash_token(token);
+        let _ = sqlx::query("DELETE FROM sessions WHERE token_hash = ?")
+            .bind(&token_hash)
+            .execute(&state.db)
+            .await;
+    }
+
+    StatusCode::OK
+}
+
 /// Validate token endpoint
 pub async fn validate(
     State(state): State<Arc<AppState>>,

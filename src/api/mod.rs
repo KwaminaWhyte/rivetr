@@ -68,6 +68,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     // Auth routes (public, but rate limited)
     let auth_routes = Router::new()
         .route("/login", post(auth::login))
+        .route("/logout", post(auth::logout))
         .route("/validate", get(auth::validate))
         .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup))
@@ -830,6 +831,18 @@ async fn health_check() -> &'static str {
 /// Serve embedded static files with SPA fallback
 async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
+
+    // API paths that reach this fallback are genuinely missing — return 404, not the SPA shell.
+    // Without this guard, unregistered /api/* routes return HTTP 200 with HTML, which is
+    // extremely confusing for API clients.
+    if path.starts_with("api/") || path == "api" {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "application/json")],
+            br#"{"error":{"code":"not_found","message":"API endpoint not found"}}"#.as_ref(),
+        )
+            .into_response();
+    }
 
     // Try to serve the exact file first
     if let Some(content) = StaticAssets::get(path) {
