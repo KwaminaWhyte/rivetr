@@ -69,6 +69,24 @@ Record each testing session here.
   - Notification channel missing 'webhook' CHECK constraint (fixed in v0.2.14)
 - **Areas Skipped:** GitHub App (no GitHub App configured), SSL/TLS (no custom domain), Preview Deployments full test (needs GitHub App)
 
+### 2026-03-11 — v0.10.1 (Sprint 12 Comprehensive Retest)
+- **Server:** 64.226.112.14:8080
+- **Tester:** claude (automated, general-purpose agent)
+- **Areas Covered:** All 25 feature areas via API — Auth, System, Apps CRUD, App Control, Env Vars, Volumes, Scheduled Jobs, Deployments, Managed Databases, Services, Templates, Projects, Teams, SSH Keys, Notifications/Alerts, Audit Logs, Webhook Events, App Monitoring/Stats, Clone, Autoscaling, Bulk Ops, Deployment Diff, Swarm, Previews, MCP
+- **Issues Found & Fixed:**
+  1. **`nixpacks_config` type mismatch** — Frontend sends `NixpacksConfig` as JSON object; Rust expected `Option<String>`. Fixed: changed type to `Option<serde_json::Value>` and serialize before DB storage (commit: a552e64)
+  2. **`/api/auth/validate` returns 401 for admin API key** — validate handler only checked sessions table, not the static admin API key. Fixed: added constant-time comparison with admin token before session lookup
+  3. **macOS binary deployed to Linux server** — Was building with `cargo build --release` (Darwin binary), causing `Exec format error`. Fixed: always use `./scripts/deploy-dev.sh` which cross-compiles with cargo-zigbuild
+  4. **GitHub App clone auth** — Apps created before github_app_installation_id fix had NULL field. Manual DB fix applied; pipeline now fetches installation tokens
+  5. **Bitbucket source picker** — Missing UI component. Fixed: added BitbucketRepoPicker with token-based auth (commit: ef8fd6d)
+- **All API paths verified correct:** apps list/get/create/update/delete, env vars, volumes, jobs, deployments, databases, services, templates, projects, bulk ops, autoscaling, swarm, previews — all respond correctly
+- **Design decisions (not bugs):** PATCH not supported on apps (only PUT); /api/apps/:id/logs not a route (use /logs/stream SSE); /api/apps/bulk/* not a route (use /api/bulk/*)
+- **Areas Skipped:**
+  - GitHub App full callback (not configured)
+  - SSL/TLS custom domain
+  - Multi-Server / Build Servers
+  - Docker Swarm active (single node)
+
 ### 2026-03-10 — v0.10.1
 - **Server:** 64.226.112.14:8080
 - **Tester:** claude (automated)

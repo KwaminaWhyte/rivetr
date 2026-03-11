@@ -231,6 +231,13 @@ pub async fn validate(
         _ => return StatusCode::UNAUTHORIZED,
     };
 
+    // First check if it matches the admin token from config (constant-time comparison)
+    let admin_token = state.config.auth.admin_token.as_bytes();
+    let provided_token = token.as_bytes();
+    if admin_token.len() == provided_token.len() && admin_token.ct_eq(provided_token).into() {
+        return StatusCode::OK;
+    }
+
     let token_hash = hash_token(token);
 
     // Check if session exists and is not expired
