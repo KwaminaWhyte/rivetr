@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 
 use crate::config::RuntimeType;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BuildContext {
     pub path: String,
     pub dockerfile: String,
@@ -28,6 +28,23 @@ pub struct BuildContext {
     pub cpu_limit: Option<String>,
     /// Memory limit for build (e.g., "2g" for 2GB)
     pub memory_limit: Option<String>,
+    /// Optional channel to stream build log lines to the deployment log store
+    pub log_tx: Option<mpsc::UnboundedSender<String>>,
+}
+
+impl std::fmt::Debug for BuildContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuildContext")
+            .field("path", &self.path)
+            .field("dockerfile", &self.dockerfile)
+            .field("tag", &self.tag)
+            .field("build_args", &self.build_args)
+            .field("build_target", &self.build_target)
+            .field("cpu_limit", &self.cpu_limit)
+            .field("memory_limit", &self.memory_limit)
+            .field("log_tx", &self.log_tx.is_some())
+            .finish()
+    }
 }
 
 /// Port mapping for container networking

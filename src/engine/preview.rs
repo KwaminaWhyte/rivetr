@@ -203,6 +203,7 @@ pub async fn run_preview_deployment(
         // Use reduced resource limits for preview builds
         cpu_limit: Some("1".to_string()),
         memory_limit: Some("1g".to_string()),
+        log_tx: None,
     };
 
     if let Err(e) = runtime.build(&build_ctx).await {

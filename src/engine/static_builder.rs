@@ -491,6 +491,7 @@ CMD ["nginx", "-g", "daemon off;"]
             custom_options: None,
             cpu_limit: config.cpu_limit.clone(),
             memory_limit: config.memory_limit.clone(),
+            log_tx: None,
         };
 
         let result = self

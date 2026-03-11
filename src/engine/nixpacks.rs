@@ -273,6 +273,7 @@ pub async fn build_image(
     image_tag: &str,
     config: Option<&NixpacksConfig>,
     env_vars: &[(String, String)],
+    log_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 ) -> Result<String> {
     info!("Building image with Nixpacks: {}", image_tag);
     debug!("Source path: {:?}", source_path);
@@ -356,6 +357,9 @@ pub async fn build_image(
                 match stdout_line {
                     Ok(Some(line)) => {
                         info!(target: "nixpacks", "{}", line);
+                        if let Some(ref tx) = log_tx {
+                            let _ = tx.send(line.clone());
+                        }
                         stdout_output.push(line);
                     }
                     Ok(None) => {}
@@ -374,6 +378,9 @@ pub async fn build_image(
                             warn!(target: "nixpacks", "{}", line);
                         } else {
                             info!(target: "nixpacks", "{}", line);
+                        }
+                        if let Some(ref tx) = log_tx {
+                            let _ = tx.send(line.clone());
                         }
                         stderr_output.push(line);
                     }

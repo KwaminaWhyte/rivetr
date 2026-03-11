@@ -157,10 +157,19 @@ pub async fn build(runtime: &DockerRuntime, ctx: &BuildContext) -> Result<String
     while let Some(result) = stream.next().await {
         match result {
             Ok(output) => {
-                if let Some(stream) = output.stream {
-                    tracing::debug!("{}", stream.trim());
+                if let Some(line) = output.stream {
+                    let line = line.trim().to_string();
+                    if !line.is_empty() {
+                        if let Some(ref tx) = ctx.log_tx {
+                            let _ = tx.send(line.clone());
+                        }
+                        tracing::debug!("{}", line);
+                    }
                 }
                 if let Some(error) = output.error {
+                    if let Some(ref tx) = ctx.log_tx {
+                        let _ = tx.send(format!("ERROR: {}", error));
+                    }
                     anyhow::bail!("Build error: {}", error);
                 }
             }

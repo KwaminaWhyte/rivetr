@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 use crate::db::App;
 use crate::engine::nixpacks;
@@ -313,10 +314,26 @@ pub(super) async fn build_git_image(
             .await
             .unwrap_or_default();
 
+            // Set up log streaming channel for nixpacks output
+            let (nix_log_tx, mut nix_log_rx) = mpsc::unbounded_channel::<String>();
+            let db_nix = db.clone();
+            let depl_nix = deployment_id.to_string();
+            tokio::spawn(async move {
+                while let Some(line) = nix_log_rx.recv().await {
+                    let _ = add_deployment_log(&db_nix, &depl_nix, "info", &line).await;
+                }
+            });
+
             // Build with Nixpacks
-            nixpacks::build_image(build_path, &image_tag, nixpacks_config.as_ref(), &env_vars)
-                .await
-                .context("Nixpacks build failed")?;
+            nixpacks::build_image(
+                build_path,
+                &image_tag,
+                nixpacks_config.as_ref(),
+                &env_vars,
+                Some(nix_log_tx),
+            )
+            .await
+            .context("Nixpacks build failed")?;
 
             add_deployment_log(
                 db,
@@ -534,6 +551,16 @@ pub(super) async fn build_git_image(
                 .cloned()
                 .unwrap_or_else(|| app.dockerfile.clone());
 
+            // Set up a channel so Docker build output streams to deployment_logs
+            let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
+            let db_clone = db.clone();
+            let depl_id = deployment_id.to_string();
+            tokio::spawn(async move {
+                while let Some(line) = log_rx.recv().await {
+                    let _ = add_deployment_log(&db_clone, &depl_id, "info", &line).await;
+                }
+            });
+
             let build_ctx = BuildContext {
                 path: build_path.to_string_lossy().to_string(),
                 dockerfile,
@@ -543,6 +570,7 @@ pub(super) async fn build_git_image(
                 custom_options: app.custom_docker_options.clone(),
                 cpu_limit: build_limits.cpu_limit.clone(),
                 memory_limit: build_limits.memory_limit.clone(),
+                log_tx: Some(log_tx),
             };
 
             // Log build resource limits if configured
@@ -650,9 +678,24 @@ pub(super) async fn build_upload_image(
             .await
             .unwrap_or_default();
 
-            nixpacks::build_image(build_path, &image_tag, nixpacks_config.as_ref(), &env_vars)
-                .await
-                .context("Nixpacks build failed")?;
+            let (nix_log_tx2, mut nix_log_rx2) = mpsc::unbounded_channel::<String>();
+            let db_nix2 = db.clone();
+            let depl_nix2 = deployment_id.to_string();
+            tokio::spawn(async move {
+                while let Some(line) = nix_log_rx2.recv().await {
+                    let _ = add_deployment_log(&db_nix2, &depl_nix2, "info", &line).await;
+                }
+            });
+
+            nixpacks::build_image(
+                build_path,
+                &image_tag,
+                nixpacks_config.as_ref(),
+                &env_vars,
+                Some(nix_log_tx2),
+            )
+            .await
+            .context("Nixpacks build failed")?;
 
             add_deployment_log(
                 db,
@@ -858,6 +901,15 @@ pub(super) async fn build_upload_image(
                 .cloned()
                 .unwrap_or_else(|| app.dockerfile.clone());
 
+            let (log_tx2, mut log_rx2) = mpsc::unbounded_channel::<String>();
+            let db_clone2 = db.clone();
+            let depl_id2 = deployment_id.to_string();
+            tokio::spawn(async move {
+                while let Some(line) = log_rx2.recv().await {
+                    let _ = add_deployment_log(&db_clone2, &depl_id2, "info", &line).await;
+                }
+            });
+
             let build_ctx = BuildContext {
                 path: build_path.to_string_lossy().to_string(),
                 dockerfile,
@@ -867,6 +919,7 @@ pub(super) async fn build_upload_image(
                 custom_options: app.custom_docker_options.clone(),
                 cpu_limit: build_limits.cpu_limit.clone(),
                 memory_limit: build_limits.memory_limit.clone(),
+                log_tx: Some(log_tx2),
             };
 
             runtime.build(&build_ctx).await.context("Build failed")?;
