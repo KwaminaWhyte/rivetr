@@ -124,11 +124,18 @@ function GitHubAppsTab() {
     queryFn: () => api.getGitHubApps(),
   });
 
+  const { data: allInstallations = [] } = useQuery<GitHubAppInstallation[]>({
+    queryKey: ["github-app-installations-all"],
+    queryFn: () => api.getAllGitHubAppInstallations(),
+  });
+
   const { data: installations = [] } = useQuery<GitHubAppInstallation[]>({
     queryKey: ["github-app-installations", expandedApp],
     queryFn: () => api.getGitHubAppInstallations(expandedApp!),
     enabled: !!expandedApp,
   });
+
+  const installedAppIds = new Set(allInstallations.map((i) => i.github_app_id));
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteGitHubApp(id),
@@ -287,13 +294,20 @@ function GitHubAppsTab() {
                     <TableCell className="text-muted-foreground">{formatDate(app.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); handleInstallApp(app); }}
-                        >
-                          Install
-                        </Button>
+                        {installedAppIds.has(app.id) ? (
+                          <Badge variant="outline" className="gap-1 text-green-600 border-green-600">
+                            <CheckCircle className="h-3 w-3" />
+                            Installed
+                          </Badge>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleInstallApp(app); }}
+                          >
+                            Install
+                          </Button>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="icon">

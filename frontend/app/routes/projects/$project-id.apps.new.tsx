@@ -18,6 +18,7 @@ import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upl
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import { GitLabRepoPicker, type SelectedGitLabRepo } from "@/components/gitlab-repo-picker";
+import { BitbucketRepoPicker, type SelectedBitbucketRepo } from "@/components/bitbucket-repo-picker";
 import { ZipUploadZone } from "@/components/zip-upload-zone";
 
 // GitLab SVG icon
@@ -49,7 +50,7 @@ export default function NewAppPage() {
   const queryClient = useQueryClient();
   const { currentTeamId } = useTeamContext();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry" | "upload">("git");
-  const [gitSourceType, setGitSourceType] = useState<"github" | "gitlab" | "manual">("github");
+  const [gitSourceType, setGitSourceType] = useState<"github" | "gitlab" | "bitbucket" | "manual">("github");
   const [buildType, setBuildType] = useState<BuildType>("nixpacks");
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -65,6 +66,8 @@ export default function NewAppPage() {
   const [selectedRepo, setSelectedRepo] = useState<SelectedRepo | null>(null);
   // GitLab repo picker state
   const [selectedGitLabRepo, setSelectedGitLabRepo] = useState<SelectedGitLabRepo | null>(null);
+  // Bitbucket repo picker state
+  const [selectedBitbucketRepo, setSelectedBitbucketRepo] = useState<SelectedBitbucketRepo | null>(null);
   const [manualGitUrl, setManualGitUrl] = useState("");
   const [manualBranch, setManualBranch] = useState("main");
 
@@ -234,6 +237,10 @@ export default function NewAppPage() {
         // Use GitLab repo picker selection
         git_url = selectedGitLabRepo.gitUrl;
         branch = selectedGitLabRepo.branch;
+      } else if (gitSourceType === "bitbucket" && selectedBitbucketRepo) {
+        // Use Bitbucket repo picker selection
+        git_url = selectedBitbucketRepo.gitUrl;
+        branch = selectedBitbucketRepo.branch;
       } else {
         // Manual URL entry
         git_url = manualGitUrl;
@@ -245,7 +252,7 @@ export default function NewAppPage() {
 
       if (!git_url?.trim()) {
         setError(
-          gitSourceType === "github" || gitSourceType === "gitlab"
+          gitSourceType === "github" || gitSourceType === "gitlab" || gitSourceType === "bitbucket"
             ? "Please select a repository"
             : "Git URL is required"
         );
@@ -291,6 +298,8 @@ export default function NewAppPage() {
         git_provider_id:
           gitSourceType === "gitlab" && selectedGitLabRepo
             ? selectedGitLabRepo.providerId
+            : gitSourceType === "bitbucket" && selectedBitbucketRepo
+            ? selectedBitbucketRepo.providerId
             : undefined,
       });
     }
@@ -398,7 +407,7 @@ export default function NewAppPage() {
                   {/* Git Source Type Toggle */}
                   <div className="space-y-3">
                     <Label>Source</Label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                       <button
                         type="button"
                         onClick={() => setGitSourceType("github")}
@@ -426,6 +435,23 @@ export default function NewAppPage() {
                         <GitLabIcon className="h-5 w-5" style={{ color: "#FC6D26" }} />
                         <div className="text-left">
                           <span className="text-sm font-medium block">GitLab</span>
+                          <span className="text-xs text-muted-foreground">Select from your repos</span>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGitSourceType("bitbucket")}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-colors ${
+                          gitSourceType === "bitbucket"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <svg className="h-5 w-5 text-[#0052CC]" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.889zM14.52 15.53H9.522L8.17 8.466h7.561z" />
+                        </svg>
+                        <div className="text-left">
+                          <span className="text-sm font-medium block">Bitbucket</span>
                           <span className="text-xs text-muted-foreground">Select from your repos</span>
                         </div>
                       </button>
@@ -464,6 +490,14 @@ export default function NewAppPage() {
                     />
                   )}
 
+                  {/* Bitbucket Repository Picker */}
+                  {gitSourceType === "bitbucket" && (
+                    <BitbucketRepoPicker
+                      onSelect={(selection) => setSelectedBitbucketRepo(selection)}
+                      selectedRepoFullName={selectedBitbucketRepo?.repository.full_name}
+                    />
+                  )}
+
                   {/* Manual Git URL Input */}
                   {gitSourceType === "manual" && (
                     <>
@@ -493,23 +527,6 @@ export default function NewAppPage() {
                         />
                       </div>
                     </>
-                  )}
-
-                  {/* Show selected branch from GitHub picker */}
-                  {gitSourceType === "github" && selectedRepo && (
-                    <div className="space-y-2">
-                      <Label htmlFor="branch">Branch</Label>
-                      <Input
-                        id="branch"
-                        name="branch"
-                        value={selectedRepo.branch}
-                        readOnly
-                        className="bg-muted"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Default branch from the repository
-                      </p>
-                    </div>
                   )}
 
                   {/* Build Type Selection */}

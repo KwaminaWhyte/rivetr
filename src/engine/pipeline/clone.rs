@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use crate::db::{App, GitProvider, SshKey};
+use crate::db::{App, GitHubApp, GitHubAppInstallation, GitProvider, SshKey};
 use crate::DbPool;
 
 /// Get SSH key for an app - checks app-specific key first, then falls back to global key
@@ -122,12 +122,61 @@ pub(super) fn inject_credentials_into_url(url: &str, provider: &GitProvider) -> 
 
 /// Fetch the git provider linked to an app and return the authenticated clone URL.
 /// Returns the original URL unchanged if no provider is linked or the URL is SSH.
-pub(super) async fn get_authenticated_url(db: &DbPool, app: &App) -> Result<String> {
+pub(super) async fn get_authenticated_url(
+    db: &DbPool,
+    app: &App,
+    encryption_key: Option<&[u8; 32]>,
+) -> Result<String> {
     if is_ssh_url(&app.git_url) {
         return Ok(app.git_url.clone());
     }
 
-    // Look up the git_provider_id for this app
+    // Check for GitHub App installation first (takes precedence over OAuth)
+    if let Some(ref installation_id_str) = app.github_app_installation_id {
+        let installation =
+            sqlx::query_as::<_, GitHubAppInstallation>(
+                "SELECT * FROM github_app_installations WHERE id = ?",
+            )
+            .bind(installation_id_str)
+            .fetch_optional(db)
+            .await?;
+
+        if let Some(installation) = installation {
+            let github_app = sqlx::query_as::<_, GitHubApp>(
+                "SELECT * FROM github_apps WHERE id = ?",
+            )
+            .bind(&installation.github_app_id)
+            .fetch_optional(db)
+            .await?;
+
+            if let Some(github_app) = github_app {
+                let private_key =
+                    crate::crypto::decrypt_if_encrypted(&github_app.private_key, encryption_key)
+                        .unwrap_or_else(|_| github_app.private_key.clone());
+
+                match crate::github::get_installation_token(
+                    github_app.app_id,
+                    &private_key,
+                    installation.installation_id,
+                )
+                .await
+                {
+                    Ok(token_response) => {
+                        let token = token_response.token;
+                        return Ok(inject_github_token_into_url(&app.git_url, &token));
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to get GitHub App installation token: {}. Falling through.",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to OAuth/PAT token via git_provider_id
     let provider_id: Option<Option<String>> =
         sqlx::query_scalar("SELECT git_provider_id FROM apps WHERE id = ?")
             .bind(&app.id)
@@ -147,6 +196,22 @@ pub(super) async fn get_authenticated_url(db: &DbPool, app: &App) -> Result<Stri
     match provider {
         Some(p) => Ok(inject_credentials_into_url(&app.git_url, &p)),
         None => Ok(app.git_url.clone()),
+    }
+}
+
+/// Inject a GitHub installation token into an HTTPS URL.
+fn inject_github_token_into_url(url: &str, token: &str) -> String {
+    let userinfo = format!("x-access-token:{}", token);
+    if let Some(rest) = url.strip_prefix("https://") {
+        if let Some(at_pos) = rest.find('@') {
+            format!("https://{}@{}", userinfo, &rest[at_pos + 1..])
+        } else {
+            format!("https://{}@{}", userinfo, rest)
+        }
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        format!("http://{}@{}", userinfo, rest)
+    } else {
+        url.to_string()
     }
 }
 

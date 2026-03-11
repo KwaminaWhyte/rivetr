@@ -128,6 +128,7 @@ async fn run_git_deployment(
     deployment_id: &str,
     app: &App,
     build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<String> {
     use std::path::PathBuf;
 
@@ -163,8 +164,8 @@ async fn run_git_deployment(
     // Get SSH key if configured for this app
     let ssh_key = clone::get_ssh_key_for_app(db, app).await?;
 
-    // Build the effective clone URL (inject OAuth/PAT token for HTTPS repos)
-    let clone_url = clone::get_authenticated_url(db, app).await?;
+    // Build the effective clone URL (inject OAuth/PAT/GitHub App token for HTTPS repos)
+    let clone_url = clone::get_authenticated_url(db, app, encryption_key).await?;
 
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
@@ -316,7 +317,7 @@ pub async fn run_deployment(
         tag
     } else {
         // Git-based deployment: clone and build
-        let tag = run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits).await?;
+        let tag = run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits, encryption_key).await?;
         // Optionally push to registry after git build
         if let Err(e) =
             build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
