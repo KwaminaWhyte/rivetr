@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import type { RecentEvent } from "@/types/api";
 
 function getStatusColor(status: RecentEvent["status"]) {
@@ -82,9 +84,17 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No recent events. Deploy your first app to see activity here.
-          </p>
+          <div className="py-4 text-center space-y-3">
+            <p className="text-muted-foreground text-sm">
+              No recent events. Deploy your first app to see activity here.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link to="/projects">
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Create a Project
+              </Link>
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
             {events.map((event) => (

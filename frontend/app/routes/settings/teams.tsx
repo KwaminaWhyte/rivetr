@@ -192,7 +192,7 @@ export default function SettingsTeamsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/settings/teams/${team.id}`}>
+                          <Link to={`/teams/${team.id}`}>
                             <Settings className="h-4 w-4 mr-1" />
                             Manage
                             <ChevronRight className="h-4 w-4 ml-1" />

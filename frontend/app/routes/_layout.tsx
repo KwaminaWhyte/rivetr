@@ -27,22 +27,6 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/monitoring": [{ label: "Monitoring" }],
   "/notifications": [{ label: "Notifications" }],
   "/settings": [{ label: "Settings" }],
-  "/settings/git-providers": [
-    { label: "Settings", href: "/settings" },
-    { label: "Git Providers" },
-  ],
-  "/settings/ssh-keys": [
-    { label: "Settings", href: "/settings" },
-    { label: "SSH Keys" },
-  ],
-  "/settings/webhooks": [
-    { label: "Settings", href: "/settings" },
-    { label: "Webhooks" },
-  ],
-  "/settings/tokens": [
-    { label: "Settings", href: "/settings" },
-    { label: "API Tokens" },
-  ],
   "/settings/notifications": [
     { label: "Settings", href: "/settings" },
     { label: "Notifications" },
@@ -54,10 +38,6 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/settings/audit": [
     { label: "Settings", href: "/settings" },
     { label: "Audit Log" },
-  ],
-  "/settings/webhook-events": [
-    { label: "Settings", href: "/settings" },
-    { label: "Webhook Events" },
   ],
   "/settings/auto-update": [
     { label: "Settings", href: "/settings" },
@@ -75,10 +55,49 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "SSO / OIDC" },
   ],
+  "/settings/s3": [
+    { label: "Settings", href: "/settings" },
+    { label: "S3 Storage" },
+  ],
+  "/settings/alert-defaults": [
+    { label: "Settings", href: "/settings" },
+    { label: "Alert Defaults" },
+  ],
+  "/settings/git-providers": [
+    { label: "Settings", href: "/settings" },
+    { label: "Git Providers" },
+  ],
+  "/settings/ssh-keys": [
+    { label: "Settings", href: "/settings" },
+    { label: "SSH Keys" },
+  ],
+  "/settings/webhooks": [
+    { label: "Settings", href: "/settings" },
+    { label: "Webhooks" },
+  ],
+  "/settings/tokens": [
+    { label: "Settings", href: "/settings" },
+    { label: "API Tokens" },
+  ],
+  "/settings/webhook-events": [
+    { label: "Settings", href: "/settings" },
+    { label: "Webhook Events" },
+  ],
   "/settings/servers": [
     { label: "Settings", href: "/settings" },
     { label: "Servers" },
   ],
+  // Infrastructure routes
+  "/servers": [{ label: "Servers" }],
+  "/build-servers": [{ label: "Build Servers" }],
+  "/ssh-keys": [{ label: "SSH Keys" }],
+  "/swarm": [{ label: "Docker Swarm" }],
+  // Access routes
+  "/teams": [{ label: "Teams" }],
+  "/git-providers": [{ label: "Git Integrations" }],
+  "/webhooks": [{ label: "Webhooks" }],
+  "/webhook-events": [{ label: "Webhook Events" }],
+  "/tokens": [{ label: "API Tokens" }],
 };
 
 function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
@@ -145,6 +164,22 @@ function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
     return [
       { label: "Projects", href: "/projects" },
       { label: "New Application" },
+    ];
+  }
+  const environmentsMatch = pathname.match(/^\/projects\/([^/]+)\/environments$/);
+  if (environmentsMatch) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Project", href: `/projects/${environmentsMatch[1]}` },
+      { label: "Environments" },
+    ];
+  }
+  const envVarsMatch = pathname.match(/^\/projects\/([^/]+)\/env-vars$/);
+  if (envVarsMatch) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Project", href: `/projects/${envVarsMatch[1]}` },
+      { label: "Shared Variables" },
     ];
   }
   if (pathname.match(/^\/projects\/[^/]+$/)) {

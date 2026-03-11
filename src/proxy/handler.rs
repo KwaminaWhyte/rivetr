@@ -32,8 +32,10 @@ pub struct ProxyHandler {
     routes: Arc<ArcSwap<RouteTable>>,
     proxy_service: ProxyService,
     acme_challenges: Option<AcmeChallenges>,
-    /// If set, redirect HTTP to HTTPS on this port
+    /// If set, redirect HTTP to HTTPS on this port (only when flag is true)
     https_redirect_port: Option<u16>,
+    /// Runtime flag — set to true after TLS cert is confirmed available
+    https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl ProxyHandler {
@@ -43,6 +45,7 @@ impl ProxyHandler {
             proxy_service: ProxyService::new(),
             acme_challenges: None,
             https_redirect_port: None,
+            https_redirect_enabled: None,
         }
     }
 
@@ -52,9 +55,10 @@ impl ProxyHandler {
         self
     }
 
-    /// Redirect all HTTP traffic to HTTPS
-    pub fn with_https_redirect(mut self, https_port: u16) -> Self {
+    /// Redirect all HTTP traffic to HTTPS (only when the flag is set to true)
+    pub fn with_https_redirect(mut self, https_port: u16, enabled: Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.https_redirect_port = Some(https_port);
+        self.https_redirect_enabled = Some(enabled);
         self
     }
 
@@ -119,7 +123,12 @@ impl ProxyHandler {
             return Ok(response);
         }
 
-        // Redirect HTTP → HTTPS if configured
+        // Redirect HTTP → HTTPS only if configured AND TLS cert is actually available
+        let redirect_active = self.https_redirect_enabled
+            .as_ref()
+            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false);
+        if redirect_active {
         if let Some(https_port) = self.https_redirect_port {
             let host_header = req
                 .headers()
@@ -142,6 +151,7 @@ impl ProxyHandler {
                 .unwrap();
             return Ok(response);
         }
+        } // end redirect_active
 
         let host = self.extract_host(&req);
         let is_websocket = self.is_websocket_upgrade(&req);

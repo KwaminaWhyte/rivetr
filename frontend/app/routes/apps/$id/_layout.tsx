@@ -473,14 +473,7 @@ export default function AppDetailLayout() {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem onClick={() => handleDeploy()}>
                 <Rocket className="h-4 w-4 mr-2" />
-                Redeploy from Git
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleDeploy()}
-                className="text-muted-foreground"
-              >
-                <RotateCw className="h-4 w-4 mr-2" />
-                Redeploy (clear cache)
+                Redeploy (latest commit)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowDeployOptionsDialog(true)}>
@@ -495,24 +488,33 @@ export default function AppDetailLayout() {
             </DropdownMenuContent>
           </DropdownMenu>
           {/* Open App button - prefer domains JSON > domain > auto_subdomain > host_port */}
-          {appStatus?.running && (getPrimaryDomain(app) || appStatus.host_port) && (() => {
+          {appStatus?.running && (() => {
             const primaryDomain = getPrimaryDomain(app);
-            const href = primaryDomain
-              ? `https://${primaryDomain}`
-              : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${appStatus.host_port}`;
-            return (
-              <Button variant="outline" asChild className="gap-2">
-                <a href={href} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Open App
-                  {!primaryDomain && appStatus.host_port && (
-                    <span className="text-xs text-muted-foreground">
-                      :{appStatus.host_port}
+            if (primaryDomain) {
+              return (
+                <Button variant="outline" asChild className="gap-2">
+                  <a href={`https://${primaryDomain}`} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Open App
+                  </a>
+                </Button>
+              );
+            }
+            if (appStatus.host_port) {
+              const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+              return (
+                <Button variant="outline" asChild className="gap-2">
+                  <a href={`http://${host}:${appStatus.host_port}`} target="_blank" rel="noopener noreferrer" title="No domain configured — accessing via host port">
+                    <ExternalLink className="h-4 w-4" />
+                    Open App
+                    <span className="text-xs text-muted-foreground ml-1">
+                      (port {appStatus.host_port})
                     </span>
-                  )}
-                </a>
-              </Button>
-            );
+                  </a>
+                </Button>
+              );
+            }
+            return null;
           })()}
           {/* More actions dropdown: Clone + Maintenance */}
           <DropdownMenu>

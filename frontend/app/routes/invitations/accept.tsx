@@ -120,7 +120,7 @@ export default function AcceptInvitationPage() {
     },
     onSuccess: (member) => {
       // Navigate to the team settings page
-      navigate(`/settings/teams/${member.team_id}`, { replace: true });
+      navigate(`/teams/${member.team_id}`, { replace: true });
     },
     onError: (error: Error) => {
       // Handle specific error cases

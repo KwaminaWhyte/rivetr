@@ -54,6 +54,7 @@ export default function NewAppPage() {
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appName, setAppName] = useState("");
 
   // Upload state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -323,10 +324,23 @@ export default function NewAppPage() {
                   name="name"
                   placeholder="my-app"
                   required
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  A unique name for your application
-                </p>
+                {appName.trim() ? (
+                  <p className="text-xs text-muted-foreground">
+                    Subdomain:{" "}
+                    <span className="font-mono text-foreground">
+                      {appName.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-")}
+                      .&lt;base-domain&gt;
+                    </span>
+                    {" "}— configure <code className="bg-muted px-0.5 rounded">base_domain</code> in <code className="bg-muted px-0.5 rounded">rivetr.toml</code>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    A unique name for your application
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

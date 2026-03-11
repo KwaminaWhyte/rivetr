@@ -106,10 +106,10 @@ pub async fn get_user(access_token: &str) -> Result<ProviderUserInfo, (StatusCod
     })
 }
 
-/// Validate a Bitbucket App Password and get user info
-pub async fn validate_app_password(
+/// Validate a Bitbucket API Token and get user info
+pub async fn validate_api_token(
     username: &str,
-    app_password: &str,
+    api_token: &str,
 ) -> Result<ProviderUserInfo, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
@@ -133,7 +133,7 @@ pub async fn validate_app_password(
 
     let response = client
         .get("https://api.bitbucket.org/2.0/user")
-        .basic_auth(username, Some(app_password))
+        .basic_auth(username, Some(api_token))
         .send()
         .await
         .map_err(|e| {
@@ -146,7 +146,7 @@ pub async fn validate_app_password(
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err((
             StatusCode::UNAUTHORIZED,
-            "Invalid Bitbucket username or App Password".to_string(),
+            "Invalid Bitbucket username or API Token".to_string(),
         ));
     }
 
@@ -285,11 +285,11 @@ pub async fn fetch_repos(
         .collect())
 }
 
-/// Fetch Bitbucket repos using App Password (basic auth variant)
+/// Fetch Bitbucket repos using API Token (basic auth variant)
 #[allow(dead_code)]
-pub async fn fetch_repos_with_app_password(
+pub async fn fetch_repos_with_api_token(
     username: &str,
-    app_password: &str,
+    api_token: &str,
     page: u32,
     per_page: u32,
 ) -> Result<Vec<GitRepository>, (StatusCode, String)> {
@@ -344,7 +344,7 @@ pub async fn fetch_repos_with_app_password(
             "https://api.bitbucket.org/2.0/repositories/{}?page={}&pagelen={}",
             username, page, per_page
         ))
-        .basic_auth(username, Some(app_password))
+        .basic_auth(username, Some(api_token))
         .send()
         .await
         .map_err(|e| {

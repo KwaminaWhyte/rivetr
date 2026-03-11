@@ -70,16 +70,24 @@ export default [
     // Notifications
     route("notifications", "routes/notifications.tsx"),
 
+    // Infrastructure (top-level, no /settings/ prefix)
+    route("servers", "routes/settings/servers.tsx"),
+    route("build-servers", "routes/settings/build-servers.tsx"),
+    route("ssh-keys", "routes/settings/ssh-keys.tsx"),
+    route("swarm", "routes/settings/swarm.tsx"),
+
+    // Access (top-level, no /settings/ prefix)
+    route("teams", "routes/settings/teams.tsx"),
+    route("teams/:id", "routes/settings/teams/$id.tsx"),
+    route("git-providers", "routes/settings/git-providers.tsx"),
+    route("webhooks", "routes/settings/webhooks.tsx"),
+    route("webhook-events", "routes/settings/webhook-events.tsx"),
+    route("tokens", "routes/settings/tokens.tsx"),
+
     // Settings
     ...prefix("settings", [
       index("routes/settings/_index.tsx"),
-      route("webhooks", "routes/settings/webhooks.tsx"),
-      route("tokens", "routes/settings/tokens.tsx"),
-      route("ssh-keys", "routes/settings/ssh-keys.tsx"),
-      route("git-providers", "routes/settings/git-providers.tsx"),
       route("notifications", "routes/settings/notifications.tsx"),
-      route("teams", "routes/settings/teams.tsx"),
-      route("teams/:id", "routes/settings/teams/$id.tsx"),
       route("audit", "routes/settings/audit.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
       route("auto-update", "routes/settings/auto-update.tsx"),
@@ -88,10 +96,6 @@ export default [
       route("security", "routes/settings/security.tsx"),
       route("oauth", "routes/settings/oauth.tsx"),
       route("sso", "routes/settings/sso.tsx"),
-      route("servers", "routes/settings/servers.tsx"),
-      route("build-servers", "routes/settings/build-servers.tsx"),
-      route("swarm", "routes/settings/swarm.tsx"),
-      route("webhook-events", "routes/settings/webhook-events.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

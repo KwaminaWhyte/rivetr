@@ -131,7 +131,7 @@ export function TeamSwitcher({
             {canCreateTeam && (
               <DropdownMenuItem
                 className="gap-2 p-2"
-                onClick={() => navigate("/settings/teams?create=true")}
+                onClick={() => navigate("/teams?create=true")}
               >
                 <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                   <Plus className="size-4" />

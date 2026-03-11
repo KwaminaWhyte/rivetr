@@ -157,7 +157,7 @@ export function GitLabRepoPicker({
         <Button
           onClick={() =>
             (window.location.href =
-              "/settings/git-providers?tab=gitlab&action=connect")
+              "/git-providers?tab=gitlab&action=connect")
           }
           className="gap-2"
         >

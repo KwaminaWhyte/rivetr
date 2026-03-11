@@ -202,7 +202,7 @@ export default function TeamDetailPage() {
     mutationFn: () => api.deleteTeam(id!),
     onSuccess: () => {
       toast.success("Team deleted");
-      navigate("/settings/teams");
+      navigate("/teams");
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to delete team");
@@ -294,7 +294,7 @@ export default function TeamDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
-          <Link to="/settings/teams">
+          <Link to="/teams">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Teams
           </Link>

@@ -659,7 +659,7 @@ function BitbucketTab() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteProvider, setDeleteProvider] = useState<GitProvider | null>(null);
   const [username, setUsername] = useState("");
-  const [appPassword, setAppPassword] = useState("");
+  const [apiToken, setApiToken] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [webhookCopied, setWebhookCopied] = useState(false);
@@ -710,22 +710,22 @@ function BitbucketTab() {
   });
 
   const handleAddProvider = async () => {
-    if (!username.trim() || !appPassword.trim()) {
-      toast.error("Username and App Password are required");
+    if (!username.trim() || !apiToken.trim()) {
+      toast.error("Username and API Token are required");
       return;
     }
     setIsAdding(true);
     try {
       await api.addGitProvider({
         provider: "bitbucket",
-        token: appPassword.trim(),
+        token: apiToken.trim(),
         username: username.trim(),
       });
       toast.success("Bitbucket connected successfully!");
       queryClient.invalidateQueries({ queryKey: ["gitProviders"] });
       setAddDialogOpen(false);
       setUsername("");
-      setAppPassword("");
+      setApiToken("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to connect Bitbucket");
     } finally {
@@ -744,7 +744,7 @@ function BitbucketTab() {
                 Bitbucket
               </CardTitle>
               <CardDescription>
-                Connect Bitbucket using an App Password to access your repositories.
+                Connect Bitbucket using an API Token to access your repositories.
               </CardDescription>
             </div>
             {!bitbucketProvider && (
@@ -793,12 +793,12 @@ function BitbucketTab() {
               <div>
                 <p className="text-lg font-medium">Bitbucket Not Connected</p>
                 <p className="text-sm text-muted-foreground">
-                  Add an App Password to deploy from Bitbucket repositories.
+                  Add an API Token to deploy from Bitbucket repositories.
                 </p>
               </div>
               <Button onClick={() => setAddDialogOpen(true)} className="gap-2">
                 <Key className="h-4 w-4" />
-                Add App Password
+                Add API Token
               </Button>
             </div>
           )}
@@ -855,28 +855,29 @@ function BitbucketTab() {
         </CardContent>
       </Card>
 
-      {/* How to create App Password */}
+      {/* How to create API Token */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">How to Create a Bitbucket App Password</CardTitle>
+          <CardTitle className="text-base">How to Create a Bitbucket API Token</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <ol className="list-decimal list-inside space-y-2">
-            <li>Go to Bitbucket → Personal Settings → App passwords</li>
-            <li>Click "Create app password"</li>
+            <li>Go to your Atlassian account at id.atlassian.com</li>
+            <li>Navigate to Security → API tokens</li>
+            <li>Click "Create API token"</li>
             <li>Give it a label like "Rivetr"</li>
-            <li>Select permissions: <code className="bg-muted px-1 rounded">Repositories: Read</code>, <code className="bg-muted px-1 rounded">Account: Read</code></li>
+            <li>Select scopes: <code className="bg-muted px-1 rounded">Repositories: Read</code>, <code className="bg-muted px-1 rounded">Account: Read</code></li>
             <li>Click "Create"</li>
-            <li>Copy the password and paste it here</li>
+            <li>Copy the token and paste it here</li>
           </ol>
           <a
-            href="https://bitbucket.org/account/settings/app-passwords/"
+            href="https://id.atlassian.com/manage-profile/security/api-tokens"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-primary hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
-            Open Bitbucket App Passwords
+            Open Atlassian API Tokens
           </a>
         </CardContent>
       </Card>
@@ -890,7 +891,7 @@ function BitbucketTab() {
               Connect Bitbucket
             </DialogTitle>
             <DialogDescription>
-              Enter your Bitbucket username and App Password to connect your repositories.
+              Enter your Bitbucket username and API Token to connect your repositories.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -904,22 +905,30 @@ function BitbucketTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bitbucket-password">App Password</Label>
+              <Label htmlFor="bitbucket-token">API Token</Label>
               <Input
-                id="bitbucket-password"
+                id="bitbucket-token"
                 type="password"
-                placeholder="xxxx-xxxx-xxxx-xxxx"
-                value={appPassword}
-                onChange={(e) => setAppPassword(e.target.value)}
+                placeholder="Your Atlassian API token"
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Required permissions: Repository Read, Account Read
+                Required permissions: Repository Read, Account Read. Generate at{" "}
+                <a
+                  href="https://id.atlassian.com/manage-profile/security/api-tokens"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  id.atlassian.com
+                </a>
               </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddProvider} disabled={isAdding || !username.trim() || !appPassword.trim()} className="gap-2">
+            <Button onClick={handleAddProvider} disabled={isAdding || !username.trim() || !apiToken.trim()} className="gap-2">
               {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
               Connect
             </Button>

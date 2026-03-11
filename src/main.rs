@@ -276,11 +276,13 @@ async fn main() -> Result<()> {
 
                 // IMPORTANT: Start HTTP proxy FIRST so ACME HTTP-01 challenges can be served
                 // The proxy must be listening on port 80 before Let's Encrypt tries to verify.
-                // HTTP→HTTPS redirect is enabled — ACME challenges bypass the redirect automatically.
+                // HTTP→HTTPS redirect starts disabled; enabled only once TLS cert is confirmed.
+                let https_redirect_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let https_redirect_flag_clone = https_redirect_flag.clone();
                 let http_challenges = acme_challenges.clone();
                 tokio::spawn(async move {
                     if let Err(e) = proxy_server
-                        .run_with_options(Some(http_challenges), true, https_port)
+                        .run_with_options(Some(http_challenges), Some(https_redirect_flag_clone), https_port)
                         .await
                     {
                         tracing::error!(error = %e, "HTTP proxy server error");
@@ -329,6 +331,8 @@ async fn main() -> Result<()> {
                 };
 
                 if let Some(tls_config) = tls_config_result {
+                    // TLS cert is available — enable HTTP→HTTPS redirect now
+                    https_redirect_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                     let https_addr: SocketAddr =
                         format!("{}:{}", config.server.host, https_port)
                             .parse()

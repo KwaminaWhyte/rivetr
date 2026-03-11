@@ -295,11 +295,12 @@ impl ProxyServer {
         self.routes.clone()
     }
 
-    /// Start the proxy server (HTTP), optionally redirecting to HTTPS
+    /// Start the proxy server (HTTP), with optional HTTPS redirect.
+    /// `redirect_enabled` is an Arc<AtomicBool> — set it to true once TLS cert is confirmed.
     pub async fn run_with_options(
         self,
         acme_challenges: Option<AcmeChallenges>,
-        https_redirect: bool,
+        redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
         https_port: u16,
     ) -> anyhow::Result<()> {
         let listener = TcpListener::bind(self.bind_addr).await?;
@@ -309,8 +310,8 @@ impl ProxyServer {
         if let Some(challenges) = acme_challenges {
             handler = handler.with_acme(challenges);
         }
-        if https_redirect {
-            handler = handler.with_https_redirect(https_port);
+        if let Some(flag) = redirect_enabled {
+            handler = handler.with_https_redirect(https_port, flag);
         }
 
         loop {
@@ -332,7 +333,7 @@ impl ProxyServer {
 
     /// Start the proxy server (HTTP)
     pub async fn run(self) -> anyhow::Result<()> {
-        self.run_with_options(None, false, 443).await
+        self.run_with_options(None, None, 443).await
     }
 }
 

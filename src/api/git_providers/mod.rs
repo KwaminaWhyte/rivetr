@@ -150,7 +150,7 @@ pub async fn delete_provider(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Add a Git provider via Personal Access Token (GitLab) or App Password (Bitbucket)
+/// Add a Git provider via Personal Access Token (GitLab) or API Token (Bitbucket)
 pub async fn add_token_provider(
     State(state): State<Arc<AppState>>,
     user: User,
@@ -178,9 +178,9 @@ pub async fn add_token_provider(
         GitProviderType::Bitbucket => {
             let username = req.username.ok_or((
                 StatusCode::BAD_REQUEST,
-                "Username is required for Bitbucket App Password".to_string(),
+                "Username is required for Bitbucket API Token".to_string(),
             ))?;
-            bitbucket::validate_app_password(&username, &req.token).await?
+            bitbucket::validate_api_token(&username, &req.token).await?
         }
     };
 

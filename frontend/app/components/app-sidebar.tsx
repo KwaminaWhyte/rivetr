@@ -36,18 +36,18 @@ const navPlatform: NavMainItem[] = [
 ];
 
 const navInfrastructure: NavMainItem[] = [
-  { title: "Servers", url: "/settings/servers", icon: Server },
-  { title: "Build Servers", url: "/settings/build-servers", icon: Cpu },
-  { title: "SSH Keys", url: "/settings/ssh-keys", icon: Key },
-  { title: "Docker Swarm", url: "/settings/swarm", icon: Network },
+  { title: "Servers", url: "/servers", icon: Server },
+  { title: "Build Servers", url: "/build-servers", icon: Cpu },
+  { title: "SSH Keys", url: "/ssh-keys", icon: Key },
+  { title: "Docker Swarm", url: "/swarm", icon: Network },
 ];
 
 const navAccess: NavMainItem[] = [
-  { title: "Teams", url: "/settings/teams", icon: Users },
-  { title: "Git Integrations", url: "/settings/git-providers", icon: GitBranch },
-  { title: "Webhooks", url: "/settings/webhooks", icon: Webhook },
-  { title: "Webhook Events", url: "/settings/webhook-events", icon: Activity },
-  { title: "API Tokens", url: "/settings/tokens", icon: KeyRound },
+  { title: "Teams", url: "/teams", icon: Users },
+  { title: "Git Integrations", url: "/git-providers", icon: GitBranch },
+  { title: "Webhooks", url: "/webhooks", icon: Webhook },
+  { title: "Webhook Events", url: "/webhook-events", icon: Activity },
+  { title: "API Tokens", url: "/tokens", icon: KeyRound },
 ];
 
 const navSettings: NavMainItem[] = [
