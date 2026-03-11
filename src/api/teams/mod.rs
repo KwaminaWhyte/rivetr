@@ -156,13 +156,25 @@ async fn get_user_team_membership(
         .await
 }
 
-/// Require that the current user has at least the specified role in the team
+/// Require that the current user has at least the specified role in the team.
+/// The synthetic "system" user (admin API token) is treated as an owner of every team.
 async fn require_team_role(
     pool: &sqlx::SqlitePool,
     team_id: &str,
     user_id: &str,
     required_role: TeamRole,
 ) -> Result<TeamMember, ApiError> {
+    // Admin API token ("system") has owner-level access to every team
+    if user_id == "system" {
+        return Ok(TeamMember {
+            id: "system".to_string(),
+            team_id: team_id.to_string(),
+            user_id: "system".to_string(),
+            role: "owner".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        });
+    }
+
     let membership = get_user_team_membership(pool, team_id, user_id)
         .await?
         .ok_or_else(|| ApiError::forbidden("You are not a member of this team"))?;

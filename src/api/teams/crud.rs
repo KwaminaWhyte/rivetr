@@ -27,18 +27,25 @@ pub async fn list_teams(
     State(state): State<Arc<AppState>>,
     user: User,
 ) -> Result<Json<Vec<TeamWithMemberCount>>, ApiError> {
-    // Get all teams the user is a member of
-    let mut teams = sqlx::query_as::<_, Team>(
-        r#"
-        SELECT t.* FROM teams t
-        INNER JOIN team_members tm ON t.id = tm.team_id
-        WHERE tm.user_id = ?
-        ORDER BY t.created_at DESC
-        "#,
-    )
-    .bind(&user.id)
-    .fetch_all(&state.db)
-    .await?;
+    // Admin API token ("system") can see all teams
+    let mut teams = if user.id == "system" {
+        sqlx::query_as::<_, Team>("SELECT * FROM teams ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await?
+    } else {
+        // Get all teams the user is a member of
+        sqlx::query_as::<_, Team>(
+            r#"
+            SELECT t.* FROM teams t
+            INNER JOIN team_members tm ON t.id = tm.team_id
+            WHERE tm.user_id = ?
+            ORDER BY t.created_at DESC
+            "#,
+        )
+        .bind(&user.id)
+        .fetch_all(&state.db)
+        .await?
+    };
 
     // If user has no teams and is a real DB user, create a default "Personal" team for them.
     // Skip auto-create for the synthetic admin-token user ("system") which has no DB record.
@@ -109,7 +116,13 @@ pub async fn list_teams(
             .fetch_one(&state.db)
             .await?;
 
-        let membership = get_user_team_membership(&state.db, &team.id, &user.id).await?;
+        let user_role = if user.id == "system" {
+            Some("owner".to_string())
+        } else {
+            get_user_team_membership(&state.db, &team.id, &user.id)
+                .await?
+                .map(|m| m.role)
+        };
 
         results.push(TeamWithMemberCount {
             id: team.id,
@@ -118,7 +131,7 @@ pub async fn list_teams(
             created_at: team.created_at,
             updated_at: team.updated_at,
             member_count: count.0,
-            user_role: membership.map(|m| m.role),
+            user_role,
         });
     }
 
@@ -217,25 +230,27 @@ pub async fn create_team(
         }
     })?;
 
-    // Add the creator as owner
-    let member_id = Uuid::new_v4().to_string();
-    sqlx::query(
-        r#"
-        INSERT INTO team_members (id, team_id, user_id, role, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        "#,
-    )
-    .bind(&member_id)
-    .bind(&id)
-    .bind(&user.id)
-    .bind("owner")
-    .bind(&now)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to add team owner: {}", e);
-        ApiError::database("Failed to create team membership")
-    })?;
+    // Add the creator as owner (skip for synthetic "system" admin-token user — no DB record)
+    if user.id != "system" {
+        let member_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            r#"
+            INSERT INTO team_members (id, team_id, user_id, role, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&member_id)
+        .bind(&id)
+        .bind(&user.id)
+        .bind("owner")
+        .bind(&now)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to add team owner: {}", e);
+            ApiError::database("Failed to create team membership")
+        })?;
+    }
 
     let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
         .bind(&id)
