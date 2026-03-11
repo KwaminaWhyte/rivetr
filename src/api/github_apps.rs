@@ -269,7 +269,7 @@ pub async fn delete_app(
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
     // Delete installations first
-    sqlx::query("DELETE FROM github_app_installations WHERE app_id = ?")
+    sqlx::query("DELETE FROM github_app_installations WHERE github_app_id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
