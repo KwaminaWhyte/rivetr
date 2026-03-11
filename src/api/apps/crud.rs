@@ -114,6 +114,10 @@ pub async fn create_app(
         .container_labels
         .as_ref()
         .map(|l| serde_json::to_string(l).unwrap_or_default());
+    let nixpacks_config_json = req
+        .nixpacks_config
+        .as_ref()
+        .map(|v| v.to_string());
 
     // Generate auto_subdomain: sslip (legacy) → base_domain → traefik.me → None
     let auto_subdomain = if state.config.proxy.sslip_enabled {
@@ -161,7 +165,7 @@ pub async fn create_app(
     .bind(&req.registry_password)
     .bind(&container_labels_json)
     .bind(&req.build_type)
-    .bind(&req.nixpacks_config)
+    .bind(&nixpacks_config_json)
     .bind(&req.publish_directory)
     .bind(req.preview_enabled)
     .bind(&req.git_provider_id)
@@ -307,7 +311,10 @@ pub async fn update_app(
 
     // Build type and Nixpacks fields
     let build_type = merge_optional_string(&req.build_type, &existing.build_type);
-    let nixpacks_config = merge_optional_string(&req.nixpacks_config, &existing.nixpacks_config);
+    let nixpacks_config = match &req.nixpacks_config {
+        Some(v) => Some(v.to_string()),
+        None => existing.nixpacks_config.clone(),
+    };
     let publish_directory =
         merge_optional_string(&req.publish_directory, &existing.publish_directory);
     let preview_enabled = req.preview_enabled.unwrap_or(existing.preview_enabled != 0);

@@ -512,8 +512,8 @@ pub struct CreateAppRequest {
     /// Build type: "dockerfile" (default), "nixpacks", or "static"
     #[serde(default = "default_build_type")]
     pub build_type: String,
-    /// Nixpacks-specific configuration (JSON object)
-    pub nixpacks_config: Option<String>,
+    /// Nixpacks-specific configuration (JSON object or JSON string)
+    pub nixpacks_config: Option<serde_json::Value>,
     /// Publish directory for static site builds (e.g., "dist", "build", "out")
     pub publish_directory: Option<String>,
     /// Enable PR preview deployments
@@ -599,8 +599,8 @@ pub struct UpdateAppRequest {
     // Build type and Nixpacks support
     /// Build type: "dockerfile", "nixpacks", or "static"
     pub build_type: Option<String>,
-    /// Nixpacks-specific configuration (JSON object)
-    pub nixpacks_config: Option<String>,
+    /// Nixpacks-specific configuration (JSON object or JSON string)
+    pub nixpacks_config: Option<serde_json::Value>,
     /// Publish directory for static site builds (e.g., "dist", "build", "out")
     pub publish_directory: Option<String>,
     /// Enable PR preview deployments
