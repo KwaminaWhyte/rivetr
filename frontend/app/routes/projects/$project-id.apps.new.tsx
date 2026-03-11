@@ -17,7 +17,15 @@ import { Switch } from "@/components/ui/switch";
 import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upload, Zap, Cloud } from "lucide-react";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
+import { GitLabRepoPicker, type SelectedGitLabRepo } from "@/components/gitlab-repo-picker";
 import { ZipUploadZone } from "@/components/zip-upload-zone";
+
+// GitLab SVG icon
+const GitLabIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+  <svg className={className} style={style} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z" />
+  </svg>
+);
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import type { AppEnvironment, BuildType, BuildDetectionResult, NixpacksConfig, Project, ProjectWithApps, CreateAppRequest } from "@/types/api";
@@ -41,7 +49,7 @@ export default function NewAppPage() {
   const queryClient = useQueryClient();
   const { currentTeamId } = useTeamContext();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry" | "upload">("git");
-  const [gitSourceType, setGitSourceType] = useState<"github" | "manual">("github");
+  const [gitSourceType, setGitSourceType] = useState<"github" | "gitlab" | "manual">("github");
   const [buildType, setBuildType] = useState<BuildType>("nixpacks");
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -54,6 +62,8 @@ export default function NewAppPage() {
 
   // GitHub repo picker state
   const [selectedRepo, setSelectedRepo] = useState<SelectedRepo | null>(null);
+  // GitLab repo picker state
+  const [selectedGitLabRepo, setSelectedGitLabRepo] = useState<SelectedGitLabRepo | null>(null);
   const [manualGitUrl, setManualGitUrl] = useState("");
   const [manualBranch, setManualBranch] = useState("main");
 
@@ -219,6 +229,10 @@ export default function NewAppPage() {
         // Use GitHub repo picker selection
         git_url = selectedRepo.gitUrl;
         branch = selectedRepo.branch;
+      } else if (gitSourceType === "gitlab" && selectedGitLabRepo) {
+        // Use GitLab repo picker selection
+        git_url = selectedGitLabRepo.gitUrl;
+        branch = selectedGitLabRepo.branch;
       } else {
         // Manual URL entry
         git_url = manualGitUrl;
@@ -229,7 +243,11 @@ export default function NewAppPage() {
       const publish_directory = (formData.get("publish_directory") as string) || undefined;
 
       if (!git_url?.trim()) {
-        setError(gitSourceType === "github" ? "Please select a repository" : "Git URL is required");
+        setError(
+          gitSourceType === "github" || gitSourceType === "gitlab"
+            ? "Please select a repository"
+            : "Git URL is required"
+        );
         return;
       }
 
@@ -265,7 +283,10 @@ export default function NewAppPage() {
         nixpacks_config: nixpacksConfigToSend,
         publish_directory: buildType === "staticsite" ? publish_directory : undefined,
         preview_enabled: previewEnabled,
-        github_app_installation_id: gitSourceType === "github" && selectedRepo ? selectedRepo.installationId : undefined,
+        github_app_installation_id:
+          gitSourceType === "github" && selectedRepo
+            ? selectedRepo.installationId
+            : undefined,
       });
     }
   }
@@ -352,7 +373,7 @@ export default function NewAppPage() {
                   {/* Git Source Type Toggle */}
                   <div className="space-y-3">
                     <Label>Source</Label>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                       <button
                         type="button"
                         onClick={() => setGitSourceType("github")}
@@ -365,6 +386,21 @@ export default function NewAppPage() {
                         <Github className="h-5 w-5" />
                         <div className="text-left">
                           <span className="text-sm font-medium block">GitHub</span>
+                          <span className="text-xs text-muted-foreground">Select from your repos</span>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGitSourceType("gitlab")}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-colors ${
+                          gitSourceType === "gitlab"
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        <GitLabIcon className="h-5 w-5" style={{ color: "#FC6D26" }} />
+                        <div className="text-left">
+                          <span className="text-sm font-medium block">GitLab</span>
                           <span className="text-xs text-muted-foreground">Select from your repos</span>
                         </div>
                       </button>
@@ -392,6 +428,14 @@ export default function NewAppPage() {
                       onSelect={(selection) => setSelectedRepo(selection)}
                       selectedInstallationId={selectedRepo?.installationId}
                       selectedRepoFullName={selectedRepo?.repository.full_name}
+                    />
+                  )}
+
+                  {/* GitLab Repository Picker */}
+                  {gitSourceType === "gitlab" && (
+                    <GitLabRepoPicker
+                      onSelect={(selection) => setSelectedGitLabRepo(selection)}
+                      selectedRepoFullName={selectedGitLabRepo?.repository.full_name}
                     />
                   )}
 

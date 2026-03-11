@@ -21,6 +21,8 @@ export default [
     ...prefix("projects", [
       index("routes/projects/_index.tsx"),
       route(":id", "routes/projects/$id.tsx"),
+      route(":id/environments", "routes/projects/$id.environments.tsx"),
+      route(":id/env-vars", "routes/projects/$id.env-vars.tsx"),
       route(":projectId/apps/new", "routes/projects/$project-id.apps.new.tsx"),
     ]),
 
