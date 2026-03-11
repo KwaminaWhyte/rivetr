@@ -129,6 +129,23 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Mark any in-progress deployments as failed on startup.
+    // If the server was restarted mid-build, the Docker process was killed but the
+    // deployment record was left in "building"/"cloning"/etc. state. Fail them now.
+    let stuck_statuses = ["pending", "cloning", "building", "starting", "checking"];
+    for status in &stuck_statuses {
+        let _ = sqlx::query(
+            "UPDATE deployments SET status = 'failed', \
+             error_message = 'Server restarted during deployment', \
+             finished_at = datetime('now') \
+             WHERE status = ?",
+        )
+        .bind(*status)
+        .execute(&db)
+        .await;
+    }
+    tracing::info!("Cleaned up any stuck in-progress deployments from previous server run");
+
     // Reconcile container status on startup
     // This updates database records for containers that stopped while server was down
     reconcile_container_status(&db, &runtime).await;

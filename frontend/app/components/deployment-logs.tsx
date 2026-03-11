@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getAuthToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 interface LogEntry {
   id: number;
@@ -91,6 +92,18 @@ export function DeploymentLogs({
     };
   }, [deploymentId, token]);
 
+  // Always load historical logs first via REST, then stream new ones via WebSocket if active
+  useEffect(() => {
+    api.getDeploymentLogs(deploymentId, token || undefined).then((historicalLogs) => {
+      if (historicalLogs && historicalLogs.length > 0) {
+        setLogs(historicalLogs as LogEntry[]);
+      }
+      if (!isActive) {
+        setEnded(true);
+      }
+    }).catch(() => {/* ignore */});
+  }, [deploymentId, isActive, token]);
+
   // Auto-connect when component mounts if deployment is active
   useEffect(() => {
     if (isActive) {
@@ -108,8 +121,25 @@ export function DeploymentLogs({
     return new Date(ts).toLocaleTimeString();
   };
 
-  if (!isActive && logs.length === 0) {
-    return null;
+  if (logs.length === 0 && ended) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          No logs available for this deployment.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (logs.length === 0 && !isActive) {
+    // Still loading historical logs — show skeleton
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground text-sm">
+          Loading logs…
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
