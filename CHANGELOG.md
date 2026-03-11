@@ -16,6 +16,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.2] - 2026-03-11
+
+### Added
+- **Deployment Detail Page** — `/apps/:id/deployments/:deploymentId` shows real-time build logs via WebSocket, deployment metadata (commit, timing, status), and error details. Navigating to this page after triggering a deploy is now automatic.
+- **GitLab Source in New App** — GitLab repo picker is now available in the new app creation form alongside GitHub.
+
+### Fixed
+- **Git Clone Authentication** — HTTPS clones for private GitHub, GitLab, and Bitbucket repos now inject the linked provider's OAuth/PAT token into the URL so git does not prompt for credentials (`fatal: could not read Username`). GitHub uses `x-access-token`, GitLab uses `oauth2:`, Bitbucket uses `x-token-auth:`.
+- **App Name Validation** — Names are now auto-sanitized in the frontend (lowercase, spaces → dashes, invalid chars stripped) so the format error is never shown to users. Backend validation is also relaxed (single-char names allowed, trailing dashes allowed). Global uniqueness constraint removed — apps with the same name are now allowed (apps are identified by UUID).
+- **Bitbucket Auth** — Updated from deprecated App Passwords to Atlassian API Tokens (ATATT prefix). Label and help link updated in the git providers settings.
+- **HTTP→HTTPS Redirect** — Port 80 no longer redirects to HTTPS when no TLS certificate is available. The redirect is only activated after the certificate is confirmed.
+- **Sidebar URL Restructure** — Infrastructure and access items (servers, teams, git-providers, ssh-keys, tokens, webhooks) are now at clean top-level URLs instead of `/settings/*`.
+- **Missing Project Routes** — `/projects/:id/environments` and `/projects/:id/env-vars` are now registered and render correctly.
+
+### Changed
+- **Deployment Diff & Build Logs Modals** — Width increased to `max-w-5xl`/`max-w-4xl` (was `max-w-4xl`/`max-w-2xl`).
+- **"View Full Logs" Button** — Now navigates to the deployment detail page instead of opening a small modal.
+- **Deploy Button** — After triggering a deployment, the user is automatically taken to the deployment detail page to watch live logs.
+- **Database Migration 066** — `apps.name` UNIQUE constraint removed. Existing data is preserved; all indexes are recreated.
+
+---
+
 ## [0.10.1] - 2026-03-10
 
 ### Fixed

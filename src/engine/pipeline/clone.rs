@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use crate::db::{App, SshKey};
+use crate::db::{App, GitProvider, SshKey};
 use crate::DbPool;
 
 /// Get SSH key for an app - checks app-specific key first, then falls back to global key
@@ -83,6 +83,71 @@ pub(super) async fn clone_repository(
 /// Check if a URL is an SSH URL (git@host:path or ssh://...)
 pub(super) fn is_ssh_url(url: &str) -> bool {
     url.starts_with("git@") || url.starts_with("ssh://")
+}
+
+/// Inject OAuth/PAT credentials into an HTTPS git URL so cloning succeeds
+/// without an interactive credential prompt.
+///
+/// Result formats:
+///   GitHub  → `https://x-access-token:{token}@github.com/...`
+///   GitLab  → `https://oauth2:{token}@gitlab.com/...`
+///   Bitbucket → `https://x-token-auth:{token}@bitbucket.org/...`
+///   Other   → `https://oauth2:{token}@host/...`
+pub(super) fn inject_credentials_into_url(url: &str, provider: &GitProvider) -> String {
+    if is_ssh_url(url) {
+        return url.to_string();
+    }
+
+    let token = &provider.access_token;
+    let userinfo = match provider.provider.as_str() {
+        "github" => format!("x-access-token:{}", token),
+        "gitlab" => format!("oauth2:{}", token),
+        "bitbucket" => format!("x-token-auth:{}", token),
+        _ => format!("oauth2:{}", token),
+    };
+
+    if let Some(rest) = url.strip_prefix("https://") {
+        // If credentials are already embedded, replace them
+        if let Some(at_pos) = rest.find('@') {
+            format!("https://{}@{}", userinfo, &rest[at_pos + 1..])
+        } else {
+            format!("https://{}@{}", userinfo, rest)
+        }
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        format!("http://{}@{}", userinfo, rest)
+    } else {
+        url.to_string()
+    }
+}
+
+/// Fetch the git provider linked to an app and return the authenticated clone URL.
+/// Returns the original URL unchanged if no provider is linked or the URL is SSH.
+pub(super) async fn get_authenticated_url(db: &DbPool, app: &App) -> Result<String> {
+    if is_ssh_url(&app.git_url) {
+        return Ok(app.git_url.clone());
+    }
+
+    // Look up the git_provider_id for this app
+    let provider_id: Option<Option<String>> =
+        sqlx::query_scalar("SELECT git_provider_id FROM apps WHERE id = ?")
+            .bind(&app.id)
+            .fetch_optional(db)
+            .await?;
+
+    let provider_id = match provider_id.flatten() {
+        Some(id) => id,
+        None => return Ok(app.git_url.clone()),
+    };
+
+    let provider = sqlx::query_as::<_, GitProvider>("SELECT * FROM git_providers WHERE id = ?")
+        .bind(&provider_id)
+        .fetch_optional(db)
+        .await?;
+
+    match provider {
+        Some(p) => Ok(inject_credentials_into_url(&app.git_url, &p)),
+        None => Ok(app.git_url.clone()),
+    }
 }
 
 /// Clone a repository using SSH key authentication

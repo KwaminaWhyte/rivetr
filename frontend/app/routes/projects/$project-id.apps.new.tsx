@@ -288,6 +288,10 @@ export default function NewAppPage() {
           gitSourceType === "github" && selectedRepo
             ? selectedRepo.installationId
             : undefined,
+        git_provider_id:
+          gitSourceType === "gitlab" && selectedGitLabRepo
+            ? selectedGitLabRepo.providerId
+            : undefined,
       });
     }
   }
@@ -325,20 +329,27 @@ export default function NewAppPage() {
                   placeholder="my-app"
                   required
                   value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
+                  onChange={(e) => {
+                    // Auto-sanitize: lowercase, spaces→dashes, strip invalid chars, collapse dashes
+                    const raw = e.target.value;
+                    const sanitized = raw
+                      .toLowerCase()
+                      .replace(/\s+/g, "-")
+                      .replace(/[^a-z0-9-]/g, "")
+                      .replace(/-{2,}/g, "-");
+                    setAppName(sanitized);
+                  }}
                 />
-                {appName.trim() ? (
+                {appName ? (
                   <p className="text-xs text-muted-foreground">
-                    Subdomain:{" "}
+                    Will be accessible as{" "}
                     <span className="font-mono text-foreground">
-                      {appName.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-")}
-                      .&lt;base-domain&gt;
+                      {appName}.&lt;base-domain&gt;
                     </span>
-                    {" "}— configure <code className="bg-muted px-0.5 rounded">base_domain</code> in <code className="bg-muted px-0.5 rounded">rivetr.toml</code>
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    A unique name for your application
+                    A name for your application
                   </p>
                 )}
               </div>

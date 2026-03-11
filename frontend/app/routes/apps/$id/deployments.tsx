@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useOutletContext, useSearchParams } from "react-router";
+import { useOutletContext, useSearchParams, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -88,6 +88,7 @@ function formatUptime(seconds: number | null | undefined): string {
 export default function AppDeploymentsTab() {
   const { app, deploymentsData: parentDeploymentsData } = useOutletContext<OutletContext>();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
@@ -375,8 +376,7 @@ export default function AppDeploymentsTab() {
                 deployments={deployments}
                 branch={app.branch}
                 onViewLogs={(deploymentId) => {
-                  setSelectedDeploymentId(deploymentId);
-                  setShowBuildLogsDialog(true);
+                  navigate(`/apps/${app.id}/deployments/${deploymentId}`);
                 }}
                 onRollback={(deploymentId) => {
                   setSelectedDeploymentId(deploymentId);
@@ -513,7 +513,7 @@ export default function AppDeploymentsTab() {
         setShowBuildLogsDialog(open);
         if (!open) setSelectedDeploymentId(null);
       }}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Build Logs</DialogTitle>
             <DialogDescription>
@@ -568,7 +568,7 @@ export default function AppDeploymentsTab() {
           setDiffData(null);
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GitCompare className="h-5 w-5" />

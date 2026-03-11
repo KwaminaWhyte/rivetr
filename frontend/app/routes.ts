@@ -32,6 +32,7 @@ export default [
       route("network", "routes/apps/$id/network.tsx"),
       route("settings", "routes/apps/$id/settings.tsx"),
       route("deployments", "routes/apps/$id/deployments.tsx"),
+      route("deployments/:deploymentId", "routes/apps/$id/deployment-detail.tsx"),
       route("previews", "routes/apps/$id/previews.tsx"),
       route("jobs", "routes/apps/$id/jobs.tsx"),
       route("logs", "routes/apps/$id/logs.tsx"),

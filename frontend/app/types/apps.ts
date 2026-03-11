@@ -442,6 +442,8 @@ export interface CreateAppRequest {
   preview_enabled?: boolean;
   // GitHub App installation
   github_app_installation_id?: string;
+  // Git provider (OAuth) link for authenticated HTTPS cloning
+  git_provider_id?: string;
 }
 
 export interface UpdateAppRequest {

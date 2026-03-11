@@ -163,12 +163,15 @@ async fn run_git_deployment(
     // Get SSH key if configured for this app
     let ssh_key = clone::get_ssh_key_for_app(db, app).await?;
 
+    // Build the effective clone URL (inject OAuth/PAT token for HTTPS repos)
+    let clone_url = clone::get_authenticated_url(db, app).await?;
+
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
-        clone::clone_repository_full(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref())
+        clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref())
             .await?;
     } else {
-        clone::clone_repository(&app.git_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+        clone::clone_repository(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
     }
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
 

@@ -521,6 +521,8 @@ pub struct CreateAppRequest {
     pub preview_enabled: bool,
     /// GitHub App installation ID for GitHub-based deployments
     pub github_app_installation_id: Option<String>,
+    /// Git provider ID (OAuth) for authenticated HTTPS cloning
+    pub git_provider_id: Option<String>,
 }
 
 fn default_build_type() -> String {

@@ -224,9 +224,11 @@ export default function AppDetailLayout() {
     if (!id) return;
     setIsSubmitting(true);
     try {
-      await api.triggerDeploy(id, options);
+      const deployment = await api.triggerDeploy(id, options);
       toast.success("Deployment started");
       queryClient.invalidateQueries({ queryKey: ["deployments", id] });
+      // Navigate to deployment detail page to watch live logs
+      navigate(`/apps/${id}/deployments/${deployment.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Deployment failed");
     } finally {

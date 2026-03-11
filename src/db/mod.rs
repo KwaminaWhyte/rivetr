@@ -904,6 +904,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/065_webhook_audit.sql")).await?;
     }
 
+    // Migration 066: Remove UNIQUE constraint from apps.name
+    // Apps have UUID primary keys, so names don't need to be globally unique.
+    let has_name_unique: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='apps' AND name LIKE 'sqlite_autoindex_apps%'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_name_unique.is_some() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/066_app_name_non_unique.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

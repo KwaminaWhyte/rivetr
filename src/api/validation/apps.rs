@@ -7,9 +7,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 lazy_static! {
-    /// Regex for validating app names (alphanumeric with dashes, 1-63 chars)
+    /// Regex for validating app names: lowercase alphanumeric and dashes, 1-63 chars
     static ref APP_NAME_REGEX: Regex = Regex::new(
-        r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+        r"^[a-z0-9][a-z0-9-]*$"
     ).unwrap();
 
     /// Regex for validating memory limit format (e.g., 256m, 1g, 512M, 2G, 256mb, 1gb)
@@ -33,13 +33,9 @@ pub fn validate_app_name(name: &str) -> Result<(), String> {
         return Err("App name is too long (max 63 characters)".to_string());
     }
 
-    if name.len() < 2 {
-        return Err("App name is too short (min 2 characters)".to_string());
-    }
-
     if !APP_NAME_REGEX.is_match(name) {
         return Err(
-            "App name must be lowercase alphanumeric with dashes, starting and ending with alphanumeric".to_string()
+            "App name must start with a letter or number and contain only lowercase letters, numbers, and dashes".to_string()
         );
     }
 
@@ -610,13 +606,13 @@ mod tests {
         assert!(validate_app_name("my-app").is_ok());
         assert!(validate_app_name("app123").is_ok());
         assert!(validate_app_name("my-cool-app-2").is_ok());
+        assert!(validate_app_name("a").is_ok()); // single char is ok now
+        assert!(validate_app_name("my-app-").is_ok()); // trailing dash allowed
 
         assert!(validate_app_name("").is_err());
-        assert!(validate_app_name("a").is_err()); // too short
-        assert!(validate_app_name("-invalid").is_err());
-        assert!(validate_app_name("invalid-").is_err());
+        assert!(validate_app_name("-invalid").is_err()); // must start with alnum
         assert!(validate_app_name("Invalid").is_err()); // uppercase
-        assert!(validate_app_name("my_app").is_err()); // underscore
+        assert!(validate_app_name("my_app").is_err()); // underscore not allowed
     }
 
     #[test]

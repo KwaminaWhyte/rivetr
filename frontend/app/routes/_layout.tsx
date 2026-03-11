@@ -121,6 +121,15 @@ function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
       { label: "Deployments" },
     ];
   }
+  if (pathname.match(/^\/apps\/[^/]+\/deployments\/[^/]+$/)) {
+    const appId = pathname.split("/")[2];
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Deployments", href: `/apps/${appId}/deployments` },
+      { label: "Detail" },
+    ];
+  }
   if (pathname.match(/^\/apps\/[^/]+\/network$/)) {
     return [
       { label: "Projects", href: "/projects" },

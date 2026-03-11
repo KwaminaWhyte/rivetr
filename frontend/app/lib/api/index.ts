@@ -99,6 +99,7 @@ export const api = {
   stopApp: appsApi.stopApp,
   restartApp: appsApi.restartApp,
   getDeployments: appsApi.getDeployments,
+  getDeployment: appsApi.getDeployment,
   getDeploymentLogs: appsApi.getDeploymentLogs,
   triggerDeploy: appsApi.triggerDeploy,
   getCommits: appsApi.getCommits,

@@ -149,6 +149,10 @@ export const appsApi = {
     return apiRequest<DeploymentListResponse>(url, {}, token);
   },
 
+  /** Get a single deployment by ID */
+  getDeployment: (id: string, token?: string) =>
+    apiRequest<Deployment>(`/deployments/${id}`, {}, token),
+
   /** Get logs for a specific deployment */
   getDeploymentLogs: (id: string, token?: string) =>
     apiRequest<DeploymentLog[]>(`/deployments/${id}/logs`, {}, token),
