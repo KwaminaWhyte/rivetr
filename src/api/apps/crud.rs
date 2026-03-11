@@ -538,17 +538,17 @@ pub async fn delete_app(
         return Err(ApiError::validation_field("app_id", e));
     }
 
-    // Verify password
-    if req.password.is_empty() {
-        return Err(ApiError::validation_field(
-            "password",
-            "Password is required".to_string(),
-        ));
-    }
-
-    // For system user (API token auth), skip password verification
-    if user.id != "system" && !verify_password(&req.password, &user.password_hash) {
-        return Err(ApiError::forbidden("Invalid password"));
+    // For system user (admin API token), skip password verification entirely
+    if user.id != "system" {
+        if req.password.is_empty() {
+            return Err(ApiError::validation_field(
+                "password",
+                "Password is required".to_string(),
+            ));
+        }
+        if !verify_password(&req.password, &user.password_hash) {
+            return Err(ApiError::forbidden("Invalid password"));
+        }
     }
 
     // Check if app exists before deleting

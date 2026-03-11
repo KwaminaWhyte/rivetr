@@ -49,9 +49,10 @@ pub struct AppStatusResponse {
     pub uptime_seconds: Option<i64>,
 }
 
-/// Request to delete an app (requires password confirmation)
-#[derive(serde::Deserialize)]
+/// Request to delete an app (requires password confirmation for non-admin-token requests)
+#[derive(serde::Deserialize, Default)]
 pub struct DeleteAppRequest {
+    #[serde(default)]
     pub password: String,
 }
 
