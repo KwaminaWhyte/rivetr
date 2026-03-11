@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GitLab Source in New App** — GitLab repo picker is now available in the new app creation form alongside GitHub.
 
 ### Fixed
-- **Git Clone Authentication** — HTTPS clones for private GitHub, GitLab, and Bitbucket repos now inject the linked provider's OAuth/PAT token into the URL so git does not prompt for credentials (`fatal: could not read Username`). GitHub uses `x-access-token`, GitLab uses `oauth2:`, Bitbucket uses `x-token-auth:`.
+- **Git Clone Authentication** — HTTPS clones for private GitHub, GitLab, and Bitbucket repos now inject the linked provider's OAuth/PAT token into the URL so git does not prompt for credentials (`fatal: could not read Username`). GitHub uses `x-access-token`, GitLab uses `oauth2:`, Bitbucket uses `x-token-auth:`. The `git_provider_id` is now stored on creation and looked up at deploy time.
 - **App Name Validation** — Names are now auto-sanitized in the frontend (lowercase, spaces → dashes, invalid chars stripped) so the format error is never shown to users. Backend validation is also relaxed (single-char names allowed, trailing dashes allowed). Global uniqueness constraint removed — apps with the same name are now allowed (apps are identified by UUID).
 - **Bitbucket Auth** — Updated from deprecated App Passwords to Atlassian API Tokens (ATATT prefix). Label and help link updated in the git providers settings.
 - **HTTP→HTTPS Redirect** — Port 80 no longer redirects to HTTPS when no TLS certificate is available. The redirect is only activated after the certificate is confirmed.
