@@ -464,7 +464,7 @@ pub async fn installation_callback(
 
     // Redirect to settings page with success
     Ok(Redirect::to(&format!(
-        "/settings/git-providers?installed=true&installation_id={}",
+        "/git-providers?installed=true&installation_id={}",
         params.installation_id
     )))
 }

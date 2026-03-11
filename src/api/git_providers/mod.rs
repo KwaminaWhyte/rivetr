@@ -419,7 +419,7 @@ pub async fn oauth_callback(
 
     // Redirect to settings page with success message
     Ok(axum::response::Redirect::to(
-        "/settings/git-providers?connected=true",
+        "/git-providers?connected=true",
     ))
 }
 
