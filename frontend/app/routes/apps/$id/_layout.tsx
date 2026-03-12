@@ -123,7 +123,15 @@ export default function AppDetailLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRestarting, setIsRestarting] = useState(false);
+  // Persist restart state in localStorage so a page refresh doesn't lose the indicator.
+  // We store the timestamp; if it's less than 90 seconds old, the restart is still in progress.
+  const RESTART_KEY = id ? `rivetr_restarting_${id}` : null;
+  const [isRestarting, setIsRestarting] = useState(() => {
+    if (!RESTART_KEY) return false;
+    const ts = localStorage.getItem(RESTART_KEY);
+    if (!ts) return false;
+    return Date.now() - Number(ts) < 90_000;
+  });
   const { setItems } = useBreadcrumb();
 
   // Upload deploy state
@@ -331,11 +339,12 @@ export default function AppDetailLayout() {
 
   // Handle restart action
   const handleRestart = async () => {
-    if (!id) return;
+    if (!id || !RESTART_KEY) return;
+    localStorage.setItem(RESTART_KEY, String(Date.now()));
     setIsRestarting(true);
     try {
       await api.restartApp(id);
-      toast.success("Application restarted");
+      toast.success("Application restarted successfully");
       refetchStatus();
       queryClient.invalidateQueries({ queryKey: ["app", id] });
     } catch (error) {
@@ -343,6 +352,7 @@ export default function AppDetailLayout() {
         error instanceof Error ? error.message : "Failed to restart app"
       );
     } finally {
+      if (RESTART_KEY) localStorage.removeItem(RESTART_KEY);
       setIsRestarting(false);
     }
   };

@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export function meta() {
   return [
@@ -22,6 +23,7 @@ import {
   GitCommit,
   Calendar,
   Timer,
+  RotateCcw,
 } from "lucide-react";
 import type { Deployment } from "@/types/api";
 
@@ -97,6 +99,7 @@ function durationSeconds(start: string | null | undefined, end: string | null | 
 
 export default function DeploymentDetailPage() {
   const { id: appId, deploymentId } = useParams<{ id: string; deploymentId: string }>();
+  const queryClient = useQueryClient();
 
   const { data: deployment, isLoading } = useQuery<Deployment>({
     queryKey: ["deployment", deploymentId],
@@ -112,6 +115,20 @@ export default function DeploymentDetailPage() {
 
   const isActive = deployment ? ACTIVE_STATUSES.includes(deployment.status) : false;
   const statusCfg = deployment ? (STATUS_CONFIG[deployment.status] ?? STATUS_CONFIG.pending) : null;
+  const canRollback =
+    deployment &&
+    (deployment.status === "replaced" || deployment.status === "stopped") &&
+    deployment.image_tag != null;
+
+  const rollbackMutation = useMutation({
+    mutationFn: () => api.rollbackDeployment(deploymentId!),
+    onSuccess: () => {
+      toast.success("Rollback started");
+      queryClient.invalidateQueries({ queryKey: ["deployment", deploymentId] });
+      queryClient.invalidateQueries({ queryKey: ["deployments", appId] });
+    },
+    onError: (e: Error) => toast.error(e.message || "Rollback failed"),
+  });
 
   return (
     <div className="space-y-6 p-6">
@@ -150,15 +167,29 @@ export default function DeploymentDetailPage() {
                   )}
                 </div>
 
-                {statusCfg && (
-                  <Badge
-                    variant={statusCfg.variant}
-                    className="flex items-center gap-1.5 shrink-0"
-                  >
-                    {statusCfg.icon}
-                    {statusCfg.label}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {statusCfg && (
+                    <Badge
+                      variant={statusCfg.variant}
+                      className="flex items-center gap-1.5"
+                    >
+                      {statusCfg.icon}
+                      {statusCfg.label}
+                    </Badge>
+                  )}
+                  {canRollback && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={rollbackMutation.isPending}
+                      onClick={() => rollbackMutation.mutate()}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {rollbackMutation.isPending ? "Rolling back..." : "Rollback to this"}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
 
