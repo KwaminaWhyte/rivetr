@@ -284,6 +284,27 @@ pub async fn validate(
     }
 }
 
+/// Get current authenticated user details
+pub async fn me(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+) -> impl IntoResponse {
+    let auth_header = request
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok());
+
+    let token = match auth_header {
+        Some(header) if header.starts_with("Bearer ") => header[7..].to_string(),
+        _ => return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"}))).into_response(),
+    };
+
+    match get_current_user(&state.db, &state.config, &token).await {
+        Ok(user) => Json(UserResponse::from(user)).into_response(),
+        Err(status) => status.into_response(),
+    }
+}
+
 /// Auth middleware that validates tokens
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,

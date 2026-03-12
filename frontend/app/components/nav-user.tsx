@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { ChevronsUpDown, LogOut, Settings, Moon, Sun, Monitor } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -20,10 +21,32 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useTheme } from "@/components/providers/theme-provider";
+import { getCurrentUser } from "@/lib/auth";
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 export function NavUser() {
   const { isMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
+
+  const { data: user } = useQuery({
+    queryKey: ["current-user"],
+    queryFn: getCurrentUser,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const displayName = user?.name ?? "User";
+  const displayRole = user?.role
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : "";
+  const initials = user?.name ? getInitials(user.name) : "?";
 
   return (
     <SidebarMenu>
@@ -36,13 +59,13 @@ export function NavUser() {
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
-                  AD
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">Admin</span>
+                <span className="truncate font-medium">{displayName}</span>
                 <span className="truncate text-xs text-muted-foreground">
-                  Administrator
+                  {displayRole}
                 </span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />

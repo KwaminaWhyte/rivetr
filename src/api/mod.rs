@@ -71,6 +71,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
         .route("/validate", get(auth::validate))
+        .route("/me", get(auth::me))
         .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup))
         .route("/register-with-invitation", post(auth::register_with_invitation))

@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { apiRequest } from "./api/core";
 
 const TOKEN_KEY = "rivetr_auth_token";
 
@@ -31,6 +32,21 @@ export function getAuthToken(): string | null {
  */
 export function clearAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  totp_enabled: boolean;
+}
+
+/**
+ * Fetch the currently authenticated user's details
+ */
+export async function getCurrentUser(): Promise<CurrentUser> {
+  return apiRequest<CurrentUser>("/auth/me");
 }
 
 /**
