@@ -81,6 +81,7 @@ function DatabaseTypeBadge({ dbType }: { dbType: string }) {
 
 const tabs = [
   { id: "general", label: "General", path: "" },
+  { id: "extensions", label: "Extensions", path: "/extensions" },
   { id: "network", label: "Network", path: "/network" },
   { id: "storage", label: "Storage", path: "/storage" },
   { id: "backups", label: "Backups", path: "/backups" },

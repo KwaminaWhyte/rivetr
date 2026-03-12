@@ -223,10 +223,6 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                 Shared Variables
               </Link>
             </Button>
-            <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Existing App
-            </Button>
             <Button asChild>
               <Link to={`/projects/${project.id}/apps/new`}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -299,10 +295,6 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                 No applications in this project yet.
               </p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setIsAddAppDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Existing
-                </Button>
                 <Button asChild>
                   <Link to={`/projects/${project.id}/apps/new`}>
                     <Plus className="mr-2 h-4 w-4" />

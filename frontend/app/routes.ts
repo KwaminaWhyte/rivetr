@@ -44,6 +44,7 @@ export default [
     // Databases (nested layout with tabs)
     route("databases/:id", "routes/databases/$id/_layout.tsx", [
       index("routes/databases/$id/_index.tsx"),
+      route("extensions", "routes/databases/$id/extensions.tsx"),
       route("network", "routes/databases/$id/network.tsx"),
       route("storage", "routes/databases/$id/storage.tsx"),
       route("backups", "routes/databases/$id/backups.tsx"),

@@ -194,6 +194,33 @@ export const databasesApi = {
     ),
 
   // -------------------------------------------------------------------------
+  // PostgreSQL Extensions
+  // -------------------------------------------------------------------------
+
+  /** List installed extensions for a PostgreSQL database */
+  listDatabaseExtensions: (databaseId: string, token?: string) =>
+    apiRequest<{ extensions: { name: string }[] }>(
+      `/databases/${databaseId}/extensions`,
+      {},
+      token
+    ),
+
+  /** Install a PostgreSQL extension */
+  installDatabaseExtension: (
+    databaseId: string,
+    extension: string,
+    token?: string
+  ) =>
+    apiRequest<{ message: string }>(
+      `/databases/${databaseId}/extensions`,
+      {
+        method: "POST",
+        body: JSON.stringify({ extension }),
+      },
+      token
+    ),
+
+  // -------------------------------------------------------------------------
   // Backup Download
   // -------------------------------------------------------------------------
 
