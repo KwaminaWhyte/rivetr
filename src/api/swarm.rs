@@ -89,8 +89,13 @@ pub struct ScaleServiceRequest {
 pub async fn init_swarm(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SwarmInitResponse>, ApiError> {
-    // Initialize swarm
-    run_docker(&["swarm", "init"]).await?;
+    // Initialize swarm, passing --advertise-addr when server_ip is configured
+    // (required on multi-homed hosts that have multiple IPs on the same interface)
+    if let Some(ref ip) = state.config.proxy.server_ip {
+        run_docker(&["swarm", "init", "--advertise-addr", ip]).await?;
+    } else {
+        run_docker(&["swarm", "init"]).await?;
+    }
 
     // Get the manager join token
     let manager_token = run_docker(&["swarm", "join-token", "-q", "manager"])
