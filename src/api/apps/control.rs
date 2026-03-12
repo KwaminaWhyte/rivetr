@@ -277,6 +277,24 @@ pub async fn start_app(
 
     tracing::info!(app = %app.name, container = %container_id, "App container started");
 
+    // Restore deployment status to 'running' so the container monitor resumes crash detection.
+    if let Err(e) = sqlx::query(
+        "UPDATE deployments SET status = 'running', finished_at = NULL \
+         WHERE app_id = ? AND status = 'stopped' AND container_id = ?",
+    )
+    .bind(&app.id)
+    .bind(&container_id)
+    .execute(&state.db)
+    .await
+    {
+        tracing::warn!(
+            app = %app.name,
+            container = %container_id,
+            error = %e,
+            "Failed to update deployment status to running after manual start"
+        );
+    }
+
     // Get container info for the port (used for both routing and response)
     let host_port = state
         .runtime
@@ -363,6 +381,26 @@ pub async fn stop_app(
     })?;
 
     tracing::info!(app = %app.name, container = %container_id, "App container stopped");
+
+    // Mark the deployment as stopped so the container monitor does NOT restart it.
+    // Without this update the deployment record keeps status = 'running', which causes
+    // the monitor to treat the stopped container as a crash and restart it automatically.
+    if let Err(e) = sqlx::query(
+        "UPDATE deployments SET status = 'stopped', finished_at = datetime('now') \
+         WHERE app_id = ? AND status = 'running' AND container_id = ?",
+    )
+    .bind(&app.id)
+    .bind(&container_id)
+    .execute(&state.db)
+    .await
+    {
+        tracing::warn!(
+            app = %app.name,
+            container = %container_id,
+            error = %e,
+            "Failed to update deployment status to stopped after manual stop"
+        );
+    }
 
     // Remove the route if app has a domain
     if let Some(domain) = &app.domain {
