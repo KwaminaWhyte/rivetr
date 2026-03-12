@@ -231,6 +231,11 @@ pub trait ContainerRuntime: Send + Sync {
     /// Ensure the shared container network exists and connect all existing
     /// Rivetr-managed containers to it (no-op for non-Docker runtimes).
     async fn setup_shared_network(&self) {}
+    /// Rename a container (used for zero-downtime swaps).
+    /// Default implementation is a no-op; runtimes that support renaming override this.
+    async fn rename_container(&self, _container_id: &str, _new_name: &str) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// A no-op runtime used when no container runtime is available

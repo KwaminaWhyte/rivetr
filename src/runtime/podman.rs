@@ -720,6 +720,21 @@ impl ContainerRuntime for PodmanRuntime {
         tracing::info!(image = %image, "Successfully pulled image");
         Ok(())
     }
+
+    async fn rename_container(&self, container_id: &str, new_name: &str) -> Result<()> {
+        let output = Command::new("podman")
+            .args(["rename", container_id, new_name])
+            .output()
+            .await
+            .context("Failed to execute podman rename")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to rename container: {}", stderr);
+        }
+
+        Ok(())
+    }
 }
 
 /// Parse size strings like "128.5MiB", "512MB", "1.2GiB", "648kB"

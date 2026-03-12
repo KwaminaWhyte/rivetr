@@ -238,6 +238,20 @@ pub async fn connect_to_rivetr_network(
     }
 }
 
+/// Rename a container to a new name.
+pub async fn rename_container(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    new_name: &str,
+) -> Result<()> {
+    runtime
+        .client
+        .rename_container(container_id, bollard::container::RenameContainerOptions { name: new_name })
+        .await
+        .context("Failed to rename container")?;
+    Ok(())
+}
+
 pub async fn start(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
     runtime
         .client

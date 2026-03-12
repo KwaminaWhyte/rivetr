@@ -136,7 +136,7 @@ pub async fn rollback_deployment(
     tokio::spawn(async move {
         match run_rollback(
             &db,
-            runtime,
+            runtime.clone(),
             &rollback_id_clone,
             &target_deployment_clone,
             &app_clone,
@@ -164,6 +164,22 @@ pub async fn rollback_deployment(
                             "Proxy routes updated after rollback for app {}",
                             app_clone.name
                         );
+                    }
+                }
+
+                // Zero-downtime: stop old containers AFTER proxy routes are updated.
+                // The rollback container is already serving traffic; old one can be torn down.
+                if !result.old_container_ids.is_empty() {
+                    tracing::info!(
+                        old_containers = ?result.old_container_ids,
+                        "Stopping old containers after rollback proxy route swap (zero-downtime)"
+                    );
+                    for old_id in &result.old_container_ids {
+                        if old_id == &result.container_id {
+                            continue;
+                        }
+                        let _ = runtime.stop(old_id).await;
+                        let _ = runtime.remove(old_id).await;
                     }
                 }
             }

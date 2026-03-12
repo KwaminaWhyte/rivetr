@@ -63,10 +63,33 @@ pub async fn run_rollback(
     .await?;
     update_deployment_status(db, rollback_deployment_id, "starting", None).await?;
 
-    // Stop current container
+    // Rename the current container so the rollback container can claim the canonical name
+    // while the old one keeps serving traffic until proxy routes are swapped.
     let container_name = format!("rivetr-{}", app.name);
-    let _ = runtime.stop(&container_name).await;
-    let _ = runtime.remove(&container_name).await;
+    let old_container_prev_name = format!("{}-prev", container_name);
+    let mut old_container_ids: Vec<String> = Vec::new();
+
+    match runtime.inspect(&container_name).await {
+        Ok(_) => {
+            if let Err(e) = runtime
+                .rename_container(&container_name, &old_container_prev_name)
+                .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    container = %container_name,
+                    "Could not rename old container for zero-downtime rollback swap; stopping it now"
+                );
+                let _ = runtime.stop(&container_name).await;
+                let _ = runtime.remove(&container_name).await;
+            } else {
+                old_container_ids.push(old_container_prev_name.clone());
+            }
+        }
+        Err(_) => {
+            // No existing container to rename.
+        }
+    }
 
     let env_vars = collect_env_vars(db, app, encryption_key).await;
 
@@ -199,17 +222,23 @@ pub async fn run_rollback(
         image_tag: image_tag.clone(),
         port: final_info.port,
         auto_rollback_from: None,
+        old_container_ids,
     })
 }
 
 /// Trigger an automatic rollback to the previous successful deployment.
 /// Called when health check fails and auto_rollback_enabled is true.
+///
+/// `prev_old_container_ids`: container IDs that were already renamed/captured before the
+/// failed deployment started (i.e. the containers that were serving traffic before this
+/// deployment).  They should be stopped after the rollback's proxy routes are updated.
 pub(super) async fn trigger_auto_rollback(
     db: &DbPool,
     runtime: Arc<dyn ContainerRuntime>,
     failed_deployment_id: &str,
     app: &App,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
+    prev_old_container_ids: Vec<String>,
 ) -> Result<AutoRollbackTriggered> {
     use crate::db::Deployment;
 
@@ -274,7 +303,7 @@ pub(super) async fn trigger_auto_rollback(
     )
     .await
     {
-        Ok(_result) => {
+        Ok(rollback_result) => {
             tracing::info!(
                 rollback_deployment_id = %rollback_deployment_id,
                 target_deployment_id = %target.id,
@@ -282,10 +311,19 @@ pub(super) async fn trigger_auto_rollback(
                 "Auto-rollback completed successfully"
             );
 
+            // Merge: containers from the rollback itself + those from before the failed deploy
+            let mut all_old = rollback_result.old_container_ids;
+            for id in prev_old_container_ids {
+                if !all_old.contains(&id) {
+                    all_old.push(id);
+                }
+            }
+
             Ok(AutoRollbackTriggered {
                 failed_deployment_id: failed_deployment_id.to_string(),
                 rollback_deployment_id,
                 target_deployment_id: target.id.clone(),
+                old_container_ids: all_old,
             })
         }
         Err(e) => {

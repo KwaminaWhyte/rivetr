@@ -135,12 +135,49 @@ pub(super) async fn start_container(
     use super::build::execute_deployment_commands;
     use super::rollback::{trigger_auto_rollback, trim_old_deployments};
 
-    // Step 3: Stop old containers (primary and any replicas)
+    // Step 3: Capture and rename old containers for zero-downtime swap.
+    //
+    // The old primary container uses the canonical name "rivetr-<app>".  To allow
+    // the new container to claim that same name (Docker forbids duplicate names) while
+    // the old one is still alive and serving traffic, we rename it to
+    // "rivetr-<app>-prev".  The old container continues running under the new name;
+    // the proxy still routes to it by container ID until we swap routes after health
+    // check.  After the proxy swap the caller stops the renamed old container.
     let container_name = format!("rivetr-{}", app.name);
-    let _ = runtime.stop(&container_name).await;
-    let _ = runtime.remove(&container_name).await;
+    let old_container_prev_name = format!("{}-prev", container_name);
 
-    // Also stop any running replicas from previous deployment
+    // Collect IDs to stop after proxy swap.
+    let mut old_container_ids: Vec<String> = Vec::new();
+
+    // Try to rename the current primary container so the new one can use the canonical name.
+    // If inspect fails (no prior container), the rename is a no-op.
+    match runtime.inspect(&container_name).await {
+        Ok(_) => {
+            // A container with the canonical name exists — rename it to free up the name.
+            if let Err(e) = runtime
+                .rename_container(&container_name, &old_container_prev_name)
+                .await
+            {
+                // If rename fails (e.g., container already renamed from a previous partial run),
+                // fall back to stopping it immediately so the new container can start.
+                tracing::warn!(
+                    error = %e,
+                    container = %container_name,
+                    "Could not rename old container for zero-downtime swap; stopping it now"
+                );
+                let _ = runtime.stop(&container_name).await;
+                let _ = runtime.remove(&container_name).await;
+            } else {
+                // Renamed successfully — schedule for cleanup after proxy swap.
+                old_container_ids.push(old_container_prev_name.clone());
+            }
+        }
+        Err(_) => {
+            // No existing container — first deployment or already removed.
+        }
+    }
+
+    // Also collect running replica container IDs for cleanup after proxy swap.
     let old_replicas = sqlx::query_as::<_, crate::db::AppReplica>(
         "SELECT * FROM app_replicas WHERE app_id = ? AND status = 'running'",
     )
@@ -150,11 +187,11 @@ pub(super) async fn start_container(
     .unwrap_or_default();
     for old_replica in &old_replicas {
         if let Some(ref cid) = old_replica.container_id {
-            let _ = runtime.stop(cid).await;
-            let _ = runtime.remove(cid).await;
+            old_container_ids.push(cid.clone());
         }
     }
-    // Clear old replica records
+
+    // Clear old replica records (the containers themselves are stopped after route swap).
     let _ = sqlx::query("DELETE FROM app_replicas WHERE app_id = ?")
         .bind(&app.id)
         .execute(db)
@@ -362,13 +399,15 @@ pub(super) async fn start_container(
                     )
                     .await?;
 
-                    // Try to trigger auto-rollback
+                    // Try to trigger auto-rollback, passing old container IDs so they get
+                    // cleaned up after the rollback proxy swap.
                     match trigger_auto_rollback(
                         db,
                         runtime.clone(),
                         deployment_id,
                         app,
                         encryption_key,
+                        old_container_ids.clone(),
                     )
                     .await
                     {
@@ -461,5 +500,6 @@ pub(super) async fn start_container(
         image_tag: run_config.image,
         port: final_info.port,
         auto_rollback_from: None,
+        old_container_ids,
     })
 }

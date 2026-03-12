@@ -290,6 +290,23 @@ impl DeploymentEngine {
                                 );
                             }
                         }
+
+                        // Zero-downtime: stop old containers AFTER proxy routes are updated.
+                        // New container is already serving traffic; old one can now be torn down.
+                        if !container_info.old_container_ids.is_empty() {
+                            tracing::info!(
+                                old_containers = ?container_info.old_container_ids,
+                                "Stopping old containers after proxy route swap (zero-downtime)"
+                            );
+                            for old_id in &container_info.old_container_ids {
+                                // Skip if the old ID is the same as the new container (no previous deployment)
+                                if old_id == &container_info.container_id {
+                                    continue;
+                                }
+                                let _ = runtime.stop(old_id).await;
+                                let _ = runtime.remove(old_id).await;
+                            }
+                        }
                     }
                     Err(e) => {
                         // Check if this is an auto-rollback triggered error
@@ -368,6 +385,30 @@ impl DeploymentEngine {
                                 }
                             }
 
+                            // Zero-downtime: stop old containers AFTER proxy routes are updated.
+                            if !auto_rollback.old_container_ids.is_empty() {
+                                tracing::info!(
+                                    old_containers = ?auto_rollback.old_container_ids,
+                                    "Stopping old containers after auto-rollback proxy route swap (zero-downtime)"
+                                );
+                                if let Ok(Some(rb_deployment)) = sqlx::query_as::<_, crate::db::Deployment>(
+                                    "SELECT * FROM deployments WHERE id = ?",
+                                )
+                                .bind(&auto_rollback.rollback_deployment_id)
+                                .fetch_optional(&db)
+                                .await
+                                {
+                                    let new_container_id = rb_deployment.container_id.unwrap_or_default();
+                                    for old_id in &auto_rollback.old_container_ids {
+                                        if old_id == &new_container_id {
+                                            continue;
+                                        }
+                                        let _ = runtime.stop(old_id).await;
+                                        let _ = runtime.remove(old_id).await;
+                                    }
+                                }
+                            }
+
                             // Mark previous running deployments as replaced (except the rollback)
                             let _ = sqlx::query(
                                 "UPDATE deployments SET status = 'replaced', finished_at = ?
@@ -415,6 +456,20 @@ impl DeploymentEngine {
                                 Some(&e.to_string()),
                             )
                             .await;
+
+                            // If the old container was renamed to "rivetr-<app>-prev" for the
+                            // zero-downtime swap, rename it back now so it remains discoverable
+                            // by its canonical name and restart logic works correctly.
+                            let prev_name = format!("rivetr-{}-prev", app.name);
+                            let canonical_name = format!("rivetr-{}", app.name);
+                            if let Ok(_) = runtime.inspect(&prev_name).await {
+                                if let Err(e) = runtime.rename_container(&prev_name, &canonical_name).await {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "Failed to rename old container back after deployment failure"
+                                    );
+                                }
+                            }
 
                             // Send deployment_failed notification
                             let failed_payload = NotificationPayload::deployment_event(

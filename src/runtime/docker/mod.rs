@@ -112,6 +112,10 @@ impl ContainerRuntime for DockerRuntime {
         container::pull_image(self, image, auth).await
     }
 
+    async fn rename_container(&self, container_id: &str, new_name: &str) -> Result<()> {
+        container::rename_container(self, container_id, new_name).await
+    }
+
     async fn setup_shared_network(&self) {
         // Create the shared Rivetr network if it doesn't exist.
         container::ensure_rivetr_network(self).await;

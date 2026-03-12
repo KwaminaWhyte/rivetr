@@ -21,6 +21,8 @@ pub struct DeploymentResult {
     pub port: Option<u16>,
     /// If this deployment was an auto-rollback, this contains the ID of the failed deployment
     pub auto_rollback_from: Option<String>,
+    /// Old container IDs that should be stopped AFTER proxy routes are updated (zero-downtime swap)
+    pub old_container_ids: Vec<String>,
 }
 
 /// Error returned when health check fails and auto-rollback is triggered
@@ -29,6 +31,8 @@ pub struct AutoRollbackTriggered {
     pub failed_deployment_id: String,
     pub rollback_deployment_id: String,
     pub target_deployment_id: String,
+    /// Old container IDs to stop AFTER proxy routes are updated to the rollback container
+    pub old_container_ids: Vec<String>,
 }
 
 impl std::fmt::Display for AutoRollbackTriggered {
