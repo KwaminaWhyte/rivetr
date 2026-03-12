@@ -38,6 +38,7 @@ import type {
   DeploymentFreezeWindow,
   CreateFreezeWindowRequest,
   RejectDeploymentRequest,
+  AuditLogListResponse,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -634,6 +635,14 @@ export const appsApi = {
       { method: "DELETE" },
       token,
     ),
+
+  // -------------------------------------------------------------------------
+  // Activity (audit log events for this app)
+  // -------------------------------------------------------------------------
+
+  /** Get recent activity (audit log entries) for an app */
+  getAppActivity: (appId: string, token?: string) =>
+    apiRequest<AuditLogListResponse>(`/apps/${appId}/activity`, {}, token),
 
   // -------------------------------------------------------------------------
   // WebSocket URLs

@@ -128,6 +128,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/start", post(apps::start_app))
         .route("/apps/:id/stop", post(apps::stop_app))
         .route("/apps/:id/restart", post(apps::restart_app))
+        .route("/apps/:id/activity", get(apps::get_app_activity))
         .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
         // App Sharing
         .route("/apps/with-sharing", get(apps::list_apps_with_sharing))

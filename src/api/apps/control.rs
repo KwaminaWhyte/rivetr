@@ -5,7 +5,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::db::{actions, resource_types, App, User};
+use crate::db::{actions, list_audit_logs, resource_types, App, AuditLogListResponse, AuditLogQuery, User};
 use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
@@ -361,4 +361,31 @@ pub async fn restart_app(
         active_deployment_id: None,
         uptime_seconds: None,
     }))
+}
+
+/// Get recent activity (audit log events) for a specific app.
+/// Returns up to 50 most recent audit log entries where resource_id = app id.
+pub async fn get_app_activity(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<AuditLogListResponse>, ApiError> {
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Verify the app exists
+    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    let query = AuditLogQuery {
+        resource_id: Some(id),
+        per_page: Some(50),
+        ..Default::default()
+    };
+
+    let result = list_audit_logs(&state.db, &query).await?;
+    Ok(Json(result))
 }

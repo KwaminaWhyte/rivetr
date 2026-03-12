@@ -152,6 +152,9 @@ export const api = {
   createFreezeWindow: appsApi.createFreezeWindow,
   deleteFreezeWindow: appsApi.deleteFreezeWindow,
 
+  // App Activity
+  getAppActivity: appsApi.getAppActivity,
+
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
   createSshKey: gitApi.createSshKey,
