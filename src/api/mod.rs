@@ -5,6 +5,7 @@ pub mod auth;
 mod autoscaling;
 mod bulk;
 mod basic_auth;
+mod api_tokens;
 mod build_servers;
 mod cost_rates;
 mod costs;
@@ -463,6 +464,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/teams/:id/notification-channels/:channel_id/test",
             post(notifications::test_team_channel),
         )
+        // API Tokens
+        .route("/tokens", get(api_tokens::list_tokens))
+        .route("/tokens", post(api_tokens::create_token))
+        .route("/tokens/:id", delete(api_tokens::delete_token))
         // Notification Channels (Global)
         .route("/notification-channels", get(notifications::list_channels))
         .route(

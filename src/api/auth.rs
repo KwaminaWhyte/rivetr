@@ -538,8 +538,39 @@ pub async fn get_current_user(
         });
     }
 
-    // Look up session and user
     let token_hash = hash_token(token);
+
+    // Check DB-level API tokens first (tokens starting with "rvt_")
+    if token.starts_with("rvt_") {
+        let api_token_user_id: Option<String> = sqlx::query_scalar(
+            "SELECT user_id FROM api_tokens WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > datetime('now'))",
+        )
+        .bind(&token_hash)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if let Some(user_id) = api_token_user_id {
+            // Update last_used_at
+            let _ = sqlx::query(
+                "UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?",
+            )
+            .bind(&token_hash)
+            .execute(pool)
+            .await;
+
+            let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+                .bind(&user_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            return user.ok_or(StatusCode::UNAUTHORIZED);
+        }
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Look up session and user
     let session: Option<Session> = sqlx::query_as(
         "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
     )

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
@@ -107,11 +108,22 @@ export default function TeamDetailPage() {
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
   const [inviteEmail, setInviteEmail] = useState("");
 
+  const { setItems } = useBreadcrumb();
+
   const { data: team, isLoading } = useQuery<TeamDetail>({
     queryKey: ["team", id],
     queryFn: () => api.getTeam(id!),
     enabled: !!id,
   });
+
+  useEffect(() => {
+    if (team) {
+      setItems([
+        { label: "Teams", href: "/teams" },
+        { label: team.name },
+      ]);
+    }
+  }, [team, setItems]);
 
   const { data: invitations = [], isLoading: isLoadingInvitations } = useQuery<TeamInvitation[]>({
     queryKey: ["team-invitations", id],

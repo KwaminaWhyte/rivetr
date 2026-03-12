@@ -266,9 +266,7 @@ export default function BuildServersPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {server.docker_version
-                        ? `v${server.docker_version}`
-                        : server.status === "online"
-                        ? "—"
+                        ? /^\d/.test(server.docker_version) ? `v${server.docker_version}` : server.docker_version
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

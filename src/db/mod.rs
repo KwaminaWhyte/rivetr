@@ -961,6 +961,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 070: API tokens table
+    let has_api_tokens: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='api_tokens'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_api_tokens.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/070_api_tokens.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

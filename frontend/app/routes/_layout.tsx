@@ -196,6 +196,12 @@ function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
       { label: "Project" },
     ];
   }
+  if (pathname.match(/^\/teams\/[^/]+$/)) {
+    return [
+      { label: "Teams", href: "/teams" },
+      { label: "Team Details" },
+    ];
+  }
 
   return [{ label: "Page" }];
 }
