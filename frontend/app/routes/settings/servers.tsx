@@ -668,7 +668,10 @@ export default function ServersPage() {
         open={!!terminalServer}
         onOpenChange={(open) => { if (!open) setTerminalServer(null); }}
       >
-        <DialogContent className="sm:max-w-4xl">
+        <DialogContent
+          className="sm:max-w-4xl"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Terminal className="h-5 w-5" />
