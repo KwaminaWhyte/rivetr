@@ -270,6 +270,7 @@ pub async fn has_config_file(source_path: &Path) -> bool {
 /// * `image_tag` - Docker image tag to use (e.g., "rivetr-myapp:abc123")
 /// * `config` - Optional Railpack configuration (from database or API)
 /// * `env_vars` - Environment variables to pass to the build
+/// * `log_tx` - Optional channel sender for streaming log lines to deployment logs
 ///
 /// # Returns
 ///
@@ -279,6 +280,7 @@ pub async fn build_image(
     image_tag: &str,
     config: Option<&RailpackConfig>,
     env_vars: &[(String, String)],
+    log_tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 ) -> Result<String> {
     info!("Building image with Railpack: {}", image_tag);
     debug!("Source path: {:?}", source_path);
@@ -397,6 +399,9 @@ pub async fn build_image(
                 match stdout_line {
                     Ok(Some(line)) => {
                         info!(target: "railpack", "{}", line);
+                        if let Some(ref tx) = log_tx {
+                            let _ = tx.send(line);
+                        }
                     }
                     Ok(None) => {}
                     Err(e) => {
@@ -413,6 +418,9 @@ pub async fn build_image(
                             warn!(target: "railpack", "{}", line);
                         } else {
                             info!(target: "railpack", "{}", line);
+                        }
+                        if let Some(ref tx) = log_tx {
+                            let _ = tx.send(line.clone());
                         }
                         stderr_output.push(line);
                     }
