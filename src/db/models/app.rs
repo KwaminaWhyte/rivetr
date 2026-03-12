@@ -103,6 +103,8 @@ pub struct App {
     pub replica_count: i64,
     /// Preferred server ID for remote deployment (nullable)
     pub server_id: Option<String>,
+    /// Build server ID for offloading Docker builds to a remote machine (nullable)
+    pub build_server_id: Option<String>,
     /// Number of previous successful deployments to keep for rollback (default: 10)
     #[serde(default = "default_rollback_retention_count")]
     pub rollback_retention_count: i64,
@@ -182,6 +184,8 @@ pub struct AppResponse {
     pub replica_count: i64,
     /// Preferred server ID for remote deployment (nullable)
     pub server_id: Option<String>,
+    /// Build server ID for offloading Docker builds to a remote machine (nullable)
+    pub build_server_id: Option<String>,
     /// Number of previous successful deployments to keep for rollback (default: 10)
     pub rollback_retention_count: i64,
     pub created_at: String,
@@ -239,6 +243,7 @@ impl From<App> for AppResponse {
             maintenance_message: app.maintenance_message,
             replica_count: app.replica_count,
             server_id: app.server_id,
+            build_server_id: app.build_server_id,
             rollback_retention_count: app.rollback_retention_count,
             created_at: app.created_at,
             updated_at: app.updated_at,
@@ -625,6 +630,8 @@ pub struct UpdateAppRequest {
     pub maintenance_message: Option<String>,
     /// Preferred server ID for remote deployment (set to empty string to clear)
     pub server_id: Option<String>,
+    /// Build server ID for offloading Docker builds (set to empty string to clear)
+    pub build_server_id: Option<String>,
 }
 
 /// Request specifically for updating domains

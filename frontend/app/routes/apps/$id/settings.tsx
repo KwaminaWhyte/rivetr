@@ -50,6 +50,7 @@ import { AppSharingCard } from "@/components/app-sharing-card";
 import { api } from "@/lib/api";
 import { replicasApi, type AppReplica } from "@/lib/api/replicas";
 import { autoscalingApi } from "@/lib/api/autoscaling";
+import { buildServersApi, type BuildServer } from "@/lib/api/build-servers";
 import type {
   App,
   AppEnvironment,
@@ -140,6 +141,13 @@ export default function AppSettingsTab() {
   const [buildType, setBuildType] = useState<BuildType>(app.build_type || "dockerfile");
   const [previewEnabled, setPreviewEnabled] = useState(app.preview_enabled || false);
   const [publishDirectory, setPublishDirectory] = useState(app.publish_directory || "dist");
+  const [buildServerId, setBuildServerId] = useState<string>(app.build_server_id || "");
+
+  // Fetch available build servers
+  const { data: buildServers = [] } = useQuery<BuildServer[]>({
+    queryKey: ["build-servers"],
+    queryFn: () => buildServersApi.list(),
+  });
 
   // Parse nixpacks config from JSON string
   const parseNixpacksConfig = (json: string | null): NixpacksConfig => {
@@ -161,7 +169,8 @@ export default function AppSettingsTab() {
     setPreviewEnabled(app.preview_enabled || false);
     setPublishDirectory(app.publish_directory || "dist");
     setNixpacksConfig(parseNixpacksConfig(app.nixpacks_config));
-  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config]);
+    setBuildServerId(app.build_server_id || "");
+  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id]);
 
   // Handle general settings form submission
   const handleGeneralSubmit = async (e: React.FormEvent) => {
@@ -216,6 +225,8 @@ export default function AppSettingsTab() {
         nixpacks_config: nixpacksConfigToSend,
         publish_directory: buildType === "staticsite" ? publishDirectory : undefined,
         preview_enabled: previewEnabled,
+        // Empty string clears the build server assignment on the backend
+        build_server_id: buildServerId || "",
       };
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
@@ -889,6 +900,30 @@ export default function AppSettingsTab() {
                       JSON array of paths to trigger auto-deploy
                     </p>
                   </div>
+                </div>
+
+                {/* Build Server selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="build-server">Build Server</Label>
+                  <Select
+                    value={buildServerId || "__local__"}
+                    onValueChange={(v) => setBuildServerId(v === "__local__" ? "" : v)}
+                  >
+                    <SelectTrigger id="build-server">
+                      <SelectValue placeholder="Local (default)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__local__">Local (default)</SelectItem>
+                      {buildServers.map((bs) => (
+                        <SelectItem key={bs.id} value={bs.id}>
+                          {bs.name} ({bs.host}:{bs.port})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Offload Docker builds to a dedicated remote build server. Leave blank to build locally.
+                  </p>
                 </div>
 
                 {/* Preview deployments toggle */}

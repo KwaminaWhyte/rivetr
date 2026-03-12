@@ -268,6 +268,8 @@ export interface App {
   require_approval: boolean;
   maintenance_mode: boolean;
   maintenance_message: string | null;
+  /** Build server ID for offloading Docker builds to a remote machine */
+  build_server_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -504,6 +506,8 @@ export interface UpdateAppRequest {
   require_approval?: boolean;
   maintenance_mode?: boolean;
   maintenance_message?: string;
+  /** Build server ID for offloading Docker builds (set to empty string to clear) */
+  build_server_id?: string | null;
 }
 
 // -------------------------------------------------------------------------

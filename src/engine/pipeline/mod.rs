@@ -224,7 +224,7 @@ async fn run_git_deployment(
     };
 
     let image_tag =
-        build::build_git_image(db, runtime, deployment_id, app, &build_path, build_limits).await?;
+        build::build_git_image(db, runtime, deployment_id, app, &build_path, build_limits, encryption_key).await?;
 
     // Cleanup work directory
     let _ = tokio::fs::remove_dir_all(&work_dir).await;

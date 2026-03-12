@@ -16,6 +16,8 @@ pub struct RemoteContext {
     pub username: String,
     /// Filesystem path to a temporary file containing the decrypted private key.
     pub key_path: Option<String>,
+    /// Plain-text SSH password (used when no key is available, via sshpass).
+    pub ssh_password: Option<String>,
 }
 
 impl RemoteContext {
@@ -24,30 +26,45 @@ impl RemoteContext {
     /// Returns `(stdout, stderr)` on success. The call succeeds even when the
     /// remote command exits with a non-zero status code; callers should inspect
     /// stderr if needed.
+    ///
+    /// When `ssh_password` is set and no `key_path` is available, `sshpass` is
+    /// used to supply the password non-interactively.
     pub async fn run_command(&self, cmd: &str) -> Result<(String, String)> {
         let port_str = self.port.to_string();
         let target = format!("{}@{}", self.username, self.host);
 
-        let mut args: Vec<&str> = vec![
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "ConnectTimeout=10",
-            "-o",
-            "BatchMode=yes",
-            "-p",
-            &port_str,
-        ];
+        // Use sshpass for password authentication when no key is available
+        let use_sshpass = self.ssh_password.is_some() && self.key_path.is_none();
 
-        if let Some(ref key) = self.key_path {
-            args.extend(["-i", key.as_str()]);
+        let mut command = if use_sshpass {
+            let mut c = Command::new("sshpass");
+            c.arg("-p").arg(self.ssh_password.as_deref().unwrap());
+            c.arg("ssh");
+            c
+        } else {
+            Command::new("ssh")
+        };
+
+        command
+            .arg("-o")
+            .arg("StrictHostKeyChecking=no")
+            .arg("-o")
+            .arg("ConnectTimeout=10");
+
+        // BatchMode=yes disables interactive password prompts; skip it when using sshpass
+        if !use_sshpass {
+            command.arg("-o").arg("BatchMode=yes");
         }
 
-        args.push(&target);
-        args.push(cmd);
+        command.arg("-p").arg(&port_str);
 
-        let output = Command::new("ssh")
-            .args(&args)
+        if let Some(ref key) = self.key_path {
+            command.arg("-i").arg(key.as_str());
+        }
+
+        command.arg(&target).arg(cmd);
+
+        let output = command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()

@@ -346,6 +346,8 @@ pub async fn update_app(
 
     // Server assignment - empty string clears the assignment
     let server_id = merge_optional_string(&req.server_id, &existing.server_id);
+    // Build server assignment - empty string clears the assignment
+    let build_server_id = merge_optional_string(&req.build_server_id, &existing.build_server_id);
 
     sqlx::query(
         r#"
@@ -390,6 +392,7 @@ pub async fn update_app(
             maintenance_mode = ?,
             maintenance_message = ?,
             server_id = ?,
+            build_server_id = ?,
             rollback_retention_count = ?,
             updated_at = ?
         WHERE id = ?
@@ -435,6 +438,7 @@ pub async fn update_app(
     .bind(maintenance_mode)
     .bind(&maintenance_message)
     .bind(&server_id)
+    .bind(&build_server_id)
     .bind(rollback_retention_count)
     .bind(&now)
     .bind(&id)

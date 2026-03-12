@@ -11,7 +11,7 @@ use crate::engine::static_builder::{StaticSiteBuilder, StaticSiteConfig};
 use crate::runtime::{BuildContext, ContainerRuntime};
 use crate::DbPool;
 
-use super::super::{add_deployment_log, BuildLimits};
+use super::super::{add_deployment_log, BuildLimits, KEY_LENGTH};
 
 /// Push a built image to a Docker registry if the app has registry push enabled.
 /// Uses `docker tag` + `docker login` + `docker push` CLI commands.
@@ -260,8 +260,24 @@ pub(super) async fn build_git_image(
     app: &App,
     build_path: &Path,
     build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<String> {
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
+
+    // If a build server is assigned, offload the Docker build step to that remote server
+    if let Some(ref build_server_id) = app.build_server_id {
+        return run_remote_build(
+            db,
+            deployment_id,
+            app,
+            build_path,
+            &image_tag,
+            build_server_id,
+            encryption_key,
+        )
+        .await;
+    }
+
     let build_type = app.get_build_type();
 
     match build_type {
@@ -635,6 +651,431 @@ pub(super) async fn build_git_image(
     }
 
     Ok(image_tag)
+}
+
+/// Offload a Dockerfile build to a remote build server via SSH.
+///
+/// Steps:
+/// 1. Look up the build server record and decrypt its credentials.
+/// 2. Create a temporary directory on the remote machine.
+/// 3. rsync the local build context to the remote temp dir.
+/// 4. Run `docker build` on the remote machine.
+/// 5. Stream the built image back with `docker save | gzip` → `docker load`.
+/// 6. Clean up the remote temp dir.
+///
+/// Returns the `image_tag` on success (same as a local build).
+async fn run_remote_build(
+    db: &DbPool,
+    deployment_id: &str,
+    app: &App,
+    build_path: &Path,
+    image_tag: &str,
+    build_server_id: &str,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+) -> Result<String> {
+    use crate::crypto;
+    use crate::db::BuildServer;
+    use std::io::Write;
+    use tokio::process::Command;
+
+    // ------------------------------------------------------------------
+    // 1. Look up build server
+    // ------------------------------------------------------------------
+    let server = sqlx::query_as::<_, BuildServer>(
+        "SELECT * FROM build_servers WHERE id = ?",
+    )
+    .bind(build_server_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or_else(|| {
+        anyhow::anyhow!(
+            "Build server '{}' not found in database",
+            build_server_id
+        )
+    })?;
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("[Build Server] Using remote build server: {}", server.name),
+    )
+    .await?;
+
+    // ------------------------------------------------------------------
+    // 2. Decrypt SSH credentials
+    // ------------------------------------------------------------------
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        match crypto::decrypt_if_encrypted(encrypted_key, encryption_key) {
+            Ok(k) => Some(k),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH key for build server {}: {}",
+                    build_server_id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let ssh_password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, encryption_key) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH password for build server {}: {}",
+                    build_server_id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Write private key to a temp file if available
+    let key_tmpfile = if let Some(ref key_content) = private_key_content {
+        let mut tmpfile = tempfile::Builder::new()
+            .prefix("rivetr-bsrv-key-")
+            .suffix(".pem")
+            .tempfile()
+            .context("Failed to create temp file for SSH key")?;
+
+        tmpfile
+            .write_all(key_content.as_bytes())
+            .context("Failed to write SSH key to temp file")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                tmpfile.path(),
+                std::fs::Permissions::from_mode(0o600),
+            )?;
+        }
+
+        Some(tmpfile)
+    } else {
+        None
+    };
+
+    let key_path: Option<String> = key_tmpfile
+        .as_ref()
+        .map(|f| f.path().to_string_lossy().to_string());
+    let port = server.port;
+    let target = format!("{}@{}", server.username, server.host);
+    let use_sshpass = ssh_password_content.is_some() && key_path.is_none();
+
+    // Helper closure: build a tokio SSH command (key or sshpass)
+    let make_ssh_cmd =
+        |password: Option<&str>, key: Option<&str>| -> Command {
+            let use_pass = password.is_some() && key.is_none();
+            let mut c = if use_pass {
+                let mut cmd = Command::new("sshpass");
+                cmd.arg("-p").arg(password.unwrap());
+                cmd.arg("ssh");
+                cmd
+            } else {
+                Command::new("ssh")
+            };
+            c.arg("-o")
+                .arg("StrictHostKeyChecking=no")
+                .arg("-o")
+                .arg("ConnectTimeout=15");
+            if !use_pass {
+                c.arg("-o").arg("BatchMode=yes");
+            }
+            c.arg("-p").arg(port.to_string());
+            if let Some(k) = key {
+                c.arg("-i").arg(k);
+            }
+            c
+        };
+
+    // ------------------------------------------------------------------
+    // 3. Create a temp directory on the remote
+    // ------------------------------------------------------------------
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        "[Build Server] Creating remote work directory...",
+    )
+    .await?;
+
+    let mut mkdir_cmd = make_ssh_cmd(
+        ssh_password_content.as_deref(),
+        key_path.as_deref(),
+    );
+    mkdir_cmd.arg(&target).arg("mktemp -d");
+
+    let mkdir_out = mkdir_cmd
+        .output()
+        .await
+        .context("Failed to run mktemp on remote build server")?;
+
+    if !mkdir_out.status.success() {
+        let stderr = String::from_utf8_lossy(&mkdir_out.stderr);
+        anyhow::bail!(
+            "[Build Server] Failed to create remote temp directory: {}",
+            stderr
+        );
+    }
+
+    let remote_dir = String::from_utf8_lossy(&mkdir_out.stdout)
+        .trim()
+        .to_string();
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        &format!("[Build Server] Remote work directory: {}", remote_dir),
+    )
+    .await?;
+
+    // Clones for cleanup
+    let remote_dir_cleanup = remote_dir.clone();
+    let cleanup_target = target.clone();
+    let cleanup_key = key_path.clone();
+    let cleanup_password = ssh_password_content.clone();
+
+    // Wrap the main build steps so we can guarantee cleanup afterwards
+    let result: Result<String> = async {
+        // ------------------------------------------------------------------
+        // 4. rsync build context to remote
+        // ------------------------------------------------------------------
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            "[Build Server] Syncing build context to remote...",
+        )
+        .await?;
+
+        let build_path_str = build_path.to_string_lossy().to_string();
+        let src = if build_path_str.ends_with('/') {
+            build_path_str.clone()
+        } else {
+            format!("{}/", build_path_str)
+        };
+        let dst = format!("{}:{}", target, remote_dir);
+
+        // Build the ssh command string for rsync -e option
+        let ssh_e_opt = if use_sshpass {
+            let pass = ssh_password_content.as_deref().unwrap_or("");
+            format!(
+                "sshpass -p '{}' ssh -o StrictHostKeyChecking=no -p {}",
+                pass, port
+            )
+        } else if let Some(ref kp) = key_path {
+            format!(
+                "ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p {} -i {}",
+                port, kp
+            )
+        } else {
+            format!(
+                "ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p {}",
+                port
+            )
+        };
+
+        let rsync_out = Command::new("rsync")
+            .arg("-az")
+            .arg("--delete")
+            .arg("-e")
+            .arg(&ssh_e_opt)
+            .arg(&src)
+            .arg(&dst)
+            .output()
+            .await
+            .context("Failed to run rsync to remote build server")?;
+
+        if !rsync_out.status.success() {
+            let stderr = String::from_utf8_lossy(&rsync_out.stderr);
+            anyhow::bail!("[Build Server] rsync failed: {}", stderr);
+        }
+
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            "[Build Server] Build context synced. Running docker build on remote...",
+        )
+        .await?;
+
+        // ------------------------------------------------------------------
+        // 5. Run docker build on remote
+        // ------------------------------------------------------------------
+        let dockerfile = app
+            .dockerfile_path
+            .as_ref()
+            .filter(|p| !p.is_empty())
+            .cloned()
+            .unwrap_or_else(|| app.dockerfile.clone());
+
+        let docker_build_cmd = format!(
+            "docker build -t '{}' -f '{}/{}' '{}'",
+            image_tag, remote_dir, dockerfile, remote_dir
+        );
+
+        let mut build_ssh =
+            make_ssh_cmd(ssh_password_content.as_deref(), key_path.as_deref());
+        build_ssh.arg(&target).arg(&docker_build_cmd);
+
+        let build_out = build_ssh
+            .output()
+            .await
+            .context("Failed to run docker build on remote build server")?;
+
+        let build_stdout = String::from_utf8_lossy(&build_out.stdout);
+        for line in build_stdout.lines() {
+            if !line.trim().is_empty() {
+                add_deployment_log(db, deployment_id, "info", line).await?;
+            }
+        }
+
+        if !build_out.status.success() {
+            let stderr = String::from_utf8_lossy(&build_out.stderr);
+            anyhow::bail!(
+                "[Build Server] Remote docker build failed: {}",
+                stderr
+            );
+        }
+
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            "[Build Server] Remote build completed. Transferring image to local daemon...",
+        )
+        .await?;
+
+        // ------------------------------------------------------------------
+        // 6. Stream image back: docker save on remote | gzip → local docker load
+        // ------------------------------------------------------------------
+        let save_cmd = format!("docker save '{}' | gzip", image_tag);
+
+        // Use std::process for synchronous pipeline (stdin→stdout piping)
+        let mut stream_ssh_cmd = if use_sshpass {
+            let mut c = std::process::Command::new("sshpass");
+            c.arg("-p")
+                .arg(ssh_password_content.as_deref().unwrap_or(""))
+                .arg("ssh");
+            c
+        } else {
+            std::process::Command::new("ssh")
+        };
+
+        stream_ssh_cmd
+            .arg("-o")
+            .arg("StrictHostKeyChecking=no")
+            .arg("-o")
+            .arg("ConnectTimeout=15");
+        if !use_sshpass {
+            stream_ssh_cmd.arg("-o").arg("BatchMode=yes");
+        }
+        stream_ssh_cmd.arg("-p").arg(port.to_string());
+        if let Some(ref kp) = key_path {
+            stream_ssh_cmd.arg("-i").arg(kp);
+        }
+        stream_ssh_cmd
+            .arg(&target)
+            .arg(&save_cmd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+
+        let mut ssh_child = stream_ssh_cmd
+            .spawn()
+            .context("Failed to spawn SSH for docker save")?;
+
+        let ssh_stdout = ssh_child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get stdout from SSH process"))?;
+
+        let load_child = std::process::Command::new("docker")
+            .arg("load")
+            .stdin(ssh_stdout)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to spawn docker load")?;
+
+        let load_out = load_child
+            .wait_with_output()
+            .context("Failed to wait for docker load")?;
+
+        let ssh_status = ssh_child
+            .wait()
+            .context("Failed to wait for SSH process")?;
+
+        if !ssh_status.success() {
+            anyhow::bail!(
+                "[Build Server] docker save/stream SSH process exited with status: {}",
+                ssh_status
+            );
+        }
+
+        if !load_out.status.success() {
+            let stderr = String::from_utf8_lossy(&load_out.stderr);
+            anyhow::bail!("[Build Server] docker load failed: {}", stderr);
+        }
+
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            "[Build Server] Image transferred and loaded successfully",
+        )
+        .await?;
+
+        Ok(image_tag.to_string())
+    }
+    .await;
+
+    // ------------------------------------------------------------------
+    // 7. Clean up remote temp dir (best-effort)
+    // ------------------------------------------------------------------
+    let use_cleanup_sshpass = cleanup_password.is_some() && cleanup_key.is_none();
+    let mut cleanup_cmd = if use_cleanup_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p")
+            .arg(cleanup_password.as_deref().unwrap_or(""))
+            .arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+    cleanup_cmd
+        .arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg("ConnectTimeout=10");
+    if !use_cleanup_sshpass {
+        cleanup_cmd.arg("-o").arg("BatchMode=yes");
+    }
+    cleanup_cmd.arg("-p").arg(port.to_string());
+    if let Some(ref kp) = cleanup_key {
+        cleanup_cmd.arg("-i").arg(kp);
+    }
+    cleanup_cmd
+        .arg(&cleanup_target)
+        .arg(format!("rm -rf '{}'", remote_dir_cleanup));
+
+    if let Err(e) = cleanup_cmd.output().await {
+        tracing::warn!(
+            "[Build Server] Failed to clean up remote temp dir '{}': {}",
+            remote_dir_cleanup,
+            e
+        );
+    }
+
+    result
 }
 
 /// Build the image for an upload-based deployment
