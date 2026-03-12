@@ -284,7 +284,7 @@ pub(super) async fn reconcile_services(db: &DbPool, runtime: &Arc<dyn ContainerR
 
     let running_services: Vec<Service> = match sqlx::query_as(
         r#"
-        SELECT id, name, project_id, team_id, compose_content, status, error_message, created_at, updated_at
+        SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at
         FROM services
         WHERE status = 'running'
         "#,
