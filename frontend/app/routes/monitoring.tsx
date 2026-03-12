@@ -11,8 +11,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Container,
-  Cpu,
 } from "lucide-react";
+import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
@@ -56,21 +56,45 @@ function CheckResultCard({ check }: { check: CheckResult }) {
   );
 }
 
-function DiskUsageBar({ used, total }: { used: number; total: number }) {
+function DiskUsageGauge({ used, total, usedHuman, totalHuman }: { used: number; total: number; usedHuman: string; totalHuman: string }) {
   const percentage = total > 0 ? (used / total) * 100 : 0;
-  const getBarColor = () => {
-    if (percentage >= 90) return "bg-red-500";
-    if (percentage >= 75) return "bg-yellow-500";
-    return "bg-green-500";
-  };
+  const color = percentage >= 90 ? "#ef4444" : percentage >= 75 ? "#eab308" : "#22c55e";
+  const data = [{ value: Math.min(percentage, 100) }];
 
   return (
-    <div className="w-full">
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full ${getBarColor()} transition-all duration-300`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        />
+    <div className="flex items-center gap-6">
+      <div className="relative w-32 h-32 shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart
+            cx="50%"
+            cy="50%"
+            innerRadius="70%"
+            outerRadius="100%"
+            startAngle={90}
+            endAngle={-270}
+            data={data}
+            barSize={10}
+          >
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+            <RadialBar dataKey="value" background={{ fill: "hsl(var(--muted))" }} cornerRadius={5}>
+              <Cell fill={color} />
+            </RadialBar>
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold">{percentage.toFixed(0)}%</span>
+          <span className="text-xs text-muted-foreground">used</span>
+        </div>
+      </div>
+      <div className="space-y-2 text-sm">
+        <div>
+          <p className="text-muted-foreground text-xs">Used</p>
+          <p className="font-semibold">{usedHuman}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs">Total</p>
+          <p className="font-semibold">{totalHuman}</p>
+        </div>
       </div>
     </div>
   );
@@ -248,22 +272,29 @@ export default function MonitoringPage() {
         <Card>
           <CardHeader>
             <CardTitle>Disk Usage</CardTitle>
-            <CardDescription>Storage consumption on {disk.path}</CardDescription>
+            <CardDescription>Storage on {disk.path}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <DiskUsageBar used={disk.used_bytes} total={disk.total_bytes} />
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Used</p>
-                <p className="font-medium">{disk.used_human}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Free</p>
-                <p className="font-medium">{disk.free_human}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total</p>
-                <p className="font-medium">{disk.total_human}</p>
+          <CardContent>
+            <div className="flex items-center justify-between gap-8">
+              <DiskUsageGauge
+                used={disk.used_bytes}
+                total={disk.total_bytes}
+                usedHuman={disk.used_human}
+                totalHuman={disk.total_human}
+              />
+              <div className="flex-1 grid grid-cols-1 gap-3 text-sm">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Used</span>
+                  <span className="font-semibold">{disk.used_human}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Free</span>
+                  <span className="font-semibold">{disk.free_human}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold">{disk.total_human}</span>
+                </div>
               </div>
             </div>
           </CardContent>

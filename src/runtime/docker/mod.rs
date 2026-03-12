@@ -111,4 +111,27 @@ impl ContainerRuntime for DockerRuntime {
     async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()> {
         container::pull_image(self, image, auth).await
     }
+
+    async fn setup_shared_network(&self) {
+        // Create the shared Rivetr network if it doesn't exist.
+        container::ensure_rivetr_network(self).await;
+
+        // Connect all currently-running Rivetr-managed containers to the network
+        // so that hostname-based discovery works for containers started before
+        // this feature was introduced.
+        let containers = match self.list_containers("rivetr-").await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Could not list containers for network setup: {}", e);
+                return;
+            }
+        };
+
+        for c in containers {
+            // Use the container name (strip leading '/') as the alias.
+            let name = c.name.trim_start_matches('/').to_string();
+            let id = c.id;
+            container::connect_to_rivetr_network(self, &id, vec![name]).await;
+        }
+    }
 }

@@ -60,6 +60,7 @@ impl HealthChecker {
     pub fn new(routes: Arc<ArcSwap<RouteTable>>, config: HealthCheckerConfig) -> Self {
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("Failed to build HTTP client");
 
@@ -116,7 +117,9 @@ impl HealthChecker {
                     let check_passed = match client.get(&health_url).send().await {
                         Ok(response) => {
                             let status = response.status();
-                            if status.is_success() {
+                            // Accept 2xx (success) and 3xx (redirect) as healthy —
+                            // apps that redirect HTTP→HTTPS are still alive.
+                            if status.is_success() || status.is_redirection() {
                                 debug!(
                                     domain = %domain,
                                     url = %health_url,

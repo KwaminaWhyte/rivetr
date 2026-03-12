@@ -6,6 +6,8 @@ use bollard::container::{
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
 use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
+use bollard::network::{ConnectNetworkOptions, CreateNetworkOptions};
+use bollard::models::EndpointSettings;
 use bytes::Bytes;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -134,16 +136,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         ..Default::default()
     };
 
-    // Set up network aliases if provided.
-    // For now, we add them as environment variables for container discovery.
-    // Full network alias support requires creating/joining a Docker network.
-    let mut final_env = env;
-    if !config.network_aliases.is_empty() {
-        final_env.push(format!(
-            "RIVETR_NETWORK_ALIASES={}",
-            config.network_aliases.join(",")
-        ));
-    }
+    let final_env = env;
 
     // Set up container labels
     let labels: Option<HashMap<String, String>> = if config.labels.is_empty() {
@@ -178,7 +171,71 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         .await
         .map_err(|e| anyhow::anyhow!("Failed to start container: {}", e))?;
 
+    // Connect the container to the shared Rivetr network so containers can
+    // reach each other by name (default bridge does not support DNS).
+    ensure_rivetr_network(runtime).await;
+    let aliases = if !config.network_aliases.is_empty() {
+        config.network_aliases.clone()
+    } else {
+        vec![config.name.clone()]
+    };
+    connect_to_rivetr_network(runtime, &response.id, aliases).await;
+
     Ok(response.id)
+}
+
+/// The shared Docker network that all Rivetr-managed containers join.
+const RIVETR_NETWORK: &str = "rivetr";
+
+/// Create the `rivetr` Docker network if it does not already exist.
+pub async fn ensure_rivetr_network(runtime: &DockerRuntime) {
+    let result = runtime
+        .client
+        .create_network(CreateNetworkOptions {
+            name: RIVETR_NETWORK,
+            check_duplicate: true,
+            driver: "bridge",
+            ..Default::default()
+        })
+        .await;
+
+    match result {
+        Ok(_) => tracing::info!("Created Docker network '{}'", RIVETR_NETWORK),
+        Err(bollard::errors::Error::DockerResponseServerError { status_code: 409, .. }) => {
+            // 409 Conflict = network already exists, which is fine.
+        }
+        Err(e) => tracing::warn!("Could not create Docker network '{}': {}", RIVETR_NETWORK, e),
+    }
+}
+
+/// Connect a container to the shared `rivetr` network with the given aliases.
+pub async fn connect_to_rivetr_network(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    aliases: Vec<String>,
+) {
+    let result = runtime
+        .client
+        .connect_network(
+            RIVETR_NETWORK,
+            ConnectNetworkOptions {
+                container: container_id,
+                endpoint_config: EndpointSettings {
+                    aliases: Some(aliases),
+                    ..Default::default()
+                },
+            },
+        )
+        .await;
+
+    if let Err(e) = result {
+        tracing::warn!(
+            "Could not connect container {} to network '{}': {}",
+            container_id,
+            RIVETR_NETWORK,
+            e
+        );
+    }
 }
 
 pub async fn start(runtime: &DockerRuntime, container_id: &str) -> Result<()> {

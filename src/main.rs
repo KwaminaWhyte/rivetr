@@ -150,6 +150,10 @@ async fn main() -> Result<()> {
     // This updates database records for containers that stopped while server was down
     reconcile_container_status(&db, &runtime).await;
 
+    // Ensure the shared container network exists and connect all existing
+    // Rivetr-managed containers to it (enables hostname-based inter-container discovery).
+    runtime.setup_shared_network().await;
+
     // Start auto-update checker
     let update_checker = updater::start_update_checker(config.auto_update.clone());
     if config.auto_update.enabled {

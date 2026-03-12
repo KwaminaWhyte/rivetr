@@ -228,6 +228,9 @@ pub trait ContainerRuntime: Send + Sync {
     async fn run_command(&self, container_id: &str, cmd: Vec<String>) -> Result<CommandResult>;
     /// Pull an image from a registry, optionally with authentication
     async fn pull_image(&self, image: &str, auth: Option<&RegistryAuth>) -> Result<()>;
+    /// Ensure the shared container network exists and connect all existing
+    /// Rivetr-managed containers to it (no-op for non-Docker runtimes).
+    async fn setup_shared_network(&self) {}
 }
 
 /// A no-op runtime used when no container runtime is available

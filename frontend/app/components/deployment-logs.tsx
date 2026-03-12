@@ -31,7 +31,6 @@ export function DeploymentLogs({
   isActive,
   token: propToken,
 }: DeploymentLogsProps) {
-  // Get token from props or localStorage
   const token = propToken || getAuthToken() || "";
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
@@ -47,7 +46,51 @@ export function DeploymentLogs({
     }
   }, [logs, autoScroll]);
 
-  // Connect to WebSocket
+  // Merge new logs into state: deduplicate by id, keep sorted by id
+  const mergeLogs = useCallback((incoming: LogEntry[]) => {
+    if (!incoming || incoming.length === 0) return;
+    setLogs((prev) => {
+      const existingIds = new Set(prev.map((l) => l.id));
+      const fresh = incoming.filter((l) => !existingIds.has(l.id));
+      if (fresh.length === 0) return prev;
+      return [...prev, ...fresh].sort((a, b) => a.id - b.id);
+    });
+  }, []);
+
+  // Fetch all logs from REST API and merge (never replaces, always merges)
+  const fetchLogs = useCallback(async () => {
+    try {
+      const result = await api.getDeploymentLogs(deploymentId, token || undefined);
+      if (result && result.length > 0) {
+        mergeLogs(result as LogEntry[]);
+      }
+    } catch {
+      // ignore fetch errors
+    }
+  }, [deploymentId, token, mergeLogs]);
+
+  // Initial load on mount
+  useEffect(() => {
+    fetchLogs();
+    if (!isActive) {
+      setEnded(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploymentId]); // Only re-run if deploymentId changes
+
+  // REST polling as WebSocket fallback: poll every 3s while active,
+  // do one final fetch when deployment completes
+  useEffect(() => {
+    if (!isActive) {
+      fetchLogs();
+      setEnded(true);
+      return;
+    }
+    const poll = setInterval(fetchLogs, 3000);
+    return () => clearInterval(poll);
+  }, [isActive, fetchLogs]);
+
+  // Connect to WebSocket for real-time streaming
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -69,15 +112,12 @@ export function DeploymentLogs({
         if (data.type === "end") {
           setEnded(true);
           ws.close();
+          // Final REST fetch to catch any logs written after the WS check
+          fetchLogs();
           return;
         }
 
-        // It's a log entry
-        setLogs((prev) => {
-          // Avoid duplicates
-          if (prev.some((l) => l.id === data.id)) return prev;
-          return [...prev, data as LogEntry];
-        });
+        mergeLogs([data as LogEntry]);
       } catch (e) {
         console.error("Failed to parse log message:", e);
       }
@@ -85,35 +125,25 @@ export function DeploymentLogs({
 
     ws.onerror = () => {
       setConnected(false);
+      // Fetch latest logs in case WS missed any
+      fetchLogs();
     };
 
     ws.onclose = () => {
       setConnected(false);
+      // Fetch latest logs in case WS missed any
+      fetchLogs();
     };
-  }, [deploymentId, token]);
+  }, [deploymentId, token, mergeLogs, fetchLogs]);
 
-  // Always load historical logs first via REST, then stream new ones via WebSocket if active
-  useEffect(() => {
-    api.getDeploymentLogs(deploymentId, token || undefined).then((historicalLogs) => {
-      if (historicalLogs && historicalLogs.length > 0) {
-        setLogs(historicalLogs as LogEntry[]);
-      }
-      if (!isActive) {
-        setEnded(true);
-      }
-    }).catch(() => {/* ignore */});
-  }, [deploymentId, isActive, token]);
-
-  // Auto-connect when component mounts if deployment is active
+  // Auto-connect WebSocket when active
   useEffect(() => {
     if (isActive) {
       connect();
     }
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      wsRef.current?.close();
     };
   }, [isActive, connect]);
 
@@ -132,7 +162,6 @@ export function DeploymentLogs({
   }
 
   if (logs.length === 0 && !isActive) {
-    // Still loading historical logs — show skeleton
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground text-sm">

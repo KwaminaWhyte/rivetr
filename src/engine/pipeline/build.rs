@@ -318,13 +318,13 @@ pub(super) async fn build_git_image(
             let (nix_log_tx, mut nix_log_rx) = mpsc::unbounded_channel::<String>();
             let db_nix = db.clone();
             let depl_nix = deployment_id.to_string();
-            tokio::spawn(async move {
+            let nix_drain = tokio::spawn(async move {
                 while let Some(line) = nix_log_rx.recv().await {
                     let _ = add_deployment_log(&db_nix, &depl_nix, "info", &line).await;
                 }
             });
 
-            // Build with Nixpacks
+            // Build with Nixpacks (nix_log_tx is moved in, dropped when build_image returns)
             nixpacks::build_image(
                 build_path,
                 &image_tag,
@@ -334,6 +334,9 @@ pub(super) async fn build_git_image(
             )
             .await
             .context("Nixpacks build failed")?;
+
+            // Wait for all buffered log lines to be written to DB before advancing
+            let _ = nix_drain.await;
 
             add_deployment_log(
                 db,
@@ -555,7 +558,7 @@ pub(super) async fn build_git_image(
             let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
             let db_clone = db.clone();
             let depl_id = deployment_id.to_string();
-            tokio::spawn(async move {
+            let log_drain = tokio::spawn(async move {
                 while let Some(line) = log_rx.recv().await {
                     let _ = add_deployment_log(&db_clone, &depl_id, "info", &line).await;
                 }
@@ -624,6 +627,9 @@ pub(super) async fn build_git_image(
             }
 
             runtime.build(&build_ctx).await.context("Build failed")?;
+            // Drop build_ctx (closes log_tx) then wait for all buffered logs to reach DB
+            drop(build_ctx);
+            let _ = log_drain.await;
             add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
         }
     }
@@ -681,7 +687,7 @@ pub(super) async fn build_upload_image(
             let (nix_log_tx2, mut nix_log_rx2) = mpsc::unbounded_channel::<String>();
             let db_nix2 = db.clone();
             let depl_nix2 = deployment_id.to_string();
-            tokio::spawn(async move {
+            let nix_drain2 = tokio::spawn(async move {
                 while let Some(line) = nix_log_rx2.recv().await {
                     let _ = add_deployment_log(&db_nix2, &depl_nix2, "info", &line).await;
                 }
@@ -696,6 +702,9 @@ pub(super) async fn build_upload_image(
             )
             .await
             .context("Nixpacks build failed")?;
+
+            // Wait for all buffered log lines to be written to DB before advancing
+            let _ = nix_drain2.await;
 
             add_deployment_log(
                 db,
@@ -904,7 +913,7 @@ pub(super) async fn build_upload_image(
             let (log_tx2, mut log_rx2) = mpsc::unbounded_channel::<String>();
             let db_clone2 = db.clone();
             let depl_id2 = deployment_id.to_string();
-            tokio::spawn(async move {
+            let log_drain2 = tokio::spawn(async move {
                 while let Some(line) = log_rx2.recv().await {
                     let _ = add_deployment_log(&db_clone2, &depl_id2, "info", &line).await;
                 }
@@ -923,6 +932,9 @@ pub(super) async fn build_upload_image(
             };
 
             runtime.build(&build_ctx).await.context("Build failed")?;
+            // Drop build_ctx (closes log_tx2) then wait for all buffered logs to reach DB
+            drop(build_ctx);
+            let _ = log_drain2.await;
             add_deployment_log(db, deployment_id, "info", "Image built successfully").await?;
         }
     }

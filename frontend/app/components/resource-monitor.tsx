@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AreaChart, Area, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { ContainerStats } from "@/types/api";
@@ -29,32 +30,36 @@ function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-// Mini sparkline chart component for history
-function Sparkline({ data, max, color }: { data: number[]; max: number; color: string }) {
+// Recharts-based sparkline
+function Sparkline({ data, color }: { data: number[]; color: string }) {
   if (data.length < 2) return null;
-
-  const width = 80;
-  const height = 24;
-  const padding = 2;
-
-  const effectiveMax = Math.max(max, ...data) || 100;
-  const points = data.map((value, i) => {
-    const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value / effectiveMax) * (height - 2 * padding));
-    return `${x},${y}`;
-  });
-
+  const chartData = data.map((v, i) => ({ i, v }));
   return (
-    <svg width={width} height={height} className="inline-block">
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div className="w-20 h-6">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 1, right: 1, bottom: 1, left: 1 }}>
+          <defs>
+            <linearGradient id={`spark-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Tooltip
+            content={() => null}
+            wrapperStyle={{ display: "none" }}
+          />
+          <Area
+            type="monotone"
+            dataKey="v"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={`url(#spark-${color.replace("#", "")})`}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -101,7 +106,6 @@ function StatDisplay({
   subValue,
   icon,
   history,
-  historyMax,
   historyColor,
 }: {
   label: string;
@@ -109,7 +113,6 @@ function StatDisplay({
   subValue?: string;
   icon: React.ReactNode;
   history?: number[];
-  historyMax?: number;
   historyColor?: string;
 }) {
   return (
@@ -121,7 +124,7 @@ function StatDisplay({
         {subValue && <div className="text-xs text-muted-foreground">{subValue}</div>}
       </div>
       {history && history.length > 1 && (
-        <Sparkline data={history} max={historyMax || 100} color={historyColor || "#3b82f6"} />
+        <Sparkline data={history} color={historyColor || "#3b82f6"} />
       )}
     </div>
   );
@@ -237,7 +240,6 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 
               value={formatPercent(stats.cpu_percent)}
               icon={<CpuIcon />}
               history={cpuHistory}
-              historyMax={100}
               historyColor={stats.cpu_percent > 80 ? "#ef4444" : "#3b82f6"}
             />
             <ProgressBar
@@ -256,7 +258,6 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 
               subValue={stats.memory_limit > 0 ? `of ${formatBytes(stats.memory_limit)}` : "no limit"}
               icon={<MemoryIcon />}
               history={memoryHistory}
-              historyMax={100}
               historyColor={memoryPercent > 80 ? "#ef4444" : "#22c55e"}
             />
             {stats.memory_limit > 0 ? (
