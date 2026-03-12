@@ -324,17 +324,16 @@ pub async fn restart_app(
         .ok()
         .and_then(|info| info.host_port);
 
-    // Re-register the route if app has a domain
-    if let Some(domain) = &app.domain {
-        if !domain.is_empty() {
-            if let Some(port) = host_port {
-                let backend =
-                    crate::proxy::Backend::new(container_id.clone(), "127.0.0.1".to_string(), port)
-                        .with_healthcheck(app.healthcheck.clone());
-
-                state.routes.load().add_route(domain.clone(), backend);
-                tracing::info!(domain = %domain, port = port, "Route re-registered after restart");
-            }
+    // Re-register routes for all domains (custom + auto_subdomain) with the new port
+    if let Some(port) = host_port {
+        let all_domains = app.get_all_domain_names();
+        let route_table = state.routes.load();
+        for domain in &all_domains {
+            let backend =
+                crate::proxy::Backend::new(container_id.clone(), "127.0.0.1".to_string(), port)
+                    .with_healthcheck(app.healthcheck.clone());
+            route_table.add_route(domain.clone(), backend);
+            tracing::info!(domain = %domain, port = port, "Route re-registered after restart");
         }
     }
 
