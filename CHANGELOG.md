@@ -20,17 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Recharts Dashboard** — Replaced custom SVG charts with Recharts across the dashboard and monitoring pages for improved interactivity and maintainability.
+- **Service Domain Routing** — Docker Compose services now support a configurable domain (auto-populated as `{name}.{base_domain}`) with full proxy integration: routes registered on start, removed on stop/delete, and restored on server startup.
+- **Service Restart Button** — Services now have a Restart button (alongside Stop) when running.
 
 ### Fixed
 - **Proxy Route Restore on Startup** — Running apps now have their proxy routes fully restored after a Rivetr restart (binary update). The startup `restore_routes` function now falls back to `inspect()` when `list_containers` doesn't return a port, and also restores Basic Auth config and `www.` redirect variants. This prevents 404s for all apps after a server update.
 - **Audit Log User Display** — The audit log now shows the user's email address instead of their UUID. Backend does a `LEFT JOIN users` and returns `user_email` in the response.
+- **Audit Log Resource Type Formatting** — Multi-word resource types like `ssh_key` now display as "SSH Key" instead of "Ssh_key".
+- **SSH Key Delete Audit Log** — Deleting an SSH key now records the key name (not the UUID) in the audit log resource_name field.
 - **DB Backup Download 401** — Database backup downloads now correctly include the Authorization header by falling back to the stored auth token when none is explicitly passed.
 - **Database Data Directory Uniqueness** — The data directory for managed databases now includes the first 8 characters of the database UUID (e.g., `pharmapro-db-a1b2c3d4`) to prevent path collisions when databases with the same name are created across time.
+- **Deployment Detail Status Badge** — The status badge on the deployment detail page now correctly shows "Running" for active deployments (was falling back to "Pending" because "running" was missing from STATUS_CONFIG). Also added "Replaced" and "Stopped" labels.
+- **Service Logs Duplication** — Service log viewer no longer shows duplicate entries (was showing REST-fetched initial logs plus SSE-streamed history replay simultaneously).
+- **Service Network Tab Open Link** — The "Open" button in the Service Network tab now uses the configured domain URL (when port matches service.port) instead of always using hostname:port.
+- **Dashboard Stats Console Errors** — The `/api/apps/:id/stats` endpoint now returns zeroed stats (HTTP 200) for apps without a running deployment instead of 404, eliminating spurious browser console errors.
+- **Recent Events: Replaced Status** — Deployments with status "replaced" (superseded by newer deploy) now show a descriptive event message instead of "unknown".
 - **Deployment Log Streaming** — Build output from Docker and Nixpacks is now streamed in real time to deployment logs.
 - **Logout Auth Header** — Logout now correctly passes the Authorization header and clears the stored token.
 - **Team-Scoped Queries Backward Compat** — All team-scoped queries (`apps`, `databases`, `services`, `system stats`) now include `OR team_id IS NULL` so legacy resources without a team assignment remain visible.
 - **Freeze Windows API Path** — Frontend now calls the correct endpoint `/api/apps/:id/freeze-windows` (was incorrectly using `/api/freeze-windows?app_id=...`).
-- **Migration 067 Registration** — The `databases.container_slug` migration was registered in `run_migrations()` so the column is created on first run (fixes 500 errors on all database-related endpoints).
+- **Migration 067/068 Registration** — The `databases.container_slug` and `services.domain/port` migrations are registered in `run_migrations()` so columns are created on first run.
 - **Admin API Token Permissions** — System/admin API token now has full access to all teams and can delete apps without requiring a password.
 - **Stuck Deployments Cleanup** — Deployments stuck in `running` or `pending` state are now cleaned up on server startup.
 - **TypeScript Fixes** — Fixed `DeploymentLog.id` type mismatch (`number` → `string`), `GitLabIcon` missing `style` prop, log sort using string timestamp comparison.
