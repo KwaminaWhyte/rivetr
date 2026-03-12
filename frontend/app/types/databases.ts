@@ -29,6 +29,7 @@ export interface ManagedDatabase {
   db_type: DatabaseType;
   version: string;
   container_id: string | null;
+  container_slug: string | null;
   status: DatabaseStatus;
   internal_port: number;
   external_port: number;

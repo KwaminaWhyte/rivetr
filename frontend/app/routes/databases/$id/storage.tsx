@@ -261,7 +261,7 @@ function BackupInstructions({ database }: { database: ManagedDatabase }) {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const containerName = `rivetr-db-${database.name}`;
+  const containerName = database.container_slug || `rivetr-db-${database.name}`;
   const { username, database: dbName } = database.credentials || {};
 
   const backupCommands: Record<string, { label: string; command: string; description: string }[]> = {
