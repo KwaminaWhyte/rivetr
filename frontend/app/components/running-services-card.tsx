@@ -47,7 +47,9 @@ export function RunningServicesCard() {
     refetchInterval: 30000,
   });
 
-  // Fetch stats for all apps — skip those with no running container (stats will 404)
+  // Fetch stats for all apps. The backend returns zeroed stats (not 404) for
+  // non-running apps, so we filter out entries with zero memory usage to show
+  // only apps that are actually consuming resources.
   const appStatsQuery = useQuery({
     queryKey: ["app-stats", apps.map((a) => a.id)],
     queryFn: async () => {
@@ -55,18 +57,22 @@ export function RunningServicesCard() {
         apps.map(async (app) => {
           try {
             const stats = await api.getAppStats(app.id);
+            // Skip apps that are not running (backend returns zeroed stats)
+            if (!stats || (stats.cpu_percent === 0 && stats.memory_usage === 0)) {
+              return null;
+            }
             return {
               id: app.id,
               name: app.name,
               type: "app" as const,
               status: "running",
-              cpu_percent: stats?.cpu_percent ?? 0,
-              memory_usage: stats?.memory_usage ?? 0,
-              memory_limit: stats?.memory_limit ?? 0,
+              cpu_percent: stats.cpu_percent,
+              memory_usage: stats.memory_usage,
+              memory_limit: stats.memory_limit,
               url: `/apps/${app.id}`,
             };
           } catch {
-            // Not running — omit from list
+            // Unexpected error — omit from list
             return null;
           }
         })
@@ -169,7 +175,7 @@ export function RunningServicesCard() {
             No running services
           </div>
         ) : (
-          <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
+          <div className="space-y-1 max-h-70 overflow-y-auto pr-1">
             {allRunning.map((service) => (
               <Link
                 key={`${service.type}-${service.id}`}

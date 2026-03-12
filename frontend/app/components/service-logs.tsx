@@ -61,6 +61,8 @@ export function ServiceLogs({ serviceId, serviceName, serviceStatus, token: prop
     eventSource.onopen = () => {
       setConnected(true);
       setError(null);
+      // Clear REST-loaded initial logs so SSE can stream without duplicates
+      setLogs([]);
     };
 
     eventSource.onmessage = (event) => {

@@ -425,7 +425,8 @@ pub async fn get_logs(
 /// GET /api/apps/:id/stats
 ///
 /// Returns current CPU, memory, and network statistics for the container.
-/// Only available for apps with a running deployment.
+/// Returns zeroed stats if the app exists but has no running deployment,
+/// rather than a 404, to avoid spurious browser console errors on the dashboard.
 pub async fn get_app_stats(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
@@ -435,12 +436,16 @@ pub async fn get_app_stats(
         return Err(ApiError::validation_field("app_id", e));
     }
 
-    // Check if app exists
-    let _app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
-        .bind(&app_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::not_found("App not found"))?;
+    // Check if app exists — return 404 only for truly missing apps
+    let app_exists: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await?;
+
+    if app_exists.is_none() {
+        return Err(ApiError::not_found("App not found"));
+    }
 
     // Find the currently running deployment for this app
     let running_deployment: Option<Deployment> = sqlx::query_as(
@@ -450,12 +455,28 @@ pub async fn get_app_stats(
     .fetch_optional(&state.db)
     .await?;
 
-    let deployment = running_deployment
-        .ok_or_else(|| ApiError::not_found("No running deployment found for this app"))?;
+    // If no running deployment, return zeroed stats rather than 404.
+    // This prevents browser-level "Failed to load resource" console errors
+    // when the dashboard polls stats for apps that are stopped or not yet deployed.
+    let Some(deployment) = running_deployment else {
+        return Ok(Json(ContainerStats {
+            cpu_percent: 0.0,
+            memory_usage: 0,
+            memory_limit: 0,
+            network_rx: 0,
+            network_tx: 0,
+        }));
+    };
 
-    let container_id = deployment
-        .container_id
-        .ok_or_else(|| ApiError::not_found("Running deployment has no container ID"))?;
+    let Some(container_id) = deployment.container_id else {
+        return Ok(Json(ContainerStats {
+            cpu_percent: 0.0,
+            memory_usage: 0,
+            memory_limit: 0,
+            network_rx: 0,
+            network_tx: 0,
+        }));
+    };
 
     // Get stats from the container runtime
     let stats = state.runtime.stats(&container_id).await.map_err(|e| {

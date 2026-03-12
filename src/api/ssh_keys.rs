@@ -198,6 +198,15 @@ pub async fn delete_ssh_key(
     user: User,
     headers: HeaderMap,
 ) -> Result<StatusCode, StatusCode> {
+    // Fetch key name before deleting so audit log can use it
+    let key_name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM ssh_keys WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+
     let result = sqlx::query("DELETE FROM ssh_keys WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -212,12 +221,13 @@ pub async fn delete_ssh_key(
     }
 
     let ip = extract_client_ip(&headers, None);
+    let name_ref = key_name.as_deref().unwrap_or(&id);
     audit_log(
         &state,
         actions::SSH_KEY_DELETE,
         resource_types::SSH_KEY,
         Some(&id),
-        Some(&id),
+        Some(name_ref),
         Some(&user.id),
         ip.as_deref(),
         None,

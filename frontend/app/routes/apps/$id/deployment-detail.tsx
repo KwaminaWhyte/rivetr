@@ -54,6 +54,21 @@ const STATUS_CONFIG: Record<
     icon: <Loader2 className="h-4 w-4 animate-spin" />,
     variant: "secondary",
   },
+  running: {
+    label: "Running",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    variant: "default",
+  },
+  replaced: {
+    label: "Replaced",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    variant: "secondary",
+  },
+  stopped: {
+    label: "Stopped",
+    icon: <Clock className="h-4 w-4" />,
+    variant: "secondary",
+  },
   success: {
     label: "Success",
     icon: <CheckCircle2 className="h-4 w-4" />,

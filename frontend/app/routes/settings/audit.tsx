@@ -68,7 +68,12 @@ function formatAction(action: string): string {
 }
 
 function formatResourceType(resourceType: string): string {
-  return resourceType.charAt(0).toUpperCase() + resourceType.slice(1);
+  // Handle multi-word types like "ssh_key" → "SSH Key", "log_drain" → "Log Drain"
+  const abbreviations: Record<string, string> = { ssh: "SSH", api: "API" };
+  return resourceType
+    .split("_")
+    .map((word) => abbreviations[word.toLowerCase()] ?? (word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(" ");
 }
 
 export default function SettingsAuditPage() {

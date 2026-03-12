@@ -211,22 +211,25 @@ export default function ServiceNetworkTab() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <CopyButton
-                      text={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
-                      field={`port-url-${idx}`}
-                    />
-                    {service.status === "running" && (
-                      <Button variant="outline" size="sm" className="gap-1" asChild>
-                        <a
-                          href={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          Open
-                        </a>
-                      </Button>
-                    )}
+                    {(() => {
+                      const usesDomain = service.domain && String(service.port) === port.hostPort;
+                      const openUrl = usesDomain
+                        ? `https://${service.domain}`
+                        : `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`;
+                      return (
+                        <>
+                          <CopyButton text={openUrl} field={`port-url-${idx}`} />
+                          {service.status === "running" && (
+                            <Button variant="outline" size="sm" className="gap-1" asChild>
+                              <a href={openUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-3 w-3" />
+                                Open
+                              </a>
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

@@ -454,6 +454,11 @@ pub async fn get_recent_events(
                     "info".to_string(),
                     format!("{} is starting", d.app_name),
                 ),
+                "replaced" => (
+                    "replaced".to_string(),
+                    "info".to_string(),
+                    format!("{} deployment superseded by newer version", d.app_name),
+                ),
                 "stopped" => (
                     "stopped".to_string(),
                     "warning".to_string(),
