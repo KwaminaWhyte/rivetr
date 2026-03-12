@@ -42,9 +42,9 @@ pub async fn list_services(
             .await
         }
         Some(team_id) => {
-            // Filter by specific team
+            // Filter by specific team, include legacy services with no team_id
             sqlx::query_as::<_, Service>(
-                "SELECT * FROM services WHERE team_id = ? ORDER BY created_at DESC",
+                "SELECT * FROM services WHERE team_id = ? OR team_id IS NULL ORDER BY created_at DESC",
             )
             .bind(team_id)
             .fetch_all(&state.db)

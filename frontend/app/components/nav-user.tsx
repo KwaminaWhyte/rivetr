@@ -1,4 +1,4 @@
-import { Link, Form } from "react-router";
+import { Link } from "react-router";
 import { ChevronsUpDown, LogOut, Settings, Moon, Sun, Monitor } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -98,14 +98,12 @@ export function NavUser() {
               </DropdownMenuPortal>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <Form method="post" action="/logout">
-              <DropdownMenuItem asChild>
-                <button type="submit" className="w-full cursor-pointer">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </button>
-              </DropdownMenuItem>
-            </Form>
+            <DropdownMenuItem asChild>
+              <Link to="/logout">
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </Link>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

@@ -4,7 +4,6 @@ import {
   FolderKanban,
   Settings,
   BarChart3,
-  Bell,
   Server,
   Cpu,
   Key,
@@ -32,7 +31,6 @@ const navPlatform: NavMainItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Monitoring", url: "/monitoring", icon: BarChart3 },
-  { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 
 const navInfrastructure: NavMainItem[] = [

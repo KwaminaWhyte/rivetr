@@ -157,7 +157,7 @@ pub async fn get_system_stats(
     // Get apps - optionally filtered by team
     let apps: Vec<App> = match &query.team_id {
         Some(team_id) if !team_id.is_empty() => {
-            sqlx::query_as("SELECT * FROM apps WHERE team_id = ?")
+            sqlx::query_as("SELECT * FROM apps WHERE team_id = ? OR team_id IS NULL")
                 .bind(team_id)
                 .fetch_all(&state.db)
                 .await?
@@ -206,7 +206,7 @@ pub async fn get_system_stats(
                     WHERE status = 'running'
                     GROUP BY app_id
                 ) latest ON d.app_id = latest.app_id AND d.started_at = latest.max_started
-                WHERE d.status = 'running' AND a.team_id = ?
+                WHERE d.status = 'running' AND (a.team_id = ? OR a.team_id IS NULL)
                 "#,
             )
             .bind(team_id)
@@ -236,7 +236,7 @@ pub async fn get_system_stats(
     // Get databases count - optionally filtered by team
     let databases: Vec<ManagedDatabase> = match &query.team_id {
         Some(team_id) if !team_id.is_empty() => {
-            sqlx::query_as("SELECT * FROM databases WHERE team_id = ?")
+            sqlx::query_as("SELECT * FROM databases WHERE team_id = ? OR team_id IS NULL")
                 .bind(team_id)
                 .fetch_all(&state.db)
                 .await?
@@ -258,7 +258,7 @@ pub async fn get_system_stats(
     // Get services count - optionally filtered by team
     let services: Vec<Service> = match &query.team_id {
         Some(team_id) if !team_id.is_empty() => {
-            sqlx::query_as("SELECT * FROM services WHERE team_id = ?")
+            sqlx::query_as("SELECT * FROM services WHERE team_id = ? OR team_id IS NULL")
                 .bind(team_id)
                 .fetch_all(&state.db)
                 .await?

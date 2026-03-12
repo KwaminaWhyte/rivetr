@@ -599,17 +599,15 @@ export const appsApi = {
   // Deployment Freeze Windows
   // -------------------------------------------------------------------------
 
-  /** List freeze windows (optionally filter by app_id or team_id) */
+  /** List freeze windows for an app */
   getFreezeWindows: (
     options?: { appId?: string; teamId?: string },
     token?: string,
   ) => {
-    const params = new URLSearchParams();
-    if (options?.appId) params.append("app_id", options.appId);
-    if (options?.teamId) params.append("team_id", options.teamId);
-    const qs = params.toString();
+    const appId = options?.appId;
+    if (!appId) return Promise.resolve([] as DeploymentFreezeWindow[]);
     return apiRequest<DeploymentFreezeWindow[]>(
-      qs ? `/freeze-windows?${qs}` : "/freeze-windows",
+      `/apps/${appId}/freeze-windows`,
       {},
       token,
     );
@@ -621,7 +619,7 @@ export const appsApi = {
     token?: string,
   ) =>
     apiRequest<DeploymentFreezeWindow>(
-      "/freeze-windows",
+      `/apps/${data.app_id}/freeze-windows`,
       {
         method: "POST",
         body: JSON.stringify(data),
@@ -630,9 +628,9 @@ export const appsApi = {
     ),
 
   /** Delete a freeze window */
-  deleteFreezeWindow: (id: string, token?: string) =>
+  deleteFreezeWindow: (appId: string, windowId: string, token?: string) =>
     apiRequest<void>(
-      `/freeze-windows/${id}`,
+      `/apps/${appId}/freeze-windows/${windowId}`,
       { method: "DELETE" },
       token,
     ),

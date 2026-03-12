@@ -499,7 +499,7 @@ export default function AppSettingsTab() {
   // Delete freeze window handler
   const handleDeleteFreezeWindow = async (id: string) => {
     try {
-      await api.deleteFreezeWindow(id);
+      await api.deleteFreezeWindow(app.id, id);
       toast.success("Freeze window deleted");
       refetchFreezeWindows();
     } catch (err) {

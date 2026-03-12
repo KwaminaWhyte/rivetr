@@ -919,6 +919,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 067: Add container_slug to databases for globally unique container names
+    let has_container_slug: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('databases') WHERE name = 'container_slug'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_container_slug.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/067_database_container_slug.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

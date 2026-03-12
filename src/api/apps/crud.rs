@@ -27,19 +27,16 @@ pub async fn list_apps(
     Query(query): Query<ListAppsQuery>,
 ) -> Result<Json<Vec<App>>, ApiError> {
     let apps = if let Some(team_id) = &query.team_id {
-        // Filter by team ID - returns apps belonging to the specified team
-        // Also include apps with NULL team_id if team_id is empty (for backward compatibility)
         if team_id.is_empty() {
-            // Return apps without a team (legacy/unassigned apps)
             sqlx::query_as::<_, App>(
                 "SELECT * FROM apps WHERE team_id IS NULL ORDER BY created_at DESC",
             )
             .fetch_all(&state.db)
             .await?
         } else {
-            // Return apps belonging to the specified team
+            // Include apps for this team plus legacy apps with no team_id
             sqlx::query_as::<_, App>(
-                "SELECT * FROM apps WHERE team_id = ? ORDER BY created_at DESC",
+                "SELECT * FROM apps WHERE team_id = ? OR team_id IS NULL ORDER BY created_at DESC",
             )
             .bind(team_id)
             .fetch_all(&state.db)

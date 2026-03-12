@@ -48,7 +48,7 @@ pub async fn list_databases(
             .await
         } else {
             sqlx::query_as::<_, ManagedDatabase>(
-                "SELECT * FROM databases WHERE team_id = ? ORDER BY created_at DESC",
+                "SELECT * FROM databases WHERE team_id = ? OR team_id IS NULL ORDER BY created_at DESC",
             )
             .bind(team_id)
             .fetch_all(&state.db)

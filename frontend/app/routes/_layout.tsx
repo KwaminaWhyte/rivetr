@@ -25,7 +25,6 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/projects": [{ label: "Projects" }],
   "/deployments": [{ label: "Deployments" }],
   "/monitoring": [{ label: "Monitoring" }],
-  "/notifications": [{ label: "Notifications" }],
   "/settings": [{ label: "Settings" }],
   "/settings/notifications": [
     { label: "Settings", href: "/settings" },

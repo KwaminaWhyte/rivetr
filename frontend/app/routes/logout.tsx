@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { getAuthToken, clearAuthToken } from "@/lib/auth";
 
 export function meta() {
   return [{ title: "Logging out - Rivetr" }];
@@ -10,17 +11,19 @@ export default function LogoutPage() {
 
   useEffect(() => {
     async function performLogout() {
+      const token = getAuthToken();
       try {
         // Call logout endpoint to clear server-side session
         await fetch("/api/auth/logout", {
           method: "POST",
-          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
       } catch {
         // Ignore errors - we still want to redirect to login
       }
 
-      // Redirect to login
+      // Clear local token and redirect
+      clearAuthToken();
       navigate("/login", { replace: true });
     }
 

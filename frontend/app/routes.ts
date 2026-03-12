@@ -68,9 +68,6 @@ export default [
     // Costs
     route("costs", "routes/costs.tsx"),
 
-    // Notifications
-    route("notifications", "routes/notifications.tsx"),
-
     // Infrastructure (top-level, no /settings/ prefix)
     route("servers", "routes/settings/servers.tsx"),
     route("build-servers", "routes/settings/build-servers.tsx"),
