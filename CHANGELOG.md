@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API Tokens** — Users can now create named API tokens for programmatic access. Tokens are shown once on creation (prefixed `rvt_`), stored as SHA-256 hashes, and support optional expiry dates. The `/api/tokens` CRUD endpoints are available to all authenticated users. Existing scripts using the admin config token are unaffected.
 
 ### Fixed
+- **Version Reporting** — `Cargo.toml` version now correctly reflects the deployed release so that the Auto Updates page reports the accurate running version.
+- **Breadcrumbs** — Several routes were falling through to the "Page" fallback. Added entries for `/costs` (Cost Analysis) and dynamic patterns for app sub-tabs: Previews, Jobs, Log Drains, and Monitoring.
 - **Notification Channels 403** — Team notification channels endpoint now correctly grants access when authenticating with the admin API token (system user bypass was missing from `require_team_role` in notifications.rs).
 - **Team Breadcrumb** — The team detail page breadcrumb now shows the team name (e.g. "Teams > Personal") instead of the generic "Page" fallback.
 - **Build Server Docker Column** — Docker version column no longer shows "vnot installed" — the `v` prefix is only added when the version string starts with a digit.
