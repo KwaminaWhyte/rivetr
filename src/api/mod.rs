@@ -73,6 +73,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/validate", get(auth::validate))
         .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup))
+        .route("/register-with-invitation", post(auth::register_with_invitation))
         // OAuth routes
         .route(
             "/oauth/:provider/authorize",

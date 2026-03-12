@@ -10,10 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Rocket, Users, Clock, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { teamsApi } from "@/lib/api/teams";
-import { getAuthToken, validateAuth } from "@/lib/auth";
+import { getAuthToken, validateAuth, setAuthToken } from "@/lib/auth";
 import type { TeamInvitation, TeamRole } from "@/types/api";
 
 export function meta() {
@@ -35,6 +37,8 @@ type AuthState =
   | { status: "loading" }
   | { status: "authenticated" }
   | { status: "unauthenticated" };
+
+type SetupMode = "choose" | "login" | "register";
 
 function getRoleBadgeVariant(role: TeamRole): "default" | "secondary" | "outline" {
   switch (role) {
@@ -58,6 +62,9 @@ export default function AcceptInvitationPage() {
 
   const [invitationState, setInvitationState] = useState<InvitationState>({ status: "loading" });
   const [authState, setAuthState] = useState<AuthState>({ status: "loading" });
+  const [setupMode, setSetupMode] = useState<SetupMode>("choose");
+  const [registerName, setRegisterName] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
 
   // Check authentication status
   useEffect(() => {
@@ -142,6 +149,28 @@ export default function AcceptInvitationPage() {
       }
     },
   });
+
+  // Register + accept in one step
+  const registerMutation = useMutation({
+    mutationFn: ({ name, password }: { name: string; password: string }) =>
+      teamsApi.registerWithInvitation({ token: token!, name, password }),
+    onSuccess: (data) => {
+      setAuthToken(data.token);
+      navigate(`/teams/${data.member.team_id}`, { replace: true });
+    },
+    onError: (error: Error) => {
+      setInvitationState({
+        status: "error",
+        message: error.message || "Failed to create account",
+      });
+    },
+  });
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registerName.trim() || !registerPassword) return;
+    registerMutation.mutate({ name: registerName.trim(), password: registerPassword });
+  };
 
   // Handle login redirect
   const handleLoginRedirect = () => {
@@ -332,16 +361,55 @@ export default function AcceptInvitationPage() {
                   "Accept Invitation"
                 )}
               </Button>
-            ) : (
+            ) : setupMode === "choose" ? (
               <div className="space-y-3">
-                <p className="text-sm text-center text-muted-foreground">
-                  Please log in to accept this invitation.
-                </p>
-                <Button className="w-full" onClick={handleLoginRedirect}>
+                <Button className="w-full" onClick={() => setSetupMode("register")}>
+                  Create Account &amp; Accept
+                </Button>
+                <Button variant="outline" className="w-full" onClick={handleLoginRedirect}>
                   Log In to Accept
                 </Button>
               </div>
-            )}
+            ) : setupMode === "register" ? (
+              <form onSubmit={handleRegisterSubmit} className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="reg-name">Your Name</Label>
+                  <Input
+                    id="reg-name"
+                    placeholder="Jane Smith"
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="reg-password">Password</Label>
+                  <Input
+                    id="reg-password"
+                    type="password"
+                    placeholder="Min 12 chars, upper, lower, digit, special"
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
+                  {registerMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating account...</>
+                  ) : (
+                    "Create Account & Accept"
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setSetupMode("choose")}
+                >
+                  Back
+                </Button>
+              </form>
+            ) : null}
           </CardContent>
           <CardFooter className="flex justify-center">
             <p className="text-xs text-muted-foreground">

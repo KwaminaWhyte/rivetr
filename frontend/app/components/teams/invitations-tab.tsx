@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Crown, Shield, Code, Eye, Loader2, Mail, MailPlus, Clock, RefreshCw, Trash2 } from "lucide-react";
+import { Crown, Shield, Code, Eye, Loader2, Mail, MailPlus, Clock, RefreshCw, Trash2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -104,6 +104,15 @@ export function InvitationsTab({
 }: InvitationsTabProps) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyLink = (invitation: TeamInvitation) => {
+    const url = `${window.location.origin}/invitations/accept?token=${invitation.token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(invitation.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
 
   const handleCreateInvitation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -206,7 +215,7 @@ export function InvitationsTab({
                   <TableHead>Role</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Expiry</TableHead>
-                  <TableHead className="w-40">Actions</TableHead>
+                  <TableHead className="w-44">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -234,7 +243,19 @@ export function InvitationsTab({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCopyLink(invitation)}
+                          title="Copy invitation link"
+                        >
+                          {copiedId === invitation.id ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

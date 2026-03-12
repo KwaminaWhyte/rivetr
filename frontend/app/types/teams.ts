@@ -108,6 +108,8 @@ export interface TeamInvitation {
   team_name: string | null;
   /** Inviter name (for display purposes) */
   inviter_name: string | null;
+  /** Invitation token — use to construct copy-link URL */
+  token: string;
 }
 
 /** Request to create a team invitation */

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
 use crate::db::{
-    actions, resource_types, LoginRequest, LoginResponse, Session, User, UserResponse,
+    actions, resource_types, LoginRequest, LoginResponse, Session, TeamInvitation, TeamMemberWithUser, User, UserResponse,
 };
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -588,6 +588,153 @@ pub async fn get_current_user(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     user.ok_or(StatusCode::UNAUTHORIZED)
+}
+
+/// Register a new account using a team invitation token.
+///
+/// POST /api/auth/register-with-invitation
+///
+/// Creates a new user, logs them in, and automatically accepts the invitation —
+/// all in one step. Intended for invited users who don't yet have an account.
+pub async fn register_with_invitation(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RegisterWithInvitationRequest>,
+) -> Result<Json<RegisterWithInvitationResponse>, (StatusCode, String)> {
+    // Validate invitation token
+    let invitation: TeamInvitation =
+        sqlx::query_as("SELECT * FROM team_invitations WHERE token = ?")
+            .bind(&req.token)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .ok_or((StatusCode::NOT_FOUND, "Invitation not found or already accepted".to_string()))?;
+
+    if invitation.accepted_at.is_some() {
+        return Err((StatusCode::GONE, "This invitation has already been accepted".to_string()));
+    }
+    if invitation.is_expired() {
+        return Err((StatusCode::GONE, "This invitation has expired".to_string()));
+    }
+
+    // Validate inputs
+    if req.name.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Name is required".to_string()));
+    }
+    if let Some(err) = validate_password_strength(&req.password) {
+        return Err((StatusCode::BAD_REQUEST, err));
+    }
+
+    // Make sure no account with that email exists yet
+    let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE email = ?")
+        .bind(&invitation.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if existing.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "An account with this email already exists. Please log in instead.".to_string(),
+        ));
+    }
+
+    let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339();
+
+    // Create the user
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let password_hash = hash_password(&req.password)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to hash password: {}", e)))?;
+
+    sqlx::query("INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&user_id)
+        .bind(&invitation.email)
+        .bind(&password_hash)
+        .bind(req.name.trim())
+        .bind("member")
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Add user to the team
+    let member_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(&member_id)
+        .bind(&invitation.team_id)
+        .bind(&user_id)
+        .bind(&invitation.role)
+        .bind(&now_str)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Mark invitation as accepted
+    sqlx::query("UPDATE team_invitations SET accepted_at = ? WHERE id = ?")
+        .bind(&now_str)
+        .bind(&invitation.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Create a session for the new user
+    let session_token = generate_token();
+    let token_hash = hash_token(&session_token);
+    let expires_at = now
+        .checked_add_signed(chrono::Duration::days(7))
+        .unwrap()
+        .to_rfc3339();
+    let session_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(&session_id)
+        .bind(&user_id)
+        .bind(&token_hash)
+        .bind(&expires_at)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let user_response = UserResponse {
+        id: user_id.clone(),
+        email: invitation.email.clone(),
+        name: req.name.trim().to_string(),
+        role: "member".to_string(),
+        totp_enabled: false,
+    };
+
+    let member = TeamMemberWithUser {
+        id: member_id,
+        team_id: invitation.team_id.clone(),
+        user_id,
+        role: invitation.role.clone(),
+        created_at: now.to_rfc3339(),
+        user_name: req.name.trim().to_string(),
+        user_email: invitation.email.clone(),
+    };
+
+    tracing::info!(
+        email = %invitation.email,
+        team_id = %invitation.team_id,
+        "New user registered via invitation"
+    );
+
+    Ok(Json(RegisterWithInvitationResponse {
+        token: session_token,
+        user: user_response,
+        member,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterWithInvitationRequest {
+    pub token: String,
+    pub name: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterWithInvitationResponse {
+    pub token: String,
+    pub user: UserResponse,
+    pub member: TeamMemberWithUser,
 }
 
 /// Extractor for getting the current authenticated user from a request

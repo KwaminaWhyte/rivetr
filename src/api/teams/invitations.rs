@@ -199,6 +199,7 @@ pub async fn create_invitation(
         accepted_at: None,
         created_by: user.id.clone(),
         created_at: now.to_rfc3339(),
+        token: token.clone(),
         team_name: Some(team.name.clone()),
         inviter_name: Some(user.name.clone()),
     };

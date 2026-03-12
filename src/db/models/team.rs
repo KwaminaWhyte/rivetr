@@ -268,6 +268,8 @@ pub struct TeamInvitationResponse {
     pub team_name: Option<String>,
     /// Inviter name (for display purposes)
     pub inviter_name: Option<String>,
+    /// Invitation token — included so admins can copy the invite link manually
+    pub token: String,
 }
 
 impl From<TeamInvitation> for TeamInvitationResponse {
@@ -281,6 +283,7 @@ impl From<TeamInvitation> for TeamInvitationResponse {
             accepted_at: inv.accepted_at,
             created_by: inv.created_by,
             created_at: inv.created_at,
+            token: inv.token,
             team_name: None,
             inviter_name: None,
         }

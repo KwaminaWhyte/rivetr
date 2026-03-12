@@ -170,6 +170,16 @@ export const teamsApi = {
       token
     ),
 
+  /** Register a new account and accept an invitation in one step (public endpoint) */
+  registerWithInvitation: (data: { token: string; name: string; password: string }) =>
+    apiRequest<{ token: string; user: { id: string; email: string; name: string; role: string }; member: TeamMemberWithUser }>(
+      `/auth/register-with-invitation`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+
   // -------------------------------------------------------------------------
   // Team Audit Logs
   // -------------------------------------------------------------------------

@@ -256,12 +256,20 @@ export default function TeamDetailPage() {
   const handleInviteSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const userIdentifier = formData.get("userIdentifier") as string;
-    if (!userIdentifier?.trim()) {
-      toast.error("User email is required");
+    const email = formData.get("userIdentifier") as string;
+    if (!email?.trim()) {
+      toast.error("Email is required");
       return;
     }
-    inviteMemberMutation.mutate({ userIdentifier: userIdentifier.trim(), role: inviteRole });
+    createInvitationMutation.mutate(
+      { email: email.trim(), role: inviteRole },
+      {
+        onSuccess: () => {
+          setShowInviteDialog(false);
+          handleTabChange("invitations");
+        },
+      }
+    );
   };
 
   const handleRoleChange = (member: TeamMemberWithUser, newRole: TeamRole) => {
@@ -456,12 +464,12 @@ export default function TeamDetailPage() {
             <DialogHeader>
               <DialogTitle>Invite Team Member</DialogTitle>
               <DialogDescription>
-                Invite a user to join this team. They must have an existing account.
+                Send an invitation to any email address. They'll receive a link to join, or you can copy the link from the Invitations tab.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="userIdentifier">User Email</Label>
+                <Label htmlFor="userIdentifier">Email Address</Label>
                 <Input
                   id="userIdentifier"
                   name="userIdentifier"
@@ -504,8 +512,8 @@ export default function TeamDetailPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={inviteMemberMutation.isPending}>
-                {inviteMemberMutation.isPending ? "Inviting..." : "Send Invitation"}
+              <Button type="submit" disabled={createInvitationMutation.isPending}>
+                {createInvitationMutation.isPending ? "Sending..." : "Send Invitation"}
               </Button>
             </DialogFooter>
           </form>
