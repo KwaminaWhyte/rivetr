@@ -93,6 +93,16 @@ export const servicesApi = {
       token
     ),
 
+  /** Restart a service (stop then start) */
+  restartService: (id: string, token?: string) =>
+    apiRequest<Service>(
+      `/services/${id}/restart`,
+      {
+        method: "POST",
+      },
+      token
+    ),
+
   /** Get service logs */
   getServiceLogs: (id: string, lines = 100, token?: string) =>
     apiRequest<ServiceLogEntry[]>(

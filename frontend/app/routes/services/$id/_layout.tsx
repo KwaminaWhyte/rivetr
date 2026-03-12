@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type { Service, ServiceStatus } from "@/types/api";
-import { Play, Square, Circle, Layers } from "lucide-react";
+import { Play, Square, Circle, Layers, RotateCw } from "lucide-react";
 
 export function meta() {
   return [
@@ -106,6 +106,17 @@ export default function ServiceDetailLayout() {
     },
   });
 
+  const restartMutation = useMutation({
+    mutationFn: () => api.restartService(serviceId),
+    onSuccess: () => {
+      toast.success("Service restarted");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to restart service");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteService(serviceId),
     onSuccess: () => {
@@ -121,7 +132,7 @@ export default function ServiceDetailLayout() {
     },
   });
 
-  const isSubmitting = startMutation.isPending || stopMutation.isPending || deleteMutation.isPending;
+  const isSubmitting = startMutation.isPending || stopMutation.isPending || restartMutation.isPending || deleteMutation.isPending;
 
   // Determine active tab from path
   const basePath = `/services/${serviceId}`;
@@ -165,6 +176,10 @@ export default function ServiceDetailLayout() {
     stopMutation.mutate();
   };
 
+  const handleRestart = () => {
+    restartMutation.mutate();
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -187,17 +202,28 @@ export default function ServiceDetailLayout() {
           )}
         </div>
         <div className="flex gap-2">
-          {/* Start/Stop buttons */}
+          {/* Start/Stop/Restart buttons */}
           {service.status === "running" ? (
-            <Button
-              variant="outline"
-              disabled={isSubmitting}
-              className="gap-2"
-              onClick={handleStop}
-            >
-              <Square className="h-4 w-4" />
-              Stop
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                disabled={isSubmitting}
+                className="gap-2"
+                onClick={handleRestart}
+              >
+                <RotateCw className="h-4 w-4" />
+                Restart
+              </Button>
+              <Button
+                variant="outline"
+                disabled={isSubmitting}
+                className="gap-2"
+                onClick={handleStop}
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            </>
           ) : (
             <Button
               variant="outline"

@@ -113,6 +113,12 @@ pub async fn create_service(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    // Auto-generate domain if not provided
+    let domain = match &req.domain {
+        Some(d) if !d.is_empty() => req.domain.clone(),
+        _ => state.config.proxy.generate_auto_domain(&req.name),
+    };
+
     // Create service record
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -128,7 +134,7 @@ pub async fn create_service(
     .bind(&req.project_id)
     .bind(&req.team_id)
     .bind(&req.compose_content)
-    .bind(&req.domain)
+    .bind(&domain)
     .bind(req.port.unwrap_or(80))
     .bind(ServiceStatus::Pending.to_string())
     .bind(&now)

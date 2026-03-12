@@ -252,6 +252,119 @@ pub async fn stop_service(
     Ok(Json(service.into()))
 }
 
+/// Restart a Docker Compose service (stop then start)
+pub async fn restart_service(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ServiceResponse>, StatusCode> {
+    // Get the service
+    let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get service: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let data_dir = &state.config.server.data_dir;
+    let compose_dir = get_compose_dir(data_dir, &service.name);
+    let project_name = service.compose_project_name();
+
+    // Always write/overwrite compose file from database content
+    if let Err(e) = write_compose_file(data_dir, &service.name, &service.compose_content).await {
+        tracing::error!("Failed to write compose file: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Remove proxy route before restarting
+    if let Some(ref domain) = service.domain {
+        if !domain.is_empty() {
+            state.routes.load().remove_route(domain);
+        }
+    }
+
+    // Run docker compose restart
+    match run_compose_command(&compose_dir, &project_name, &["restart"]).await {
+        Ok(_) => {
+            // Update status to running
+            sqlx::query("UPDATE services SET status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?")
+                .bind(ServiceStatus::Running.to_string())
+                .bind(&id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to update service status: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+            // Re-register proxy route if domain is configured
+            if let Some(ref domain) = service.domain {
+                if !domain.is_empty() {
+                    let backend = crate::proxy::Backend::new(
+                        format!("rivetr-svc-{}", service.name),
+                        "127.0.0.1".to_string(),
+                        service.port as u16,
+                    );
+                    state.routes.load().add_route(domain.clone(), backend);
+                    tracing::info!(
+                        "Re-registered proxy route after restart: {} -> port {}",
+                        domain,
+                        service.port
+                    );
+                }
+            }
+
+            tracing::info!("Restarted Docker Compose service: {}", service.name);
+        }
+        Err(e) => {
+            // Update status to failed with error message
+            sqlx::query("UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(ServiceStatus::Failed.to_string())
+                .bind(&e)
+                .bind(&id)
+                .execute(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to update service status: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+            tracing::error!(
+                "Failed to restart Docker Compose service {}: {}",
+                service.name,
+                e
+            );
+        }
+    }
+
+    // Fetch and return the updated service
+    let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::SERVICE_START,
+        resource_types::SERVICE,
+        Some(&service.id),
+        Some(&service.name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
+    Ok(Json(service.into()))
+}
+
 /// Parse docker compose logs output into structured entries
 fn parse_compose_logs(output: &str) -> Vec<ServiceLogEntry> {
     output

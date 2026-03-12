@@ -255,8 +255,56 @@ export default function ServiceGeneralTab() {
         </Card>
       )}
 
-      {/* Exposed Ports - Only show if service is running and has ports */}
-      {service.status === "running" && allPorts.length > 0 && (
+      {/* Service URL - show domain link if configured, otherwise show port links */}
+      {service.status === "running" && service.domain && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Network className="h-5 w-5" />
+              Service URL
+            </CardTitle>
+            <CardDescription>
+              Click to open the service in your browser
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-sm font-medium truncate">
+                  {service.domain}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Routed via reverse proxy
+                </span>
+              </div>
+              <div className="flex gap-1">
+                <CopyButton
+                  text={`https://${service.domain}`}
+                  field="domain-url"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  asChild
+                >
+                  <a
+                    href={`https://${service.domain}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Exposed Ports - show raw port links when no domain is configured */}
+      {service.status === "running" && !service.domain && allPorts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -264,7 +312,7 @@ export default function ServiceGeneralTab() {
               Exposed Ports
             </CardTitle>
             <CardDescription>
-              Click to open the service in your browser
+              Click to open the service in your browser (no domain configured)
             </CardDescription>
           </CardHeader>
           <CardContent>
