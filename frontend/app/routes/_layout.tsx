@@ -97,6 +97,7 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/webhooks": [{ label: "Webhooks" }],
   "/webhook-events": [{ label: "Webhook Events" }],
   "/tokens": [{ label: "API Tokens" }],
+  "/costs": [{ label: "Cost Analysis" }],
 };
 
 function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
@@ -148,6 +149,34 @@ function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
       { label: "Projects", href: "/projects" },
       { label: "Apps" },
       { label: "Terminal" },
+    ];
+  }
+  if (pathname.match(/^\/apps\/[^/]+\/previews$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Previews" },
+    ];
+  }
+  if (pathname.match(/^\/apps\/[^/]+\/jobs$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Jobs" },
+    ];
+  }
+  if (pathname.match(/^\/apps\/[^/]+\/log-drains$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Log Drains" },
+    ];
+  }
+  if (pathname.match(/^\/apps\/[^/]+\/monitoring$/)) {
+    return [
+      { label: "Projects", href: "/projects" },
+      { label: "Apps" },
+      { label: "Monitoring" },
     ];
   }
   if (pathname.match(/^\/apps\/[^/]+$/)) {
