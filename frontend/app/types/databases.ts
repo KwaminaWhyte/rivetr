@@ -157,8 +157,8 @@ export const DATABASE_TYPES: DatabaseTypeInfo[] = [
     name: "PostgreSQL",
     description: "The world's most advanced open source relational database",
     defaultPort: 5432,
-    versions: ["16", "15", "14", "13", "12"],
-    defaultVersion: "16",
+    versions: ["18", "17", "16", "15", "14", "13", "12"],
+    defaultVersion: "17",
   },
   {
     type: "mysql",

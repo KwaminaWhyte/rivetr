@@ -196,6 +196,8 @@ export const api = {
   upsertDatabaseBackupSchedule: databasesApi.upsertDatabaseBackupSchedule,
   deleteDatabaseBackupSchedule: databasesApi.deleteDatabaseBackupSchedule,
   downloadDatabaseBackup: databasesApi.downloadDatabaseBackup,
+  listDatabaseExtensions: databasesApi.listDatabaseExtensions,
+  installDatabaseExtension: databasesApi.installDatabaseExtension,
 
   // Services
   getServices: servicesApi.getServices,

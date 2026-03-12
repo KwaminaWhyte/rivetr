@@ -10,6 +10,7 @@ mod build_servers;
 mod cost_rates;
 mod costs;
 mod database_backups;
+mod database_extensions;
 mod databases;
 mod deployments;
 mod env_vars;
@@ -515,6 +516,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/stop", post(databases::stop_database))
         .route("/databases/:id/logs", get(databases::get_database_logs))
         .route("/databases/:id/stats", get(databases::get_database_stats))
+        // Database Extensions (PostgreSQL only)
+        .route(
+            "/databases/:id/extensions",
+            get(database_extensions::list_extensions),
+        )
+        .route(
+            "/databases/:id/extensions",
+            post(database_extensions::install_extension),
+        )
         // Database Backups
         .route(
             "/databases/:id/backups",
