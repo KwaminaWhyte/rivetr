@@ -479,10 +479,23 @@ pub(super) async fn build_git_image(
             .await
             .unwrap_or_default();
 
-            // Build with Railpack
-            railpack::build_image(build_path, &image_tag, None, &env_vars)
+            // Set up log streaming channel for railpack output
+            let (rail_log_tx, mut rail_log_rx) = mpsc::unbounded_channel::<String>();
+            let db_rail = db.clone();
+            let depl_rail = deployment_id.to_string();
+            let rail_drain = tokio::spawn(async move {
+                while let Some(line) = rail_log_rx.recv().await {
+                    let _ = add_deployment_log(&db_rail, &depl_rail, "info", &line).await;
+                }
+            });
+
+            // Build with Railpack (rail_log_tx is moved in, dropped when build_image returns)
+            railpack::build_image(build_path, &image_tag, None, &env_vars, Some(rail_log_tx))
                 .await
                 .context("Railpack build failed")?;
+
+            // Wait for all buffered log lines to be written to DB before advancing
+            let _ = rail_drain.await;
 
             add_deployment_log(
                 db,
@@ -1263,9 +1276,23 @@ pub(super) async fn build_upload_image(
             .await
             .unwrap_or_default();
 
-            railpack::build_image(build_path, &image_tag, None, &env_vars)
+            // Set up log streaming channel for railpack output
+            let (rail_log_tx2, mut rail_log_rx2) = mpsc::unbounded_channel::<String>();
+            let db_rail2 = db.clone();
+            let depl_rail2 = deployment_id.to_string();
+            let rail_drain2 = tokio::spawn(async move {
+                while let Some(line) = rail_log_rx2.recv().await {
+                    let _ = add_deployment_log(&db_rail2, &depl_rail2, "info", &line).await;
+                }
+            });
+
+            // Build with Railpack (rail_log_tx2 is moved in, dropped when build_image returns)
+            railpack::build_image(build_path, &image_tag, None, &env_vars, Some(rail_log_tx2))
                 .await
                 .context("Railpack build failed")?;
+
+            // Wait for all buffered log lines to be written to DB before advancing
+            let _ = rail_drain2.await;
 
             add_deployment_log(
                 db,
