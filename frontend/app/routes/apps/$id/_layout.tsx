@@ -123,6 +123,7 @@ export default function AppDetailLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const { setItems } = useBreadcrumb();
 
   // Upload deploy state
@@ -331,7 +332,7 @@ export default function AppDetailLayout() {
   // Handle restart action
   const handleRestart = async () => {
     if (!id) return;
-    setIsSubmitting(true);
+    setIsRestarting(true);
     try {
       await api.restartApp(id);
       toast.success("Application restarted");
@@ -342,7 +343,7 @@ export default function AppDetailLayout() {
         error instanceof Error ? error.message : "Failed to restart app"
       );
     } finally {
-      setIsSubmitting(false);
+      setIsRestarting(false);
     }
   };
 
@@ -439,12 +440,12 @@ export default function AppDetailLayout() {
             <>
               <Button
                 variant="outline"
-                disabled={isSubmitting || hasActiveDeployment}
+                disabled={isSubmitting || isRestarting || hasActiveDeployment}
                 className="gap-2"
                 onClick={handleRestart}
               >
-                <RotateCw className="h-4 w-4" />
-                Restart
+                <RotateCw className={`h-4 w-4 ${isRestarting ? "animate-spin" : ""}`} />
+                {isRestarting ? "Restarting..." : "Restart"}
               </Button>
               <Button
                 variant="outline"
