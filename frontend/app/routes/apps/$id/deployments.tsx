@@ -158,7 +158,12 @@ export default function AppDeploymentsTab() {
   }, [deployments]);
 
   const canRollback = (deployment: Deployment): boolean => {
-    return deployment.status === "stopped" && deployment.container_id !== null;
+    // Allow rollback for any non-active deployment that has an image tag
+    // (status "replaced" = superseded by a newer deploy, "stopped" = manually stopped)
+    return (
+      (deployment.status === "replaced" || deployment.status === "stopped") &&
+      deployment.image_tag != null
+    );
   };
 
   // Update URL with new page

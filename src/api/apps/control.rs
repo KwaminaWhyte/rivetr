@@ -583,38 +583,47 @@ pub async fn restart_app(
         "Zero-downtime restart: new container started, waiting for it to become healthy"
     );
 
-    // 4. Inspect the new container to get its host port
-    let new_info = state
-        .runtime
-        .inspect(&new_container_id)
-        .await
-        .map_err(|e| {
-            // Clean up the new container before returning the error
-            let runtime = state.runtime.clone();
-            let cid = new_container_id.clone();
-            tokio::spawn(async move {
-                let _ = runtime.stop(&cid).await;
-                let _ = runtime.remove(&cid).await;
-            });
-            ApiError::internal(format!(
-                "Failed to inspect new container after start: {}",
-                e
-            ))
-        })?;
+    // 4. Inspect the new container to get its host port.
+    // Docker assigns the ephemeral port synchronously, but occasionally the
+    // inspect response is returned before the port binding is populated in the
+    // daemon. Retry up to 10 times (5 seconds) before giving up.
+    let new_port = {
+        let mut port: Option<u16> = None;
+        for attempt in 0..10u8 {
+            match state.runtime.inspect(&new_container_id).await {
+                Ok(info) => {
+                    if let Some(p) = info.host_port {
+                        port = Some(p);
+                        break;
+                    }
+                    // Port not yet visible — check if container is still running
+                    if !info.running {
+                        break; // Container died; stop retrying
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(attempt, error = %e, "inspect failed during port wait");
+                }
+            }
+            if attempt < 9 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
 
-    let new_port = match new_info.host_port {
-        Some(p) => p,
-        None => {
-            // Clean up
-            let runtime = state.runtime.clone();
-            let cid = new_container_id.clone();
-            tokio::spawn(async move {
-                let _ = runtime.stop(&cid).await;
-                let _ = runtime.remove(&cid).await;
-            });
-            return Err(ApiError::internal(
-                "New container did not expose a host port",
-            ));
+        match port {
+            Some(p) => p,
+            None => {
+                // Clean up before returning error; old container still running
+                let runtime = state.runtime.clone();
+                let cid = new_container_id.clone();
+                tokio::spawn(async move {
+                    let _ = runtime.stop(&cid).await;
+                    let _ = runtime.remove(&cid).await;
+                });
+                return Err(ApiError::internal(
+                    "New container started but did not expose a host port (may have crashed at startup — check the app logs)",
+                ));
+            }
         }
     };
 

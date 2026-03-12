@@ -422,7 +422,16 @@ export default function AppDetailLayout() {
             <h1 className="text-3xl font-bold">{app.name}</h1>
             <EnvironmentBadge environment={app.environment} />
             <RunningStatusBadge status={appStatus} />
-            {hasActiveDeployment && (
+            {isRestarting && (
+              <span className="flex items-center gap-1.5 text-sm font-normal text-amber-600">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+                </span>
+                Restarting
+              </span>
+            )}
+            {!isRestarting && hasActiveDeployment && (
               <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>

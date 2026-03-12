@@ -159,7 +159,10 @@ export default function AppDetailPage() {
   }, [deployments]);
 
   const canRollback = (deployment: Deployment): boolean => {
-    return deployment.status === "stopped" && deployment.container_id !== null;
+    return (
+      (deployment.status === "replaced" || deployment.status === "stopped") &&
+      deployment.image_tag != null
+    );
   };
 
   // Populate edit form when app loads
