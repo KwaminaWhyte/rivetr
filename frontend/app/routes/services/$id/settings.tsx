@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
-import { Trash2, AlertTriangle, Code, Pencil, X, Save, AlertCircle } from "lucide-react";
+import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle } from "lucide-react";
 
 interface OutletContext {
   service: Service;
@@ -40,6 +40,8 @@ export default function ServiceSettingsTab() {
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [composeContent, setComposeContent] = useState(service.compose_content);
+  const [domain, setDomain] = useState(service.domain ?? "");
+  const [port, setPort] = useState(service.port ?? 80);
 
   // Mutations
   const updateComposeMutation = useMutation({
@@ -52,6 +54,18 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update compose configuration");
+    },
+  });
+
+  const updateDomainMutation = useMutation({
+    mutationFn: (data: { domain: string; port: number }) =>
+      api.updateService(service.id, { domain: data.domain, port: data.port }),
+    onSuccess: () => {
+      toast.success("Domain configuration saved. Restart the service to apply changes.");
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update domain configuration");
     },
   });
 
@@ -70,7 +84,7 @@ export default function ServiceSettingsTab() {
     },
   });
 
-  const isSubmitting = updateComposeMutation.isPending || deleteMutation.isPending;
+  const isSubmitting = updateComposeMutation.isPending || updateDomainMutation.isPending || deleteMutation.isPending;
 
   // Reset compose content when service changes (e.g., after save)
   useEffect(() => {
@@ -78,6 +92,12 @@ export default function ServiceSettingsTab() {
       setComposeContent(service.compose_content);
     }
   }, [service.compose_content, isEditing]);
+
+  // Sync domain/port state when service data changes
+  useEffect(() => {
+    setDomain(service.domain ?? "");
+    setPort(service.port ?? 80);
+  }, [service.domain, service.port]);
 
   const handleCancelEdit = () => {
     setComposeContent(service.compose_content);
@@ -89,12 +109,75 @@ export default function ServiceSettingsTab() {
     updateComposeMutation.mutate(composeContent);
   };
 
+  const handleSaveDomain = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    updateDomainMutation.mutate({ domain, port });
+  };
+
   const handleDelete = () => {
     deleteMutation.mutate();
   };
 
   return (
     <div className="space-y-6">
+      {/* Domain Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Domain Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure a subdomain to route traffic to this service through the reverse proxy.
+            For example: <code className="text-xs bg-muted px-1 py-0.5 rounded">myservice.rivetr.site</code>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveDomain} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="domain">Domain</Label>
+                <Input
+                  id="domain"
+                  type="text"
+                  placeholder="myservice.rivetr.site"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to disable proxy routing.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="port">Port</Label>
+                <Input
+                  id="port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  placeholder="80"
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The port your service listens on inside the container.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {updateDomainMutation.isPending ? "Saving..." : "Save Domain"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
       {/* Docker Compose Configuration Editor */}
       <Card>
         <CardHeader>

@@ -97,6 +97,23 @@ pub async fn start_service(
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
+            // Register proxy route if domain is configured
+            if let Some(ref domain) = service.domain {
+                if !domain.is_empty() {
+                    let backend = crate::proxy::Backend::new(
+                        format!("rivetr-svc-{}", service.name),
+                        "127.0.0.1".to_string(),
+                        service.port as u16,
+                    );
+                    state.routes.load().add_route(domain.clone(), backend);
+                    tracing::info!(
+                        "Registered proxy route: {} -> port {}",
+                        domain,
+                        service.port
+                    );
+                }
+            }
+
             tracing::info!("Started Docker Compose service: {}", service.name);
         }
         Err(e) => {
@@ -179,6 +196,14 @@ pub async fn stop_service(
                     tracing::error!("Failed to update service status: {}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
+
+            // Remove proxy route if domain was configured
+            if let Some(ref domain) = service.domain {
+                if !domain.is_empty() {
+                    state.routes.load().remove_route(domain);
+                    tracing::info!("Removed proxy route for stopped service: {}", domain);
+                }
+            }
 
             tracing::info!("Stopped Docker Compose service: {}", service.name);
         }

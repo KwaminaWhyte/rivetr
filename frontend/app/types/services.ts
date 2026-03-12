@@ -12,6 +12,8 @@ export interface Service {
   project_id: string | null;
   team_id: string | null;
   compose_content: string;
+  domain: string | null;
+  port: number;
   status: ServiceStatus;
   error_message: string | null;
   created_at: string;
@@ -24,12 +26,16 @@ export interface CreateServiceRequest {
   compose_content: string;
   project_id?: string;
   team_id?: string;
+  domain?: string;
+  port?: number;
 }
 
 /** Request to update a service */
 export interface UpdateServiceRequest {
   compose_content?: string;
   project_id?: string;
+  domain?: string;
+  port?: number;
 }
 
 /** Service log entry */

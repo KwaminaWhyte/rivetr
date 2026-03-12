@@ -52,6 +52,8 @@ pub struct Service {
     pub project_id: Option<String>,
     pub team_id: Option<String>,
     pub compose_content: String,
+    pub domain: Option<String>,
+    pub port: i32,
     pub status: String,
     pub error_message: Option<String>,
     pub created_at: String,
@@ -69,6 +71,11 @@ impl Service {
         format!("rivetr-svc-{}", self.name)
     }
 
+    /// Get the configured proxy domain, if any
+    pub fn proxy_domain(&self) -> Option<String> {
+        self.domain.clone()
+    }
+
     /// Convert to response DTO
     pub fn to_response(self) -> ServiceResponse {
         ServiceResponse::from(self)
@@ -83,6 +90,8 @@ pub struct ServiceResponse {
     pub project_id: Option<String>,
     pub team_id: Option<String>,
     pub compose_content: String,
+    pub domain: Option<String>,
+    pub port: i32,
     pub status: String,
     pub error_message: Option<String>,
     pub created_at: String,
@@ -97,6 +106,8 @@ impl From<Service> for ServiceResponse {
             project_id: service.project_id,
             team_id: service.team_id,
             compose_content: service.compose_content,
+            domain: service.domain,
+            port: service.port,
             status: service.status,
             error_message: service.error_message,
             created_at: service.created_at,
@@ -115,6 +126,10 @@ pub struct CreateServiceRequest {
     pub project_id: Option<String>,
     /// Associated team ID (optional)
     pub team_id: Option<String>,
+    /// Custom domain for proxy routing (e.g. myservice.rivetr.site)
+    pub domain: Option<String>,
+    /// Port of the service to proxy to (defaults to 80)
+    pub port: Option<i32>,
 }
 
 /// Request to update a Docker Compose service
@@ -124,4 +139,8 @@ pub struct UpdateServiceRequest {
     pub compose_content: Option<String>,
     /// Update the project association
     pub project_id: Option<String>,
+    /// Update the proxy domain
+    pub domain: Option<String>,
+    /// Update the proxy port
+    pub port: Option<i32>,
 }

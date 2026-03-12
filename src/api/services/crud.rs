@@ -119,8 +119,8 @@ pub async fn create_service(
 
     sqlx::query(
         r#"
-        INSERT INTO services (id, name, project_id, team_id, compose_content, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO services (id, name, project_id, team_id, compose_content, domain, port, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -128,6 +128,8 @@ pub async fn create_service(
     .bind(&req.project_id)
     .bind(&req.team_id)
     .bind(&req.compose_content)
+    .bind(&req.domain)
+    .bind(req.port.unwrap_or(80))
     .bind(ServiceStatus::Pending.to_string())
     .bind(&now)
     .bind(&now)
@@ -260,6 +262,34 @@ pub async fn update_service(
             })?;
     }
 
+    // Update domain if provided
+    if let Some(ref domain) = req.domain {
+        sqlx::query("UPDATE services SET domain = ?, updated_at = ? WHERE id = ?")
+            .bind(domain)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service domain: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
+    // Update port if provided
+    if let Some(port) = req.port {
+        sqlx::query("UPDATE services SET port = ?, updated_at = ? WHERE id = ?")
+            .bind(port)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service port: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
     // Fetch and return the updated service
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(&id)
@@ -309,6 +339,14 @@ pub async fn delete_service(
         // Remove compose directory
         if let Err(e) = tokio::fs::remove_dir_all(&compose_dir).await {
             tracing::warn!("Failed to remove compose directory: {}", e);
+        }
+    }
+
+    // Remove proxy route if domain was configured
+    if let Some(ref domain) = service.domain {
+        if !domain.is_empty() {
+            state.routes.load().remove_route(domain);
+            tracing::info!("Removed proxy route for deleted service: {}", domain);
         }
     }
 

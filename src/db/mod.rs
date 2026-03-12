@@ -933,6 +933,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 068: Add domain and port to services
+    let has_service_domain: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('services') WHERE name = 'domain'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_service_domain.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/068_service_domains.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

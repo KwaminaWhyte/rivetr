@@ -21,6 +21,7 @@ use rivetr::proxy::{
 };
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
+use rivetr::db::Service;
 use rivetr::AppState;
 use rivetr::DbPool;
 
@@ -651,6 +652,37 @@ async fn restore_routes(
                 container = %container_name,
                 "No running container found for app {} — skipping route restore",
                 app_name
+            );
+        }
+    }
+
+    // Restore service routes for running Docker Compose services
+    let services: Vec<Service> = sqlx::query_as(
+        "SELECT * FROM services WHERE status = 'running' AND domain IS NOT NULL AND domain != ''",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    tracing::info!(
+        "Restoring proxy routes for {} running services with domains",
+        services.len()
+    );
+
+    let route_table = routes.load();
+    for service in services {
+        if let Some(ref domain) = service.domain {
+            let backend = Backend::new(
+                format!("rivetr-svc-{}", service.name),
+                "127.0.0.1".to_string(),
+                service.port as u16,
+            );
+            route_table.add_route(domain.clone(), backend);
+            tracing::info!(
+                domain = %domain,
+                port = service.port,
+                "Restored service proxy route for {}",
+                service.name
             );
         }
     }
