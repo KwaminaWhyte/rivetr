@@ -153,6 +153,8 @@ pub async fn create_database(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let volume_name = format!("rivetr-db-{}-data", req.name);
+    // ID-based slug ensures globally unique container hostname across teams.
+    let container_slug = ManagedDatabase::build_slug(&id);
 
     // Build absolute volume path for Docker compatibility
     let volume_path = std::fs::canonicalize(&state.config.server.data_dir)
@@ -174,8 +176,8 @@ pub async fn create_database(
         INSERT INTO databases (
             id, name, db_type, version, status, internal_port, external_port,
             public_access, credentials, volume_name, volume_path, memory_limit,
-            cpu_limit, project_id, team_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cpu_limit, project_id, team_id, created_at, updated_at, container_slug
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -195,6 +197,7 @@ pub async fn create_database(
     .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
+    .bind(&container_slug)
     .execute(&state.db)
     .await
     .map_err(|e| {

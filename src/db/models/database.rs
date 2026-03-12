@@ -127,6 +127,10 @@ pub struct ManagedDatabase {
     pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Stable, globally-unique container hostname (set at creation time).
+    /// Format: `rivetr-db-{id[:8]}` for new databases.
+    /// Legacy databases fall back to `rivetr-db-{name}` if NULL.
+    pub container_slug: Option<String>,
 }
 
 impl ManagedDatabase {
@@ -150,9 +154,20 @@ impl ManagedDatabase {
         self.public_access != 0
     }
 
-    /// Get container name
+    /// Get container name — also used as the Docker network hostname.
+    ///
+    /// New databases use a slug based on the ID prefix for global uniqueness.
+    /// Existing databases fall back to the legacy name-based format so existing
+    /// containers and connection strings continue to work without disruption.
     pub fn container_name(&self) -> String {
-        format!("rivetr-db-{}", self.name)
+        self.container_slug
+            .clone()
+            .unwrap_or_else(|| format!("rivetr-db-{}", self.name))
+    }
+
+    /// Build the slug that new databases should be assigned at creation time.
+    pub fn build_slug(id: &str) -> String {
+        format!("rivetr-db-{}", &id[..8.min(id.len())])
     }
 
     /// Generate internal connection string (for apps on same Docker network)
