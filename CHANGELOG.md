@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.4] - 2026-03-12
+
+### Added
+- **API Tokens** — Users can now create named API tokens for programmatic access. Tokens are shown once on creation (prefixed `rvt_`), stored as SHA-256 hashes, and support optional expiry dates. The `/api/tokens` CRUD endpoints are available to all authenticated users. Existing scripts using the admin config token are unaffected.
+
+### Fixed
+- **Notification Channels 403** — Team notification channels endpoint now correctly grants access when authenticating with the admin API token (system user bypass was missing from `require_team_role` in notifications.rs).
+- **Team Breadcrumb** — The team detail page breadcrumb now shows the team name (e.g. "Teams > Personal") instead of the generic "Page" fallback.
+- **Build Server Docker Column** — Docker version column no longer shows "vnot installed" — the `v` prefix is only added when the version string starts with a digit.
+- **SSH Password Auth for Servers & Build Servers** — Servers and build servers can now be registered using a password (no SSH key required). `sshpass` is used transparently for health checks and terminal connections when no key is provided.
+
+---
+
 ## [0.10.3] - 2026-03-12
 
 ### Added
