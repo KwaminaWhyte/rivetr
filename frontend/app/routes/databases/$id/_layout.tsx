@@ -11,6 +11,13 @@ import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import type { ManagedDatabase, DatabaseStatus, Project } from "@/types/api";
 import { Play, Square, Circle, Database } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database - Rivetr" },
+    { name: "description", content: "Manage and monitor database instance" },
+  ];
+}
+
 // Status badge component
 function StatusBadge({ status }: { status?: DatabaseStatus }) {
   if (!status) return null;

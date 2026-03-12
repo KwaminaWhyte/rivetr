@@ -15,6 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+export function meta() {
+  return [
+    { title: "Log Drains - Rivetr" },
+    { name: "description", content: "Configure external log drain destinations" },
+  ];
+}
 import {
   Table,
   TableBody,

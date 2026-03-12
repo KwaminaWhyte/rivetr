@@ -1,6 +1,13 @@
 import { useState, useMemo } from "react";
 import { useOutletContext } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "App Logs - Rivetr" },
+    { name: "description", content: "View application runtime and deployment logs" },
+  ];
+}
 import { Button } from "@/components/ui/button";
 import { RuntimeLogs } from "@/components/runtime-logs";
 import type { App, Deployment } from "@/types/api";

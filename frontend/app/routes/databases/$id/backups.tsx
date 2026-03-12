@@ -56,6 +56,13 @@ import type {
   ScheduleType,
 } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "Database Backups - Rivetr" },
+    { name: "description", content: "Manage database backup schedules and restore points" },
+  ];
+}
+
 // Format relative time
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);

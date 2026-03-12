@@ -3,6 +3,13 @@ import { useOutletContext } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+export function meta() {
+  return [
+    { title: "Service Network - Rivetr" },
+    { name: "description", content: "Service network configuration and connection details" },
+  ];
+}
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";

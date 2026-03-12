@@ -1,6 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+export function meta() {
+  return [
+    { title: "Webhooks - Rivetr" },
+    { name: "description", content: "Configure Git webhook endpoints for automatic deployments" },
+  ];
+}
+
 export default function SettingsWebhooksPage() {
   return (
     <div className="space-y-6">

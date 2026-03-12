@@ -12,6 +12,8 @@ pub struct AuditLog {
     pub resource_id: Option<String>,
     pub resource_name: Option<String>,
     pub user_id: Option<String>,
+    /// Email of the user who performed the action (joined from users table)
+    pub user_email: Option<String>,
     pub ip_address: Option<String>,
     pub details: Option<String>,
     pub created_at: String,
@@ -208,32 +210,32 @@ pub async fn list_audit_logs(
     let mut bindings: Vec<String> = Vec::new();
 
     if let Some(action) = &query.action {
-        conditions.push("action = ?".to_string());
+        conditions.push("al.action = ?".to_string());
         bindings.push(action.clone());
     }
 
     if let Some(resource_type) = &query.resource_type {
-        conditions.push("resource_type = ?".to_string());
+        conditions.push("al.resource_type = ?".to_string());
         bindings.push(resource_type.clone());
     }
 
     if let Some(resource_id) = &query.resource_id {
-        conditions.push("resource_id = ?".to_string());
+        conditions.push("al.resource_id = ?".to_string());
         bindings.push(resource_id.clone());
     }
 
     if let Some(user_id) = &query.user_id {
-        conditions.push("user_id = ?".to_string());
+        conditions.push("al.user_id = ?".to_string());
         bindings.push(user_id.clone());
     }
 
     if let Some(start_date) = &query.start_date {
-        conditions.push("created_at >= ?".to_string());
+        conditions.push("al.created_at >= ?".to_string());
         bindings.push(start_date.clone());
     }
 
     if let Some(end_date) = &query.end_date {
-        conditions.push("created_at <= ?".to_string());
+        conditions.push("al.created_at <= ?".to_string());
         bindings.push(end_date.clone());
     }
 
@@ -243,17 +245,37 @@ pub async fn list_audit_logs(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
-    // Build and execute count query
-    let count_sql = format!("SELECT COUNT(*) as count FROM audit_logs {}", where_clause);
+    // Build and execute count query — uses audit_logs directly (no JOIN needed for count)
+    let count_sql = format!(
+        "SELECT COUNT(*) as count FROM audit_logs al {}",
+        where_clause
+    );
     let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
     for binding in &bindings {
         count_query = count_query.bind(binding);
     }
     let total = count_query.fetch_one(db).await?;
 
-    // Build and execute main query
+    // Build and execute main query — LEFT JOIN with users to resolve user_id → email
     let sql = format!(
-        "SELECT * FROM audit_logs {} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        r#"
+        SELECT
+            al.id,
+            al.action,
+            al.resource_type,
+            al.resource_id,
+            al.resource_name,
+            al.user_id,
+            u.email AS user_email,
+            al.ip_address,
+            al.details,
+            al.created_at
+        FROM audit_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+        {}
+        ORDER BY al.created_at DESC
+        LIMIT ? OFFSET ?
+        "#,
         where_clause
     );
     let mut query_builder = sqlx::query_as::<_, AuditLog>(&sql);

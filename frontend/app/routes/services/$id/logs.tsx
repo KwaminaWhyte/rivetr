@@ -2,6 +2,13 @@ import { useOutletContext } from "react-router";
 import { ServiceLogs } from "@/components/service-logs";
 import type { Service } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "Service Logs - Rivetr" },
+    { name: "description", content: "View service container logs" },
+  ];
+}
+
 interface OutletContext {
   service: Service;
 }

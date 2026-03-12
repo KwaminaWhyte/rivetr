@@ -156,7 +156,11 @@ pub async fn create_database(
     // ID-based slug ensures globally unique container hostname across teams.
     let container_slug = ManagedDatabase::build_slug(&id);
 
-    // Build absolute volume path for Docker compatibility
+    // Build absolute volume path for Docker compatibility.
+    // Use "{name}-{id[:8]}" as the directory name so it is both human-readable
+    // and globally unique — two databases with the same name (e.g. created at
+    // different times) will never share a data directory.
+    let volume_dir = format!("{}-{}", req.name, &id[..8.min(id.len())]);
     let volume_path = std::fs::canonicalize(&state.config.server.data_dir)
         .unwrap_or_else(|_| {
             std::env::current_dir()
@@ -164,7 +168,7 @@ pub async fn create_database(
                 .join(&state.config.server.data_dir)
         })
         .join("databases")
-        .join(&req.name)
+        .join(&volume_dir)
         .to_string_lossy()
         .to_string()
         // Remove Windows UNC prefix (\\?\) and convert backslashes to forward slashes for Docker

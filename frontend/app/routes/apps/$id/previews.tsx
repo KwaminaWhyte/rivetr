@@ -4,6 +4,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+export function meta() {
+  return [
+    { title: "Preview Deployments - Rivetr" },
+    { name: "description", content: "Manage preview deployments for pull requests" },
+  ];
+}
 import {
   Table,
   TableBody,

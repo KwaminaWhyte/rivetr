@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "Service Settings - Rivetr" },
+    { name: "description", content: "Configure service settings and environment variables" },
+  ];
+}
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";

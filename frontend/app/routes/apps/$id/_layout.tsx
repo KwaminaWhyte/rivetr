@@ -52,6 +52,13 @@ import {
 import { ZipUploadZone } from "@/components/zip-upload-zone";
 import type { BuildDetectionResult } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "Application - Rivetr" },
+    { name: "description", content: "Application overview and management" },
+  ];
+}
+
 // Running status badge component
 function RunningStatusBadge({ status }: { status?: AppStatus }) {
   if (!status) return null;

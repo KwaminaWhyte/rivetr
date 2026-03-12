@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import { useOutletContext } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "Terminal - Rivetr" },
+    { name: "description", content: "Interactive terminal access to application container" },
+  ];
+}
 import { Terminal as TerminalIcon } from "lucide-react";
 import { ContainerTerminal } from "@/components/container-terminal";
 import type { App, Deployment } from "@/types/api";

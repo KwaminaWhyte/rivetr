@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+export function meta() {
+  return [
+    { title: "Webhook Events - Rivetr" },
+    { name: "description", content: "View incoming webhook event history and payloads" },
+  ];
+}
 import {
   Card,
   CardContent,

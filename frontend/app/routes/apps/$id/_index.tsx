@@ -6,6 +6,13 @@ import { ResourceMonitor } from "@/components/resource-monitor";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import type { App, Deployment } from "@/types/api";
 
+export function meta() {
+  return [
+    { title: "App Overview - Rivetr" },
+    { name: "description", content: "Application overview, status, and resource usage" },
+  ];
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
 }

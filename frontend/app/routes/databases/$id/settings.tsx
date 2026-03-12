@@ -35,6 +35,13 @@ import {
   Info,
 } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database Settings - Rivetr" },
+    { name: "description", content: "Configure database settings and resource limits" },
+  ];
+}
+
 interface OutletContext {
   database: ManagedDatabase;
 }

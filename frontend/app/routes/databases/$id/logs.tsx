@@ -24,6 +24,13 @@ import {
 } from "@/components/ui/select";
 import { RefreshCw, Download, Terminal, AlertCircle } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database Logs - Rivetr" },
+    { name: "description", content: "View database container logs" },
+  ];
+}
+
 interface OutletContext {
   database: ManagedDatabase;
 }

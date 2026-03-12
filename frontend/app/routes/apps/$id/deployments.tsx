@@ -1,6 +1,13 @@
 import { useState, useMemo } from "react";
 import { useOutletContext, useSearchParams, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+export function meta() {
+  return [
+    { title: "Deployments - Rivetr" },
+    { name: "description", content: "View and manage application deployments" },
+  ];
+}
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

@@ -16,8 +16,8 @@ use rivetr::engine::{
     spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
 use rivetr::proxy::{
-    AcmeClient, AcmeConfig, Backend, CertificateRenewalManager, HealthChecker, HealthCheckerConfig,
-    HttpsProxyServer, ProxyServer, RouteTable,
+    AcmeClient, AcmeConfig, Backend, BasicAuthConfig, CertificateRenewalManager, HealthChecker,
+    HealthCheckerConfig, HttpsProxyServer, ProxyServer, RouteTable,
 };
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -487,9 +487,22 @@ async fn restore_routes(
     runtime: &Arc<dyn ContainerRuntime>,
     routes: &Arc<ArcSwap<RouteTable>>,
 ) -> Result<()> {
-    // Fetch all apps that have any domain configured (domain, domains JSON, or auto_subdomain)
-    let apps: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT name, domain, domains, healthcheck, auto_subdomain FROM apps \
+    // Fetch all apps that have any domain configured (domain, domains JSON, or auto_subdomain),
+    // including basic auth fields so they can be re-applied to the restored routes.
+    #[allow(clippy::type_complexity)]
+    let apps: Vec<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i32,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT name, domain, domains, healthcheck, auto_subdomain, \
+                basic_auth_enabled, basic_auth_username, basic_auth_password_hash \
+         FROM apps \
          WHERE (domain IS NOT NULL AND domain != '') \
             OR (domains IS NOT NULL AND domains != '' AND domains != '[]') \
             OR (auto_subdomain IS NOT NULL AND auto_subdomain != '')",
@@ -502,26 +515,56 @@ async fn restore_routes(
         apps.len()
     );
 
-    // List all running rivetr containers
+    // List all running rivetr containers once (avoids repeated calls per app)
     let containers = runtime.list_containers("rivetr-").await?;
 
-    for (app_name, legacy_domain, domains_json, healthcheck, auto_subdomain) in apps {
+    tracing::info!(
+        "Found {} running rivetr containers",
+        containers.len()
+    );
+
+    for (
+        app_name,
+        legacy_domain,
+        domains_json,
+        healthcheck,
+        auto_subdomain,
+        basic_auth_enabled,
+        basic_auth_username,
+        basic_auth_password_hash,
+    ) in apps
+    {
         let container_name = format!("rivetr-{}", app_name);
 
         // Find the running container for this app
         if let Some(container) = containers.iter().find(|c| c.name == container_name) {
-            if let Some(port) = container.port {
+            // Use the port from list_containers if available; otherwise fall back to inspect()
+            // so that containers with only internal port mappings are still captured.
+            let port = if let Some(p) = container.port {
+                Some(p)
+            } else {
+                tracing::debug!(
+                    container = %container_name,
+                    "Port not found in list_containers, falling back to inspect()"
+                );
+                match runtime.inspect(&container.id).await {
+                    Ok(info) => info.port,
+                    Err(e) => {
+                        tracing::warn!(
+                            container = %container_name,
+                            error = %e,
+                            "Failed to inspect container during route restore"
+                        );
+                        None
+                    }
+                }
+            };
+
+            if let Some(port) = port {
                 // Collect all domain names for this app (deduplicated)
                 let mut domain_names: Vec<String> = Vec::new();
 
-                // Legacy domain field
-                if let Some(ref d) = legacy_domain {
-                    if !d.is_empty() {
-                        domain_names.push(d.clone());
-                    }
-                }
-
-                // New domains JSON array: [{domain: "...", primary: true}, ...]
+                // New domains JSON array: [{domain: "...", primary: true, redirect_www: bool}, ...]
                 if let Some(ref json) = domains_json {
                     if let Ok(arr) = serde_json::from_str::<serde_json::Value>(json) {
                         if let Some(list) = arr.as_array() {
@@ -530,34 +573,85 @@ async fn restore_routes(
                                     if !d.is_empty() && !domain_names.contains(&d.to_string()) {
                                         domain_names.push(d.to_string());
                                     }
+                                    // Handle redirect_www variants (www. <-> non-www)
+                                    let redirect_www = entry
+                                        .get("redirect_www")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    if redirect_www {
+                                        let variant = if d.starts_with("www.") {
+                                            d.trim_start_matches("www.").to_string()
+                                        } else {
+                                            format!("www.{}", d)
+                                        };
+                                        if !variant.is_empty()
+                                            && !domain_names.contains(&variant)
+                                        {
+                                            domain_names.push(variant);
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // Auto-generated subdomain (base_domain or traefik.me)
+                // Legacy domain field (add if not already captured from domains JSON)
+                if let Some(ref d) = legacy_domain {
+                    if !d.is_empty() && !domain_names.contains(d) {
+                        domain_names.push(d.clone());
+                    }
+                }
+
+                // Auto-generated subdomain (e.g., app-name.rivetr.example.com)
                 if let Some(ref d) = auto_subdomain {
                     if !d.is_empty() && !domain_names.contains(d) {
                         domain_names.push(d.clone());
                     }
                 }
 
-                for domain in domain_names {
-                    let backend =
+                let route_table = routes.load();
+
+                for domain in &domain_names {
+                    let mut backend =
                         Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
                             .with_healthcheck(healthcheck.clone());
 
-                    routes.load().add_route(domain.clone(), backend);
+                    // Restore HTTP Basic Auth configuration if it was enabled
+                    if basic_auth_enabled != 0 {
+                        if let (Some(ref username), Some(ref password_hash)) =
+                            (&basic_auth_username, &basic_auth_password_hash)
+                        {
+                            backend.set_basic_auth(BasicAuthConfig::new(
+                                username.clone(),
+                                password_hash.clone(),
+                            ));
+                        }
+                    }
+
+                    route_table.add_route(domain.clone(), backend);
                     tracing::info!(
                         domain = %domain,
                         port = port,
                         container = %container_name,
+                        basic_auth = basic_auth_enabled != 0,
                         "Restored proxy route for app {}",
                         app_name
                     );
                 }
+            } else {
+                tracing::warn!(
+                    container = %container_name,
+                    "Running container found but could not determine port — route not restored for app {}",
+                    app_name
+                );
             }
+        } else {
+            tracing::debug!(
+                container = %container_name,
+                "No running container found for app {} — skipping route restore",
+                app_name
+            );
         }
     }
 

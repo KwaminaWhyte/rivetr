@@ -1,6 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+export function meta() {
+  return [
+    { title: "API Tokens - Rivetr" },
+    { name: "description", content: "Manage API tokens for programmatic access" },
+  ];
+}
+
 export default function SettingsTokensPage() {
   return (
     <div className="space-y-6">

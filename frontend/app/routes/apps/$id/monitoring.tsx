@@ -14,6 +14,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+
+export function meta() {
+  return [
+    { title: "Monitoring - Rivetr" },
+    { name: "description", content: "Application health checks and alert rules" },
+  ];
+}
 import {
   Table,
   TableBody,

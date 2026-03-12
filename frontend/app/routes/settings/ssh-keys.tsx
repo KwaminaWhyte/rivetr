@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "SSH Keys - Rivetr" },
+    { name: "description", content: "Manage SSH keys for Git repository access" },
+  ];
+}
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";

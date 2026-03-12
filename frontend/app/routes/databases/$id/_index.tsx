@@ -10,6 +10,13 @@ import { ResourceMonitor } from "@/components/resource-monitor";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Check, ExternalLink } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database Overview - Rivetr" },
+    { name: "description", content: "Database connection details and status" },
+  ];
+}
+
 interface OutletContext {
   database: ManagedDatabase;
 }

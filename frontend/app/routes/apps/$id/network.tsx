@@ -2,6 +2,13 @@ import { useState, useMemo } from "react";
 import { useOutletContext } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "Network - Rivetr" },
+    { name: "description", content: "Configure domains, ports, and network settings" },
+  ];
+}
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

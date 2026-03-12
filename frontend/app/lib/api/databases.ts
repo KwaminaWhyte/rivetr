@@ -3,7 +3,7 @@
  * Handles managed database operations including backups.
  */
 
-import { apiRequest } from "./core";
+import { apiRequest, getStoredToken } from "./core";
 import type {
   ManagedDatabase,
   CreateManagedDatabaseRequest,
@@ -203,9 +203,10 @@ export const databasesApi = {
     backupId: string,
     token?: string
   ) => {
+    const authToken = token || getStoredToken();
     const headers: Record<string, string> = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
     }
     const response = await fetch(
       `/api/databases/${databaseId}/backups/${backupId}/download`,

@@ -144,6 +144,8 @@ export interface AuditLog {
   resource_id: string | null;
   resource_name: string | null;
   user_id: string | null;
+  /** Email of the user who performed the action (resolved from users table) */
+  user_email: string | null;
   ip_address: string | null;
   details: string | null;
   created_at: string;

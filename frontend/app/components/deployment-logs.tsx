@@ -6,7 +6,7 @@ import { getAuthToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 interface LogEntry {
-  id: number;
+  id: string;
   deployment_id: string;
   level: string;
   message: string;
@@ -53,7 +53,7 @@ export function DeploymentLogs({
       const existingIds = new Set(prev.map((l) => l.id));
       const fresh = incoming.filter((l) => !existingIds.has(l.id));
       if (fresh.length === 0) return prev;
-      return [...prev, ...fresh].sort((a, b) => a.id - b.id);
+      return [...prev, ...fresh].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     });
   }, []);
 

@@ -9,6 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Copy, Check, Globe, Lock, Server, Container, Network } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database Network - Rivetr" },
+    { name: "description", content: "Database connection strings and network configuration" },
+  ];
+}
+
 interface OutletContext {
   database: ManagedDatabase;
 }

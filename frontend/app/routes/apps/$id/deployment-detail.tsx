@@ -1,6 +1,13 @@
 import { useParams, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+
+export function meta() {
+  return [
+    { title: "Deployment Detail - Rivetr" },
+    { name: "description", content: "Deployment details, logs, and status" },
+  ];
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";

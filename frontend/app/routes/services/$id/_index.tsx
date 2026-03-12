@@ -20,6 +20,13 @@ import {
   Check,
 } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Service Overview - Rivetr" },
+    { name: "description", content: "Service details and status overview" },
+  ];
+}
+
 interface OutletContext {
   service: Service;
 }

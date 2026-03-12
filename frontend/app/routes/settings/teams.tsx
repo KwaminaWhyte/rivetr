@@ -3,6 +3,13 @@ import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+
+export function meta() {
+  return [
+    { title: "Teams - Rivetr" },
+    { name: "description", content: "Manage teams and team membership" },
+  ];
+}
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

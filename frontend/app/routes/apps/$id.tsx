@@ -56,6 +56,13 @@ import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { EnvVarsTab } from "@/components/env-vars-tab";
 import { EnvironmentBadge } from "@/components/environment-badge";
 
+export function meta() {
+  return [
+    { title: "Application - Rivetr" },
+    { name: "description", content: "View and manage application details" },
+  ];
+}
+
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "development", label: "Development" },
   { value: "staging", label: "Staging" },

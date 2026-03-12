@@ -9,6 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Copy, Check, HardDrive, FolderOpen, Database } from "lucide-react";
 
+export function meta() {
+  return [
+    { title: "Database Storage - Rivetr" },
+    { name: "description", content: "Database storage volumes and disk usage" },
+  ];
+}
+
 interface OutletContext {
   database: ManagedDatabase;
 }

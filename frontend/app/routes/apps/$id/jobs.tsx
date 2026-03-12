@@ -5,6 +5,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export function meta() {
+  return [
+    { title: "Scheduled Jobs - Rivetr" },
+    { name: "description", content: "Manage scheduled jobs and cron tasks" },
+  ];
+}
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";

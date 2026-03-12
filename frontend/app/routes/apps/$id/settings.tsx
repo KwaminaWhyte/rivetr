@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+export function meta() {
+  return [
+    { title: "App Settings - Rivetr" },
+    { name: "description", content: "Configure application settings, environment variables, and resources" },
+  ];
+}
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

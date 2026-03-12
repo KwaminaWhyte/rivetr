@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+
+export function meta() {
+  return [
+    { title: "Audit Log - Rivetr" },
+    { name: "description", content: "View system audit trail and activity history" },
+  ];
+}
 import {
   Card,
   CardContent,
@@ -306,7 +313,7 @@ export default function SettingsAuditPage() {
                           {log.user_id === "system" ? (
                             <Badge variant="outline">System</Badge>
                           ) : (
-                            log.user_id || "-"
+                            log.user_email || log.user_id || "-"
                           )}
                         </span>
                       </TableCell>
