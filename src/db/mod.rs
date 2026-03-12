@@ -947,6 +947,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 069: Add SSH password to servers and build_servers
+    let has_server_password: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('servers') WHERE name = 'ssh_password'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_server_password.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/069_server_ssh_password.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

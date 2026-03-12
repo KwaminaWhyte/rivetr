@@ -11,6 +11,7 @@ pub struct BuildServer {
     pub port: i64,
     pub username: String,
     pub ssh_private_key: Option<String>,
+    pub ssh_password: Option<String>,
     pub status: String,
     pub last_seen_at: Option<String>,
     pub docker_version: Option<String>,
@@ -30,6 +31,7 @@ pub struct CreateBuildServerRequest {
     pub port: Option<i64>,
     pub username: Option<String>,
     pub ssh_private_key: Option<String>,
+    pub ssh_password: Option<String>,
     pub concurrent_builds: Option<i64>,
     pub team_id: Option<String>,
 }
@@ -41,5 +43,6 @@ pub struct UpdateBuildServerRequest {
     pub port: Option<i64>,
     pub username: Option<String>,
     pub ssh_private_key: Option<String>,
+    pub ssh_password: Option<String>,
     pub concurrent_builds: Option<i64>,
 }

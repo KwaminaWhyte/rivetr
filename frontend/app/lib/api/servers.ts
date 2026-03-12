@@ -31,6 +31,7 @@ export interface CreateServerRequest {
   port?: number;
   username?: string;
   ssh_private_key?: string;
+  ssh_password?: string;
   team_id?: string;
 }
 

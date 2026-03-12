@@ -33,6 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { serversApi } from "@/lib/api/servers";
 import type { Server, CreateServerRequest } from "@/lib/api/servers";
 import { Server as ServerIcon, Plus, Trash2, RefreshCw, Loader2, Cpu, MemoryStick, HardDrive, Terminal } from "lucide-react";
@@ -124,6 +131,7 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const isInitializedRef = useRef(false);
   const [connected, setConnected] = useState(false);
+  const [disconnected, setDisconnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -209,6 +217,7 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
               term.writeln("");
               term.writeln(`\x1b[1;33m[Session Ended]\x1b[0m ${msg.message || ""}`);
               setConnected(false);
+              setDisconnected(true);
             }
           } catch {
             term.write(event.data);
@@ -223,6 +232,7 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
 
         ws.onclose = () => {
           setConnected(false);
+          setDisconnected(true);
           term.writeln("");
           term.writeln("\x1b[1;33m[Disconnected]\x1b[0m SSH session closed");
         };
@@ -275,15 +285,17 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
               ? "bg-green-900/50 text-green-400"
               : error
               ? "bg-red-900/50 text-red-400"
+              : disconnected
+              ? "bg-yellow-900/50 text-yellow-400"
               : "bg-gray-700 text-gray-400"
           }`}
         >
           <span
             className={`w-2 h-2 rounded-full mr-1.5 ${
-              connected ? "bg-green-400" : error ? "bg-red-400" : "bg-gray-400"
+              connected ? "bg-green-400" : error ? "bg-red-400" : disconnected ? "bg-yellow-400" : "bg-gray-400"
             }`}
           />
-          {connected ? "Connected" : error ? "Error" : isLoading ? "Loading..." : "Connecting..."}
+          {connected ? "Connected" : error ? "Error" : disconnected ? "Disconnected" : isLoading ? "Loading..." : "Connecting..."}
         </span>
       </div>
       <div ref={terminalRef} className="flex-1 bg-[#1a1a2e] rounded-b-lg p-2 overflow-hidden">
@@ -314,6 +326,8 @@ export default function ServersPage() {
   const [formPort, setFormPort] = useState("22");
   const [formUsername, setFormUsername] = useState("root");
   const [formSshKey, setFormSshKey] = useState("");
+  const [authMethod, setAuthMethod] = useState<"key" | "password">("key");
+  const [sshPassword, setSshPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: servers = [], isLoading } = useQuery<Server[]>({
@@ -352,6 +366,8 @@ export default function ServersPage() {
     setFormPort("22");
     setFormUsername("root");
     setFormSshKey("");
+    setAuthMethod("key");
+    setSshPassword("");
   };
 
   const handleAddServer = async () => {
@@ -367,7 +383,8 @@ export default function ServersPage() {
         host: formHost.trim(),
         port: isNaN(port) ? 22 : port,
         username: formUsername.trim() || "root",
-        ssh_private_key: formSshKey.trim() || undefined,
+        ssh_private_key: authMethod === "key" ? formSshKey.trim() || undefined : undefined,
+        ssh_password: authMethod === "password" ? sshPassword : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -585,23 +602,42 @@ export default function ServersPage() {
                 />
               </div>
               <div className="col-span-2 space-y-2">
-                <Label htmlFor="server-ssh-key">
-                  SSH Private Key{" "}
-                  <span className="text-muted-foreground font-normal">(optional)</span>
-                </Label>
-                <Textarea
-                  id="server-ssh-key"
-                  placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                  rows={5}
-                  value={formSshKey}
-                  onChange={(e) => setFormSshKey(e.target.value)}
-                  className="font-mono text-xs"
-                />
-                <p className="text-xs text-muted-foreground">
-                  The private key will be encrypted with AES-256-GCM before storage.
-                  Leave empty to use the system default SSH key.
-                </p>
+                <Label>Authentication Method</Label>
+                <Select value={authMethod} onValueChange={(v) => setAuthMethod(v as "key" | "password")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="key">SSH Private Key</SelectItem>
+                    <SelectItem value="password">Password</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+
+              {authMethod === "key" ? (
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="server-ssh-key">SSH Private Key</Label>
+                  <Textarea
+                    id="server-ssh-key"
+                    placeholder="Paste your private key here (PEM format)..."
+                    className="font-mono text-xs h-32"
+                    value={formSshKey}
+                    onChange={(e) => setFormSshKey(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Optional. If not provided, uses the system default key.</p>
+                </div>
+              ) : (
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="server-ssh-password">SSH Password</Label>
+                  <Input
+                    id="server-ssh-password"
+                    type="password"
+                    placeholder="SSH password"
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

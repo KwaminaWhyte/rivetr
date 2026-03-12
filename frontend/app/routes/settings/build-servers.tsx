@@ -33,6 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { buildServersApi } from "@/lib/api/build-servers";
 import type { BuildServer, CreateBuildServerRequest } from "@/lib/api/build-servers";
 import {
@@ -102,6 +109,8 @@ export default function BuildServersPage() {
   const [formUsername, setFormUsername] = useState("root");
   const [formSshKey, setFormSshKey] = useState("");
   const [formConcurrentBuilds, setFormConcurrentBuilds] = useState("2");
+  const [authMethod, setAuthMethod] = useState<"key" | "password">("key");
+  const [sshPassword, setSshPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: servers = [], isLoading } = useQuery<BuildServer[]>({
@@ -141,6 +150,8 @@ export default function BuildServersPage() {
     setFormUsername("root");
     setFormSshKey("");
     setFormConcurrentBuilds("2");
+    setAuthMethod("key");
+    setSshPassword("");
   };
 
   const handleAddServer = async () => {
@@ -157,7 +168,8 @@ export default function BuildServersPage() {
         host: formHost.trim(),
         port: isNaN(port) ? 22 : port,
         username: formUsername.trim() || "root",
-        ssh_private_key: formSshKey.trim() || undefined,
+        ssh_private_key: authMethod === "key" ? formSshKey.trim() || undefined : undefined,
+        ssh_password: authMethod === "password" ? sshPassword : undefined,
         concurrent_builds: isNaN(concurrentBuilds) ? 2 : concurrentBuilds,
       });
     } finally {
@@ -366,23 +378,42 @@ export default function BuildServersPage() {
                 />
               </div>
               <div className="col-span-2 space-y-2">
-                <Label htmlFor="bs-ssh-key">
-                  SSH Private Key{" "}
-                  <span className="text-muted-foreground font-normal">(optional)</span>
-                </Label>
-                <Textarea
-                  id="bs-ssh-key"
-                  placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
-                  rows={5}
-                  value={formSshKey}
-                  onChange={(e) => setFormSshKey(e.target.value)}
-                  className="font-mono text-xs"
-                />
-                <p className="text-xs text-muted-foreground">
-                  The private key will be encrypted with AES-256-GCM before storage.
-                  Leave empty to use the system default SSH key.
-                </p>
+                <Label>Authentication Method</Label>
+                <Select value={authMethod} onValueChange={(v) => setAuthMethod(v as "key" | "password")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="key">SSH Private Key</SelectItem>
+                    <SelectItem value="password">Password</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+
+              {authMethod === "key" ? (
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="bs-ssh-key">SSH Private Key</Label>
+                  <Textarea
+                    id="bs-ssh-key"
+                    placeholder="Paste your private key here (PEM format)..."
+                    className="font-mono text-xs h-32"
+                    value={formSshKey}
+                    onChange={(e) => setFormSshKey(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Optional. If not provided, uses the system default key.</p>
+                </div>
+              ) : (
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="bs-ssh-password">SSH Password</Label>
+                  <Input
+                    id="bs-ssh-password"
+                    type="password"
+                    placeholder="SSH password"
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

@@ -11,6 +11,7 @@ pub struct Server {
     pub port: i64,
     pub username: String,
     pub ssh_private_key: Option<String>, // encrypted with AES-256-GCM
+    pub ssh_password: Option<String>,    // encrypted with AES-256-GCM
     pub status: String,
     pub last_seen_at: Option<String>,
     pub cpu_usage: Option<f64>,
@@ -32,6 +33,7 @@ pub struct CreateServerRequest {
     pub port: Option<i64>,
     pub username: Option<String>,
     pub ssh_private_key: Option<String>,
+    pub ssh_password: Option<String>,
     pub team_id: Option<String>,
 }
 
@@ -42,4 +44,5 @@ pub struct UpdateServerRequest {
     pub port: Option<i64>,
     pub username: Option<String>,
     pub ssh_private_key: Option<String>,
+    pub ssh_password: Option<String>,
 }

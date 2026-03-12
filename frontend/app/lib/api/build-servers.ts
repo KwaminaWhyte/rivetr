@@ -29,6 +29,7 @@ export interface CreateBuildServerRequest {
   port?: number;
   username?: string;
   ssh_private_key?: string;
+  ssh_password?: string;
   concurrent_builds?: number;
   team_id?: string;
 }

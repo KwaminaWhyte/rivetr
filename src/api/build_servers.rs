@@ -55,11 +55,12 @@ pub async fn list_build_servers(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Mask the SSH private key in responses (never return raw key)
+    // Mask secrets in responses (never return raw credentials)
     let masked: Vec<BuildServer> = servers
         .into_iter()
         .map(|mut s| {
             s.ssh_private_key = s.ssh_private_key.map(|_| "[encrypted]".to_string());
+            s.ssh_password = s.ssh_password.map(|_| "[encrypted]".to_string());
             s
         })
         .collect();
@@ -78,9 +79,10 @@ pub async fn create_build_server(
     let username = req.username.unwrap_or_else(|| "root".to_string());
     let concurrent_builds = req.concurrent_builds.unwrap_or(2);
 
+    let enc_key = get_encryption_key(&state);
+
     // Encrypt SSH private key if provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
-        let enc_key = get_encryption_key(&state);
         let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
             tracing::error!("Failed to encrypt SSH private key: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -90,10 +92,21 @@ pub async fn create_build_server(
         None
     };
 
+    // Encrypt SSH password if provided
+    let encrypted_password = if let Some(ref pwd) = req.ssh_password {
+        let encrypted = crypto::encrypt_if_key_available(pwd, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH password: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        Some(encrypted)
+    } else {
+        None
+    };
+
     sqlx::query(
         r#"
-        INSERT INTO build_servers (id, name, host, port, username, ssh_private_key, status, concurrent_builds, team_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?)
+        INSERT INTO build_servers (id, name, host, port, username, ssh_private_key, ssh_password, status, concurrent_builds, team_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -102,6 +115,7 @@ pub async fn create_build_server(
     .bind(port)
     .bind(&username)
     .bind(&encrypted_key)
+    .bind(&encrypted_password)
     .bind(concurrent_builds)
     .bind(&req.team_id)
     .bind(&now)
@@ -119,8 +133,9 @@ pub async fn create_build_server(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Mask SSH key in response
+    // Mask secrets in response
     server.ssh_private_key = server.ssh_private_key.map(|_| "[encrypted]".to_string());
+    server.ssh_password = server.ssh_password.map(|_| "[encrypted]".to_string());
 
     Ok((StatusCode::CREATED, Json(server)))
 }
@@ -140,8 +155,9 @@ pub async fn get_build_server(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Mask SSH key in response
+    // Mask secrets in response
     server.ssh_private_key = server.ssh_private_key.map(|_| "[encrypted]".to_string());
+    server.ssh_password = server.ssh_password.map(|_| "[encrypted]".to_string());
 
     Ok(Json(server))
 }
@@ -161,12 +177,23 @@ pub async fn update_build_server(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     let now = chrono::Utc::now().to_rfc3339();
+    let enc_key = get_encryption_key(&state);
 
     // Encrypt SSH private key if a new one is provided
     let encrypted_key = if let Some(ref key) = req.ssh_private_key {
-        let enc_key = get_encryption_key(&state);
         let encrypted = crypto::encrypt_if_key_available(key, enc_key.as_ref()).map_err(|e| {
             tracing::error!("Failed to encrypt SSH private key: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        Some(encrypted)
+    } else {
+        None
+    };
+
+    // Encrypt SSH password if a new one is provided
+    let encrypted_password = if let Some(ref pwd) = req.ssh_password {
+        let encrypted = crypto::encrypt_if_key_available(pwd, enc_key.as_ref()).map_err(|e| {
+            tracing::error!("Failed to encrypt SSH password: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
         Some(encrypted)
@@ -182,6 +209,7 @@ pub async fn update_build_server(
             port = COALESCE(?, port),
             username = COALESCE(?, username),
             ssh_private_key = COALESCE(?, ssh_private_key),
+            ssh_password = COALESCE(?, ssh_password),
             concurrent_builds = COALESCE(?, concurrent_builds),
             updated_at = ?
         WHERE id = ?
@@ -192,6 +220,7 @@ pub async fn update_build_server(
     .bind(req.port)
     .bind(&req.username)
     .bind(&encrypted_key)
+    .bind(&encrypted_password)
     .bind(req.concurrent_builds)
     .bind(&now)
     .bind(&id)
@@ -208,8 +237,9 @@ pub async fn update_build_server(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Mask SSH key in response
+    // Mask secrets in response
     server.ssh_private_key = server.ssh_private_key.map(|_| "[encrypted]".to_string());
+    server.ssh_password = server.ssh_password.map(|_| "[encrypted]".to_string());
 
     Ok(Json(server))
 }
@@ -254,13 +284,27 @@ pub async fn check_build_server_health(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
+    let enc_key = get_encryption_key(&state);
+
     // Decrypt the SSH private key if available
     let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
-        let enc_key = get_encryption_key(&state);
         match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
             Ok(key) => Some(key),
             Err(e) => {
                 tracing::warn!("Failed to decrypt SSH key for build server {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Decrypt the SSH password if available
+    let password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
+            Ok(pwd) => Some(pwd),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH password for build server {}: {}", id, e);
                 None
             }
         }
@@ -274,6 +318,7 @@ pub async fn check_build_server_health(
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
+        password_content.as_deref(),
     )
     .await;
 
@@ -308,15 +353,19 @@ pub async fn check_build_server_health(
         }
         Err(e) => {
             tracing::warn!("Health check failed for build server {}: {}", id, e);
-            sqlx::query("UPDATE build_servers SET status = 'offline', updated_at = ? WHERE id = ?")
-                .bind(&now)
-                .bind(&id)
-                .execute(&state.db)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to update build server status to offline: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            // Mark as offline and update last_seen_at (check was attempted)
+            sqlx::query(
+                "UPDATE build_servers SET status = 'offline', last_seen_at = ?, updated_at = ? WHERE id = ?"
+            )
+            .bind(&now)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update build server status to offline: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         }
     }
 
@@ -326,8 +375,9 @@ pub async fn check_build_server_health(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Mask SSH key in response
+    // Mask secrets in response
     updated.ssh_private_key = updated.ssh_private_key.map(|_| "[encrypted]".to_string());
+    updated.ssh_password = updated.ssh_password.map(|_| "[encrypted]".to_string());
 
     Ok(Json(updated))
 }
@@ -345,6 +395,7 @@ async fn run_build_server_health_check(
     port: u16,
     username: &str,
     private_key: Option<&str>,
+    password: Option<&str>,
 ) -> anyhow::Result<BuildServerHealthStats> {
     use std::io::Write;
     use tokio::process::Command;
@@ -377,15 +428,29 @@ async fn run_build_server_health_check(
         echo "MEM:$(free -b 2>/dev/null | awk 'NR==2{print $2}' || echo 'N/A')"
     "#;
 
-    let mut cmd = Command::new("ssh");
+    // Use sshpass for password authentication if provided and no key is available
+    let use_sshpass = password.is_some() && key_file.is_none();
+
+    let mut cmd = if use_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p").arg(password.unwrap());
+        c.arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+
     cmd.arg("-o")
         .arg("StrictHostKeyChecking=no")
         .arg("-o")
-        .arg("ConnectTimeout=5")
-        .arg("-o")
-        .arg("BatchMode=yes")
-        .arg("-p")
-        .arg(port.to_string());
+        .arg("ConnectTimeout=5");
+
+    // BatchMode=yes disables password prompts; skip it when using sshpass
+    if !use_sshpass {
+        cmd.arg("-o").arg("BatchMode=yes");
+    }
+
+    cmd.arg("-p").arg(port.to_string());
 
     if let Some(ref key_file) = key_file {
         cmd.arg("-i").arg(key_file.path());
