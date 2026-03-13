@@ -89,6 +89,7 @@ export default [
     route("build-servers", "routes/settings/build-servers.tsx"),
     route("ssh-keys", "routes/settings/ssh-keys.tsx"),
     route("swarm", "routes/settings/swarm.tsx"),
+    route("tunnels", "routes/settings/tunnels.tsx"),
 
     // Access (top-level, no /settings/ prefix)
     route("teams", "routes/settings/teams.tsx"),

@@ -14,6 +14,7 @@ import {
   Activity,
   KeyRound,
   Paintbrush,
+  Globe,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
@@ -40,6 +41,7 @@ const navInfrastructure: NavMainItem[] = [
   { title: "Build Servers", url: "/build-servers", icon: Cpu },
   { title: "SSH Keys", url: "/ssh-keys", icon: Key },
   { title: "Docker Swarm", url: "/swarm", icon: Network },
+  { title: "Tunnels", url: "/tunnels", icon: Globe },
 ];
 
 const navAccess: NavMainItem[] = [
