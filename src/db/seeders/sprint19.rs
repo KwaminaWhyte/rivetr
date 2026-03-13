@@ -129,7 +129,7 @@ volumes:
             "forgejo",
             r#"services:
   forgejo:
-    image: codeberg.org/forgejo/forgejo:latest
+    image: forgejo/forgejo:latest
     container_name: ${CONTAINER_NAME:-forgejo}
     restart: unless-stopped
     ports:
