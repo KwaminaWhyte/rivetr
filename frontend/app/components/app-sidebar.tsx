@@ -13,6 +13,7 @@ import {
   Webhook,
   Activity,
   KeyRound,
+  Paintbrush,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
@@ -26,6 +27,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useTeamContext } from "@/lib/team-context";
+import { useWhiteLabel } from "@/lib/white-label-context";
 
 const navPlatform: NavMainItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -55,6 +57,7 @@ const navSettings: NavMainItem[] = [
     icon: Settings,
     items: [
       { title: "General", url: "/settings" },
+      { title: "White Label", url: "/settings/white-label" },
       { title: "Security", url: "/settings/security" },
       { title: "Auto Updates", url: "/settings/auto-update" },
       { title: "Authentication", url: "/settings/oauth" },
@@ -70,10 +73,24 @@ const navSettings: NavMainItem[] = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { teams, currentTeamId, setCurrentTeamId } = useTeamContext();
+  const { config: wl } = useWhiteLabel();
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
+        {/* Branding header: custom logo / app name if configured */}
+        {(wl?.logo_url || (wl?.app_name && wl.app_name !== "Rivetr")) && (
+          <div className="flex items-center gap-2 px-2 py-1 mb-1">
+            {wl.logo_url ? (
+              <img
+                src={wl.logo_url}
+                alt={wl.app_name}
+                className="h-6 w-auto object-contain"
+              />
+            ) : null}
+            <span className="font-semibold text-sm truncate">{wl.app_name}</span>
+          </div>
+        )}
         <TeamSwitcher
           teams={teams}
           currentTeamId={currentTeamId}

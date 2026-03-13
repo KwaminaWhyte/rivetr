@@ -735,9 +735,29 @@ impl NotificationService {
             }
         };
 
+        // Serialize body to bytes so we can optionally sign it
+        let body_bytes = serde_json::to_vec(&body)?;
+
         // Build the request with custom headers
         let client = reqwest::Client::new();
-        let mut request = client.post(&config.url).json(&body);
+        let mut request = client
+            .post(&config.url)
+            .header("Content-Type", "application/json")
+            .body(body_bytes.clone());
+
+        // Compute HMAC-SHA256 signature if a secret is configured
+        if let Some(ref secret) = config.webhook_secret {
+            use hmac::{Hmac, Mac};
+            use sha2::Sha256;
+            type HmacSha256 = Hmac<Sha256>;
+
+            if let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) {
+                mac.update(&body_bytes);
+                let result = mac.finalize();
+                let hex_sig = hex::encode(result.into_bytes());
+                request = request.header("X-Rivetr-Signature", format!("sha256={}", hex_sig));
+            }
+        }
 
         // Add custom headers
         for (key, value) in &config.headers {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, Plus, Trash2, Key } from "lucide-react";
+import { Copy, Plus, Trash2, Key, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,10 +115,18 @@ export default function SettingsTokensPage() {
             Manage API tokens for programmatic access
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Token
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild>
+            <a href="/api/sdk" download="rivetr-sdk.ts">
+              <Download className="h-4 w-4 mr-2" />
+              Download TypeScript SDK
+            </a>
+          </Button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Token
+          </Button>
+        </div>
       </div>
 
       {/* Show newly-created token */}

@@ -101,6 +101,7 @@ export default [
     // Settings
     ...prefix("settings", [
       index("routes/settings/_index.tsx"),
+      route("white-label", "routes/settings/white-label.tsx"),
       route("notifications", "routes/settings/notifications.tsx"),
       route("audit", "routes/settings/audit.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),

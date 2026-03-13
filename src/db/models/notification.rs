@@ -233,6 +233,11 @@ pub struct WebhookConfig {
     /// Custom payload template (used when payload_template is "custom")
     /// Supports variables: {{app_name}}, {{metric_type}}, {{value}}, {{threshold}}, {{timestamp}}, {{severity}}
     pub custom_template: Option<String>,
+    /// Optional HMAC-SHA256 secret for request signing.
+    /// When set, the request body will be signed and the signature sent in
+    /// the `X-Rivetr-Signature` header as `sha256=<hex_digest>`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub webhook_secret: Option<String>,
 }
 
 fn default_payload_template() -> String {

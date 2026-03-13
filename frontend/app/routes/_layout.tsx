@@ -42,6 +42,10 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Auto Updates" },
   ],
+  "/settings/white-label": [
+    { label: "Settings", href: "/settings" },
+    { label: "White Label" },
+  ],
   "/settings/backup": [
     { label: "Settings", href: "/settings" },
     { label: "Backup & Restore" },

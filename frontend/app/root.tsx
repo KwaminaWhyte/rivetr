@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Route } from "./+types/root";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { WhiteLabelProvider } from "@/lib/white-label-context";
 import "./app.css";
 
 const queryClient = new QueryClient({
@@ -45,7 +46,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            {children}
+            <WhiteLabelProvider>
+              {children}
+            </WhiteLabelProvider>
             <Toaster position="top-right" richColors />
           </ThemeProvider>
         </QueryClientProvider>
