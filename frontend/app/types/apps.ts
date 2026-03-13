@@ -993,3 +993,35 @@ export interface ProjectImportResponse {
   apps_created: number;
   app_ids: string[];
 }
+
+// -------------------------------------------------------------------------
+// Redirect Rule Types
+// -------------------------------------------------------------------------
+
+export interface AppRedirectRule {
+  id: string;
+  app_id: string;
+  source_pattern: string;
+  destination: string;
+  is_permanent: boolean;
+  is_enabled: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateRedirectRuleRequest {
+  source_pattern: string;
+  destination: string;
+  is_permanent: boolean;
+  is_enabled: boolean;
+  sort_order: number;
+}
+
+export interface UpdateRedirectRuleRequest {
+  source_pattern?: string;
+  destination?: string;
+  is_permanent?: boolean;
+  is_enabled?: boolean;
+  sort_order?: number;
+}

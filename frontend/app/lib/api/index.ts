@@ -163,6 +163,15 @@ export const api = {
   // App Activity
   getAppActivity: appsApi.getAppActivity,
 
+  // Deployment Cancellation
+  cancelDeployment: appsApi.cancelDeployment,
+
+  // URL Redirect Rules
+  getRedirectRules: appsApi.getRedirectRules,
+  createRedirectRule: appsApi.createRedirectRule,
+  updateRedirectRule: appsApi.updateRedirectRule,
+  deleteRedirectRule: appsApi.deleteRedirectRule,
+
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
   createSshKey: gitApi.createSshKey,
@@ -219,6 +228,9 @@ export const api = {
   restartService: servicesApi.restartService,
   getServiceLogs: servicesApi.getServiceLogs,
   getServiceLogsStreamUrl: servicesApi.getServiceLogsStreamUrl,
+
+  // Service database import
+  importServiceDb: servicesApi.importServiceDb,
 
   // Templates
   getTemplates: servicesApi.getTemplates,
@@ -316,6 +328,9 @@ export const api = {
   toggleBackupSchedule: systemApi.toggleBackupSchedule,
   runBackupSchedule: systemApi.runBackupSchedule,
 
+  // Docker Cleanup
+  runDockerCleanup: systemApi.runDockerCleanup,
+
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,
   getPreview: previewsApi.getPreview,
@@ -394,6 +409,8 @@ export const api = {
   updateServer: serversApi.update,
   deleteServer: serversApi.delete,
   checkServerHealth: serversApi.check,
+  checkServerPatches: serversApi.checkPatches,
+  checkServerSecurity: serversApi.checkSecurity,
 
   // Shared Environment Variables
   getTeamEnvVars: sharedEnvVarsApi.getTeamEnvVars,

@@ -39,6 +39,9 @@ import type {
   CreateFreezeWindowRequest,
   RejectDeploymentRequest,
   AuditLogListResponse,
+  AppRedirectRule,
+  CreateRedirectRuleRequest,
+  UpdateRedirectRuleRequest,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -672,4 +675,32 @@ export const appsApi = {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}/api/apps/${appId}/terminal?token=${encodeURIComponent(token)}`;
   },
+
+  // -------------------------------------------------------------------------
+  // URL Redirect Rules
+  // -------------------------------------------------------------------------
+
+  /** List URL redirect rules for an app */
+  getRedirectRules: (appId: string, token?: string) =>
+    apiRequest<AppRedirectRule[]>(`/apps/${appId}/redirects`, {}, token),
+
+  /** Create a URL redirect rule */
+  createRedirectRule: (appId: string, data: CreateRedirectRuleRequest, token?: string) =>
+    apiRequest<AppRedirectRule>(`/apps/${appId}/redirects`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, token),
+
+  /** Update a URL redirect rule */
+  updateRedirectRule: (appId: string, ruleId: string, data: UpdateRedirectRuleRequest, token?: string) =>
+    apiRequest<AppRedirectRule>(`/apps/${appId}/redirects/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }, token),
+
+  /** Delete a URL redirect rule */
+  deleteRedirectRule: (appId: string, ruleId: string, token?: string) =>
+    apiRequest<void>(`/apps/${appId}/redirects/${ruleId}`, {
+      method: "DELETE",
+    }, token),
 };

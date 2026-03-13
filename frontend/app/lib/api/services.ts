@@ -3,7 +3,7 @@
  * Handles Docker Compose services and service templates.
  */
 
-import { apiRequest } from "./core";
+import { apiRequest, getStoredToken } from "./core";
 import type {
   Service,
   CreateServiceRequest,
@@ -153,6 +153,38 @@ export const servicesApi = {
       {},
       token
     ),
+
+  /** Import a SQL dump file into a running database container inside the service */
+  importServiceDb: async (
+    serviceId: string,
+    file: File,
+    containerName: string,
+    database: string,
+    token?: string
+  ): Promise<{ success: boolean; message: string; service_id: string; container: string }> => {
+    const authToken = token || getStoredToken();
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("container_name", containerName);
+    formData.append("database", database);
+    const response = await fetch(`/api/services/${serviceId}/import-db`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: formData,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: `Import failed: ${response.status}`,
+      }));
+      throw new Error(error.error || `Import failed: ${response.status}`);
+    }
+    return response.json();
+  },
 
   /** Submit a community template suggestion */
   suggestTemplate: (

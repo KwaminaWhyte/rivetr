@@ -20,6 +20,8 @@ export interface Deployment {
   rejection_reason: string | null;
   // Scheduled deployment
   scheduled_at: string | null;
+  // Registry push (image tag built and pushed)
+  image_tag: string | null;
 }
 
 /** Git commit info from the commits list API */

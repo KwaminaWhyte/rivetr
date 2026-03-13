@@ -13,7 +13,7 @@ use axum::{
     Json,
 };
 use futures::{SinkExt, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -916,4 +916,663 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
     stdout_task.abort();
     let _ = child.kill().await;
     drop(key_file); // Temp file deleted here
+}
+
+// ---------------------------------------------------------------------------
+// OS Patch Notifications
+// ---------------------------------------------------------------------------
+
+/// Response for the GET /api/servers/:id/patches endpoint.
+#[derive(Debug, Serialize)]
+pub struct PatchesResponse {
+    pub security_updates: u32,
+    pub total_updates: u32,
+    pub packages: Vec<String>,
+    pub checked_at: String,
+}
+
+/// Check a remote server for pending OS/security updates via SSH.
+///
+/// GET /api/servers/:id/patches
+pub async fn check_server_patches(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<PatchesResponse>, StatusCode> {
+    let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server for patch check: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let enc_key = get_encryption_key(&state);
+
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
+            Ok(key) => Some(key),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH key for patch check {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
+            Ok(pwd) => Some(pwd),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH password for patch check {}: {}",
+                    id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let result = run_ssh_patch_check(
+        &server.host,
+        server.port as u16,
+        &server.username,
+        private_key_content.as_deref(),
+        password_content.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!("Patch check SSH failed for server {}: {}", id, e);
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    Ok(Json(result))
+}
+
+/// SSH into a server and enumerate pending package upgrades.
+async fn run_ssh_patch_check(
+    host: &str,
+    port: u16,
+    username: &str,
+    private_key: Option<&str>,
+    password: Option<&str>,
+) -> anyhow::Result<PatchesResponse> {
+    use std::io::Write;
+    use tokio::process::Command;
+
+    let key_file = if let Some(key_content) = private_key {
+        let mut tmpfile = tempfile::Builder::new()
+            .prefix("rivetr-ssh-key-")
+            .suffix(".pem")
+            .tempfile()?;
+        tmpfile.write_all(key_content.as_bytes())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(tmpfile.path(), std::fs::Permissions::from_mode(0o600))?;
+        }
+        Some(tmpfile)
+    } else {
+        None
+    };
+
+    // Detect package manager and list upgradable packages in one SSH call.
+    let remote_cmd = r#"
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get -qq update >/dev/null 2>&1 || true;
+            echo "PKG_MANAGER:apt";
+            apt list --upgradable 2>/dev/null | grep -v "^Listing" || true;
+        elif command -v dnf >/dev/null 2>&1; then
+            echo "PKG_MANAGER:dnf";
+            dnf check-update 2>/dev/null | grep -v "^$" | grep -v "^Last" || true;
+        elif command -v yum >/dev/null 2>&1; then
+            echo "PKG_MANAGER:yum";
+            yum check-update 2>/dev/null | grep -v "^$" | grep -v "^Loaded" || true;
+        else
+            echo "PKG_MANAGER:unknown";
+        fi
+    "#;
+
+    let use_sshpass = password.is_some() && key_file.is_none();
+
+    let mut cmd = if use_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p").arg(password.unwrap());
+        c.arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+
+    cmd.arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg("ConnectTimeout=10");
+
+    if !use_sshpass {
+        cmd.arg("-o").arg("BatchMode=yes");
+    }
+
+    cmd.arg("-p").arg(port.to_string());
+
+    if let Some(ref kf) = key_file {
+        cmd.arg("-i").arg(kf.path());
+    }
+
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+
+    let output = cmd.output().await?;
+
+    // yum check-update exits 100 when updates are available — treat as success
+    let success = output.status.success()
+        || output.status.code() == Some(100);
+
+    if !success {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("SSH command failed: {}", stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let checked_at = chrono::Utc::now().to_rfc3339();
+
+    let mut pkg_manager = "apt";
+    let mut packages: Vec<String> = Vec::new();
+    let mut security_updates: u32 = 0;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(mgr) = line.strip_prefix("PKG_MANAGER:") {
+            pkg_manager = if mgr == "dnf" || mgr == "yum" { "yum" } else { "apt" };
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        if pkg_manager == "apt" {
+            // Lines look like: "package/focal-security 1.2.3 amd64 [upgradable from: 1.2.2]"
+            if line.contains('/') {
+                packages.push(line.to_string());
+                if line.contains("security") {
+                    security_updates += 1;
+                }
+            }
+        } else {
+            // yum/dnf: "package.arch  version  repo"
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                packages.push(line.to_string());
+                let repo = parts[2].to_lowercase();
+                if repo.contains("security") || repo.contains("sec") {
+                    security_updates += 1;
+                }
+            }
+        }
+    }
+
+    let total_updates = packages.len() as u32;
+
+    // Keep the package list manageable
+    if packages.len() > 50 {
+        packages.truncate(50);
+    }
+
+    Ok(PatchesResponse {
+        security_updates,
+        total_updates,
+        packages,
+        checked_at,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Server Security Checklist
+// ---------------------------------------------------------------------------
+
+/// A single security check result item.
+#[derive(Debug, Serialize)]
+pub struct SecurityCheckItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// One of: "pass", "fail", "warn", "unknown"
+    pub status: String,
+    pub details: Option<String>,
+}
+
+/// Response for GET /api/servers/:id/security-check.
+#[derive(Debug, Serialize)]
+pub struct SecurityCheckResponse {
+    pub items: Vec<SecurityCheckItem>,
+    pub checked_at: String,
+}
+
+/// Run a security checklist against a remote server via SSH.
+///
+/// GET /api/servers/:id/security-check
+pub async fn check_server_security(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<SecurityCheckResponse>, StatusCode> {
+    let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server for security check: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let enc_key = get_encryption_key(&state);
+
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
+            Ok(key) => Some(key),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH key for security check {}: {}",
+                    id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
+            Ok(pwd) => Some(pwd),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to decrypt SSH password for security check {}: {}",
+                    id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let result = run_ssh_security_check(
+        &server.host,
+        server.port as u16,
+        &server.username,
+        private_key_content.as_deref(),
+        password_content.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!("Security check SSH failed for server {}: {}", id, e);
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    Ok(Json(result))
+}
+
+/// Run multiple SSH commands to evaluate common security best practices.
+async fn run_ssh_security_check(
+    host: &str,
+    port: u16,
+    username: &str,
+    private_key: Option<&str>,
+    password: Option<&str>,
+) -> anyhow::Result<SecurityCheckResponse> {
+    use std::io::Write;
+    use tokio::process::Command;
+
+    let key_file = if let Some(key_content) = private_key {
+        let mut tmpfile = tempfile::Builder::new()
+            .prefix("rivetr-ssh-key-")
+            .suffix(".pem")
+            .tempfile()?;
+        tmpfile.write_all(key_content.as_bytes())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(tmpfile.path(), std::fs::Permissions::from_mode(0o600))?;
+        }
+        Some(tmpfile)
+    } else {
+        None
+    };
+
+    // All checks run in a single SSH connection.
+    // Each section is prefixed with a "CHECK:" sentinel for parsing.
+    let remote_cmd = r#"
+        echo "CHECK:ssh_root_login";
+        grep -E "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+
+        echo "CHECK:password_auth";
+        grep -E "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+
+        echo "CHECK:firewall";
+        if command -v ufw >/dev/null 2>&1; then
+            ufw status 2>/dev/null | head -1;
+        elif command -v firewall-cmd >/dev/null 2>&1; then
+            firewall-cmd --state 2>/dev/null;
+        else
+            echo "NOT_FOUND";
+        fi;
+
+        echo "CHECK:ssh_port";
+        grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+
+        echo "CHECK:fail2ban";
+        systemctl is-active fail2ban 2>/dev/null || echo "inactive";
+
+        echo "CHECK:docker_exposed";
+        (ss -tlnp 2>/dev/null | grep -E ":(2375|2376)\s" || true);
+        (grep -rE "0\.0\.0\.0:2375|tcp://0\.0\.0\.0" /etc/docker/ 2>/dev/null || echo "NOT_EXPOSED");
+
+        echo "CHECK:unattended_upgrades";
+        dpkg -l unattended-upgrades 2>/dev/null | grep -E "^ii" || echo "NOT_INSTALLED";
+
+        echo "CHECK:security_updates";
+        if command -v apt-get >/dev/null 2>&1; then
+            apt list --upgradable 2>/dev/null | grep -c security || echo "0";
+        else
+            echo "0";
+        fi;
+    "#;
+
+    let use_sshpass = password.is_some() && key_file.is_none();
+
+    let mut cmd = if use_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p").arg(password.unwrap());
+        c.arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+
+    cmd.arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg("ConnectTimeout=10");
+
+    if !use_sshpass {
+        cmd.arg("-o").arg("BatchMode=yes");
+    }
+
+    cmd.arg("-p").arg(port.to_string());
+
+    if let Some(ref kf) = key_file {
+        cmd.arg("-i").arg(kf.path());
+    }
+
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+
+    let output = cmd.output().await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("SSH command failed: {}", stderr);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let checked_at = chrono::Utc::now().to_rfc3339();
+
+    // Parse into sections keyed by check id
+    let mut sections: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut current_check: Option<String> = None;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(check_id) = line.strip_prefix("CHECK:") {
+            current_check = Some(check_id.to_string());
+            sections.entry(check_id.to_string()).or_default();
+        } else if let Some(ref check) = current_check {
+            if !line.is_empty() {
+                sections
+                    .entry(check.clone())
+                    .or_default()
+                    .push(line.to_string());
+            }
+        }
+    }
+
+    let get_lines = |key: &str| -> Vec<String> {
+        sections.get(key).cloned().unwrap_or_default()
+    };
+
+    let mut items: Vec<SecurityCheckItem> = Vec::new();
+
+    // 1. SSH root login
+    {
+        let lines = get_lines("ssh_root_login");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("MISSING");
+        let val = raw.to_lowercase();
+        let (status, details) = if raw == "MISSING" {
+            (
+                "warn",
+                Some("PermitRootLogin not explicitly set in sshd_config".to_string()),
+            )
+        } else if val.contains("yes") && !val.contains("without") && !val.contains("forced") {
+            ("fail", Some(format!("Root login is permitted: {}", raw)))
+        } else {
+            ("pass", Some(format!("Root login restricted: {}", raw)))
+        };
+        items.push(SecurityCheckItem {
+            id: "ssh_root_login".to_string(),
+            name: "SSH Root Login Disabled".to_string(),
+            description: "Direct root login over SSH should be prohibited.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 2. Password authentication
+    {
+        let lines = get_lines("password_auth");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("MISSING");
+        let val = raw.to_lowercase();
+        let (status, details) = if raw == "MISSING" {
+            (
+                "warn",
+                Some("PasswordAuthentication not explicitly set".to_string()),
+            )
+        } else if val.contains("yes") {
+            (
+                "warn",
+                Some(format!("Password authentication is enabled: {}", raw)),
+            )
+        } else {
+            (
+                "pass",
+                Some(format!("Password authentication disabled: {}", raw)),
+            )
+        };
+        items.push(SecurityCheckItem {
+            id: "password_auth".to_string(),
+            name: "SSH Password Authentication Disabled".to_string(),
+            description: "Key-based authentication is more secure than passwords.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 3. Firewall active
+    {
+        let lines = get_lines("firewall");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("NOT_FOUND");
+        let val = raw.to_lowercase();
+        let (status, details) = if raw == "NOT_FOUND" {
+            (
+                "warn",
+                Some("No recognised firewall (ufw/firewalld) found".to_string()),
+            )
+        } else if val.contains("active") || val.contains("running") {
+            ("pass", Some(format!("Firewall is active: {}", raw)))
+        } else {
+            ("fail", Some(format!("Firewall appears inactive: {}", raw)))
+        };
+        items.push(SecurityCheckItem {
+            id: "firewall".to_string(),
+            name: "Firewall Active".to_string(),
+            description: "A host firewall (ufw or firewalld) should be enabled.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 4. SSH on non-standard port
+    {
+        let lines = get_lines("ssh_port");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("MISSING");
+        let (status, details) = if raw == "MISSING" {
+            (
+                "warn",
+                Some(
+                    "SSH port not explicitly configured — likely using default port 22".to_string(),
+                ),
+            )
+        } else {
+            let port_val = raw.trim_start_matches("Port ").trim();
+            if port_val == "22" {
+                (
+                    "warn",
+                    Some("SSH is running on the default port 22".to_string()),
+                )
+            } else {
+                (
+                    "pass",
+                    Some(format!("SSH is on a non-standard port: {}", port_val)),
+                )
+            }
+        };
+        items.push(SecurityCheckItem {
+            id: "ssh_port".to_string(),
+            name: "SSH Non-Standard Port".to_string(),
+            description: "Moving SSH to a non-standard port reduces automated scan noise."
+                .to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 5. Fail2ban
+    {
+        let lines = get_lines("fail2ban");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("inactive");
+        let val = raw.trim().to_lowercase();
+        let (status, details) = if val == "active" {
+            ("pass", Some("fail2ban service is active".to_string()))
+        } else {
+            (
+                "warn",
+                Some(format!("fail2ban is not active (status: {})", raw)),
+            )
+        };
+        items.push(SecurityCheckItem {
+            id: "fail2ban".to_string(),
+            name: "Fail2ban Active".to_string(),
+            description: "fail2ban helps block brute-force SSH attacks.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 6. Docker daemon not exposed on TCP
+    {
+        let lines = get_lines("docker_exposed");
+        let is_not_exposed = lines.iter().all(|l| l.trim() == "NOT_EXPOSED");
+        let has_exposure = !is_not_exposed
+            && lines.iter().any(|l| {
+                let lower = l.to_lowercase();
+                lower.contains("2375")
+                    || lower.contains("2376")
+                    || lower.contains("tcp://0.0.0.0")
+            });
+        let (status, details) = if has_exposure {
+            (
+                "fail",
+                Some("Docker daemon appears to be listening on a TCP port".to_string()),
+            )
+        } else {
+            (
+                "pass",
+                Some("Docker daemon is not exposed on TCP".to_string()),
+            )
+        };
+        items.push(SecurityCheckItem {
+            id: "docker_exposed".to_string(),
+            name: "Docker Daemon Not Exposed on TCP".to_string(),
+            description:
+                "Docker's TCP socket (port 2375/2376) should not be publicly reachable."
+                    .to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 7. Unattended upgrades
+    {
+        let lines = get_lines("unattended_upgrades");
+        let raw = lines.first().map(|s| s.as_str()).unwrap_or("NOT_INSTALLED");
+        let (status, details) = if raw.starts_with("ii") {
+            (
+                "pass",
+                Some("unattended-upgrades is installed".to_string()),
+            )
+        } else {
+            (
+                "warn",
+                Some(
+                    "unattended-upgrades is not installed — auto security patches disabled"
+                        .to_string(),
+                ),
+            )
+        };
+        items.push(SecurityCheckItem {
+            id: "unattended_upgrades".to_string(),
+            name: "Unattended Security Upgrades".to_string(),
+            description: "Automatic security updates help keep the system patched.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    // 8. Pending security updates count
+    {
+        let lines = get_lines("security_updates");
+        let count_str = lines.first().map(|s| s.as_str()).unwrap_or("0");
+        let count: u32 = count_str.trim().parse().unwrap_or(0);
+        let (status, details) = if count == 0 {
+            ("pass", Some("No pending security updates".to_string()))
+        } else if count <= 5 {
+            (
+                "warn",
+                Some(format!("{} pending security update(s)", count)),
+            )
+        } else {
+            (
+                "fail",
+                Some(format!(
+                    "{} pending security updates — apply immediately",
+                    count
+                )),
+            )
+        };
+        items.push(SecurityCheckItem {
+            id: "security_updates".to_string(),
+            name: "Pending Security Updates".to_string(),
+            description: "Outstanding security patches should be applied promptly.".to_string(),
+            status: status.to_string(),
+            details,
+        });
+    }
+
+    Ok(SecurityCheckResponse { items, checked_at })
 }

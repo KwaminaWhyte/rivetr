@@ -43,6 +43,27 @@ export interface UpdateServerRequest {
   ssh_private_key?: string;
 }
 
+export interface PatchesResponse {
+  security_updates: number;
+  total_updates: number;
+  packages: string[];
+  checked_at: string;
+}
+
+export interface SecurityCheckItem {
+  id: string;
+  name: string;
+  description: string;
+  /** "pass" | "fail" | "warn" | "unknown" */
+  status: string;
+  details?: string;
+}
+
+export interface SecurityCheckResponse {
+  items: SecurityCheckItem[];
+  checked_at: string;
+}
+
 export const serversApi = {
   /** List all servers, optionally filtered by team_id */
   list: (options: { teamId?: string } = {}, token?: string) => {
@@ -101,6 +122,14 @@ export const serversApi = {
       { method: "DELETE" },
       token
     ),
+
+  /** Check for pending OS/security updates on a server */
+  checkPatches: (id: string, token?: string) =>
+    apiRequest<PatchesResponse>(`/servers/${id}/patches`, {}, token),
+
+  /** Run a security checklist against a server */
+  checkSecurity: (id: string, token?: string) =>
+    apiRequest<SecurityCheckResponse>(`/servers/${id}/security-check`, {}, token),
 
   /** Get the WebSocket URL for an SSH terminal session on a server */
   getTerminalWsUrl: (serverId: string, token?: string): string => {

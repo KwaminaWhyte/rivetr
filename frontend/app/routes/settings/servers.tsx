@@ -41,8 +41,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { serversApi } from "@/lib/api/servers";
-import type { Server, CreateServerRequest } from "@/lib/api/servers";
-import { Server as ServerIcon, Plus, Trash2, RefreshCw, Loader2, Cpu, MemoryStick, HardDrive, Terminal } from "lucide-react";
+import type {
+  Server,
+  CreateServerRequest,
+  PatchesResponse,
+  SecurityCheckItem,
+  SecurityCheckResponse,
+} from "@/lib/api/servers";
+import {
+  Server as ServerIcon,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Loader2,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Terminal,
+  ShieldCheck,
+  PackageSearch,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { ContainerTerminal } from "@/components/container-terminal";
 
 export function meta() {
@@ -313,12 +337,279 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
 // Main page component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Patches Dialog
+// ---------------------------------------------------------------------------
+
+function PatchCountBadge({ count }: { count: number }) {
+  if (count === 0) {
+    return (
+      <Badge variant="default" className="bg-green-600 hover:bg-green-600 text-white">
+        0 security updates
+      </Badge>
+    );
+  }
+  if (count <= 10) {
+    return (
+      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">
+        {count} security update{count > 1 ? "s" : ""}
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="destructive">
+      {count} security updates
+    </Badge>
+  );
+}
+
+function PatchesDialogContent({ serverId }: { serverId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<PatchesResponse>({
+    queryKey: ["server-patches", serverId],
+    queryFn: () => serversApi.checkPatches(serverId),
+    staleTime: 5 * 60 * 1000, // 5 min
+    enabled: true,
+  });
+
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {isLoading || isFetching ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : data ? (
+            <PatchCountBadge count={data.security_updates} />
+          ) : null}
+          {data && (
+            <span className="text-sm text-muted-foreground">
+              {data.total_updates} total upgradable package{data.total_updates !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="gap-1"
+        >
+          {isFetching ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          Refresh
+        </Button>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Failed to reach server. Ensure SSH access is configured.
+        </div>
+      )}
+
+      {data && data.packages.length > 0 && (
+        <div className="space-y-2">
+          <button
+            className="flex items-center gap-1 text-sm font-medium hover:underline"
+            onClick={() => setExpanded((p) => !p)}
+            type="button"
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+            {expanded ? "Hide" : "Show"} package list ({data.packages.length})
+          </button>
+          {expanded && (
+            <div className="max-h-64 overflow-y-auto rounded-md border bg-muted/30 p-3">
+              {data.packages.map((pkg, i) => (
+                <div
+                  key={i}
+                  className={`py-1 text-xs font-mono border-b last:border-b-0 ${
+                    pkg.includes("security")
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {pkg}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {data && data.packages.length === 0 && !isLoading && (
+        <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+          System is up to date — no pending packages.
+        </div>
+      )}
+
+      {data && (
+        <p className="text-xs text-muted-foreground">
+          Checked at {new Date(data.checked_at).toLocaleString()}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Security Checklist Dialog
+// ---------------------------------------------------------------------------
+
+function SecurityStatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case "pass":
+      return <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />;
+    case "fail":
+      return <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />;
+    case "warn":
+      return <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />;
+    default:
+      return <HelpCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
+  }
+}
+
+function SecurityCheckDialogContent({ serverId }: { serverId: string }) {
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery<SecurityCheckResponse>({
+    queryKey: ["server-security", serverId],
+    queryFn: () => serversApi.checkSecurity(serverId),
+    staleTime: 5 * 60 * 1000,
+    enabled: true,
+  });
+
+  const passCount = data?.items.filter((i) => i.status === "pass").length ?? 0;
+  const failCount = data?.items.filter((i) => i.status === "fail").length ?? 0;
+  const warnCount = data?.items.filter((i) => i.status === "warn").length ?? 0;
+
+  return (
+    <div className="space-y-4 py-2">
+      <div className="flex items-center justify-between">
+        {data && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {passCount} passed
+            </span>
+            {warnCount > 0 && (
+              <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 font-medium">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {warnCount} warnings
+              </span>
+            )}
+            {failCount > 0 && (
+              <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
+                <XCircle className="h-3.5 w-3.5" />
+                {failCount} failed
+              </span>
+            )}
+          </div>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="gap-1 ml-auto"
+        >
+          {isFetching ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <ShieldCheck className="h-3 w-3" />
+          )}
+          Run Check
+        </Button>
+      </div>
+
+      {(isLoading || isFetching) && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Running security checks via SSH…
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Failed to reach server. Ensure SSH access is configured.
+        </div>
+      )}
+
+      {data && (
+        <div className="space-y-2">
+          {data.items.map((item: SecurityCheckItem) => (
+            <div
+              key={item.id}
+              className={`rounded-md border px-4 py-3 ${
+                item.status === "fail"
+                  ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20"
+                  : item.status === "warn"
+                  ? "border-yellow-200 bg-yellow-50/50 dark:border-yellow-800 dark:bg-yellow-950/20"
+                  : item.status === "pass"
+                  ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20"
+                  : "border-border bg-muted/20"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <SecurityStatusIcon status={item.status} />
+                <span className="text-sm font-medium">{item.name}</span>
+              </div>
+              <p className="mt-0.5 pl-6 text-xs text-muted-foreground">{item.description}</p>
+              {item.details && (
+                <p
+                  className={`mt-1 pl-6 text-xs font-mono ${
+                    item.status === "fail"
+                      ? "text-red-700 dark:text-red-400"
+                      : item.status === "warn"
+                      ? "text-yellow-700 dark:text-yellow-400"
+                      : "text-green-700 dark:text-green-400"
+                  }`}
+                >
+                  {item.details}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data && (
+        <p className="text-xs text-muted-foreground">
+          Checked at {new Date(data.checked_at).toLocaleString()}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page component
+// ---------------------------------------------------------------------------
+
 export default function ServersPage() {
   const queryClient = useQueryClient();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
+  const [patchesServer, setPatchesServer] = useState<Server | null>(null);
+  const [securityServer, setSecurityServer] = useState<Server | null>(null);
 
   // Form state
   const [formName, setFormName] = useState("");
@@ -507,7 +798,7 @@ export default function ServersPage() {
                       {server.last_seen_at ? formatDate(server.last_seen_at) : "Never"}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
                         <Button
                           variant="outline"
                           size="sm"
@@ -517,6 +808,26 @@ export default function ServersPage() {
                         >
                           <Terminal className="h-3 w-3" />
                           Terminal
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPatchesServer(server)}
+                          className="gap-1"
+                          title="Check for OS updates"
+                        >
+                          <PackageSearch className="h-3 w-3" />
+                          Updates
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSecurityServer(server)}
+                          className="gap-1"
+                          title="Run security checklist"
+                        >
+                          <ShieldCheck className="h-3 w-3" />
+                          Security
                         </Button>
                         <Button
                           variant="outline"
@@ -684,6 +995,44 @@ export default function ServersPage() {
           <div className="py-2">
             {terminalServer && <ServerTerminal server={terminalServer} />}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* OS Patches Dialog */}
+      <Dialog
+        open={!!patchesServer}
+        onOpenChange={(open) => { if (!open) setPatchesServer(null); }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PackageSearch className="h-5 w-5" />
+              OS Updates — {patchesServer?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Pending package upgrades on {patchesServer?.host}
+            </DialogDescription>
+          </DialogHeader>
+          {patchesServer && <PatchesDialogContent serverId={patchesServer.id} />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Security Checklist Dialog */}
+      <Dialog
+        open={!!securityServer}
+        onOpenChange={(open) => { if (!open) setSecurityServer(null); }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Security Checklist — {securityServer?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Security best-practice audit for {securityServer?.host}
+            </DialogDescription>
+          </DialogHeader>
+          {securityServer && <SecurityCheckDialogContent serverId={securityServer.id} />}
         </DialogContent>
       </Dialog>
 

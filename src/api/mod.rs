@@ -220,6 +220,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/:id/check", post(servers::check_server_health))
+        .route("/servers/:id/patches", get(servers::check_server_patches))
+        .route(
+            "/servers/:id/security-check",
+            get(servers::check_server_security),
+        )
         // Server app assignments
         .route("/servers/:id/apps", get(servers::list_server_apps))
         .route(
@@ -600,6 +605,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/services/:id/logs/stream",
             get(services::stream_service_logs),
+        )
+        .route(
+            "/services/:id/import-db",
+            post(services::import_service_db),
         )
         // Service Templates
         .route("/templates", get(service_templates::list_templates))

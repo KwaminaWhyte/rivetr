@@ -119,8 +119,8 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
     setForm({
       source_pattern: rule.source_pattern,
       destination: rule.destination,
-      is_permanent: rule.is_permanent !== 0,
-      is_enabled: rule.is_enabled !== 0,
+      is_permanent: rule.is_permanent,
+      is_enabled: rule.is_enabled,
       sort_order: rule.sort_order,
     });
     setShowDialog(true);
@@ -190,7 +190,7 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
                 >
                   {/* Enable toggle */}
                   <Switch
-                    checked={rule.is_enabled !== 0}
+                    checked={rule.is_enabled}
                     onCheckedChange={(checked) =>
                       toggleMutation.mutate({ ruleId: rule.id, enabled: checked })
                     }
@@ -207,10 +207,10 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
                       {rule.destination}
                     </code>
                     <Badge
-                      variant={rule.is_permanent !== 0 ? "default" : "secondary"}
+                      variant={rule.is_permanent ? "default" : "secondary"}
                       className="text-xs shrink-0"
                     >
-                      {rule.is_permanent !== 0 ? "301" : "302"}
+                      {rule.is_permanent ? "301" : "302"}
                     </Badge>
                   </div>
 

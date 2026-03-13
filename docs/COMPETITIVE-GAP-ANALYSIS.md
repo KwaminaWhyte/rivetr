@@ -367,8 +367,8 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 |---------|---------|---------|--------|
 | Email (SMTP) | ✅ | ✅ | ✅ |
 | Telegram | ✅ | ✅ | ✅ |
-| Discord | ✅ | ✅ | 🟡 (alerts only?) |
-| Slack | ✅ | ✅ | 🟡 (alerts only?) |
+| Discord | ✅ | ✅ | ✅ (full deployment notifications + webhook) |
+| Slack | ✅ | ✅ | ✅ (full deployment notifications + webhook) |
 | Microsoft Teams | ❌ | ❌ | ✅ |
 | Pushover | ✅ | ✅ | ✅ |
 | Ntfy | ❌ | ✅ | ✅ |
@@ -378,7 +378,7 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 | Resend (email API) | ✅ | ✅ | ✅ (implemented — transactional email API) |
 | Custom Webhook | ✅ | ✅ | 🟡 (partial) |
 
-All four previously missing channels (Mattermost, Lark, Gotify, Resend) are now implemented. Discord and Slack may only exist in Rivetr's resource alert system but not yet as general deployment notification channels.
+All notification channels are now implemented. Discord and Slack support full deployment event notifications via `NotificationChannelType::Discord/Slack` in the main notification service (`src/notifications/mod.rs`).
 
 ### Notification event granularity
 🟡 **Review needed**
@@ -558,7 +558,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Database dump import | ✅ | ❌ | 🟡 Medium |
 | More service templates (~220 short, was ~280) | ✅ | ✅ | 🔴 High |
 | Community template submissions | ✅ | ✅ | 🔴 High |
-| Discord + Slack as notification channels | ✅ | ✅ | 🟡 Medium |
+| Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |

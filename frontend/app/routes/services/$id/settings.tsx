@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,10 +27,44 @@ import {
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
-import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle } from "lucide-react";
+import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload } from "lucide-react";
 
 interface OutletContext {
   service: Service;
+}
+
+/** Parse image names from a docker-compose YAML string */
+function parseComposeImages(composeContent: string): string[] {
+  const images: string[] = [];
+  const lines = composeContent.split("\n");
+  for (const line of lines) {
+    const match = line.match(/^\s+image:\s+(.+)$/);
+    if (match) {
+      images.push(match[1].trim().toLowerCase());
+    }
+  }
+  return images;
+}
+
+/** Parse container_name entries from a docker-compose YAML string */
+function parseContainerNames(composeContent: string): string[] {
+  const names: string[] = [];
+  const lines = composeContent.split("\n");
+  for (const line of lines) {
+    const match = line.match(/^\s+container_name:\s+(.+)$/);
+    if (match) {
+      names.push(match[1].trim());
+    }
+  }
+  return names;
+}
+
+const DB_KEYWORDS = ["postgres", "mysql", "mariadb", "mongo", "redis"];
+
+/** Returns true when the compose file contains at least one database service */
+function hasDatabaseService(composeContent: string): boolean {
+  const images = parseComposeImages(composeContent);
+  return images.some((img) => DB_KEYWORDS.some((kw) => img.includes(kw)));
 }
 
 export default function ServiceSettingsTab() {
@@ -42,6 +76,13 @@ export default function ServiceSettingsTab() {
   const [composeContent, setComposeContent] = useState(service.compose_content);
   const [domain, setDomain] = useState(service.domain ?? "");
   const [port, setPort] = useState(service.port ?? 80);
+
+  // Database import state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importContainer, setImportContainer] = useState("");
+  const [importDatabase, setImportDatabase] = useState("app");
+  const showImportSection = hasDatabaseService(service.compose_content);
 
   // Mutations
   const updateComposeMutation = useMutation({
@@ -81,6 +122,21 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to delete service");
+    },
+  });
+
+  const importDbMutation = useMutation({
+    mutationFn: () => {
+      if (!importFile) throw new Error("Please select a file to import");
+      return api.importServiceDb(service.id, importFile, importContainer, importDatabase);
+    },
+    onSuccess: () => {
+      toast.success("Database dump imported successfully");
+      setImportFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to import database dump");
     },
   });
 
@@ -257,6 +313,100 @@ export default function ServiceSettingsTab() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Database Import — only shown for services with database containers */}
+      {showImportSection && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Import Database Dump
+            </CardTitle>
+            <CardDescription>
+              Upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.sql</code> or{" "}
+              <code className="text-xs bg-muted px-1 py-0.5 rounded">.sql.gz</code> dump file and
+              import it into a running database container. The service must be running.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-200">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <p className="text-sm">
+                Importing a dump will execute SQL against the running container. Ensure the service
+                is running and the target database exists before importing.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="import-container">Container name</Label>
+                <Input
+                  id="import-container"
+                  placeholder={parseContainerNames(service.compose_content)[0] ?? "e.g. rivetr-myservice-db"}
+                  value={importContainer}
+                  onChange={(e) => setImportContainer(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to auto-detect the first running database container.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="import-database">Database name</Label>
+                <Input
+                  id="import-database"
+                  placeholder="app"
+                  value={importDatabase}
+                  onChange={(e) => setImportDatabase(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The target database to restore into. Defaults to <code className="font-mono">app</code>.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="import-file">Dump file</Label>
+              <Input
+                id="import-file"
+                ref={fileInputRef}
+                type="file"
+                accept=".sql,.gz,.sql.gz"
+                className="cursor-pointer"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Accepts <code className="font-mono">.sql</code> (plain SQL) or{" "}
+                <code className="font-mono">.sql.gz</code> / <code className="font-mono">.gz</code>{" "}
+                (compressed / pg_restore archive). Max 100&nbsp;MB.
+              </p>
+            </div>
+
+            {importFile && (
+              <p className="text-sm text-muted-foreground">
+                Selected: <strong>{importFile.name}</strong> ({(importFile.size / 1024 / 1024).toFixed(2)}&nbsp;MB)
+              </p>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                disabled={!importFile || importDbMutation.isPending || service.status !== "running"}
+                onClick={() => importDbMutation.mutate()}
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                {importDbMutation.isPending ? "Importing…" : "Import Dump"}
+              </Button>
+            </div>
+
+            {service.status !== "running" && (
+              <p className="text-sm text-destructive">
+                The service must be running before you can import a dump.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Danger Zone */}
       <Card className="border-destructive">
