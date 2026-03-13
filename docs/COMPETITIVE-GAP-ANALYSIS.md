@@ -395,9 +395,9 @@ Coolify allows configuring **per-event, per-channel** notification rules: deploy
 Dokploy shows CPU, memory, disk, and network graphs **per individual service** within a Docker Compose stack (with a service selector dropdown). Rivetr shows compose-level monitoring but per-service breakdown is unclear.
 
 ### Automated Docker resource cleanup
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify has a configurable scheduled job that automatically prunes dangling images, stopped containers, and unused volumes across all servers. It sends notifications on completion. Rivetr requires manual cleanup or user-defined cron jobs.
+`POST /api/system/docker-cleanup` runs `docker system prune --filter dangling=true -f` and returns bytes reclaimed. The Settings page exposes a "Clean Docker Resources" button. Manual cleanup is available from the UI; scheduled auto-cleanup via cron jobs is not yet automatic.
 
 ### Container restart/stop event notifications
 🔴 **Missing in Rivetr**
@@ -563,7 +563,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
-| Automated Docker resource cleanup | ✅ | ❌ | 🟡 Medium |
+| Automated Docker resource cleanup | ✅ | ❌ | ✅ Done |
 | OS patch notifications | ✅ | ❌ | ✅ Done |
 | Auto Docker install on remote server add | ✅ | ✅ | 🟡 Medium |
 | Server security validation checklist | ❌ | ✅ | ✅ Done |
