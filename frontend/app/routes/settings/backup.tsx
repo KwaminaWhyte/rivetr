@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
 import { useTeamContext } from "@/lib/team-context";
 import type { BackupInfo, RestoreResult } from "@/types/api";
+import type { BackupSchedule } from "@/lib/api/system";
 import {
   Download,
   Trash2,
@@ -31,6 +32,8 @@ import {
   Package,
   Database,
   Layers,
+  Play,
+  CalendarClock,
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
@@ -83,6 +86,54 @@ export default function BackupPage() {
   } = useQuery<BackupInfo[]>({
     queryKey: ["instance-backups"],
     queryFn: () => api.listBackups(),
+  });
+
+  // Fetch backup schedules
+  const { data: schedules = [], isLoading: schedulesLoading } = useQuery<BackupSchedule[]>({
+    queryKey: ["backup-schedules"],
+    queryFn: () => api.listBackupSchedules(),
+  });
+
+  // Track which schedule is running
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+
+  // Run a backup schedule now
+  const handleRunSchedule = async (id: string) => {
+    setRunningScheduleId(id);
+    try {
+      const result = await api.runBackupSchedule(id);
+      queryClient.invalidateQueries({ queryKey: ["backup-schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["instance-backups"] });
+      toast.success(result.message || "Backup ran successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to run backup");
+    } finally {
+      setRunningScheduleId(null);
+    }
+  };
+
+  // Delete a backup schedule
+  const deleteScheduleMutation = useMutation({
+    mutationFn: (id: string) => api.deleteBackupSchedule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["backup-schedules"] });
+      toast.success("Backup schedule deleted");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete backup schedule");
+    },
+  });
+
+  // Toggle a backup schedule
+  const toggleScheduleMutation = useMutation({
+    mutationFn: (id: string) => api.toggleBackupSchedule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["backup-schedules"] });
+      toast.success("Backup schedule updated");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to toggle backup schedule");
+    },
   });
 
   // Delete backup mutation
@@ -542,6 +593,115 @@ export default function BackupPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Backup Schedules Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarClock className="h-5 w-5" />
+            Backup Schedules
+          </CardTitle>
+          <CardDescription>
+            Scheduled automatic backups. Use "Run Now" to test a schedule immediately.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {schedulesLoading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="h-4 bg-muted rounded w-2/3"></div>
+              <div className="h-4 bg-muted rounded w-1/2"></div>
+            </div>
+          ) : schedules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No backup schedules configured.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {schedules.map((schedule) => (
+                <div
+                  key={schedule.id}
+                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm capitalize">{schedule.backup_type}</span>
+                      <Badge variant={schedule.enabled ? "default" : "secondary"}>
+                        {schedule.enabled ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {schedule.cron_expression}
+                    </div>
+                    {schedule.last_run_at && (
+                      <div className="text-xs text-muted-foreground">
+                        Last run: {formatDate(schedule.last_run_at)}
+                      </div>
+                    )}
+                    {schedule.next_run_at && (
+                      <div className="text-xs text-muted-foreground">
+                        Next run: {formatDate(schedule.next_run_at)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRunSchedule(schedule.id)}
+                      disabled={runningScheduleId === schedule.id}
+                      title="Run Now"
+                    >
+                      {runningScheduleId === schedule.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      <span className="ml-1 hidden sm:inline">Run Now</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleScheduleMutation.mutate(schedule.id)}
+                      disabled={toggleScheduleMutation.isPending}
+                      title={schedule.enabled ? "Disable" : "Enable"}
+                    >
+                      {schedule.enabled ? "Disable" : "Enable"}
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Backup Schedule</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this backup schedule? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteScheduleMutation.mutate(schedule.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

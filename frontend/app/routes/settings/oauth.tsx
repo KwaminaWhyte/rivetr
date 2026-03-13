@@ -94,6 +94,16 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+// Bitbucket icon SVG
+const BitbucketIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.891L.778 1.213zM14.52 15.53H9.522L8.17 8.471h7.561l-1.211 7.06z"
+      fill="#2684FF"
+    />
+  </svg>
+);
+
 function ProviderConfigCard({
   provider,
   icon,
@@ -375,6 +385,8 @@ function OAuthConnectionsCard() {
         return <GitLabIcon className="h-5 w-5" />;
       case "azure":
         return <MicrosoftIcon className="h-5 w-5" />;
+      case "bitbucket":
+        return <BitbucketIcon className="h-5 w-5" />;
       default:
         return <Shield className="h-5 w-5" />;
     }
@@ -390,6 +402,8 @@ function OAuthConnectionsCard() {
         return "GitLab";
       case "azure":
         return "Microsoft";
+      case "bitbucket":
+        return "Bitbucket";
       default:
         return provider;
     }
@@ -502,6 +516,7 @@ export default function OAuthSettingsPage() {
     google: "Google",
     gitlab: "GitLab",
     azure: "Microsoft Entra",
+    bitbucket: "Bitbucket",
   };
 
   const saveMutation = useMutation({
@@ -538,6 +553,7 @@ export default function OAuthSettingsPage() {
   const googleConfig = providers.find((p) => p.provider === "google");
   const gitlabConfig = providers.find((p) => p.provider === "gitlab");
   const azureConfig = providers.find((p) => p.provider === "azure");
+  const bitbucketConfig = providers.find((p) => p.provider === "bitbucket");
 
   if (isLoading) {
     return (
@@ -553,7 +569,7 @@ export default function OAuthSettingsPage() {
         <h1 className="text-3xl font-bold">Authentication</h1>
         <p className="text-muted-foreground">
           Configure OAuth providers to allow users to sign in with their GitHub,
-          Google, GitLab, or Microsoft accounts.
+          Google, GitLab, Microsoft, or Bitbucket accounts.
         </p>
       </div>
 
@@ -599,6 +615,19 @@ export default function OAuthSettingsPage() {
 
       <AzureProviderCard
         existingConfig={azureConfig}
+        onSave={(data) => saveMutation.mutate(data)}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        isSaving={saveMutation.isPending}
+      />
+
+      <ProviderConfigCard
+        provider="bitbucket"
+        icon={<BitbucketIcon className="h-5 w-5" />}
+        title="Bitbucket"
+        description="Allow users to sign in with their Bitbucket accounts."
+        docsUrl="https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud/"
+        docsLabel="Bitbucket OAuth Consumer Docs"
+        existingConfig={bitbucketConfig}
         onSave={(data) => saveMutation.mutate(data)}
         onDelete={(id) => deleteMutation.mutate(id)}
         isSaving={saveMutation.isPending}

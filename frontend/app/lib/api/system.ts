@@ -22,6 +22,29 @@ import type {
   WebhookEvent,
 } from "@/types/api";
 
+/** A backup schedule record */
+export interface BackupSchedule {
+  id: string;
+  backup_type: string;
+  cron_expression: string;
+  target_id: string | null;
+  s3_config_id: string | null;
+  retention_days: number;
+  enabled: number;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+}
+
+/** Request to create a backup schedule */
+export interface CreateBackupScheduleRequest {
+  backup_type: string;
+  cron_expression: string;
+  target_id?: string | null;
+  s3_config_id?: string | null;
+  retention_days?: number;
+}
+
 /** Options for getting system stats */
 export interface GetSystemStatsOptions {
   /** Team ID to filter stats by team scope */
@@ -285,4 +308,38 @@ export const systemApi = {
 
     return response.json();
   },
+
+  // -------------------------------------------------------------------------
+  // Backup Schedules
+  // -------------------------------------------------------------------------
+
+  /** List all backup schedules */
+  listBackupSchedules: (token?: string) =>
+    apiRequest<BackupSchedule[]>("/backups/schedules", {}, token),
+
+  /** Create a new backup schedule */
+  createBackupSchedule: (
+    req: CreateBackupScheduleRequest,
+    token?: string
+  ) =>
+    apiRequest<BackupSchedule>("/backups/schedules", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }, token),
+
+  /** Delete a backup schedule */
+  deleteBackupSchedule: (id: string, token?: string) =>
+    apiRequest<void>(`/backups/schedules/${id}`, { method: "DELETE" }, token),
+
+  /** Toggle a backup schedule on/off */
+  toggleBackupSchedule: (id: string, token?: string) =>
+    apiRequest<BackupSchedule>(`/backups/schedules/${id}/toggle`, { method: "PUT" }, token),
+
+  /** Manually trigger a backup schedule to run now */
+  runBackupSchedule: (id: string, token?: string) =>
+    apiRequest<{ message: string; last_run_at: string; next_run_at: string | null }>(
+      `/backups/schedules/${id}/run`,
+      { method: "POST" },
+      token
+    ),
 };

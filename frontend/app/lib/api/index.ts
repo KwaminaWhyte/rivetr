@@ -309,8 +309,12 @@ export const api = {
   downloadBackup: systemApi.downloadBackup,
   restoreBackup: systemApi.restoreBackup,
 
-  // Docker / Container Cleanup
-  runDockerCleanup: systemApi.runDockerCleanup,
+  // Backup Schedules
+  listBackupSchedules: systemApi.listBackupSchedules,
+  createBackupSchedule: systemApi.createBackupSchedule,
+  deleteBackupSchedule: systemApi.deleteBackupSchedule,
+  toggleBackupSchedule: systemApi.toggleBackupSchedule,
+  runBackupSchedule: systemApi.runBackupSchedule,
 
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,

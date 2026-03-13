@@ -18,11 +18,11 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
 | GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab` — full authorize + callback flow with read_user scope |
 | Azure AD OAuth login | ✅ Implemented | Configurable tenant_id via `extra_config` JSON; uses Microsoft login.microsoftonline.com endpoints |
-| Discord notifications | ✅ Implemented | Embed-style webhook channel; green/red colour coding per deployment result |
-| Slack notifications | ✅ Implemented | Incoming webhook channel; bold title + body format |
+| Bitbucket OAuth login | ✅ Implemented | full authorize + callback + user info flow; email fetched from `/user/emails` endpoint |
+| Instance backup to S3 | ✅ Implemented | after local backup creation, uploads to S3 with `instance-backups/` prefix if default S3 config exists |
+| Test backup button | ✅ Implemented | `POST /api/backups/schedules/:id/run` — triggers immediate backup run; "Run Now" button in backup settings UI |
 | Mattermost notifications | ✅ Implemented | Incoming webhook channel type; configurable URL + username + icon |
 | Lark/Feishu notifications | ✅ Implemented | Webhook-based; supports custom sign secret for verification |
-| Docker resource cleanup endpoint | ✅ Implemented | `POST /api/system/docker-cleanup` prunes dangling images; "Run Cleanup" button in Settings |
 | Gotify notifications | ✅ Implemented | Self-hosted push server; configurable URL, token, priority |
 | Resend email notifications | ✅ Implemented | Transactional email API; configurable from address and Resend API key |
 | URL redirect rules (per-app) | ✅ Implemented | CRUD at `/api/apps/:id/redirects`; regex + capture group substitution; 301/302 selection; proxy enforcement |
@@ -30,8 +30,6 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | DNS validation on domain add | ✅ Implemented | `GET /api/domains/check?domain=` using Tokio DNS lookup; shows server IP match status |
 | +64 service templates (total ~183) | ✅ Implemented | 10 new seeder modules: AI extras, auth/identity, business, CMS, communication, DB tools, DevOps, misc, monitoring, networking |
 | Platform-injected env vars (partial) | ✅ Partial | `RIVETR_APP_NAME`, `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` injected at container start |
-| Restart policy per app | ✅ Implemented | `restart_policy` column on apps; always/unless-stopped/on-failure/never; UI select in General settings |
-| Docker Compose magic variables | ✅ Implemented | SERVICE_PASSWORD_*, SERVICE_USER_*, SERVICE_BASE64_* auto-generated at deploy time |
 
 ---
 
@@ -147,22 +145,21 @@ Dokploy auto-creates a dedicated Docker network per application, connecting only
 ## 3. Container & Docker Features
 
 ### Custom Docker run options
-🟡 **Partial in Rivetr**
+🔴 **Missing in Rivetr**
 
-Rivetr now exposes several advanced Docker container options via the **Docker** settings tab per app:
-- ✅ `--privileged` mode (toggle)
-- ✅ `--cap-add` (comma-separated Linux capabilities e.g. NET_ADMIN, SYS_PTRACE)
-- ✅ `--device` (device passthrough mappings e.g. /dev/snd:/dev/snd)
-- ✅ `--shm-size` (shared memory size e.g. 128m, 1g)
-- ✅ `--init` (run tini as PID 1)
-
-Still missing compared to Coolify/Dokploy:
-- `--gpus` (GPU passthrough for AI/ML workloads)
+Coolify exposes advanced Docker container options that Rivetr does not:
+- `--cap-add` / `--cap-drop` (Linux capabilities)
+- `--privileged` mode
 - `--security-opt` (seccomp, apparmor profiles)
 - `--sysctl` (kernel parameter overrides)
-- `--ulimit` (file descriptor limits)
-- `--cap-drop` (drop capabilities)
+- `--device` (device passthrough — e.g., GPUs, USB)
+- `--ulimit` (file descriptor limits, etc.)
+- `--shm-size` (shared memory size)
+- `--gpus` (GPU passthrough for AI/ML workloads)
 - `--ip` / `--ip6` (fixed IP addresses)
+- `--init` (run an init process)
+
+Rivetr doesn't expose any of these. Users who need GPU workloads, privileged containers, or custom Linux capabilities have no path forward.
 
 ### Build-time Docker secrets
 🔴 **Missing in Rivetr**
@@ -175,7 +172,7 @@ Dokploy supports injecting build-time secrets (SSH keys, API tokens) via Docker'
 Dokploy has a "Preview Compose" button that shows the final rendered docker-compose.yml (with all variables substituted) before the user clicks deploy. Useful for catching misconfigured env vars or variable substitution errors.
 
 ### Docker Compose magic variables
-✅ **Implemented in Rivetr**
+🟡 **Partial in Rivetr**
 
 Coolify auto-injects and generates special compose variables:
 - `SERVICE_URL_<NAME>` — the FQDN assigned to a service
@@ -184,7 +181,7 @@ Coolify auto-injects and generates special compose variables:
 - `SERVICE_BASE64_<NAME>` — auto-generated base64-encoded secret
 - `${VAR:?}` — required variable (blocks deploy with error if unset)
 
-Rivetr now auto-generates `SERVICE_PASSWORD_*` (32-char alphanumeric), `SERVICE_USER_*` (lowercase name), and `SERVICE_BASE64_*` (32 random bytes base64-encoded) at deploy time in `deploy_service_template`. Supports both `${VAR}` and `${VAR:-default}` forms. `SERVICE_URL_*`/`SERVICE_FQDN_*` and required-variable enforcement (`${VAR:?}`) are still missing.
+Rivetr supports `${VAR:-default}` in compose templates but doesn't auto-generate passwords/FQDNs or enforce required variables.
 
 ### Docker Compose "raw mode"
 🔴 **Missing in Rivetr**
@@ -192,9 +189,9 @@ Rivetr now auto-generates `SERVICE_PASSWORD_*` (32-char alphanumeric), `SERVICE_
 Coolify has a "raw compose mode" that deploys a compose file exactly as written without injecting any Coolify-specific labels, health checks, or network overrides. This is important for services that have opinionated internal networking or label configurations.
 
 ### Restart policy configuration
-✅ **Implemented in Rivetr**
+🟡 **Partial in Rivetr**
 
-Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr now stores `restart_policy` per app (migration 076), uses it in both Docker and Podman runtimes, and exposes a Select dropdown in the General settings tab.
+Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr uses `unless-stopped` for all managed containers but doesn't expose this as a user-configurable setting.
 
 ### Platform-injected environment variables
 ✅ **Implemented in Rivetr**
@@ -307,9 +304,9 @@ Dokploy's "Patches" feature applies file-level modifications (edit, create, dele
 Rivetr has health-based automatic rollback but `[ ] Push built images to Docker registry on deploy` is still incomplete. Both competitors push every built image to a configured Docker registry tagged with the git commit SHA, enabling rollback to **any** historical deployment — not just the immediately previous one. Rivetr's rollback is currently limited to health-check-driven revert during the current deployment.
 
 ### Deployment queue with cancellation
-✅ **Implemented in Rivetr**
+🟡 **Partial in Rivetr**
 
-Rivetr uses Tokio MPSC channels for serializing deployments (no Redis dependency). Users can now cancel active deployments via a **Cancel Deployment** button in the Deployments tab — `POST /api/apps/:id/deployments/:deploymentId/cancel` signals a `CancellationToken` and marks the deployment as `cancelled` in the database. Dokploy only cancels queued deployments; Rivetr cancels in-progress ones too.
+Dokploy uses Redis to queue deployments, preventing concurrent builds from overwhelming the server. Users can cancel queued (but not in-progress) deployments. Rivetr uses Tokio MPSC channels for serializing deployments but cancellation of queued deployments is not exposed in the UI.
 
 ### GitHub Actions integration
 🔴 **Missing in Rivetr**
@@ -341,10 +338,10 @@ Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't
 | GitHub | ✅ | ❌ | ✅ |
 | Google | ✅ | ❌ | ✅ |
 | GitLab | ✅ | ❌ | ✅ (implemented — `/api/auth/oauth-login/gitlab`) |
-| Bitbucket | ✅ | ❌ | 🔴 |
+| Bitbucket | ✅ | ❌ | ✅ (implemented — full authorize + callback + `/user/emails` for primary email) |
 | Azure AD / Microsoft | ✅ | ❌ | ✅ (implemented — configurable tenant_id via extra_config) |
 
-Rivetr now supports GitHub, Google, GitLab, and Azure AD OAuth login. Bitbucket OAuth remains missing.
+Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 
 ### SAML 2.0
 🟡 **Planned in Rivetr**
@@ -370,8 +367,8 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 |---------|---------|---------|--------|
 | Email (SMTP) | ✅ | ✅ | ✅ |
 | Telegram | ✅ | ✅ | ✅ |
-| Discord | ✅ | ✅ | ✅ (full notification channel — embed-style webhook) |
-| Slack | ✅ | ✅ | ✅ (full notification channel — incoming webhook) |
+| Discord | ✅ | ✅ | 🟡 (alerts only?) |
+| Slack | ✅ | ✅ | 🟡 (alerts only?) |
 | Microsoft Teams | ❌ | ❌ | ✅ |
 | Pushover | ✅ | ✅ | ✅ |
 | Ntfy | ❌ | ✅ | ✅ |
@@ -381,7 +378,7 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 | Resend (email API) | ✅ | ✅ | ✅ (implemented — transactional email API) |
 | Custom Webhook | ✅ | ✅ | 🟡 (partial) |
 
-All previously missing channels are now implemented. Discord and Slack are full notification channel types (not just alert-level integrations) — both support deployment success/failure events via their respective webhook formats.
+All four previously missing channels (Mattermost, Lark, Gotify, Resend) are now implemented. Discord and Slack may only exist in Rivetr's resource alert system but not yet as general deployment notification channels.
 
 ### Notification event granularity
 🟡 **Review needed**
@@ -412,9 +409,9 @@ Coolify watches for unexpected container stop/restart events (outside of normal 
 ## 9. Backups & Storage
 
 ### Instance backup to S3
-🟡 **Planned in Rivetr**
+✅ **Implemented in Rivetr**
 
-Rivetr has `[ ] Instance backup to S3` on the roadmap. Currently instance backups go to local disk only. Both competitors support backing up the PaaS configuration to S3-compatible storage.
+When `POST /api/system/backup` creates a local `.tar.gz` archive, it performs a best-effort upload to the default S3 storage config (if one is configured) using the key prefix `instance-backups/`. The upload failure is non-fatal — the backup is still returned as a download. Existing backups can also be manually uploaded via `POST /api/system/backups/:name/upload-to-s3`.
 
 ### S3 destinations supported
 | Provider | Coolify | Dokploy | Rivetr |
@@ -428,9 +425,9 @@ Rivetr has `[ ] Instance backup to S3` on the roadmap. Currently instance backup
 Rivetr is missing Backblaze B2 and Google Cloud Storage as S3 backup destinations.
 
 ### Test backup button
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy has a "Test Backup" button that executes a single backup run immediately to verify the configuration before relying on the schedule. Rivetr only runs backups on schedule or via the full "Run Now" flow.
+`POST /api/backups/schedules/:id/run` triggers an immediate backup run for a scheduled backup config. For `instance` type schedules this runs a full backup (and uploads to S3 if configured). The backup settings page shows a "Run Now" button next to each schedule with `last_run_at` and `next_run_at` updated after the run.
 
 ---
 
@@ -554,22 +551,19 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
 | Build-time Docker secrets | ❌ | ✅ | 🟡 Medium |
-| GPU / custom Docker run options | ✅ | ✅ | 🟡 Partial (privileged/cap_add/devices/shm_size/init done; GPU passthrough not yet) |
-| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | ✅ Done |
-| Restart policy per app (always/on-failure/never) | ✅ | ✅ | ✅ Done |
-| Custom Docker run options (privileged/cap_add/devices/shm_size/init) | ✅ | ✅ | ✅ Done |
-| Deployment cancellation via UI | ❌ | ✅ | ✅ Done |
+| GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
+| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | 🟡 Medium |
 | More service templates (~220 short, was ~280) | ✅ | ✅ | 🔴 High |
 | Community template submissions | ✅ | ✅ | 🔴 High |
-| Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
+| Discord + Slack as notification channels | ✅ | ✅ | 🟡 Medium |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
-| Automated Docker resource cleanup | ✅ | ❌ | ✅ Done |
+| Automated Docker resource cleanup | ✅ | ❌ | 🟡 Medium |
 | OS patch notifications | ✅ | ❌ | 🟡 Medium |
 | Auto Docker install on remote server add | ✅ | ✅ | 🟡 Medium |
 | Server security validation checklist | ❌ | ✅ | 🟡 Medium |
@@ -578,12 +572,12 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Patches (build-time file injection) | ❌ | ✅ | 🟡 Medium |
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
-| Bitbucket OAuth login | ✅ | ❌ | 🔴 Missing |
-| Deployment queue cancellation | ❌ | ✅ | ✅ Done |
+| Bitbucket OAuth login | ✅ | ❌ | ✅ Done |
+| Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
 | ARM64 / Raspberry Pi builds | ✅ | ✅ | 🟡 Medium |
 | Backblaze B2 / GCS S3 destinations | ❌ | ✅ | 🟡 Low |
-| Instance backup to S3 | ❌ | ❌ | 🟡 Planned |
-| Test backup button | ❌ | ✅ | 🟡 Low |
+| Instance backup to S3 | ❌ | ❌ | ✅ Done |
+| Test backup button | ❌ | ✅ | ✅ Done |
 | Ansible playbook | ❌ | ✅ | 🟡 Low |
 
 ---
