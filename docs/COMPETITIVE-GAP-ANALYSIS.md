@@ -16,6 +16,17 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | MariaDB managed database | ✅ Implemented | `mariadb:11` image, MARIADB_* env vars, mariadb-dump backups, separate `Mariadb` enum variant |
 | Database SSL/TLS configuration | ✅ Implemented | Per-database `ssl_enabled`/`ssl_mode` fields; Postgres (allow/prefer/require/verify-ca/verify-full) and MySQL/MariaDB (preferred/required/verify-ca/verify-identity) modes; Settings tab UI |
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
+| GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab` — full authorize + callback flow with read_user scope |
+| Azure AD OAuth login | ✅ Implemented | Configurable tenant_id via `extra_config` JSON; uses Microsoft login.microsoftonline.com endpoints |
+| Mattermost notifications | ✅ Implemented | Incoming webhook channel type; configurable URL + username + icon |
+| Lark/Feishu notifications | ✅ Implemented | Webhook-based; supports custom sign secret for verification |
+| Gotify notifications | ✅ Implemented | Self-hosted push server; configurable URL, token, priority |
+| Resend email notifications | ✅ Implemented | Transactional email API; configurable from address and Resend API key |
+| URL redirect rules (per-app) | ✅ Implemented | CRUD at `/api/apps/:id/redirects`; regex + capture group substitution; 301/302 selection; proxy enforcement |
+| Proxy-level Basic Auth | ✅ Implemented | Argon2-hashed password; per-app toggle; Security settings tab UI |
+| DNS validation on domain add | ✅ Implemented | `GET /api/domains/check?domain=` using Tokio DNS lookup; shows server IP match status |
+| +64 service templates (total ~183) | ✅ Implemented | 10 new seeder modules: AI extras, auth/identity, business, CMS, communication, DB tools, DevOps, misc, monitoring, networking |
+| Platform-injected env vars (partial) | ✅ Partial | `RIVETR_APP_NAME`, `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` injected at container start |
 
 ---
 
@@ -98,10 +109,10 @@ Coolify supports switching between Traefik and Caddy as the reverse proxy backen
 🔴 **Missing in Rivetr** (Rivetr uses a custom proxy, not Traefik)
 
 Features available via Traefik that Rivetr's proxy does not expose:
-- **Basic auth middleware** — htpasswd-based password protection on any route (Traefik handles it, not the app itself)
+- **Basic auth middleware** — ✅ Rivetr now supports proxy-level basic auth (Argon2 hashed, per-app toggle)
 - **Authentik/Keycloak SSO middleware** — single-sign-on gateway transparently protecting any deployed service
-- **www ↔ non-www redirects** — regex-based automatic redirect middleware
-- **Cross-domain redirects** — redirect from one domain to another via Traefik labels
+- **www ↔ non-www redirects** — ✅ Rivetr now supports regex redirect rules (301/302, per-app, capture group substitution)
+- **Cross-domain redirects** — redirect from one domain to another via Traefik labels (regex rules in Rivetr partially support this)
 - **Custom Traefik labels** — advanced users can add arbitrary Traefik configuration to any container
 - **Traefik dashboard** — live route/service inspection UI secured with basic auth
 - **Custom dynamic config files** — drop YAML files into `/data/coolify/proxy/certs` or dynamic config dir
@@ -112,14 +123,14 @@ Features available via Traefik that Rivetr's proxy does not expose:
 Coolify supports path-based routing (`domain.com/path`) with explicit priority ordering (more specific paths win). Rivetr supports domain routing and basic path matching but doesn't have configurable route priority.
 
 ### DNS validation on domain add
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify validates DNS by querying `1.1.1.1` when a user adds a custom domain, showing whether the domain currently resolves to the server. Rivetr adds domains without any DNS reachability feedback. Configurable custom DNS validation server is also supported.
+Coolify validates DNS by querying `1.1.1.1` when a user adds a custom domain, showing whether the domain currently resolves to the server. Rivetr now implements DNS validation via `GET /api/domains/check?domain={domain}` using `tokio::net::lookup_host`. The domain management card shows a per-domain DNS status badge: green (resolves to server), yellow (resolves to a different IP), or red (does not resolve). A refresh button allows re-checking at any time.
 
 ### URL redirect rules (regex-based)
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Both Coolify and Dokploy support defining regex-based URL redirect rules per application (e.g., `^/old-path(.*)` → `/new-path$1`, with optional 301 permanent flag). Rivetr has no redirect rule configuration.
+Both Coolify and Dokploy support defining regex-based URL redirect rules per application (e.g., `^/old-path(.*)` → `/new-path$1`, with optional 301 permanent flag). Rivetr now supports this via per-app redirect rules enforced at the proxy level — CRUD API at `/api/apps/:id/redirects`, with a UI card on the Network settings tab. Rules support capture group substitution (`$1`, `$2`), enable/disable toggles, sort order priority, and 301/302 selection.
 
 ### Per-app isolated Docker networks
 🔴 **Missing in Rivetr**
@@ -180,13 +191,20 @@ Coolify has a "raw compose mode" that deploys a compose file exactly as written 
 Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr uses `unless-stopped` for all managed containers but doesn't expose this as a user-configurable setting.
 
 ### Platform-injected environment variables
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
 Both competitors auto-inject useful variables into every container at runtime:
 - Coolify: `COOLIFY_FQDN`, `COOLIFY_URL`, `COOLIFY_BRANCH`, `SOURCE_COMMIT`, `PORT`, `HOST`
 - Dokploy: `DOKPLOY_DEPLOY_URL` (set to the deployment domain, useful in preview envs)
 
-Rivetr doesn't inject any platform variables. Apps can't reference their own domain or current git commit from environment variables without manually setting them.
+Rivetr now injects the following into every container at runtime (without overriding user-defined values):
+- `RIVETR_FQDN` — bare hostname of the app's primary domain
+- `RIVETR_URL` — full `https://` URL
+- `SOURCE_COMMIT` — git commit SHA for the deployment
+- `PORT` — container port
+- `RIVETR_ENV` — environment name
+- `RIVETR_APP_NAME` — application name
+- `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` also injected
 
 ---
 
@@ -197,9 +215,9 @@ Rivetr doesn't inject any platform variables. Apps can't reference their own dom
 |----------|-----------|
 | Coolify | 400+ |
 | Dokploy | 388+ |
-| **Rivetr** | **~119** |
+| **Rivetr** | **~183** *(sprint 14: +64 new templates)* |
 
-Rivetr is roughly 3× behind on template count. Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
+Rivetr is now ~2× behind on template count (down from 3×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
 ### Community template submissions
 🟡 **Partial in Rivetr** (foundation built, not active)
@@ -207,7 +225,7 @@ Rivetr is roughly 3× behind on template count. Both competitors have a communit
 Both Coolify and Dokploy accept community pull requests for new templates through their GitHub repos. Rivetr has a `community_templates` table and suggestion flow implemented but no public-facing submission/review process.
 
 ### Notable templates missing from Rivetr
-Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~119:
+Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~183:
 
 **Productivity / Business**
 - Cal.com (open-source Calendly)
@@ -311,17 +329,16 @@ Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't
 ## 6. Authentication & Security
 
 ### Missing OAuth providers
-🔴 **Missing in Rivetr**
 
 | OAuth Provider | Coolify | Dokploy | Rivetr |
 |----------------|---------|---------|--------|
 | GitHub | ✅ | ❌ | ✅ |
 | Google | ✅ | ❌ | ✅ |
-| GitLab | ✅ | ❌ | 🔴 |
+| GitLab | ✅ | ❌ | ✅ (implemented — `/api/auth/oauth-login/gitlab`) |
 | Bitbucket | ✅ | ❌ | 🔴 |
-| Azure AD / Microsoft | ✅ | ❌ | 🔴 |
+| Azure AD / Microsoft | ✅ | ❌ | ✅ (implemented — configurable tenant_id via extra_config) |
 
-Rivetr has GitHub and Google OAuth but is missing GitLab, Bitbucket, and Microsoft (Azure AD) OAuth login.
+Rivetr now supports GitHub, Google, GitLab, and Azure AD OAuth login. Bitbucket OAuth remains missing.
 
 ### SAML 2.0
 🟡 **Planned in Rivetr**
@@ -334,9 +351,9 @@ Coolify and Dokploy (Enterprise) support SAML 2.0. Rivetr has OIDC (Auth0, Keycl
 Rivetr has 4 roles (owner/admin/developer/viewer). Dokploy Enterprise has **fine-grained per-resource permissions**. Coolify's team model includes per-member permission overrides. Neither competitor's fine-grained model is currently matched by Rivetr.
 
 ### Basic auth on deployed apps (proxy-level)
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify and Dokploy both support adding HTTP Basic Authentication to any deployed application via a single toggle in the UI — enforced at the proxy level without touching the application code. Rivetr has no proxy-level basic auth.
+Coolify and Dokploy both support adding HTTP Basic Authentication to any deployed application via a single toggle in the UI — enforced at the proxy level without touching the application code. Rivetr supports proxy-level basic auth with Argon2-hashed passwords, a toggle UI on the Security settings tab, and a dedicated `/api/apps/:id/basic-auth` API.
 
 ---
 
@@ -352,13 +369,13 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 | Microsoft Teams | ❌ | ❌ | ✅ |
 | Pushover | ✅ | ✅ | ✅ |
 | Ntfy | ❌ | ✅ | ✅ |
-| Mattermost | ✅ | ❌ | 🔴 |
-| Lark | ❌ | ✅ | 🔴 |
-| Gotify | ❌ | ✅ | 🔴 |
-| Resend (email API) | ✅ | ✅ | 🔴 |
+| Mattermost | ✅ | ❌ | ✅ (implemented — incoming webhook) |
+| Lark / Feishu | ❌ | ✅ | ✅ (implemented — webhook-based) |
+| Gotify | ❌ | ✅ | ✅ (implemented — self-hosted push) |
+| Resend (email API) | ✅ | ✅ | ✅ (implemented — transactional email API) |
 | Custom Webhook | ✅ | ✅ | 🟡 (partial) |
 
-**Gaps to address:** Discord and Slack may only exist in Rivetr's resource alert system but not as general deployment notification channels. Mattermost, Lark, Gotify, and Resend are fully missing.
+All four previously missing channels (Mattermost, Lark, Gotify, Resend) are now implemented. Discord and Slack may only exist in Rivetr's resource alert system but not yet as general deployment notification channels.
 
 ### Notification event granularity
 🟡 **Review needed**
@@ -524,11 +541,11 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Feature | Coolify | Dokploy | Priority |
 |---------|---------|---------|----------|
 | Cloudflare Tunnel | ✅ | ✅ | 🔴 High |
-| DNS validation on domain add | ✅ | ❌ | 🟡 Medium |
+| DNS validation on domain add | ✅ | ❌ | ✅ Done |
 | Per-app isolated Docker networks | ❌ | ✅ | 🟡 Medium |
-| Proxy-level Basic Auth | ✅ | ✅ | 🔴 High |
-| URL redirect rules (per app) | ❌ | ✅ | 🟡 Medium |
-| Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | 🟡 Medium |
+| Proxy-level Basic Auth | ✅ | ✅ | ✅ Done |
+| URL redirect rules (per app) | ❌ | ✅ | ✅ Done |
+| Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
 | Build-time Docker secrets | ❌ | ✅ | 🟡 Medium |
 | GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
@@ -536,10 +553,11 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | 🟡 Medium |
-| More service templates (~280 short) | ✅ | ✅ | 🔴 High |
+| More service templates (~220 short, was ~280) | ✅ | ✅ | 🔴 High |
 | Community template submissions | ✅ | ✅ | 🔴 High |
 | Discord + Slack as notification channels | ✅ | ✅ | 🟡 Medium |
-| Resend email API for notifications | ✅ | ✅ | 🟡 Medium |
+| Resend email API for notifications | ✅ | ✅ | ✅ Done |
+| Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
 | Automated Docker resource cleanup | ✅ | ❌ | 🟡 Medium |
@@ -550,7 +568,8 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
 | Patches (build-time file injection) | ❌ | ✅ | 🟡 Medium |
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
-| GitLab / Bitbucket / Azure OAuth login | ✅ | ❌ | 🟡 Medium |
+| GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
+| Bitbucket OAuth login | ✅ | ❌ | 🔴 Missing |
 | Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
 | ARM64 / Raspberry Pi builds | ✅ | ✅ | 🟡 Medium |
 | Backblaze B2 / GCS S3 destinations | ❌ | ✅ | 🟡 Low |
