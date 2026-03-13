@@ -49,7 +49,7 @@ export default function AppSettingsPatches() {
   const queryClient = useQueryClient();
   const [newFilePath, setNewFilePath] = useState("");
   const [newContent, setNewContent] = useState("");
-  const [newOperation, setNewOperation] = useState("create");
+  const [newOperation, setNewOperation] = useState<"create" | "append" | "delete">("create");
   const [isAdding, setIsAdding] = useState(false);
   const [editingPatch, setEditingPatch] = useState<AppPatch | null>(null);
 
@@ -59,7 +59,7 @@ export default function AppSettingsPatches() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { file_path: string; content: string; operation: string }) =>
+    mutationFn: (data: { file_path: string; content: string; operation: "create" | "append" | "delete" }) =>
       api.createPatch(app.id, data),
     onSuccess: () => {
       toast.success("Patch created. It will be applied on the next deployment.");
@@ -75,7 +75,7 @@ export default function AppSettingsPatches() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { file_path?: string; content?: string; operation?: string; is_enabled?: boolean } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { file_path?: string; content?: string; operation?: "create" | "append" | "delete"; is_enabled?: boolean } }) =>
       api.updatePatch(app.id, id, data),
     onSuccess: () => {
       toast.success("Patch updated.");
@@ -172,7 +172,7 @@ export default function AppSettingsPatches() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Switch
-                  checked={patch.is_enabled !== 0}
+                  checked={patch.is_enabled}
                   onCheckedChange={(checked) => toggleMutation.mutate({ id: patch.id, enabled: checked })}
                   disabled={toggleMutation.isPending}
                 />

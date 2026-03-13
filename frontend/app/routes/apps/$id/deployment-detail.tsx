@@ -24,6 +24,8 @@ import {
   Calendar,
   Timer,
   RotateCcw,
+  Package,
+  Copy,
 } from "lucide-react";
 import type { Deployment } from "@/types/api";
 
@@ -227,6 +229,33 @@ export default function DeploymentDetailPage() {
                   <p>{durationSeconds(deployment.started_at, deployment.finished_at)}</p>
                 </div>
               </div>
+
+              {deployment.image_tag && (
+                <>
+                  <Separator />
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Package className="h-3 w-3" /> Image Tag
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all flex-1">
+                        {deployment.image_tag}
+                      </code>
+                      <button
+                        type="button"
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        title="Copy image tag"
+                        onClick={() => {
+                          navigator.clipboard.writeText(deployment.image_tag!);
+                          toast.success("Image tag copied");
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {deployment.error_message && (
                 <>
