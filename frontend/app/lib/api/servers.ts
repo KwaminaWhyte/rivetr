@@ -43,6 +43,18 @@ export interface UpdateServerRequest {
   ssh_private_key?: string;
 }
 
+export interface ServerHealthResponse extends Server {
+  docker_installed: boolean;
+  docker_running: boolean;
+  compose_installed: boolean;
+  compose_version?: string;
+}
+
+export interface InstallDockerResponse {
+  success: boolean;
+  output: string;
+}
+
 export interface PatchesResponse {
   security_updates: number;
   total_updates: number;
@@ -95,9 +107,13 @@ export const serversApi = {
   delete: (id: string, token?: string) =>
     apiRequest<void>(`/servers/${id}`, { method: "DELETE" }, token),
 
-  /** Trigger a health check on a server */
+  /** Trigger a health check on a server (includes docker_installed, docker_running, compose_installed) */
   check: (id: string, token?: string) =>
-    apiRequest<Server>(`/servers/${id}/check`, { method: "POST" }, token),
+    apiRequest<ServerHealthResponse>(`/servers/${id}/check`, { method: "POST" }, token),
+
+  /** Install Docker on a remote server via SSH */
+  installDocker: (id: string, token?: string) =>
+    apiRequest<InstallDockerResponse>(`/servers/${id}/install-docker`, { method: "POST" }, token),
 
   /** List apps assigned to this server */
   listApps: (id: string, token?: string) =>

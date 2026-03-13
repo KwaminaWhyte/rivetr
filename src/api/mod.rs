@@ -143,6 +143,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/restart", post(apps::restart_app))
         .route("/apps/:id/activity", get(apps::get_app_activity))
         .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
+        .route(
+            "/apps/:id/github-actions-workflow",
+            get(apps::get_github_actions_workflow),
+        )
         // App Sharing
         .route("/apps/with-sharing", get(apps::list_apps_with_sharing))
         .route("/apps/:id/shares", get(apps::list_app_shares))
@@ -220,6 +224,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/:id/check", post(servers::check_server_health))
+        .route("/servers/:id/install-docker", post(servers::install_docker))
         .route("/servers/:id/patches", get(servers::check_server_patches))
         .route(
             "/servers/:id/security-check",

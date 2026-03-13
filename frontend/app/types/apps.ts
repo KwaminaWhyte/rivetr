@@ -44,6 +44,12 @@ export interface UploadAppResponse {
   detected_build_type: BuildDetectionResult;
 }
 
+/** A build-time secret injected via BuildKit --secret (not stored in image layers) */
+export interface BuildSecret {
+  key: string;
+  value: string;
+}
+
 /** Nixpacks configuration for auto-build */
 export interface NixpacksConfig {
   /** Custom install command (overrides auto-detected) */
@@ -283,6 +289,8 @@ export interface App {
   shm_size: string | null;
   /** Run tini as PID 1 */
   init_process: boolean;
+  /** Build secrets injected via BuildKit --secret (stored as JSON array) */
+  build_secrets: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -534,6 +542,8 @@ export interface UpdateAppRequest {
   shm_size?: string;
   /** Run tini as PID 1 (init process) */
   init_process?: boolean;
+  /** Build secrets injected via BuildKit --secret (not stored in image layers) */
+  build_secrets?: BuildSecret[];
 }
 
 // -------------------------------------------------------------------------

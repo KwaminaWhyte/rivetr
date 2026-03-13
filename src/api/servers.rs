@@ -627,6 +627,175 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
 }
 
 // ---------------------------------------------------------------------------
+// Docker Installation Endpoint
+// ---------------------------------------------------------------------------
+
+/// POST /api/servers/:id/install-docker
+///
+/// SSHes into the server and installs Docker using the official get.docker.com
+/// convenience script, then enables and starts the daemon.
+pub async fn install_docker(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Fetch the server record
+    let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server for Docker install: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to fetch server"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Server not found"})),
+            )
+        })?;
+
+    let enc_key = get_encryption_key(&state);
+
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
+            Ok(key) => Some(key),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH key for server {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
+            Ok(pwd) => Some(pwd),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH password for server {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let result = run_ssh_install_docker(
+        &server.host,
+        server.port as u16,
+        &server.username,
+        private_key_content.as_deref(),
+        password_content.as_deref(),
+    )
+    .await;
+
+    match result {
+        Ok(output) => {
+            tracing::info!("Docker installed on server {}", id);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "output": output,
+            })))
+        }
+        Err(e) => {
+            tracing::warn!("Docker install failed on server {}: {}", id, e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": format!("Docker installation failed: {}", e),
+                })),
+            ))
+        }
+    }
+}
+
+/// Run the Docker installation script on a remote server via SSH.
+async fn run_ssh_install_docker(
+    host: &str,
+    port: u16,
+    username: &str,
+    private_key: Option<&str>,
+    password: Option<&str>,
+) -> anyhow::Result<String> {
+    use std::io::Write;
+    use tokio::process::Command;
+
+    let key_file = if let Some(key_content) = private_key {
+        let mut tmpfile = tempfile::Builder::new()
+            .prefix("rivetr-ssh-key-")
+            .suffix(".pem")
+            .tempfile()?;
+
+        tmpfile.write_all(key_content.as_bytes())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(tmpfile.path(), std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        Some(tmpfile)
+    } else {
+        None
+    };
+
+    let remote_cmd = r#"
+        set -e
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sh /tmp/get-docker.sh
+        systemctl enable docker
+        systemctl start docker
+        echo "Docker installed successfully: $(docker --version)"
+    "#;
+
+    let use_sshpass = password.is_some() && key_file.is_none();
+
+    let mut cmd = if use_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p").arg(password.unwrap());
+        c.arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+
+    cmd.arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg("ConnectTimeout=30");
+
+    if !use_sshpass {
+        cmd.arg("-o").arg("BatchMode=yes");
+    }
+
+    cmd.arg("-p").arg(port.to_string());
+
+    if let Some(ref key_file) = key_file {
+        cmd.arg("-i").arg(key_file.path());
+    }
+
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+
+    let output = cmd.output().await?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "Installation failed. stdout: {} stderr: {}",
+            stdout,
+            stderr
+        ));
+    }
+
+    Ok(format!("{}\n{}", stdout, stderr).trim().to_string())
+}
+
+// ---------------------------------------------------------------------------
 // App–Server Assignment Endpoints
 // ---------------------------------------------------------------------------
 

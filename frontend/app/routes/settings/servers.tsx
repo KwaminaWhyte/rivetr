@@ -43,6 +43,7 @@ import {
 import { serversApi } from "@/lib/api/servers";
 import type {
   Server,
+  ServerHealthResponse,
   CreateServerRequest,
   PatchesResponse,
   SecurityCheckItem,
@@ -66,6 +67,8 @@ import {
   HelpCircle,
   ChevronDown,
   ChevronUp,
+  Container,
+  Download,
 } from "lucide-react";
 import { ContainerTerminal } from "@/components/container-terminal";
 
@@ -607,6 +610,9 @@ export default function ServersPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [installingDockerIds, setInstallingDockerIds] = useState<Set<string>>(new Set());
+  // Map from server id → last health check result (for docker status)
+  const [dockerHealth, setDockerHealth] = useState<Record<string, Pick<ServerHealthResponse, "docker_installed" | "docker_running" | "compose_installed" | "compose_version">>>({});
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
   const [patchesServer, setPatchesServer] = useState<Server | null>(null);
   const [securityServer, setSecurityServer] = useState<Server | null>(null);
@@ -685,13 +691,43 @@ export default function ServersPage() {
   const handleCheckHealth = async (server: Server) => {
     setCheckingId(server.id);
     try {
-      await serversApi.check(server.id);
+      const result = await serversApi.check(server.id);
       toast.success(`Health check complete for ${server.name}`);
       queryClient.invalidateQueries({ queryKey: ["servers"] });
+      // Store docker status fields from health check response
+      setDockerHealth((prev) => ({
+        ...prev,
+        [server.id]: {
+          docker_installed: result.docker_installed,
+          docker_running: result.docker_running,
+          compose_installed: result.compose_installed,
+          compose_version: result.compose_version,
+        },
+      }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Health check failed");
     } finally {
       setCheckingId(null);
+    }
+  };
+
+  const handleInstallDocker = async (server: Server) => {
+    setInstallingDockerIds((prev) => new Set(prev).add(server.id));
+    try {
+      const result = await serversApi.installDocker(server.id);
+      if (result.success) {
+        toast.success(`Docker installed successfully on ${server.name}`);
+        // Trigger a health re-check to update docker status
+        await handleCheckHealth(server);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to install Docker");
+    } finally {
+      setInstallingDockerIds((prev) => {
+        const next = new Set(prev);
+        next.delete(server.id);
+        return next;
+      });
     }
   };
 
@@ -798,6 +834,37 @@ export default function ServersPage() {
                       {server.last_seen_at ? formatDate(server.last_seen_at) : "Never"}
                     </TableCell>
                     <TableCell>
+                      {/* Docker status badges (shown after a health check) */}
+                      {dockerHealth[server.id] && (
+                        <div className="flex items-center gap-1 flex-wrap mb-1.5">
+                          <Badge
+                            variant={dockerHealth[server.id].docker_installed ? "default" : "secondary"}
+                            className={`text-xs gap-1 ${dockerHealth[server.id].docker_installed ? "bg-blue-600 hover:bg-blue-600 text-white" : "bg-muted text-muted-foreground"}`}
+                            title="Docker CLI installed"
+                          >
+                            <Container className="h-3 w-3" />
+                            {dockerHealth[server.id].docker_installed ? "Docker installed" : "Docker not installed"}
+                          </Badge>
+                          {dockerHealth[server.id].docker_installed && (
+                            <Badge
+                              variant={dockerHealth[server.id].docker_running ? "default" : "destructive"}
+                              className={`text-xs gap-1 ${dockerHealth[server.id].docker_running ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+                              title="Docker daemon status"
+                            >
+                              {dockerHealth[server.id].docker_running ? "Daemon running" : "Daemon stopped"}
+                            </Badge>
+                          )}
+                          {dockerHealth[server.id].compose_installed && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs"
+                              title="Docker Compose available"
+                            >
+                              Compose {dockerHealth[server.id].compose_version ?? ""}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-1 flex-wrap">
                         <Button
                           variant="outline"
@@ -833,7 +900,7 @@ export default function ServersPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleCheckHealth(server)}
-                          disabled={checkingId === server.id}
+                          disabled={checkingId === server.id || installingDockerIds.has(server.id)}
                           className="gap-1"
                         >
                           {checkingId === server.id ? (
@@ -843,6 +910,24 @@ export default function ServersPage() {
                           )}
                           Check
                         </Button>
+                        {/* Show Install Docker button when health check ran and docker is not installed */}
+                        {dockerHealth[server.id] && !dockerHealth[server.id].docker_installed && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleInstallDocker(server)}
+                            disabled={installingDockerIds.has(server.id) || checkingId === server.id}
+                            className="gap-1 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                            title="Install Docker via get.docker.com"
+                          >
+                            {installingDockerIds.has(server.id) ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Download className="h-3 w-3" />
+                            )}
+                            {installingDockerIds.has(server.id) ? "Installing…" : "Install Docker"}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"

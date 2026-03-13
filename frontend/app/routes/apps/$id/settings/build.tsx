@@ -15,11 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, FileCode, Package, Zap, Cloud } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github } from "lucide-react";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { buildServersApi, type BuildServer } from "@/lib/api/build-servers";
-import type { App, BuildType, NixpacksConfig, UpdateAppRequest } from "@/types/api";
+import type { App, BuildType, BuildSecret, NixpacksConfig, UpdateAppRequest } from "@/types/api";
 
 export default function AppSettingsBuild() {
   const { app } = useOutletContext<{ app: App }>();
@@ -44,6 +45,29 @@ export default function AppSettingsBuild() {
     queryKey: ["build-servers"],
     queryFn: () => buildServersApi.list(),
   });
+
+  // Build Secrets state
+  const parseBuildSecrets = (json: string | null): BuildSecret[] => {
+    if (!json) return [];
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
+  };
+
+  const [buildSecrets, setBuildSecrets] = useState<BuildSecret[]>(
+    parseBuildSecrets(app.build_secrets)
+  );
+  const [isSavingSecrets, setIsSavingSecrets] = useState(false);
+
+  // GitHub Actions workflow state
+  const [workflowYaml, setWorkflowYaml] = useState<string | null>(null);
+  const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
+
+  useEffect(() => {
+    setBuildSecrets(parseBuildSecrets(app.build_secrets));
+  }, [app.build_secrets]);
 
   const parseNixpacksConfig = (json: string | null): NixpacksConfig => {
     if (!json) return {};
@@ -105,6 +129,42 @@ export default function AppSettingsBuild() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSaveSecrets = async () => {
+    setIsSavingSecrets(true);
+    try {
+      await api.updateApp(app.id, { build_secrets: buildSecrets });
+      toast.success("Build secrets saved");
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save secrets");
+    } finally {
+      setIsSavingSecrets(false);
+    }
+  };
+
+  const handleLoadWorkflow = async () => {
+    setIsLoadingWorkflow(true);
+    try {
+      const yaml = await api.getGithubActionsWorkflow(app.id);
+      setWorkflowYaml(yaml);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load workflow");
+    } finally {
+      setIsLoadingWorkflow(false);
+    }
+  };
+
+  const handleDownloadWorkflow = () => {
+    if (!workflowYaml) return;
+    const blob = new Blob([workflowYaml], { type: "text/yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `deploy-${app.name}.yml`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -416,6 +476,140 @@ export default function AppSettingsBuild() {
 
       {/* Docker Registry / Deployment Source */}
       <DockerRegistryCard app={app} />
+
+      {/* Build Secrets */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Lock className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>Build Secrets</CardTitle>
+          </div>
+          <CardDescription>
+            Injected during <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">docker build</code> via BuildKit{" "}
+            <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">--secret</code>. Not stored in image layers. Use{" "}
+            <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">RUN --mount=type=secret,id=KEY</code> in your Dockerfile.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>Only works with Dockerfile builds. Requires BuildKit (enabled by default in Docker 23+).</span>
+          </div>
+
+          <div className="space-y-2">
+            {buildSecrets.map((secret, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  placeholder="KEY"
+                  value={secret.key}
+                  onChange={(e) => {
+                    const updated = [...buildSecrets];
+                    updated[index] = { ...updated[index], key: e.target.value };
+                    setBuildSecrets(updated);
+                  }}
+                  className="font-mono text-sm"
+                />
+                <Input
+                  type="password"
+                  placeholder="value"
+                  value={secret.value}
+                  onChange={(e) => {
+                    const updated = [...buildSecrets];
+                    updated[index] = { ...updated[index], value: e.target.value };
+                    setBuildSecrets(updated);
+                  }}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setBuildSecrets(buildSecrets.filter((_, i) => i !== index))}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setBuildSecrets([...buildSecrets, { key: "", value: "" }])}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Secret
+            </Button>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              onClick={handleSaveSecrets}
+              disabled={isSavingSecrets}
+            >
+              {isSavingSecrets ? "Saving..." : "Save Secrets"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBuildSecrets(parseBuildSecrets(app.build_secrets))}
+              disabled={isSavingSecrets}
+            >
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* GitHub Actions Integration */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Github className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>GitHub Actions</CardTitle>
+          </div>
+          <CardDescription>
+            Automatically trigger deployments from your GitHub Actions pipeline.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            After downloading, add the workflow file to{" "}
+            <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">.github/workflows/</code>{" "}
+            in your repository and set the{" "}
+            <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">RIVETR_API_TOKEN</code>{" "}
+            secret in your GitHub repository settings (Settings → Secrets and variables → Actions).
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleLoadWorkflow}
+              disabled={isLoadingWorkflow}
+            >
+              {isLoadingWorkflow ? "Loading..." : "Preview Workflow"}
+            </Button>
+            {workflowYaml && (
+              <Button
+                type="button"
+                onClick={handleDownloadWorkflow}
+              >
+                Download Workflow
+              </Button>
+            )}
+          </div>
+
+          {workflowYaml && (
+            <pre className="rounded-md border bg-muted p-4 text-xs font-mono overflow-x-auto whitespace-pre">
+              {workflowYaml}
+            </pre>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

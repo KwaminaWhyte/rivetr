@@ -27,7 +27,7 @@ export { s3Api } from "./s3";
 export { monitoringApi } from "./monitoring";
 export { sharedEnvVarsApi } from "./shared-env-vars";
 export { serversApi } from "./servers";
-export type { Server, CreateServerRequest, UpdateServerRequest } from "./servers";
+export type { Server, CreateServerRequest, UpdateServerRequest, ServerHealthResponse, InstallDockerResponse } from "./servers";
 export { ssoApi } from "./sso";
 export type { OidcProvider, CreateOidcProviderRequest } from "./sso";
 export { autoscalingApi } from "./autoscaling";
@@ -171,6 +171,9 @@ export const api = {
   createRedirectRule: appsApi.createRedirectRule,
   updateRedirectRule: appsApi.updateRedirectRule,
   deleteRedirectRule: appsApi.deleteRedirectRule,
+
+  // GitHub Actions Workflow Generator
+  getGithubActionsWorkflow: appsApi.getGithubActionsWorkflow,
 
   // SSH Keys
   getSshKeys: gitApi.getSshKeys,
@@ -411,6 +414,7 @@ export const api = {
   checkServerHealth: serversApi.check,
   checkServerPatches: serversApi.checkPatches,
   checkServerSecurity: serversApi.checkSecurity,
+  installServerDocker: serversApi.installDocker,
 
   // Shared Environment Variables
   getTeamEnvVars: sharedEnvVarsApi.getTeamEnvVars,

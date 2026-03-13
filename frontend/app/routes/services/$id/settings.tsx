@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
-import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload } from "lucide-react";
+import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download } from "lucide-react";
 
 interface OutletContext {
   service: Service;
@@ -314,18 +314,16 @@ export default function ServiceSettingsTab() {
         </CardContent>
       </Card>
 
-      {/* Database Import — only shown for services with database containers */}
+      {/* Database Import/Export — only shown for services with database containers */}
       {showImportSection && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Database className="h-5 w-5" />
-              Import Database Dump
+              Database Dump
             </CardTitle>
             <CardDescription>
-              Upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.sql</code> or{" "}
-              <code className="text-xs bg-muted px-1 py-0.5 rounded">.sql.gz</code> dump file and
-              import it into a running database container. The service must be running.
+              Export or import a database dump from a running database container. The service must be running.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -387,7 +385,21 @@ export default function ServiceSettingsTab() {
               </p>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={service.status !== "running"}
+                onClick={() => {
+                  const params = new URLSearchParams({ database: importDatabase });
+                  if (importContainer) params.set("container_name", importContainer);
+                  window.location.href = `/api/services/${service.id}/export-db?${params}`;
+                }}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Export Dump
+              </Button>
               <Button
                 type="button"
                 disabled={!importFile || importDbMutation.isPending || service.status !== "running"}
@@ -401,7 +413,7 @@ export default function ServiceSettingsTab() {
 
             {service.status !== "running" && (
               <p className="text-sm text-destructive">
-                The service must be running before you can import a dump.
+                The service must be running before you can import or export a dump.
               </p>
             )}
           </CardContent>

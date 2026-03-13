@@ -19,7 +19,7 @@ mod sharing;
 mod upload;
 
 pub use control::{get_app_activity, get_app_status, restart_app, start_app, stop_app};
-pub use crud::{create_app, delete_app, get_app, list_apps, update_app};
+pub use crud::{create_app, delete_app, get_app, get_github_actions_workflow, list_apps, update_app};
 pub use logs::stream_app_logs;
 pub use sharing::{create_app_share, delete_app_share, list_app_shares, list_apps_with_sharing};
 pub use upload::upload_create_app;

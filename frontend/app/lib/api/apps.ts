@@ -703,4 +703,24 @@ export const appsApi = {
     apiRequest<void>(`/apps/${appId}/redirects/${ruleId}`, {
       method: "DELETE",
     }, token),
+
+  // -------------------------------------------------------------------------
+  // GitHub Actions Workflow Generator
+  // -------------------------------------------------------------------------
+
+  /** Download the GitHub Actions workflow YAML for triggering deployments */
+  getGithubActionsWorkflow: (appId: string, token?: string): Promise<string> => {
+    const authToken = token || getStoredToken();
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+    return fetch(`/api/apps/${appId}/github-actions-workflow`, {
+      headers,
+      credentials: "include",
+    }).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.text();
+    });
+  },
 };

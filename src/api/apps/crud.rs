@@ -1,6 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use crate::db::{
     actions, resource_types, App, CreateAppRequest, TeamAuditAction, TeamAuditResourceType,
     UpdateAppRequest, User,
 };
+use axum::http::header;
 use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
@@ -752,4 +754,67 @@ pub async fn delete_app(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_github_actions_workflow(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    _user: User,
+) -> Result<impl IntoResponse, ApiError> {
+    // Validate ID format
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    let base_url = state
+        .config
+        .server
+        .external_url
+        .clone()
+        .unwrap_or_else(|| "https://your-rivetr-instance.com".to_string());
+
+    let yaml = format!(
+        r#"name: Deploy to Rivetr
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Rivetr deployment
+        run: |
+          response=$(curl -s -o /dev/null -w "%{{http_code}}" \
+            -X POST "{base_url}/api/apps/{app_id}/deploy" \
+            -H "Authorization: Bearer ${{{{ secrets.RIVETR_API_TOKEN }}}}" \
+            -H "Content-Type: application/json")
+          if [ "$response" != "200" ] && [ "$response" != "201" ]; then
+            echo "Deployment trigger failed with HTTP $response"
+            exit 1
+          fi
+          echo "Deployment triggered successfully (HTTP $response)"
+"#,
+        base_url = base_url,
+        app_id = app.id
+    );
+
+    let filename = format!("deploy-{}.yml", app.name);
+    let content_disposition = format!("attachment; filename=\"{}\"", filename);
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()),
+            (header::CONTENT_DISPOSITION, content_disposition),
+        ],
+        yaml,
+    ))
 }
