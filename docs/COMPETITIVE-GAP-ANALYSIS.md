@@ -439,9 +439,9 @@ Rivetr is missing Backblaze B2 and Google Cloud Storage as S3 backup destination
 Dokploy provides a Traefik File System interface for browsing remote server files (useful for editing Traefik dynamic configs). Rivetr has this on the roadmap as `[ ] File system browser for remote servers`.
 
 ### Automated Docker installation on server add
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-When adding a remote server, both Coolify and Dokploy can **automatically install Docker** and configure the required networking on the remote machine via SSH. Rivetr requires Docker to already be installed on remote servers before they can be added.
+When testing a server connection, Rivetr now also checks if Docker is installed and the daemon is running. If not installed, a "Install Docker" button calls `POST /api/servers/:id/install-docker` which SSHes in and runs `curl -fsSL https://get.docker.com | sh && systemctl enable --now docker`.
 
 ### Server validation checks
 🟡 **Partial in Rivetr**
@@ -550,7 +550,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | URL redirect rules (per app) | ❌ | ✅ | ✅ Done |
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
-| Build-time Docker secrets | ❌ | ✅ | 🟡 Medium |
+| Build-time Docker secrets | ❌ | ✅ | ✅ Done |
 | GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
 | Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
@@ -561,11 +561,11 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
-| GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
+| GitHub Actions workflow generator | ❌ | ✅ | ✅ Done |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
 | Automated Docker resource cleanup | ✅ | ❌ | ✅ Done |
 | OS patch notifications | ✅ | ❌ | ✅ Done |
-| Auto Docker install on remote server add | ✅ | ✅ | 🟡 Medium |
+| Auto Docker install on remote server add | ✅ | ✅ | ✅ Done |
 | Server security validation checklist | ❌ | ✅ | ✅ Done |
 | White labeling | ❌ | ✅ (Enterprise) | 🔴 High (enterprise) |
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
