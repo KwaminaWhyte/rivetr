@@ -68,13 +68,11 @@ use rate_limit::{rate_limit_api, rate_limit_auth, rate_limit_webhook};
 struct StaticAssets;
 
 pub fn create_router(state: Arc<AppState>) -> Router {
-    // Auth routes (public, but rate limited)
+    // Auth routes with strict rate limiting — only actual auth actions (login, register, 2FA, oauth flows)
+    // These are the endpoints that can be brute-forced, so they get the stricter Auth tier (20 req/min).
     let auth_routes = Router::new()
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
-        .route("/validate", get(auth::validate))
-        .route("/me", get(auth::me))
-        .route("/setup-status", get(auth::setup_status))
         .route("/setup", post(auth::setup))
         .route("/register-with-invitation", post(auth::register_with_invitation))
         // OAuth routes
@@ -93,7 +91,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(github_apps::installation_callback),
         )
         // OAuth login routes (public - social login)
-        .route("/oauth/providers", get(oauth::list_enabled_providers))
         .route(
             "/oauth-login/:provider/authorize",
             get(oauth::oauth_login_authorize),
@@ -102,14 +99,27 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/oauth-login/:provider/callback",
             get(oauth::oauth_login_callback),
         )
-        // Team invitation validation (public - validate before login)
-        .route("/invitations/:token", get(teams::validate_invitation))
         // 2FA validation (semi-authenticated - uses temporary session token)
         .route("/2fa/validate", post(two_factor::validate_2fa))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_auth,
+        ));
+
+    // Auth info routes — polled frequently by the frontend; use the API tier (100 req/min)
+    // These are read-only endpoints that don't risk brute-force attacks.
+    let auth_info_routes = Router::new()
+        .route("/validate", get(auth::validate))
+        .route("/me", get(auth::me))
+        .route("/setup-status", get(auth::setup_status))
+        .route("/oauth/providers", get(oauth::list_enabled_providers))
+        // Team invitation validation (public - validate before login)
+        .route("/invitations/:token", get(teams::validate_invitation))
+        // Apply API-tier rate limiting (more lenient, suitable for frequent polling)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_api,
         ));
 
     // WebSocket routes (auth handled in handlers via query param)
@@ -843,6 +853,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/metrics", get(metrics::metrics_endpoint))
         .route("/mcp", post(crate::mcp::server::mcp_handler))
         .nest("/api/auth", auth_routes)
+        .nest("/api/auth", auth_info_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)
         .merge(sso_routes)
