@@ -74,7 +74,7 @@ export default function SettingsPage() {
         instance_name: instanceName.trim() || null,
       }),
     onSuccess: () => {
-      toast.success("Instance settings saved");
+      toast.success("Settings saved and applied");
       queryClient.invalidateQueries({ queryKey: ["instance-settings"] });
     },
     onError: (error) => {
@@ -251,14 +251,13 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <p className="font-medium">How to configure domain settings</p>
               <p className="text-muted-foreground">
-                These settings live in <code className="bg-background px-1 rounded font-mono">rivetr.toml</code> under the <code className="bg-background px-1 rounded font-mono">[proxy]</code> section.
-                Edit the file and restart Rivetr to apply changes.
+                The <strong className="text-foreground">instance_domain</strong> can be changed live using the Instance form above —
+                no restart needed. Other proxy settings such as <code className="bg-background px-1 rounded font-mono">base_domain</code> and{" "}
+                <code className="bg-background px-1 rounded font-mono">acme_email</code> still live in{" "}
+                <code className="bg-background px-1 rounded font-mono">rivetr.toml</code> and require a restart to apply.
               </p>
               <pre className="bg-background rounded p-3 font-mono text-xs overflow-x-auto leading-relaxed">
 {`[proxy]
-# Dashboard domain — the proxy forwards traffic here to Rivetr's API
-instance_domain = "rivetr.yourdomain.com"
-
 # Base domain for auto-generated app subdomains
 # e.g., app "myapp" becomes "myapp.apps.yourdomain.com"
 base_domain = "apps.yourdomain.com"
@@ -268,17 +267,13 @@ acme_email = "you@yourdomain.com"`}
               </pre>
               <div className="space-y-1.5 text-muted-foreground">
                 <p>
-                  <strong className="text-foreground">instance_domain</strong> — the domain where the Rivetr dashboard is accessible.
-                  Point an A record for this domain to your server IP and the proxy will handle TLS automatically.
-                </p>
-                <p>
                   <strong className="text-foreground">base_domain</strong> — when set, new apps automatically receive a subdomain
                   like <code className="bg-background px-1 rounded font-mono">myapp.apps.yourdomain.com</code>. Requires a wildcard DNS record
                   (<code className="bg-background px-1 rounded font-mono">*.apps.yourdomain.com → server IP</code>).
                 </p>
                 <p>
                   <strong className="text-foreground">acme_email</strong> — email used by Let's Encrypt for certificate expiry notices.
-                  Required to enable automatic TLS for <code className="bg-background px-1 rounded font-mono">instance_domain</code>.
+                  Required to enable automatic TLS for the instance domain.
                 </p>
               </div>
             </div>
