@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 /** Supported database types for managed databases */
-export type DatabaseType = "postgres" | "mysql" | "mongodb" | "redis";
+export type DatabaseType = "postgres" | "mysql" | "mariadb" | "mongodb" | "redis";
 
 /** Database deployment status */
 export type DatabaseStatus =
@@ -46,6 +46,8 @@ export interface ManagedDatabase {
   team_id: string | null;
   created_at: string;
   updated_at: string;
+  ssl_enabled: boolean;
+  ssl_mode: string | null;
 }
 
 /** Request to create a managed database */
@@ -78,6 +80,10 @@ export interface UpdateManagedDatabaseRequest {
   memory_limit?: string;
   /** CPU limit (e.g., "0.5", "1", "2") */
   cpu_limit?: string;
+  /** Enable/disable SSL/TLS */
+  ssl_enabled?: boolean;
+  /** SSL mode */
+  ssl_mode?: string;
 }
 
 /** Database type configuration (for UI) */
@@ -175,6 +181,14 @@ export const DATABASE_TYPES: DatabaseTypeInfo[] = [
     defaultPort: 27017,
     versions: ["7", "6", "5", "4.4"],
     defaultVersion: "7",
+  },
+  {
+    type: "mariadb",
+    name: "MariaDB",
+    description: "A community-developed fork of MySQL",
+    defaultPort: 3306,
+    versions: ["11", "10.11", "10.6", "10.5"],
+    defaultVersion: "11",
   },
   {
     type: "redis",

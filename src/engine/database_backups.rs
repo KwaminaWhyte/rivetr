@@ -196,6 +196,7 @@ impl DatabaseBackupTask {
         let (backup_format, extension) = match database.db_type.as_str() {
             "postgres" => ("sql", "sql"),
             "mysql" => ("sql", "sql"),
+            "mariadb" => ("sql", "sql"),
             "mongodb" => ("archive", "archive"),
             "redis" => ("rdb", "rdb"),
             _ => ("dump", "dump"),
@@ -215,6 +216,7 @@ impl DatabaseBackupTask {
                     .await
             }
             "mysql" => self.backup_mysql(container_id, &creds, &backup_path).await,
+            "mariadb" => self.backup_mariadb(container_id, &creds, &backup_path).await,
             "mongodb" => {
                 self.backup_mongodb(container_id, &creds, &backup_path)
                     .await
@@ -384,6 +386,61 @@ impl DatabaseBackupTask {
         if result.exit_code != 0 {
             return Err(anyhow::anyhow!(
                 "mysqldump failed with exit code {}: {}",
+                result.exit_code,
+                result.stderr
+            ));
+        }
+
+        // Copy the backup file from container
+        self.copy_from_container(container_id, "/tmp/backup.sql", backup_path)
+            .await?;
+
+        // Clean up temp file in container
+        let _ = self
+            .runtime
+            .run_command(
+                container_id,
+                vec![
+                    "rm".to_string(),
+                    "-f".to_string(),
+                    "/tmp/backup.sql".to_string(),
+                ],
+            )
+            .await;
+
+        Ok(())
+    }
+
+    /// Backup MariaDB database
+    async fn backup_mariadb(
+        &self,
+        container_id: &str,
+        creds: &DatabaseCredentials,
+        backup_path: &PathBuf,
+    ) -> Result<()> {
+        let database = creds
+            .database
+            .clone()
+            .unwrap_or_else(|| creds.username.clone());
+        let password = creds
+            .root_password
+            .clone()
+            .unwrap_or_else(|| creds.password.clone());
+
+        let cmd = vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            format!(
+                "mariadb-dump -u root -p'{}' {} > /tmp/backup.sql",
+                password, database
+            ),
+        ];
+
+        let result = self.runtime.run_command(container_id, cmd).await?;
+
+        if result.exit_code != 0 {
+            return Err(anyhow::anyhow!(
+                "mariadb-dump failed with exit code {}: {}",
                 result.exit_code,
                 result.stderr
             ));

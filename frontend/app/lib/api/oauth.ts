@@ -45,6 +45,8 @@ export interface CreateOAuthProviderRequest {
   client_id: string;
   client_secret: string;
   enabled?: boolean;
+  /** Provider-specific extra config JSON (e.g. `{"tenant_id": "..."}` for Azure AD) */
+  extra_config?: string;
 }
 
 export const oauthApi = {

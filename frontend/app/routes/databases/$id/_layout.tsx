@@ -66,6 +66,7 @@ function DatabaseTypeBadge({ dbType }: { dbType: string }) {
   const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
     postgres: { bg: "bg-blue-100", text: "text-blue-800", label: "PostgreSQL" },
     mysql: { bg: "bg-orange-100", text: "text-orange-800", label: "MySQL" },
+    mariadb: { bg: "bg-amber-100", text: "text-amber-800", label: "MariaDB" },
     mongodb: { bg: "bg-green-100", text: "text-green-800", label: "MongoDB" },
     redis: { bg: "bg-red-100", text: "text-red-800", label: "Redis" },
   };
@@ -85,6 +86,7 @@ const tabs = [
   { id: "network", label: "Network", path: "/network" },
   { id: "storage", label: "Storage", path: "/storage" },
   { id: "backups", label: "Backups", path: "/backups" },
+  { id: "import", label: "Import", path: "/import" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];

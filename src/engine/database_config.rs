@@ -101,11 +101,29 @@ pub fn redis_config() -> DatabaseTypeConfig {
     }
 }
 
+/// Get configuration for MariaDB
+pub fn mariadb_config() -> DatabaseTypeConfig {
+    DatabaseTypeConfig {
+        image: "mariadb",
+        default_version: "11",
+        versions: &["11", "10.11", "10.6", "10.5"],
+        port: 3306,
+        env_vars: DatabaseEnvVars {
+            username: Some("MARIADB_USER"),
+            password: "MARIADB_PASSWORD",
+            database: Some("MARIADB_DATABASE"),
+            root_password: Some("MARIADB_ROOT_PASSWORD"),
+        },
+        data_path: "/var/lib/mysql",
+    }
+}
+
 /// Get configuration for a database type
 pub fn get_config(db_type: &DatabaseType) -> DatabaseTypeConfig {
     match db_type {
         DatabaseType::Postgres => postgres_config(),
         DatabaseType::Mysql => mysql_config(),
+        DatabaseType::Mariadb => mariadb_config(),
         DatabaseType::Mongodb => mongodb_config(),
         DatabaseType::Redis => redis_config(),
     }

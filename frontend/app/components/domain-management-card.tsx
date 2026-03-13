@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,8 +20,57 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Globe, Star, ExternalLink, Copy } from "lucide-react";
+import { Plus, Trash2, Globe, Star, ExternalLink, Copy, RefreshCw, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import type { Domain, App, UpdateAppRequest } from "@/types/api";
+
+interface DnsCheckResult {
+  domain: string;
+  resolves: boolean;
+  points_to_server: boolean;
+  resolved_ips: string[];
+  server_ip: string;
+}
+
+async function checkDns(domain: string): Promise<DnsCheckResult> {
+  const res = await fetch(`/api/domains/check?domain=${encodeURIComponent(domain)}`);
+  if (!res.ok) throw new Error("DNS check failed");
+  return res.json();
+}
+
+function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs">
+        <RefreshCw className="h-3 w-3 animate-spin" />
+        Checking...
+      </Badge>
+    );
+  }
+  if (!result) return null;
+
+  if (result.points_to_server) {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs text-green-600 border-green-300">
+        <CheckCircle2 className="h-3 w-3" />
+        DNS OK
+      </Badge>
+    );
+  }
+  if (result.resolves) {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs text-yellow-600 border-yellow-300" title={`Resolves to: ${result.resolved_ips.join(", ")}`}>
+        <AlertTriangle className="h-3 w-3" />
+        Wrong IP
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="gap-1 text-xs text-red-600 border-red-300">
+      <XCircle className="h-3 w-3" />
+      Not resolving
+    </Badge>
+  );
+}
 
 interface DomainManagementCardProps {
   app: App;
@@ -57,10 +106,32 @@ export function DomainManagementCard({
   // Track if there are unsaved changes
   const [hasChanges, setHasChanges] = useState(false);
 
+  // DNS check state: map of domain -> result or null (null = loading)
+  const [dnsResults, setDnsResults] = useState<Record<string, DnsCheckResult | null | "loading">>({});
+
   // Update state when app changes
   useEffect(() => {
     setDomains(parseDomains(app.domains));
     setHasChanges(false);
+  }, [app.domains]);
+
+  const runDnsCheck = useCallback(async (domain: string) => {
+    setDnsResults((prev) => ({ ...prev, [domain]: "loading" }));
+    try {
+      const result = await checkDns(domain);
+      setDnsResults((prev) => ({ ...prev, [domain]: result }));
+    } catch {
+      setDnsResults((prev) => ({ ...prev, [domain]: null }));
+    }
+  }, []);
+
+  // Auto-check DNS for all saved domains on mount / when domains change
+  useEffect(() => {
+    const savedDomains = parseDomains(app.domains);
+    for (const d of savedDomains) {
+      runDnsCheck(d.domain);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.domains]);
 
   // Validate domain format
@@ -235,6 +306,7 @@ export function DomainManagementCard({
               <TableHeader>
                 <TableRow>
                   <TableHead>Domain</TableHead>
+                  <TableHead className="w-[110px]">DNS Status</TableHead>
                   <TableHead className="w-[100px] text-center">Primary</TableHead>
                   <TableHead className="w-[120px] text-center">WWW Redirect</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
@@ -271,6 +343,25 @@ export function DomainManagementCard({
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <DnsStatusBadge
+                          result={dnsResults[domain.domain] === "loading" ? null : (dnsResults[domain.domain] as DnsCheckResult | null)}
+                          loading={dnsResults[domain.domain] === "loading"}
+                        />
+                        {dnsResults[domain.domain] !== "loading" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => runDnsCheck(domain.domain)}
+                            className="h-6 w-6 p-0"
+                            title="Re-check DNS"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">

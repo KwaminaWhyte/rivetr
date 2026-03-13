@@ -469,7 +469,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       placeholder="Defaults to username"
                     />
                   </div>
-                  {selectedDbType === "mysql" && (
+                  {(selectedDbType === "mysql" || selectedDbType === "mariadb") && (
                     <div className="space-y-2">
                       <Label htmlFor="db-root-password">Root Password</Label>
                       <Input

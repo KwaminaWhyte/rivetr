@@ -9,6 +9,7 @@ use sqlx::FromRow;
 pub enum DatabaseType {
     Postgres,
     Mysql,
+    Mariadb,
     Mongodb,
     Redis,
 }
@@ -18,6 +19,7 @@ impl std::fmt::Display for DatabaseType {
         match self {
             Self::Postgres => write!(f, "postgres"),
             Self::Mysql => write!(f, "mysql"),
+            Self::Mariadb => write!(f, "mariadb"),
             Self::Mongodb => write!(f, "mongodb"),
             Self::Redis => write!(f, "redis"),
         }
@@ -30,7 +32,8 @@ impl std::str::FromStr for DatabaseType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "postgres" | "postgresql" => Ok(Self::Postgres),
-            "mysql" | "mariadb" => Ok(Self::Mysql),
+            "mysql" => Ok(Self::Mysql),
+            "mariadb" => Ok(Self::Mariadb),
             "mongodb" | "mongo" => Ok(Self::Mongodb),
             "redis" => Ok(Self::Redis),
             _ => Err(format!("Unknown database type: {}", s)),
@@ -131,6 +134,11 @@ pub struct ManagedDatabase {
     /// Format: `rivetr-db-{id[:8]}` for new databases.
     /// Legacy databases fall back to `rivetr-db-{name}` if NULL.
     pub container_slug: Option<String>,
+    /// Whether SSL/TLS is enabled for this database
+    pub ssl_enabled: i32,
+    /// SSL mode (e.g. "require", "verify-ca", "verify-full" for Postgres;
+    /// "required", "verify-ca", "verify-identity" for MySQL/MariaDB)
+    pub ssl_mode: Option<String>,
 }
 
 impl ManagedDatabase {
@@ -152,6 +160,11 @@ impl ManagedDatabase {
     /// Check if public access is enabled
     pub fn is_public(&self) -> bool {
         self.public_access != 0
+    }
+
+    /// Check if SSL is enabled
+    pub fn is_ssl_enabled(&self) -> bool {
+        self.ssl_enabled != 0
     }
 
     /// Get container name — also used as the Docker network hostname.
@@ -184,7 +197,7 @@ impl ManagedDatabase {
                 self.internal_port,
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
-            DatabaseType::Mysql => Some(format!(
+            DatabaseType::Mysql | DatabaseType::Mariadb => Some(format!(
                 "mysql://{}:{}@{}:{}/{}",
                 creds.username,
                 creds.password,
@@ -230,7 +243,7 @@ impl ManagedDatabase {
                 self.external_port,
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
-            DatabaseType::Mysql => Some(format!(
+            DatabaseType::Mysql | DatabaseType::Mariadb => Some(format!(
                 "mysql://{}:{}@{}:{}/{}",
                 creds.username,
                 creds.password,
@@ -285,6 +298,10 @@ pub struct ManagedDatabaseResponse {
     pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Whether SSL/TLS is enabled
+    pub ssl_enabled: bool,
+    /// SSL mode (e.g. "require", "verify-ca", "verify-full")
+    pub ssl_mode: Option<String>,
 }
 
 impl ManagedDatabase {
@@ -330,6 +347,8 @@ impl ManagedDatabase {
             team_id: self.team_id.clone(),
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
+            ssl_enabled: self.is_ssl_enabled(),
+            ssl_mode: self.ssl_mode.clone(),
         }
     }
 }
@@ -379,4 +398,8 @@ pub struct UpdateManagedDatabaseRequest {
     pub memory_limit: Option<String>,
     /// CPU limit
     pub cpu_limit: Option<String>,
+    /// Enable/disable SSL/TLS
+    pub ssl_enabled: Option<bool>,
+    /// SSL mode string
+    pub ssl_mode: Option<String>,
 }

@@ -60,6 +60,7 @@ export default [
       route("network", "routes/databases/$id/network.tsx"),
       route("storage", "routes/databases/$id/storage.tsx"),
       route("backups", "routes/databases/$id/backups.tsx"),
+      route("import", "routes/databases/$id/import.tsx"),
       route("logs", "routes/databases/$id/logs.tsx"),
       route("settings", "routes/databases/$id/settings.tsx"),
     ]),

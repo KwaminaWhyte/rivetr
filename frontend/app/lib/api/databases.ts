@@ -266,4 +266,34 @@ export const databasesApi = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
+
+  // -------------------------------------------------------------------------
+  // Database Import
+  // -------------------------------------------------------------------------
+
+  /** Import a dump file into a running database */
+  importDatabaseDump: async (
+    databaseId: string,
+    file: File,
+    token?: string
+  ): Promise<{ message: string; database_id: string }> => {
+    const authToken = token || getStoredToken();
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`/api/databases/${databaseId}/import`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: formData,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: `Import failed: ${response.status}` }));
+      throw new Error(error.error || `Import failed: ${response.status}`);
+    }
+    return response.json();
+  },
 };

@@ -105,6 +105,8 @@ function ProviderConfigCard({
   onSave,
   onDelete,
   isSaving,
+  extraFields,
+  onGetExtraConfig,
 }: {
   provider: string;
   icon: React.ReactNode;
@@ -118,9 +120,12 @@ function ProviderConfigCard({
     client_id: string;
     client_secret: string;
     enabled: boolean;
+    extra_config?: string;
   }) => void;
   onDelete: (id: string) => void;
   isSaving: boolean;
+  extraFields?: React.ReactNode;
+  onGetExtraConfig?: () => string | undefined;
 }) {
   const [clientId, setClientId] = useState(existingConfig?.client_id || "");
   const [clientSecret, setClientSecret] = useState("");
@@ -143,6 +148,7 @@ function ProviderConfigCard({
       client_id: clientId.trim(),
       client_secret: clientSecret.trim() || "unchanged",
       enabled,
+      extra_config: onGetExtraConfig?.(),
     });
     setClientSecret("");
   };
@@ -193,6 +199,7 @@ function ProviderConfigCard({
               onChange={(e) => setClientSecret(e.target.value)}
             />
           </div>
+          {extraFields}
           <div className="flex items-center gap-2">
             <Switch
               id={`${provider}-enabled`}
@@ -268,6 +275,73 @@ function ProviderConfigCard({
   );
 }
 
+function AzureProviderCard({
+  existingConfig,
+  onSave,
+  onDelete,
+  isSaving,
+}: {
+  existingConfig: OAuthProviderResponse | undefined;
+  onSave: (data: {
+    provider: string;
+    client_id: string;
+    client_secret: string;
+    enabled: boolean;
+    extra_config?: string;
+  }) => void;
+  onDelete: (id: string) => void;
+  isSaving: boolean;
+}) {
+  // Parse existing tenant_id from extra_config
+  const existingTenantId = (() => {
+    if (!existingConfig?.extra_config) return "";
+    try {
+      const parsed = JSON.parse(existingConfig.extra_config);
+      return parsed.tenant_id ?? "";
+    } catch {
+      return "";
+    }
+  })();
+
+  const [tenantId, setTenantId] = useState(existingTenantId);
+
+  const getExtraConfig = () => {
+    if (!tenantId.trim()) return undefined;
+    return JSON.stringify({ tenant_id: tenantId.trim() });
+  };
+
+  return (
+    <ProviderConfigCard
+      provider="azure"
+      icon={<MicrosoftIcon className="h-5 w-5" />}
+      title="Microsoft Entra"
+      description="Allow users to sign in with their Microsoft / Azure AD accounts."
+      docsUrl="https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app"
+      docsLabel="Microsoft Entra App Registration Docs"
+      existingConfig={existingConfig}
+      onSave={onSave}
+      onDelete={onDelete}
+      isSaving={isSaving}
+      onGetExtraConfig={getExtraConfig}
+      extraFields={
+        <div className="space-y-2">
+          <Label htmlFor="azure-tenant-id">Tenant ID (optional)</Label>
+          <Input
+            id="azure-tenant-id"
+            placeholder="common (leave blank for multi-tenant)"
+            value={tenantId}
+            onChange={(e) => setTenantId(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Leave blank to allow any Microsoft account. Enter a specific tenant
+            ID to restrict to a single Azure AD directory.
+          </p>
+        </div>
+      }
+    />
+  );
+}
+
 function OAuthConnectionsCard() {
   const queryClient = useQueryClient();
   const [unlinkId, setUnlinkId] = useState<string | null>(null);
@@ -297,6 +371,10 @@ function OAuthConnectionsCard() {
         return <Github className="h-5 w-5" />;
       case "google":
         return <GoogleIcon className="h-5 w-5" />;
+      case "gitlab":
+        return <GitLabIcon className="h-5 w-5" />;
+      case "azure":
+        return <MicrosoftIcon className="h-5 w-5" />;
       default:
         return <Shield className="h-5 w-5" />;
     }
@@ -308,6 +386,10 @@ function OAuthConnectionsCard() {
         return "GitHub";
       case "google":
         return "Google";
+      case "gitlab":
+        return "GitLab";
+      case "azure":
+        return "Microsoft";
       default:
         return provider;
     }
@@ -415,16 +497,24 @@ export default function OAuthSettingsPage() {
     }
   );
 
+  const providerNames: Record<string, string> = {
+    github: "GitHub",
+    google: "Google",
+    gitlab: "GitLab",
+    azure: "Microsoft Entra",
+  };
+
   const saveMutation = useMutation({
     mutationFn: (data: {
       provider: string;
       client_id: string;
       client_secret: string;
       enabled: boolean;
+      extra_config?: string;
     }) => oauthApi.createOAuthProvider(data),
     onSuccess: (_, variables) => {
       toast.success(
-        `${variables.provider === "github" ? "GitHub" : "Google"} OAuth configuration saved`
+        `${providerNames[variables.provider] ?? variables.provider} OAuth configuration saved`
       );
       queryClient.invalidateQueries({ queryKey: ["oauth-providers"] });
     },
@@ -446,6 +536,8 @@ export default function OAuthSettingsPage() {
 
   const githubConfig = providers.find((p) => p.provider === "github");
   const googleConfig = providers.find((p) => p.provider === "google");
+  const gitlabConfig = providers.find((p) => p.provider === "gitlab");
+  const azureConfig = providers.find((p) => p.provider === "azure");
 
   if (isLoading) {
     return (
@@ -460,8 +552,8 @@ export default function OAuthSettingsPage() {
       <div>
         <h1 className="text-3xl font-bold">Authentication</h1>
         <p className="text-muted-foreground">
-          Configure OAuth providers to allow users to sign in with their GitHub
-          or Google accounts.
+          Configure OAuth providers to allow users to sign in with their GitHub,
+          Google, GitLab, or Microsoft accounts.
         </p>
       </div>
 
@@ -487,6 +579,26 @@ export default function OAuthSettingsPage() {
         docsUrl="https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred"
         docsLabel="Google OAuth Credentials Docs"
         existingConfig={googleConfig}
+        onSave={(data) => saveMutation.mutate(data)}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        isSaving={saveMutation.isPending}
+      />
+
+      <ProviderConfigCard
+        provider="gitlab"
+        icon={<GitLabIcon className="h-5 w-5" />}
+        title="GitLab"
+        description="Allow users to sign in with their GitLab.com accounts."
+        docsUrl="https://docs.gitlab.com/ee/integration/oauth_provider.html"
+        docsLabel="GitLab OAuth Application Docs"
+        existingConfig={gitlabConfig}
+        onSave={(data) => saveMutation.mutate(data)}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        isSaving={saveMutation.isPending}
+      />
+
+      <AzureProviderCard
+        existingConfig={azureConfig}
         onSave={(data) => saveMutation.mutate(data)}
         onDelete={(id) => deleteMutation.mutate(id)}
         isSaving={saveMutation.isPending}

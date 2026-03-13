@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -31,9 +38,13 @@ import {
   Lock,
   Shield,
   ShieldAlert,
+  ShieldCheck,
   RefreshCw,
   Info,
 } from "lucide-react";
+
+const SSL_MODES_POSTGRES = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
+const SSL_MODES_MYSQL = ["disabled", "preferred", "required", "verify-ca", "verify-identity"];
 
 export function meta() {
   return [
@@ -62,6 +73,10 @@ export default function DatabaseSettingsTab() {
   );
   const [useCustomPort, setUseCustomPort] = useState(database.external_port > 0);
 
+  // SSL/TLS state
+  const [sslEnabled, setSslEnabled] = useState(database.ssl_enabled ?? false);
+  const [sslMode, setSslMode] = useState(database.ssl_mode ?? "");
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteDatabase(database.id),
     onSuccess: () => {
@@ -86,7 +101,19 @@ export default function DatabaseSettingsTab() {
     },
   });
 
-  const isSubmitting = deleteMutation.isPending || updateMutation.isPending;
+  const sslMutation = useMutation({
+    mutationFn: (data: UpdateManagedDatabaseRequest) =>
+      api.updateDatabase(database.id, data),
+    onSuccess: () => {
+      toast.success("SSL/TLS settings updated");
+      queryClient.invalidateQueries({ queryKey: ["database", database.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update SSL settings");
+    },
+  });
+
+  const isSubmitting = deleteMutation.isPending || updateMutation.isPending || sslMutation.isPending;
   const canDelete = deleteConfirmName === database.name;
   const hasNetworkChanges =
     publicAccess !== database.public_access ||
@@ -111,6 +138,15 @@ export default function DatabaseSettingsTab() {
   };
 
   const isPortValid = !useCustomPort || !externalPort || validatePort(externalPort);
+
+  // SSL helpers
+  const supportsSSL = database.db_type === "postgres" || database.db_type === "mysql" || database.db_type === "mariadb";
+  const sslModes = database.db_type === "postgres" ? SSL_MODES_POSTGRES : SSL_MODES_MYSQL;
+  const hasSslChanges = sslEnabled !== (database.ssl_enabled ?? false) || sslMode !== (database.ssl_mode ?? "");
+
+  const handleSslUpdate = () => {
+    sslMutation.mutate({ ssl_enabled: sslEnabled, ssl_mode: sslMode || undefined });
+  };
 
   return (
     <div className="space-y-6">
@@ -351,6 +387,94 @@ export default function DatabaseSettingsTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* SSL/TLS Card */}
+      {supportsSSL && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              SSL / TLS
+            </CardTitle>
+            <CardDescription>
+              Configure transport encryption for this database
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base">Enable SSL/TLS</Label>
+                <p className="text-sm text-muted-foreground">
+                  Require encrypted connections to this database
+                </p>
+              </div>
+              <Switch
+                checked={sslEnabled}
+                onCheckedChange={setSslEnabled}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {sslEnabled && (
+              <div className="space-y-2">
+                <Label>SSL Mode</Label>
+                <Select
+                  value={sslMode}
+                  onValueChange={setSslMode}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select SSL mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sslModes.map((mode) => (
+                      <SelectItem key={mode} value={mode}>
+                        {mode}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {database.db_type === "postgres"
+                    ? "PostgreSQL SSL modes: disable, allow, prefer, require, verify-ca, verify-full"
+                    : "MySQL/MariaDB SSL modes: disabled, preferred, required, verify-ca, verify-identity"}
+                </p>
+              </div>
+            )}
+
+            {hasSslChanges && (
+              <div className="flex items-center justify-between pt-4 border-t">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  <span>Restart the database for changes to take effect</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSslEnabled(database.ssl_enabled ?? false);
+                      setSslMode(database.ssl_mode ?? "");
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSslUpdate} disabled={isSubmitting}>
+                    {sslMutation.isPending ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save SSL Settings"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Resource Limits Card */}
       <Card>

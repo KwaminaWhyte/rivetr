@@ -537,6 +537,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/stop", post(databases::stop_database))
         .route("/databases/:id/logs", get(databases::get_database_logs))
         .route("/databases/:id/stats", get(databases::get_database_stats))
+        .route("/databases/:id/import", post(databases::import_database_dump))
         // Database Extensions (PostgreSQL only)
         .route(
             "/databases/:id/extensions",

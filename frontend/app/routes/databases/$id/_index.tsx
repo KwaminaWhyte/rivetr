@@ -25,6 +25,7 @@ interface OutletContext {
 const DB_DESCRIPTIONS: Record<string, string> = {
   postgres: "The world's most advanced open source relational database",
   mysql: "The most popular open source relational database",
+  mariadb: "A community-developed fork of MySQL",
   mongodb: "A document-oriented NoSQL database",
   redis: "In-memory data structure store for caching and messaging",
 };
@@ -159,7 +160,7 @@ export default function DatabaseGeneralTab() {
                 </div>
               </div>
             )}
-            {database.credentials?.root_password && database.db_type === "mysql" && (
+            {database.credentials?.root_password && (database.db_type === "mysql" || database.db_type === "mariadb") && (
               <div className="space-y-2">
                 <Label>Root Password</Label>
                 <div className="flex gap-2">

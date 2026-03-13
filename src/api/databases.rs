@@ -1,7 +1,7 @@
 //! API handlers for managed databases
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::{HeaderMap, StatusCode},
     Json,
 };
@@ -131,7 +131,9 @@ pub async fn create_database(
         username: username.clone(),
         password: password.clone(),
         database: database_name.clone(),
-        root_password: if req.db_type == DatabaseType::Mysql {
+        root_password: if req.db_type == DatabaseType::Mysql
+            || req.db_type == DatabaseType::Mariadb
+        {
             // Use custom root_password if provided, otherwise generate one
             Some(req.root_password.unwrap_or_else(|| generate_password(32)))
         } else {
@@ -877,6 +879,16 @@ pub async fn update_database(
         values.push(Box::new(external_port));
     }
 
+    if let Some(ssl_enabled) = req.ssl_enabled {
+        updates.push("ssl_enabled = ?");
+        values.push(Box::new(if ssl_enabled { 1i32 } else { 0i32 }));
+    }
+
+    if let Some(ref ssl_mode) = req.ssl_mode {
+        updates.push("ssl_mode = ?");
+        values.push(Box::new(ssl_mode.clone()));
+    }
+
     if updates.is_empty() {
         // No changes
         let hostname = state.config.public_hostname();
@@ -903,6 +915,12 @@ pub async fn update_database(
     }
     if let Some(external_port) = req.external_port {
         query = query.bind(external_port);
+    }
+    if let Some(ssl_enabled) = req.ssl_enabled {
+        query = query.bind(if ssl_enabled { 1i32 } else { 0i32 });
+    }
+    if let Some(ref ssl_mode) = req.ssl_mode {
+        query = query.bind(ssl_mode.as_str());
     }
     query = query.bind(&id);
 
@@ -1025,4 +1043,223 @@ pub async fn get_database_stats(
     })?;
 
     Ok(Json(stats))
+}
+
+/// Import a database dump into a running database container
+pub async fn import_database_dump(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use base64::Engine as _;
+
+    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get database: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get database"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Database not found"})),
+            )
+        })?;
+
+    if database.get_status() != DatabaseStatus::Running {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Database must be running to import a dump"})),
+        ));
+    }
+
+    let container_id = database.container_id.as_deref().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Database has no container"})),
+        )
+    })?;
+
+    // Read the uploaded file from multipart
+    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("Failed to read multipart field: {}", e)})),
+        )
+    })? {
+        if field.name() == Some("file") {
+            file_name = field.file_name().map(|s| s.to_string());
+            file_bytes = Some(field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": format!("Failed to read file: {}", e)})),
+                )
+            })?.to_vec());
+            break;
+        }
+    }
+
+    let bytes = file_bytes.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No file field found in request"})),
+        )
+    })?;
+
+    if bytes.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Uploaded file is empty"})),
+        ));
+    }
+
+    // Encode the dump as base64 and write it into the container
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let dest_path = "/tmp/rivetr_import_dump";
+    let write_arg = format!("echo '{}' | base64 -d > {}", encoded, dest_path);
+
+    let write_result = state
+        .runtime
+        .run_command(container_id, vec!["sh".to_string(), "-c".to_string(), write_arg])
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to write dump into container: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to write dump to container: {}", e)})),
+            )
+        })?;
+
+    if write_result.exit_code != 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": "Failed to write dump file to container",
+                "stderr": write_result.stderr
+            })),
+        ));
+    }
+
+    let creds = database.get_credentials().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to read database credentials"})),
+        )
+    })?;
+
+    let db_type_str = database.db_type.as_str();
+    let is_gz = file_name.as_deref().map(|n| n.ends_with(".gz")).unwrap_or(false);
+
+    // Build the restore command based on DB type
+    let restore_cmd: Vec<String> = match db_type_str {
+        "postgres" => {
+            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            if is_gz {
+                // Custom format via pg_restore
+                vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    format!(
+                        "PGPASSWORD='{}' pg_restore -U {} -d {} {}",
+                        creds.password, creds.username, db_name, dest_path
+                    ),
+                ]
+            } else {
+                vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    format!(
+                        "PGPASSWORD='{}' psql -U {} -d {} -f {}",
+                        creds.password, creds.username, db_name, dest_path
+                    ),
+                ]
+            }
+        }
+        "mysql" => {
+            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "mysql -u {} -p'{}' {} < {}",
+                    creds.username, creds.password, db_name, dest_path
+                ),
+            ]
+        }
+        "mariadb" => {
+            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "mariadb -u {} -p'{}' {} < {}",
+                    creds.username, creds.password, db_name, dest_path
+                ),
+            ]
+        }
+        "mongodb" => {
+            vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "mongorestore --username {} --password '{}' --authenticationDatabase admin --archive={} --gzip",
+                    creds.username, creds.password, dest_path
+                ),
+            ]
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Import not supported for this database type"})),
+            ));
+        }
+    };
+
+    let restore_result = state
+        .runtime
+        .run_command(container_id, restore_cmd)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to run restore command: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to run restore command: {}", e)})),
+            )
+        })?;
+
+    if restore_result.exit_code != 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": "Restore command failed",
+                "stderr": restore_result.stderr,
+                "stdout": restore_result.stdout
+            })),
+        ));
+    }
+
+    // Clean up the temp file
+    let _ = state
+        .runtime
+        .run_command(container_id, vec!["rm".to_string(), "-f".to_string(), dest_path.to_string()])
+        .await;
+
+    tracing::info!(
+        "Successfully imported dump into database {} ({})",
+        database.name,
+        database.db_type
+    );
+
+    Ok(Json(serde_json::json!({
+        "message": "Database dump imported successfully",
+        "database_id": id
+    })))
 }

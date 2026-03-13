@@ -209,7 +209,7 @@ export default function SettingsNotificationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
+      let config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
 
       if (channelType === "slack") {
         config = { webhook_url: webhookUrl.trim() };
@@ -236,6 +236,26 @@ export default function SettingsNotificationsPage() {
           server_url: ntfyServerUrl.trim() || undefined,
           priority: parseInt(ntfyPriority, 10),
           tags: ntfyTags.trim() || undefined,
+        };
+      } else if (channelType === "mattermost") {
+        config = { webhook_url: mattermostWebhookUrl.trim() };
+      } else if (channelType === "lark") {
+        config = { webhook_url: larkWebhookUrl.trim() };
+      } else if (channelType === "gotify") {
+        config = {
+          server_url: gotifyServerUrl.trim(),
+          app_token: gotifyAppToken.trim(),
+          priority: parseInt(gotifyPriority, 10),
+        };
+      } else if (channelType === "resend") {
+        const addresses = resendToAddresses
+          .split(",")
+          .map((a) => a.trim())
+          .filter((a) => a);
+        config = {
+          api_key: resendApiKey.trim(),
+          from_address: resendFromAddress.trim(),
+          to_addresses: addresses,
         };
       } else {
         const addresses = toAddresses
@@ -366,6 +386,14 @@ export default function SettingsNotificationsPage() {
     setNtfyServerUrl("");
     setNtfyPriority("3");
     setNtfyTags("");
+    setMattermostWebhookUrl("");
+    setLarkWebhookUrl("");
+    setGotifyServerUrl("");
+    setGotifyAppToken("");
+    setGotifyPriority("5");
+    setResendApiKey("");
+    setResendFromAddress("");
+    setResendToAddresses("");
     setChannelType("slack");
   };
 
@@ -429,6 +457,39 @@ export default function SettingsNotificationsPage() {
     } else if (channelType === "ntfy") {
       if (!ntfyTopic.trim()) {
         toast.error("Topic is required");
+        return;
+      }
+    } else if (channelType === "mattermost") {
+      if (!mattermostWebhookUrl.trim()) {
+        toast.error("Webhook URL is required");
+        return;
+      }
+    } else if (channelType === "lark") {
+      if (!larkWebhookUrl.trim()) {
+        toast.error("Webhook URL is required");
+        return;
+      }
+    } else if (channelType === "gotify") {
+      if (!gotifyServerUrl.trim()) {
+        toast.error("Server URL is required");
+        return;
+      }
+      if (!gotifyAppToken.trim()) {
+        toast.error("App token is required");
+        return;
+      }
+    } else if (channelType === "resend") {
+      if (!resendApiKey.trim()) {
+        toast.error("API key is required");
+        return;
+      }
+      if (!resendFromAddress.trim()) {
+        toast.error("From address is required");
+        return;
+      }
+      const addresses = resendToAddresses.split(",").map((a) => a.trim()).filter((a) => a);
+      if (addresses.length === 0) {
+        toast.error("At least one recipient address is required");
         return;
       }
     } else if (channelType === "email") {
@@ -495,8 +556,8 @@ export default function SettingsNotificationsPage() {
         <CardHeader>
           <CardTitle>Notification Channels</CardTitle>
           <CardDescription>
-            Send notifications via Slack, Discord, Email, Telegram, Microsoft Teams, Pushover, or
-            ntfy when deployments occur.
+            Send notifications via Slack, Discord, Email, Telegram, Microsoft Teams, Pushover,
+            ntfy, Mattermost, Lark, Gotify, or Resend when deployments occur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -676,6 +737,30 @@ export default function SettingsNotificationsPage() {
                         ntfy
                       </span>
                     </SelectItem>
+                    <SelectItem value="mattermost">
+                      <span className="flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        Mattermost
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="lark">
+                      <span className="flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        Lark (Feishu)
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="gotify">
+                      <span className="flex items-center gap-2">
+                        <BellRing className="h-4 w-4" />
+                        Gotify
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="resend">
+                      <span className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Resend (Email API)
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -742,6 +827,38 @@ export default function SettingsNotificationsPage() {
                   setFromAddress={setFromAddress}
                   toAddresses={toAddresses}
                   setToAddresses={setToAddresses}
+                />
+              )}
+              {channelType === "mattermost" && (
+                <MattermostConfigFields
+                  webhookUrl={mattermostWebhookUrl}
+                  setWebhookUrl={setMattermostWebhookUrl}
+                />
+              )}
+              {channelType === "lark" && (
+                <LarkConfigFields
+                  webhookUrl={larkWebhookUrl}
+                  setWebhookUrl={setLarkWebhookUrl}
+                />
+              )}
+              {channelType === "gotify" && (
+                <GotifyConfigFields
+                  gotifyServerUrl={gotifyServerUrl}
+                  setGotifyServerUrl={setGotifyServerUrl}
+                  gotifyAppToken={gotifyAppToken}
+                  setGotifyAppToken={setGotifyAppToken}
+                  gotifyPriority={gotifyPriority}
+                  setGotifyPriority={setGotifyPriority}
+                />
+              )}
+              {channelType === "resend" && (
+                <ResendConfigFields
+                  resendApiKey={resendApiKey}
+                  setResendApiKey={setResendApiKey}
+                  resendFromAddress={resendFromAddress}
+                  setResendFromAddress={setResendFromAddress}
+                  resendToAddresses={resendToAddresses}
+                  setResendToAddresses={setResendToAddresses}
                 />
               )}
             </div>
