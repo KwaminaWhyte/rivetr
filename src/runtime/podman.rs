@@ -111,7 +111,7 @@ impl ContainerRuntime for PodmanRuntime {
             "run".to_string(),
             "-d".to_string(),
             "--restart".to_string(),
-            "unless-stopped".to_string(), // Restart on reboot; crash loops caught by restart_count check
+            config.restart_policy.clone(),
             "--name".to_string(),
             config.name.clone(),
         ];

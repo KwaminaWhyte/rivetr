@@ -130,6 +130,12 @@ pub async fn run_rollback(
         extra_hosts: app.get_extra_hosts(),
         labels: app.get_container_labels(),
         binds,
+        restart_policy: app.restart_policy.clone(),
+        privileged: false,
+        cap_add: vec![],
+        devices: vec![],
+        shm_size: None,
+        init: false,
     };
 
     add_deployment_log(

@@ -1108,3 +1108,47 @@ pub async fn get_deployment_diff(
         commit_messages,
     }))
 }
+
+/// Cancel an in-progress deployment.
+///
+/// POST /api/apps/:app_id/deployments/:id/cancel
+pub async fn cancel_deployment(
+    State(state): State<Arc<AppState>>,
+    Path((app_id, deployment_id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    // Validate ID formats
+    if let Err(e) = validate_uuid(&app_id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+    if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
+        return Err(ApiError::validation_field("deployment_id", e));
+    }
+
+    // Signal cancellation if the token exists
+    if let Some(token) = state.deployment_cancel_tokens.get(&deployment_id) {
+        token.cancel();
+    }
+
+    // Mark as cancelled in DB (only if the deployment belongs to this app and is active)
+    let now = chrono::Utc::now().to_rfc3339();
+    let rows_affected = sqlx::query(
+        "UPDATE deployments SET status = 'cancelled', finished_at = ?, error_message = 'Cancelled by user'
+         WHERE id = ? AND app_id = ? AND status IN ('pending', 'cloning', 'building', 'starting', 'checking')",
+    )
+    .bind(&now)
+    .bind(&deployment_id)
+    .bind(&app_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| ApiError::database(e.to_string()))?
+    .rows_affected();
+
+    if rows_affected == 0 {
+        // Deployment not found or not in a cancellable state
+        return Err(ApiError::not_found(
+            "Deployment not found or is not in a cancellable state",
+        ));
+    }
+
+    Ok(StatusCode::OK)
+}

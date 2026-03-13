@@ -605,6 +605,12 @@ pub async fn restart_app(
         extra_hosts: app.get_extra_hosts(),
         labels: app.get_container_labels(),
         binds,
+        restart_policy: app.restart_policy.clone(),
+        privileged: false,
+        cap_add: vec![],
+        devices: vec![],
+        shm_size: None,
+        init: false,
     };
 
     // 3. Start the new container (old one is still running — no downtime yet)

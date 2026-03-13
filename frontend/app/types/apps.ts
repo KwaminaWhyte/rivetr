@@ -270,6 +270,8 @@ export interface App {
   maintenance_message: string | null;
   /** Build server ID for offloading Docker builds to a remote machine */
   build_server_id: string | null;
+  /** Container restart policy */
+  restart_policy: string;
   created_at: string;
   updated_at: string;
 }
@@ -508,6 +510,8 @@ export interface UpdateAppRequest {
   maintenance_message?: string;
   /** Build server ID for offloading Docker builds (set to empty string to clear) */
   build_server_id?: string | null;
+  /** Container restart policy: "always", "unless-stopped", "on-failure", or "never" */
+  restart_policy?: string;
 }
 
 // -------------------------------------------------------------------------

@@ -123,10 +123,31 @@ pub async fn create_app(
         state.config.proxy.generate_auto_domain(&req.name)
     };
 
+    // Validate restart_policy
+    let valid_restart_policies = ["always", "unless-stopped", "on-failure", "never"];
+    if !valid_restart_policies.contains(&req.restart_policy.as_str()) {
+        return Err(ApiError::validation_field(
+            "restart_policy",
+            format!(
+                "Invalid restart policy '{}'. Must be one of: always, unless-stopped, on-failure, never",
+                req.restart_policy
+            ),
+        ));
+    }
+
+    let cap_add_json = req
+        .cap_add
+        .as_ref()
+        .map(|v| serde_json::to_string(v).unwrap_or_default());
+    let devices_json = req
+        .devices
+        .as_ref()
+        .map(|v| serde_json::to_string(v).unwrap_or_default());
+
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, restart_policy, privileged, cap_add, devices, shm_size, init_process, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -167,6 +188,12 @@ pub async fn create_app(
     .bind(req.preview_enabled)
     .bind(&req.git_provider_id)
     .bind(&req.github_app_installation_id)
+    .bind(&req.restart_policy)
+    .bind(req.privileged)
+    .bind(&cap_add_json)
+    .bind(&devices_json)
+    .bind(&req.shm_size)
+    .bind(req.init_process)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -350,6 +377,38 @@ pub async fn update_app(
     // Build server assignment - empty string clears the assignment
     let build_server_id = merge_optional_string(&req.build_server_id, &existing.build_server_id);
 
+    // Restart policy - validate and fall back to existing
+    let restart_policy = if let Some(ref policy) = req.restart_policy {
+        let valid_restart_policies = ["always", "unless-stopped", "on-failure", "never"];
+        if !valid_restart_policies.contains(&policy.as_str()) {
+            return Err(ApiError::validation_field(
+                "restart_policy",
+                format!(
+                    "Invalid restart policy '{}'. Must be one of: always, unless-stopped, on-failure, never",
+                    policy
+                ),
+            ));
+        }
+        policy.clone()
+    } else {
+        existing.restart_policy.clone()
+    };
+
+    // Custom Docker run options
+    let privileged = req.privileged.unwrap_or(existing.privileged != 0);
+    let update_cap_add = match &req.cap_add {
+        Some(v) if v.is_empty() => None,
+        Some(v) => serde_json::to_string(v).ok(),
+        None => existing.cap_add.clone(),
+    };
+    let update_devices = match &req.devices {
+        Some(v) if v.is_empty() => None,
+        Some(v) => serde_json::to_string(v).ok(),
+        None => existing.devices.clone(),
+    };
+    let shm_size = merge_optional_string(&req.shm_size, &existing.shm_size);
+    let init_process = req.init_process.unwrap_or(existing.init_process != 0);
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -395,6 +454,12 @@ pub async fn update_app(
             server_id = ?,
             build_server_id = ?,
             rollback_retention_count = ?,
+            restart_policy = ?,
+            privileged = ?,
+            cap_add = ?,
+            devices = ?,
+            shm_size = ?,
+            init_process = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -441,6 +506,12 @@ pub async fn update_app(
     .bind(&server_id)
     .bind(&build_server_id)
     .bind(rollback_retention_count)
+    .bind(&restart_policy)
+    .bind(privileged)
+    .bind(&update_cap_add)
+    .bind(&update_devices)
+    .bind(&shm_size)
+    .bind(init_process)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

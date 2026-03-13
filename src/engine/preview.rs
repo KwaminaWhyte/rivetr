@@ -283,6 +283,12 @@ pub async fn run_preview_deployment(
             ("rivetr.pr".to_string(), preview.pr_number.to_string()),
         ]),
         binds: vec![],
+        restart_policy: app.restart_policy.clone(),
+        privileged: false,
+        cap_add: vec![],
+        devices: vec![],
+        shm_size: None,
+        init: false,
     };
 
     let container_id = match runtime.run(&run_config).await {

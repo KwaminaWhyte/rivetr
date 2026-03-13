@@ -250,6 +250,59 @@ pub async fn deploy_template(
         compose_content = compose_content.replace(&pattern_simple, value);
     }
 
+    // Auto-generate SERVICE_PASSWORD_*, SERVICE_USER_*, SERVICE_BASE64_* magic variables
+    {
+        use rand::Rng;
+        use base64::Engine as _;
+
+        let magic_var_re = regex::Regex::new(
+            r"\$\{(SERVICE_(?:PASSWORD|USER|BASE64)_([A-Z0-9_]+))(?::-[^}]*)?\}",
+        )
+        .expect("invalid magic var regex");
+
+        let mut generated: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        // Collect all magic variable names first (so each gets a stable generated value)
+        for cap in magic_var_re.captures_iter(&compose_content.clone()) {
+            let full_var = cap[1].to_string();
+            let name_part = cap[2].to_string();
+            if generated.contains_key(&full_var) {
+                continue;
+            }
+            let value: String = if full_var.starts_with("SERVICE_PASSWORD_") {
+                let mut rng = rand::rng();
+                let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+                (0..32)
+                    .map(|_| chars[rng.random_range(0..chars.len())] as char)
+                    .collect()
+            } else if full_var.starts_with("SERVICE_USER_") {
+                name_part.to_lowercase()
+            } else {
+                // SERVICE_BASE64_*
+                let mut rng = rand::rng();
+                let bytes: Vec<u8> = (0..32).map(|_| rng.random::<u8>()).collect();
+                base64::engine::general_purpose::STANDARD.encode(&bytes)
+            };
+            generated.insert(full_var, value);
+        }
+
+        // Apply generated variables — replace both ${VAR} and ${VAR:-default} forms
+        for (var, value) in &generated {
+            // Simple form: ${VAR}
+            compose_content =
+                compose_content.replace(&format!("${{{}}}", var), value);
+            // Default form: ${VAR:-something}
+            let re2 = regex::Regex::new(&format!(
+                r"\$\{{{var}:-[^}}]*\}}"
+            ))
+            .expect("invalid replacement regex");
+            compose_content = re2
+                .replace_all(&compose_content, value.as_str())
+                .to_string();
+        }
+    }
+
     // Auto-generate subdomain for the service
     let domain = state.config.proxy.generate_auto_domain(&req.name);
 

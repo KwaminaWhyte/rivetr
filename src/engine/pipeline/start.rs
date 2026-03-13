@@ -252,6 +252,22 @@ pub(super) async fn start_container(
         })
         .collect();
 
+    // Parse custom Docker run options from app settings
+    let cap_add: Vec<String> = app
+        .cap_add
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let devices: Vec<String> = app
+        .devices
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let shm_size: Option<i64> = app
+        .shm_size
+        .as_ref()
+        .and_then(|s| crate::runtime::parse_shm_size(s));
+
     let run_config = RunConfig {
         image: image_tag,
         name: container_name.clone(),
@@ -264,6 +280,12 @@ pub(super) async fn start_container(
         extra_hosts: app.get_extra_hosts(),
         labels: app.get_container_labels(),
         binds,
+        restart_policy: app.restart_policy.clone(),
+        privileged: app.privileged != 0,
+        cap_add,
+        devices,
+        shm_size,
+        init: app.init_process != 0,
     };
 
     let container_id = runtime

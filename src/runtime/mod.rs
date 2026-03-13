@@ -2,6 +2,7 @@ mod docker;
 mod podman;
 
 pub use docker::DockerRuntime;
+pub use docker::parse_shm_size;
 pub use podman::PodmanRuntime;
 
 use anyhow::Result;
@@ -87,6 +88,19 @@ pub struct RunConfig {
     pub labels: std::collections::HashMap<String, String>,
     /// Volume bind mounts (format: host_path:container_path[:ro])
     pub binds: Vec<String>,
+    /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
+    pub restart_policy: String,
+    // Custom Docker run options
+    /// Run container in privileged mode
+    pub privileged: bool,
+    /// Capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"])
+    pub cap_add: Vec<String>,
+    /// Device mappings (e.g. ["/dev/snd:/dev/snd"])
+    pub devices: Vec<String>,
+    /// Shared memory size in bytes
+    pub shm_size: Option<i64>,
+    /// Run tini as PID 1
+    pub init: bool,
 }
 
 #[derive(Debug, Clone)]

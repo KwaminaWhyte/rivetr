@@ -1034,6 +1034,48 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 075: Add extra_config column to oauth_providers
+    let has_oauth_extra_config: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('oauth_providers') WHERE name = 'extra_config'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_oauth_extra_config.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/075_oauth_extra_config.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 076: Add restart_policy column to apps
+    let has_restart_policy: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'restart_policy'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_restart_policy.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/076_app_restart_policy.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 077: Add custom Docker run options per app
+    let has_privileged: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'privileged'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_privileged.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/077_app_docker_options.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

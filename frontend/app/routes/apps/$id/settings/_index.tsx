@@ -23,6 +23,13 @@ const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "production", label: "Production" },
 ];
 
+const RESTART_POLICY_OPTIONS: { value: string; label: string }[] = [
+  { value: "unless-stopped", label: "Unless Stopped (recommended)" },
+  { value: "always", label: "Always" },
+  { value: "on-failure", label: "On Failure" },
+  { value: "never", label: "Never" },
+];
+
 export default function AppSettingsGeneral() {
   const { app } = useOutletContext<{ app: App }>();
   const queryClient = useQueryClient();
@@ -34,6 +41,7 @@ export default function AppSettingsGeneral() {
     port: app.port,
     environment: app.environment || "development",
     healthcheck: app.healthcheck || "",
+    restart_policy: app.restart_policy || "unless-stopped",
   });
 
   const handleGeneralSubmit = async (e: React.FormEvent) => {
@@ -47,6 +55,7 @@ export default function AppSettingsGeneral() {
         port: generalForm.port,
         environment: generalForm.environment as AppEnvironment,
         healthcheck: generalForm.healthcheck,
+        restart_policy: generalForm.restart_policy,
       };
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
@@ -138,6 +147,30 @@ export default function AppSettingsGeneral() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Endpoint to check if the app is running
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="restart_policy">Restart Policy</Label>
+                <Select
+                  value={generalForm.restart_policy}
+                  onValueChange={(value) => setGeneralForm({ ...generalForm, restart_policy: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select restart policy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RESTART_POLICY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Controls when Docker restarts your container
                 </p>
               </div>
             </div>

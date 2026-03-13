@@ -123,6 +123,12 @@ pub async fn set_replica_count(
                     extra_hosts: app.get_extra_hosts(),
                     labels: app.get_container_labels(),
                     binds: vec![],
+                    restart_policy: app.restart_policy.clone(),
+                    privileged: false,
+                    cap_add: vec![],
+                    devices: vec![],
+                    shm_size: None,
+                    init: false,
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -279,6 +285,12 @@ pub async fn restart_replica(
         extra_hosts: app.get_extra_hosts(),
         labels: app.get_container_labels(),
         binds: vec![],
+        restart_policy: app.restart_policy.clone(),
+        privileged: false,
+        cap_add: vec![],
+        devices: vec![],
+        shm_size: None,
+        init: false,
     };
 
     // Update status to starting

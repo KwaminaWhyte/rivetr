@@ -719,6 +719,12 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         extra_hosts: vec![],
         labels: HashMap::new(),
         binds,
+        restart_policy: "unless-stopped".to_string(),
+        privileged: false,
+        cap_add: vec![],
+        devices: vec![],
+        shm_size: None,
+        init: false,
     };
 
     // Start the container

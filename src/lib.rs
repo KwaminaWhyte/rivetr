@@ -39,6 +39,8 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimiter>,
     pub metrics_handle: Option<PrometheusHandle>,
     pub update_checker: Arc<UpdateChecker>,
+    /// Cancellation tokens for in-progress deployments. Keyed by deployment ID.
+    pub deployment_cancel_tokens: dashmap::DashMap<String, tokio_util::sync::CancellationToken>,
 }
 
 impl AppState {
@@ -60,6 +62,7 @@ impl AppState {
             rate_limiter,
             metrics_handle: None,
             update_checker,
+            deployment_cancel_tokens: dashmap::DashMap::new(),
         }
     }
 

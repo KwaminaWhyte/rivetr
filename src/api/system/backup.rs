@@ -102,6 +102,9 @@ pub struct CreateBackupScheduleRequest {
 /// - SQLite database (after WAL checkpoint)
 /// - Configuration file (rivetr.toml)
 /// - SSL/ACME certificates (if present)
+///
+/// If a default S3 storage configuration exists, the backup is also uploaded
+/// to S3 at key `instance-backups/<filename>`.
 pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
     let data_dir = &state.config.server.data_dir;
     let acme_cache_dir = &state.config.proxy.acme_cache_dir;
@@ -120,6 +123,31 @@ pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Respons
     // Read the backup file and return it as a download
     let backup_data = std::fs::read(&result.path)
         .map_err(|e| ApiError::internal(format!("Failed to read backup file: {}", e)))?;
+
+    // Opportunistically upload to S3 if a default config is available.
+    // Failures are logged but do NOT prevent the download from being returned.
+    if let Some((s3_client, _url_prefix)) = get_default_s3_client(&state).await {
+        let s3_key = format!("instance-backups/{}", result.name);
+        match s3_client
+            .upload_backup(&s3_key, backup_data.clone())
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    backup_name = %result.name,
+                    s3_key = %s3_key,
+                    "Instance backup auto-uploaded to S3"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    backup_name = %result.name,
+                    "Failed to auto-upload instance backup to S3 (local copy retained)"
+                );
+            }
+        }
+    }
 
     let response = Response::builder()
         .status(StatusCode::OK)

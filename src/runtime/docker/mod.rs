@@ -2,6 +2,8 @@ mod build;
 mod container;
 mod logs;
 
+pub use container::parse_shm_size;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use bollard::Docker;

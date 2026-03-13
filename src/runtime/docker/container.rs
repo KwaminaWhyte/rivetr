@@ -65,6 +65,11 @@ fn parse_cpu(s: &str) -> Option<i64> {
     s.parse::<f64>().ok().map(|n| (n * 1_000_000_000.0) as i64)
 }
 
+/// Parse a human-readable size string like "128m", "1g", "256k" into bytes.
+pub fn parse_shm_size(s: &str) -> Option<i64> {
+    parse_memory(s)
+}
+
 pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> {
     let env: Vec<String> = config
         .env
@@ -120,11 +125,45 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         Some(config.binds.clone())
     };
 
-    // unless-stopped ensures containers restart after server reboots.
+    // Map the app's restart_policy string to the Docker API enum.
     // Crash loops are detected by monitoring Docker's restart_count field.
+    let (policy_name, max_retry) = match config.restart_policy.as_str() {
+        "always" => (bollard::service::RestartPolicyNameEnum::ALWAYS, None),
+        "on-failure" => (bollard::service::RestartPolicyNameEnum::ON_FAILURE, Some(5)),
+        "never" => (bollard::service::RestartPolicyNameEnum::EMPTY, None),
+        _ => (bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED, None), // default: unless-stopped
+    };
     let restart_policy = bollard::service::RestartPolicy {
-        name: Some(bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED),
-        maximum_retry_count: None,
+        name: Some(policy_name),
+        maximum_retry_count: max_retry,
+    };
+
+    // Build device mappings
+    let devices: Option<Vec<bollard::models::DeviceMapping>> = if config.devices.is_empty() {
+        None
+    } else {
+        Some(
+            config
+                .devices
+                .iter()
+                .map(|d| {
+                    let parts: Vec<&str> = d.splitn(2, ':').collect();
+                    bollard::models::DeviceMapping {
+                        path_on_host: Some(parts[0].to_string()),
+                        path_in_container: Some(
+                            parts.get(1).copied().unwrap_or(parts[0]).to_string(),
+                        ),
+                        cgroup_permissions: Some("rwm".to_string()),
+                    }
+                })
+                .collect(),
+        )
+    };
+
+    let cap_add: Option<Vec<String>> = if config.cap_add.is_empty() {
+        None
+    } else {
+        Some(config.cap_add.clone())
     };
 
     let host_config = bollard::service::HostConfig {
@@ -134,6 +173,11 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         extra_hosts,
         binds,
         restart_policy: Some(restart_policy),
+        privileged: Some(config.privileged),
+        cap_add,
+        devices,
+        shm_size: config.shm_size,
+        init: Some(config.init),
         ..Default::default()
     };
 

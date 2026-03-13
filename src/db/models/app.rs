@@ -108,6 +108,22 @@ pub struct App {
     /// Number of previous successful deployments to keep for rollback (default: 10)
     #[serde(default = "default_rollback_retention_count")]
     pub rollback_retention_count: i64,
+    /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
+    #[serde(default = "default_restart_policy")]
+    pub restart_policy: String,
+    // Custom Docker run options
+    /// Run container in privileged mode
+    #[serde(default)]
+    pub privileged: i64,
+    /// JSON array of capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"])
+    pub cap_add: Option<String>,
+    /// JSON array of device mappings (e.g. ["/dev/snd:/dev/snd"])
+    pub devices: Option<String>,
+    /// Shared memory size (e.g. "128m", "1g")
+    pub shm_size: Option<String>,
+    /// Run tini as PID 1 (init process)
+    #[serde(default)]
+    pub init_process: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -188,6 +204,19 @@ pub struct AppResponse {
     pub build_server_id: Option<String>,
     /// Number of previous successful deployments to keep for rollback (default: 10)
     pub rollback_retention_count: i64,
+    /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
+    pub restart_policy: String,
+    // Custom Docker run options
+    /// Run container in privileged mode
+    pub privileged: bool,
+    /// JSON array of capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"])
+    pub cap_add: Option<String>,
+    /// JSON array of device mappings (e.g. ["/dev/snd:/dev/snd"])
+    pub devices: Option<String>,
+    /// Shared memory size (e.g. "128m", "1g")
+    pub shm_size: Option<String>,
+    /// Run tini as PID 1 (init process)
+    pub init_process: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -245,6 +274,12 @@ impl From<App> for AppResponse {
             server_id: app.server_id,
             build_server_id: app.build_server_id,
             rollback_retention_count: app.rollback_retention_count,
+            restart_policy: app.restart_policy,
+            privileged: app.privileged != 0,
+            cap_add: app.cap_add,
+            devices: app.devices,
+            shm_size: app.shm_size,
+            init_process: app.init_process != 0,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -528,10 +563,30 @@ pub struct CreateAppRequest {
     pub github_app_installation_id: Option<String>,
     /// Git provider ID (OAuth) for authenticated HTTPS cloning
     pub git_provider_id: Option<String>,
+    /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
+    #[serde(default = "default_restart_policy")]
+    pub restart_policy: String,
+    // Custom Docker run options
+    /// Run container in privileged mode
+    #[serde(default)]
+    pub privileged: bool,
+    /// Capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"])
+    pub cap_add: Option<Vec<String>>,
+    /// Device mappings (e.g. ["/dev/snd:/dev/snd"])
+    pub devices: Option<Vec<String>>,
+    /// Shared memory size (e.g. "128m", "1g")
+    pub shm_size: Option<String>,
+    /// Run tini as PID 1 (init process)
+    #[serde(default)]
+    pub init_process: bool,
 }
 
 fn default_build_type() -> String {
     "dockerfile".to_string()
+}
+
+fn default_restart_policy() -> String {
+    "unless-stopped".to_string()
 }
 
 fn default_rollback_retention_count() -> i64 {
@@ -632,6 +687,19 @@ pub struct UpdateAppRequest {
     pub server_id: Option<String>,
     /// Build server ID for offloading Docker builds (set to empty string to clear)
     pub build_server_id: Option<String>,
+    /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
+    pub restart_policy: Option<String>,
+    // Custom Docker run options
+    /// Run container in privileged mode
+    pub privileged: Option<bool>,
+    /// Capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"])
+    pub cap_add: Option<Vec<String>>,
+    /// Device mappings (e.g. ["/dev/snd:/dev/snd"])
+    pub devices: Option<Vec<String>>,
+    /// Shared memory size (e.g. "128m", "1g")
+    pub shm_size: Option<String>,
+    /// Run tini as PID 1 (init process)
+    pub init_process: Option<bool>,
 }
 
 /// Request specifically for updating domains

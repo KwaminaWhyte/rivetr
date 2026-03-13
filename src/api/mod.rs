@@ -178,6 +178,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/apps/:id/deployments/pending",
             get(deployments::list_pending_deployments),
         )
+        // Deployment cancellation
+        .route(
+            "/apps/:app_id/deployments/:id/cancel",
+            post(deployments::cancel_deployment),
+        )
         // Deployment freeze windows (app-scoped)
         .route(
             "/apps/:id/freeze-windows",
