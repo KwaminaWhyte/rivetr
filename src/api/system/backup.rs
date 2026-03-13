@@ -552,14 +552,20 @@ pub async fn create_full_backup(
     // 4. Query managed databases (optionally scoped to team).
     let databases: Vec<ManagedDatabase> = match team_id {
         Some(tid) if !tid.is_empty() => sqlx::query_as::<_, ManagedDatabase>(
-            "SELECT * FROM managed_databases WHERE team_id = ? OR team_id IS NULL ORDER BY name ASC",
+            r#"SELECT id, name, db_type, version, container_id, container_slug, status, internal_port,
+               external_port, public_access, credentials, volume_name, volume_path,
+               memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at
+               FROM databases WHERE team_id = ? OR team_id IS NULL ORDER BY name ASC"#,
         )
         .bind(tid)
         .fetch_all(&state.db)
         .await
         .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
         _ => sqlx::query_as::<_, ManagedDatabase>(
-            "SELECT * FROM managed_databases ORDER BY name ASC",
+            r#"SELECT id, name, db_type, version, container_id, container_slug, status, internal_port,
+               external_port, public_access, credentials, volume_name, volume_path,
+               memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at
+               FROM databases ORDER BY name ASC"#,
         )
         .fetch_all(&state.db)
         .await
