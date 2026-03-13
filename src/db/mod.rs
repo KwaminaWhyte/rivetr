@@ -975,6 +975,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 071: Instance settings table (key-value store for instance domain/name)
+    let has_instance_settings: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='instance_settings'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_instance_settings.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/071_instance_settings.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

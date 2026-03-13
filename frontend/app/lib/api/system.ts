@@ -212,6 +212,32 @@ export const systemApi = {
     );
   },
 
+  // -------------------------------------------------------------------------
+  // Instance Settings
+  // -------------------------------------------------------------------------
+
+  /** Get instance settings (domain, name) */
+  getInstanceSettings: (token?: string) =>
+    apiRequest<{ instance_domain: string | null; instance_name: string | null }>(
+      "/settings/instance",
+      {},
+      token
+    ),
+
+  /** Update instance settings */
+  updateInstanceSettings: (
+    req: { instance_domain?: string | null; instance_name?: string | null },
+    token?: string
+  ) =>
+    apiRequest<{ instance_domain: string | null; instance_name: string | null }>(
+      "/settings/instance",
+      {
+        method: "PUT",
+        body: JSON.stringify(req),
+      },
+      token
+    ),
+
   /** Restore from a backup file upload */
   restoreBackup: async (file: File, token?: string): Promise<RestoreResult> => {
     const formData = new FormData();

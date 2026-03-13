@@ -1,7 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import {
   Globe,
@@ -11,6 +16,7 @@ import {
   XCircle,
   Database,
   Container,
+  Loader2,
 } from "lucide-react";
 import type { SystemHealthStatus, UpdateStatus } from "@/types/api";
 
@@ -30,6 +36,8 @@ function HealthIcon({ healthy }: { healthy: boolean }) {
 }
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
+
   const { data: health, isLoading: healthLoading } = useQuery<SystemHealthStatus>({
     queryKey: ["system-health"],
     queryFn: () => api.getSystemHealth(),
@@ -42,11 +50,110 @@ export default function SettingsPage() {
     refetchInterval: 60000,
   });
 
+  // Instance settings
+  const { data: instanceSettings, isLoading: instanceLoading } = useQuery({
+    queryKey: ["instance-settings"],
+    queryFn: () => api.getInstanceSettings(),
+  });
+
+  const [instanceDomain, setInstanceDomain] = useState("");
+  const [instanceName, setInstanceName] = useState("");
+
+  // Sync state when data loads
+  useEffect(() => {
+    if (instanceSettings) {
+      setInstanceDomain(instanceSettings.instance_domain ?? "");
+      setInstanceName(instanceSettings.instance_name ?? "");
+    }
+  }, [instanceSettings]);
+
+  const updateInstanceMutation = useMutation({
+    mutationFn: () =>
+      api.updateInstanceSettings({
+        instance_domain: instanceDomain.trim() || null,
+        instance_name: instanceName.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.success("Instance settings saved");
+      queryClient.invalidateQueries({ queryKey: ["instance-settings"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save instance settings"
+      );
+    },
+  });
+
   const isLoading = healthLoading || versionLoading;
 
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Settings</h1>
+
+      {/* Instance Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Instance
+          </CardTitle>
+          <CardDescription>
+            Configure the domain and display name for this Rivetr instance.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {instanceLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading…</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="instance-domain">Instance Domain</Label>
+                  <Input
+                    id="instance-domain"
+                    placeholder="rivetr.example.com"
+                    value={instanceDomain}
+                    onChange={(e) => setInstanceDomain(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The domain where this Rivetr dashboard is accessible. Used for generating links and callbacks.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="instance-name">Instance Name</Label>
+                  <Input
+                    id="instance-name"
+                    placeholder="My Rivetr"
+                    value={instanceName}
+                    onChange={(e) => setInstanceName(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    A friendly name shown in the dashboard header and notification messages.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => updateInstanceMutation.mutate()}
+                  disabled={updateInstanceMutation.isPending}
+                >
+                  {updateInstanceMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Server Information */}
       <Card>

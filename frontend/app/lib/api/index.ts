@@ -281,6 +281,10 @@ export const api = {
   updateAlertDefaults: systemApi.updateAlertDefaults,
   getAlertStats: systemApi.getAlertStats,
 
+  // Instance Settings
+  getInstanceSettings: systemApi.getInstanceSettings,
+  updateInstanceSettings: systemApi.updateInstanceSettings,
+
   // Auto-Update
   getVersionInfo: systemApi.getVersionInfo,
   checkForUpdate: systemApi.checkForUpdate,
