@@ -30,6 +30,8 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | DNS validation on domain add | ✅ Implemented | `GET /api/domains/check?domain=` using Tokio DNS lookup; shows server IP match status |
 | +64 service templates (total ~183) | ✅ Implemented | 10 new seeder modules: AI extras, auth/identity, business, CMS, communication, DB tools, DevOps, misc, monitoring, networking |
 | Platform-injected env vars (partial) | ✅ Partial | `RIVETR_APP_NAME`, `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` injected at container start |
+| Restart policy per app | ✅ Implemented | `restart_policy` column on apps; always/unless-stopped/on-failure/never; UI select in General settings |
+| Docker Compose magic variables | ✅ Implemented | SERVICE_PASSWORD_*, SERVICE_USER_*, SERVICE_BASE64_* auto-generated at deploy time |
 
 ---
 
@@ -172,7 +174,7 @@ Dokploy supports injecting build-time secrets (SSH keys, API tokens) via Docker'
 Dokploy has a "Preview Compose" button that shows the final rendered docker-compose.yml (with all variables substituted) before the user clicks deploy. Useful for catching misconfigured env vars or variable substitution errors.
 
 ### Docker Compose magic variables
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
 Coolify auto-injects and generates special compose variables:
 - `SERVICE_URL_<NAME>` — the FQDN assigned to a service
@@ -181,7 +183,7 @@ Coolify auto-injects and generates special compose variables:
 - `SERVICE_BASE64_<NAME>` — auto-generated base64-encoded secret
 - `${VAR:?}` — required variable (blocks deploy with error if unset)
 
-Rivetr supports `${VAR:-default}` in compose templates but doesn't auto-generate passwords/FQDNs or enforce required variables.
+Rivetr now auto-generates `SERVICE_PASSWORD_*` (32-char alphanumeric), `SERVICE_USER_*` (lowercase name), and `SERVICE_BASE64_*` (32 random bytes base64-encoded) at deploy time in `deploy_service_template`. Supports both `${VAR}` and `${VAR:-default}` forms. `SERVICE_URL_*`/`SERVICE_FQDN_*` and required-variable enforcement (`${VAR:?}`) are still missing.
 
 ### Docker Compose "raw mode"
 🔴 **Missing in Rivetr**
@@ -189,9 +191,9 @@ Rivetr supports `${VAR:-default}` in compose templates but doesn't auto-generate
 Coolify has a "raw compose mode" that deploys a compose file exactly as written without injecting any Coolify-specific labels, health checks, or network overrides. This is important for services that have opinionated internal networking or label configurations.
 
 ### Restart policy configuration
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr uses `unless-stopped` for all managed containers but doesn't expose this as a user-configurable setting.
+Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr now stores `restart_policy` per app (migration 076), uses it in both Docker and Podman runtimes, and exposes a Select dropdown in the General settings tab.
 
 ### Platform-injected environment variables
 ✅ **Implemented in Rivetr**
@@ -552,7 +554,8 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
 | Build-time Docker secrets | ❌ | ✅ | 🟡 Medium |
 | GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
-| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
+| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | ✅ Done |
+| Restart policy per app (always/on-failure/never) | ✅ | ✅ | ✅ Done |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | 🟡 Medium |

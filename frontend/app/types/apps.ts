@@ -272,6 +272,17 @@ export interface App {
   build_server_id: string | null;
   /** Container restart policy */
   restart_policy: string;
+  // Custom Docker run options
+  /** Run container in privileged mode */
+  privileged: boolean;
+  /** Capabilities to add (JSON string array) */
+  cap_add: string | null;
+  /** Device mappings (JSON string array) */
+  devices: string | null;
+  /** Shared memory size (e.g. "128m", "1g") */
+  shm_size: string | null;
+  /** Run tini as PID 1 */
+  init_process: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -512,6 +523,17 @@ export interface UpdateAppRequest {
   build_server_id?: string | null;
   /** Container restart policy: "always", "unless-stopped", "on-failure", or "never" */
   restart_policy?: string;
+  // Custom Docker run options
+  /** Run container in privileged mode */
+  privileged?: boolean;
+  /** Capabilities to add (e.g. ["NET_ADMIN", "SYS_PTRACE"]) */
+  cap_add?: string[];
+  /** Device mappings (e.g. ["/dev/snd:/dev/snd"]) */
+  devices?: string[];
+  /** Shared memory size (e.g. "128m", "1g") */
+  shm_size?: string;
+  /** Run tini as PID 1 (init process) */
+  init_process?: boolean;
 }
 
 // -------------------------------------------------------------------------

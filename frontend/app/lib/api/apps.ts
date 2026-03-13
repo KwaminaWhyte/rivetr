@@ -596,6 +596,14 @@ export const appsApi = {
   listPendingDeployments: (token?: string) =>
     apiRequest<Deployment[]>("/deployments/pending", {}, token),
 
+  /** Cancel an in-progress deployment */
+  cancelDeployment: (appId: string, deploymentId: string, token?: string) =>
+    apiRequest<void>(
+      `/apps/${appId}/deployments/${deploymentId}/cancel`,
+      { method: "POST" },
+      token,
+    ),
+
   // -------------------------------------------------------------------------
   // Deployment Freeze Windows
   // -------------------------------------------------------------------------
