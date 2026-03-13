@@ -989,6 +989,51 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 072: App redirect rules table
+    let has_redirect_rules: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_redirect_rules'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_redirect_rules.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/072_app_redirect_rules.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 073: Add 'mattermost', 'lark', 'gotify', 'resend' to notification_channels channel_type CHECK constraint
+    let check_has_mattermost: Option<(String,)> = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='notification_channels' AND sql LIKE '%mattermost%'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if check_has_mattermost.is_none() {
+        // Disable foreign keys temporarily for table recreation
+        sqlx::query("PRAGMA foreign_keys=OFF").execute(pool).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/073_notification_new_channels.sql"),
+        )
+        .await?;
+        sqlx::query("PRAGMA foreign_keys=ON").execute(pool).await?;
+    }
+
+    // Migration 074: Add SSL/TLS columns to databases table
+    let has_ssl_enabled: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('databases') WHERE name = 'ssl_enabled'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_ssl_enabled.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/074_database_ssl.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

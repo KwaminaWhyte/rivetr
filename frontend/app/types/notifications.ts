@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 /** Notification channel types */
-export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams" | "pushover" | "ntfy";
+export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams" | "pushover" | "ntfy" | "mattermost" | "lark" | "gotify" | "resend";
 
 /** Notification event types */
 export type NotificationEventType =
@@ -66,12 +66,40 @@ export interface NtfyConfig {
   tags?: string;
 }
 
+/** Mattermost Incoming Webhook configuration */
+export interface MattermostConfig {
+  webhook_url: string;
+}
+
+/** Lark (Feishu) custom bot webhook configuration */
+export interface LarkConfig {
+  webhook_url: string;
+}
+
+/** Gotify push notification server configuration */
+export interface GotifyConfig {
+  server_url: string;
+  app_token: string;
+  /** Message priority (default: 5) */
+  priority?: number;
+}
+
+/** Resend email API configuration */
+export interface ResendConfig {
+  /** Resend API key (starts with "re_") */
+  api_key: string;
+  /** From address (must be a verified sender in Resend) */
+  from_address: string;
+  /** List of recipient email addresses */
+  to_addresses: string[];
+}
+
 /** Notification channel */
 export interface NotificationChannel {
   id: string;
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | Record<string, unknown>;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -91,14 +119,14 @@ export interface NotificationSubscription {
 export interface CreateNotificationChannelRequest {
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
   enabled?: boolean;
 }
 
 /** Request to update a notification channel */
 export interface UpdateNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
   enabled?: boolean;
 }
 
@@ -134,7 +162,11 @@ export type TeamNotificationChannelType =
   | "telegram"
   | "teams"
   | "pushover"
-  | "ntfy";
+  | "ntfy"
+  | "mattermost"
+  | "lark"
+  | "gotify"
+  | "resend";
 
 /** Team notification channel */
 export interface TeamNotificationChannel {
@@ -151,6 +183,10 @@ export interface TeamNotificationChannel {
     | TeamsConfig
     | PushoverConfig
     | NtfyConfig
+    | MattermostConfig
+    | LarkConfig
+    | GotifyConfig
+    | ResendConfig
     | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -161,14 +197,14 @@ export interface TeamNotificationChannel {
 export interface CreateTeamNotificationChannelRequest {
   name: string;
   channel_type: TeamNotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
   enabled?: boolean;
 }
 
 /** Request to update a team notification channel */
 export interface UpdateTeamNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
   enabled?: boolean;
 }
 

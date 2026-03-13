@@ -16,9 +16,10 @@ use rivetr::engine::{
     spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
     spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
+use rivetr::db::AppRedirectRule;
 use rivetr::proxy::{
     AcmeClient, AcmeConfig, Backend, BasicAuthConfig, CertificateRenewalManager, HealthChecker,
-    HealthCheckerConfig, HttpsProxyServer, ProxyServer, RouteTable,
+    HealthCheckerConfig, HttpsProxyServer, ProxyServer, RedirectRule, RouteTable,
 };
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -508,7 +509,8 @@ async fn restore_routes(
     // including basic auth fields so they can be re-applied to the restored routes.
     #[allow(clippy::type_complexity)]
     let apps: Vec<(
-        String,
+        String,          // id
+        String,          // name
         Option<String>,
         Option<String>,
         Option<String>,
@@ -517,7 +519,7 @@ async fn restore_routes(
         Option<String>,
         Option<String>,
     )> = sqlx::query_as(
-        "SELECT name, domain, domains, healthcheck, auto_subdomain, \
+        "SELECT id, name, domain, domains, healthcheck, auto_subdomain, \
                 basic_auth_enabled, basic_auth_username, basic_auth_password_hash \
          FROM apps \
          WHERE (domain IS NOT NULL AND domain != '') \
@@ -541,6 +543,7 @@ async fn restore_routes(
     );
 
     for (
+        app_id,
         app_name,
         legacy_domain,
         domains_json,
@@ -627,6 +630,25 @@ async fn restore_routes(
                     }
                 }
 
+                // Load redirect rules for this app
+                let redirect_rules_db: Vec<AppRedirectRule> = sqlx::query_as(
+                    "SELECT * FROM app_redirect_rules WHERE app_id = ? AND is_enabled = 1 \
+                     ORDER BY sort_order ASC, created_at ASC",
+                )
+                .bind(&app_id)
+                .fetch_all(db)
+                .await
+                .unwrap_or_default();
+
+                let proxy_redirect_rules: Vec<RedirectRule> = redirect_rules_db
+                    .into_iter()
+                    .map(|r| RedirectRule {
+                        source_pattern: r.source_pattern,
+                        destination: r.destination,
+                        is_permanent: r.is_permanent != 0,
+                    })
+                    .collect();
+
                 let route_table = routes.load();
 
                 for domain in &domain_names {
@@ -646,12 +668,18 @@ async fn restore_routes(
                         }
                     }
 
+                    // Restore redirect rules
+                    if !proxy_redirect_rules.is_empty() {
+                        backend.set_redirect_rules(proxy_redirect_rules.clone());
+                    }
+
                     route_table.add_route(domain.clone(), backend);
                     tracing::info!(
                         domain = %domain,
                         port = port,
                         container = %container_name,
                         basic_auth = basic_auth_enabled != 0,
+                        redirect_rules = proxy_redirect_rules.len(),
                         "Restored proxy route for app {}",
                         app_name
                     );

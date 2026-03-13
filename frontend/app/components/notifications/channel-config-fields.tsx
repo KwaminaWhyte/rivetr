@@ -427,6 +427,185 @@ export function EmailConfigFields({
   );
 }
 
+// ---- Mattermost ----
+
+interface MattermostFieldsProps {
+  webhookUrl: string;
+  setWebhookUrl: (v: string) => void;
+}
+
+export function MattermostConfigFields({ webhookUrl, setWebhookUrl }: MattermostFieldsProps) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="mattermost_webhook_url">Webhook URL</Label>
+      <Input
+        id="mattermost_webhook_url"
+        value={webhookUrl}
+        onChange={(e) => setWebhookUrl(e.target.value)}
+        placeholder="https://your-mattermost.com/hooks/..."
+        required
+      />
+      <p className="text-xs text-muted-foreground">
+        Create an Incoming Webhook integration in your Mattermost channel settings.
+      </p>
+    </div>
+  );
+}
+
+// ---- Lark (Feishu) ----
+
+interface LarkFieldsProps {
+  webhookUrl: string;
+  setWebhookUrl: (v: string) => void;
+}
+
+export function LarkConfigFields({ webhookUrl, setWebhookUrl }: LarkFieldsProps) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="lark_webhook_url">Webhook URL</Label>
+      <Input
+        id="lark_webhook_url"
+        value={webhookUrl}
+        onChange={(e) => setWebhookUrl(e.target.value)}
+        placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/..."
+        required
+      />
+      <p className="text-xs text-muted-foreground">
+        Get this from your Lark/Feishu group bot configuration.
+      </p>
+    </div>
+  );
+}
+
+// ---- Gotify ----
+
+interface GotifyFieldsProps {
+  gotifyServerUrl: string;
+  setGotifyServerUrl: (v: string) => void;
+  gotifyAppToken: string;
+  setGotifyAppToken: (v: string) => void;
+  gotifyPriority: string;
+  setGotifyPriority: (v: string) => void;
+}
+
+export function GotifyConfigFields({
+  gotifyServerUrl,
+  setGotifyServerUrl,
+  gotifyAppToken,
+  setGotifyAppToken,
+  gotifyPriority,
+  setGotifyPriority,
+}: GotifyFieldsProps) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="gotify_server_url">Server URL</Label>
+        <Input
+          id="gotify_server_url"
+          value={gotifyServerUrl}
+          onChange={(e) => setGotifyServerUrl(e.target.value)}
+          placeholder="https://gotify.example.com"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          The base URL of your Gotify server.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="gotify_app_token">App Token</Label>
+        <Input
+          id="gotify_app_token"
+          type="password"
+          value={gotifyAppToken}
+          onChange={(e) => setGotifyAppToken(e.target.value)}
+          placeholder="Your Gotify application token"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Create an application in your Gotify dashboard to get a token.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="gotify_priority">Priority</Label>
+        <Select value={gotifyPriority} onValueChange={setGotifyPriority}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1 (Min)</SelectItem>
+            <SelectItem value="3">3 (Low)</SelectItem>
+            <SelectItem value="5">5 (Normal)</SelectItem>
+            <SelectItem value="7">7 (High)</SelectItem>
+            <SelectItem value="10">10 (Max/Urgent)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </>
+  );
+}
+
+// ---- Resend ----
+
+interface ResendFieldsProps {
+  resendApiKey: string;
+  setResendApiKey: (v: string) => void;
+  resendFromAddress: string;
+  setResendFromAddress: (v: string) => void;
+  resendToAddresses: string;
+  setResendToAddresses: (v: string) => void;
+}
+
+export function ResendConfigFields({
+  resendApiKey,
+  setResendApiKey,
+  resendFromAddress,
+  setResendFromAddress,
+  resendToAddresses,
+  setResendToAddresses,
+}: ResendFieldsProps) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="resend_api_key">API Key</Label>
+        <Input
+          id="resend_api_key"
+          type="password"
+          value={resendApiKey}
+          onChange={(e) => setResendApiKey(e.target.value)}
+          placeholder="re_..."
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Get your API key from the Resend dashboard at resend.com.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="resend_from_address">From Address</Label>
+        <Input
+          id="resend_from_address"
+          value={resendFromAddress}
+          onChange={(e) => setResendFromAddress(e.target.value)}
+          placeholder="noreply@yourdomain.com"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Must be a verified sender domain in your Resend account.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="resend_to_addresses">To Addresses (comma-separated)</Label>
+        <Input
+          id="resend_to_addresses"
+          value={resendToAddresses}
+          onChange={(e) => setResendToAddresses(e.target.value)}
+          placeholder="admin@example.com, devops@example.com"
+          required
+        />
+      </div>
+    </>
+  );
+}
+
 // ---- Webhook (team channels only) ----
 
 const PAYLOAD_TEMPLATES: {

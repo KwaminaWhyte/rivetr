@@ -474,14 +474,52 @@ pub async fn update_app(
             if let Ok(info) = state.runtime.inspect(&container_id).await {
                 if let Some(port) = info.port {
                     let all_domains = app.get_all_domain_names();
+
+                    // Load current redirect rules for this app
+                    let redirect_rules_db: Vec<crate::db::AppRedirectRule> = sqlx::query_as(
+                        "SELECT * FROM app_redirect_rules WHERE app_id = ? AND is_enabled = 1 \
+                         ORDER BY sort_order ASC, created_at ASC",
+                    )
+                    .bind(&app.id)
+                    .fetch_all(&state.db)
+                    .await
+                    .unwrap_or_default();
+
+                    let proxy_redirect_rules: Vec<crate::proxy::RedirectRule> = redirect_rules_db
+                        .into_iter()
+                        .map(|r| crate::proxy::RedirectRule {
+                            source_pattern: r.source_pattern,
+                            destination: r.destination,
+                            is_permanent: r.is_permanent != 0,
+                        })
+                        .collect();
+
                     let route_table = state.routes.load();
                     for domain in &all_domains {
-                        let backend = crate::proxy::Backend::new(
+                        let mut backend = crate::proxy::Backend::new(
                             container_id.clone(),
                             "127.0.0.1".to_string(),
                             port,
                         )
                         .with_healthcheck(app.healthcheck.clone());
+
+                        // Restore basic auth if enabled
+                        if app.basic_auth_enabled != 0 {
+                            if let (Some(ref username), Some(ref hash)) =
+                                (&app.basic_auth_username, &app.basic_auth_password_hash)
+                            {
+                                backend.set_basic_auth(crate::proxy::BasicAuthConfig::new(
+                                    username.clone(),
+                                    hash.clone(),
+                                ));
+                            }
+                        }
+
+                        // Attach redirect rules
+                        if !proxy_redirect_rules.is_empty() {
+                            backend.set_redirect_rules(proxy_redirect_rules.clone());
+                        }
+
                         route_table.add_route(domain.clone(), backend);
                     }
                     if !all_domains.is_empty() {

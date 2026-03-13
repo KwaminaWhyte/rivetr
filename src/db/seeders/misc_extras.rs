@@ -1,0 +1,360 @@
+//! Miscellaneous extra service templates (notes, wikis, utilities, and more)
+
+use super::TemplateEntry;
+
+pub fn templates() -> Vec<TemplateEntry> {
+    vec![
+        // ==================== NOTES / KNOWLEDGE ====================
+        (
+            "tpl-silverbullet",
+            "SilverBullet",
+            "Markdown-based open-source note-taking and knowledge management app. Extensible with Lua.",
+            "project-management",
+            "silverbullet",
+            r#"services:
+  silverbullet:
+    image: zefhemel/silverbullet:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-silverbullet}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - silverbullet_data:/space
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  silverbullet_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"silverbullet","secret":false},{"name":"PORT","label":"Port","required":false,"default":"3000","secret":false}]"#,
+        ),
+        (
+            "tpl-obsidian-livesync",
+            "Obsidian LiveSync",
+            "Self-hosted CouchDB backend for Obsidian LiveSync plugin. Sync your Obsidian vaults.",
+            "project-management",
+            "obsidian",
+            r#"services:
+  couchdb:
+    image: couchdb:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-obsidian-couchdb}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5984}:5984"
+    environment:
+      - COUCHDB_USER=${ADMIN_USER:-admin}
+      - COUCHDB_PASSWORD=${ADMIN_PASSWORD:-changeme}
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  couchdb_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"obsidian-couchdb","secret":false},{"name":"PORT","label":"Port","required":false,"default":"5984","secret":false},{"name":"ADMIN_USER","label":"Admin Username","required":false,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"","secret":true}]"#,
+        ),
+        (
+            "tpl-wiki-js",
+            "Wiki.js",
+            "Powerful open-source wiki built on Node.js. Markdown, WYSIWYG, and API-driven. Multilingual support.",
+            "documentation",
+            "wiki",
+            r#"services:
+  wikijs:
+    image: ghcr.io/requarks/wiki:${VERSION:-2}
+    container_name: ${CONTAINER_NAME:-wikijs}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=wikijs_db
+      - DB_PORT=5432
+      - DB_USER=wikijs
+      - DB_PASS=${DB_PASSWORD:-wikijs}
+      - DB_NAME=wikijs
+    depends_on:
+      - wikijs_db
+    labels:
+      - "rivetr.managed=true"
+
+  wikijs_db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=wikijs
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-wikijs}
+      - POSTGRES_DB=wikijs
+    volumes:
+      - wikijs_db_data:/var/lib/postgresql/data
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  wikijs_db_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"2","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"wikijs","secret":false},{"name":"PORT","label":"Port","required":false,"default":"3000","secret":false},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true}]"#,
+        ),
+
+        // ==================== UTILITIES ====================
+        (
+            "tpl-it-tools",
+            "IT Tools",
+            "Collection of handy online tools for developers: encoders, generators, converters, and more.",
+            "development",
+            "it-tools",
+            r#"services:
+  it-tools:
+    image: corentinth/it-tools:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-it-tools}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    labels:
+      - "rivetr.managed=true"
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"it-tools","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false}]"#,
+        ),
+        (
+            "tpl-vaultwarden-advanced",
+            "Vaultwarden (Advanced)",
+            "Unofficial Bitwarden server with organization support, Duo auth, and email notifications configured.",
+            "security",
+            "vaultwarden",
+            r#"services:
+  vaultwarden:
+    image: vaultwarden/server:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-vaultwarden-adv}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    environment:
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-to-a-random-string}
+      - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
+      - DOMAIN=${DOMAIN:-http://localhost:8080}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - INVITATIONS_ALLOWED=${INVITATIONS_ALLOWED:-true}
+      - WEBSOCKET_ENABLED=true
+    volumes:
+      - vaultwarden_adv_data:/data
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  vaultwarden_adv_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"vaultwarden-adv","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"ADMIN_TOKEN","label":"Admin Token","required":true,"default":"","secret":true},{"name":"DOMAIN","label":"Domain URL","required":true,"default":"http://localhost:8080","secret":false},{"name":"SIGNUPS_ALLOWED","label":"Allow Signups","required":false,"default":"false","secret":false},{"name":"SMTP_HOST","label":"SMTP Host","required":false,"default":"","secret":false},{"name":"SMTP_FROM","label":"SMTP From","required":false,"default":"noreply@example.com","secret":false},{"name":"SMTP_PORT","label":"SMTP Port","required":false,"default":"587","secret":false},{"name":"SMTP_USER","label":"SMTP Username","required":false,"default":"","secret":false},{"name":"SMTP_PASSWORD","label":"SMTP Password","required":false,"default":"","secret":true}]"#,
+        ),
+        (
+            "tpl-changedetection",
+            "Changedetection.io",
+            "Self-hosted website change detection and notification service. Monitor any web page for changes.",
+            "monitoring",
+            "changedetection",
+            r#"services:
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-changedetection}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      - PORT=5000
+      - PLAYWRIGHT_DRIVER_URL=${PLAYWRIGHT_URL:-ws://playwright-chrome:3000/?stealth=1&--disable-web-security=true}
+    volumes:
+      - changedetection_data:/datastore
+    labels:
+      - "rivetr.managed=true"
+
+  playwright-chrome:
+    image: browserless/chrome:${CHROME_VERSION:-latest}
+    container_name: playwright-chrome
+    restart: unless-stopped
+    environment:
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1024
+      - SCREEN_DEPTH=16
+      - ENABLE_DEBUGGER=false
+      - PREBOOT_CHROME=true
+      - CONNECTION_TIMEOUT=300000
+      - MAX_CONCURRENT_SESSIONS=${MAX_SESSIONS:-10}
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  changedetection_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"changedetection","secret":false},{"name":"PORT","label":"Port","required":false,"default":"5000","secret":false},{"name":"MAX_SESSIONS","label":"Max Browser Sessions","required":false,"default":"10","secret":false}]"#,
+        ),
+        (
+            "tpl-open-speed-test",
+            "OpenSpeedTest",
+            "Self-hosted HTML5 internet speed test. No third-party services, no Flash, no Java required.",
+            "development",
+            "speedtest",
+            r#"services:
+  openspeedtest:
+    image: openspeedtest/latest:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-openspeedtest}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-3000}:3000"
+      - "${HTTPS_PORT:-3001}:3001"
+    labels:
+      - "rivetr.managed=true"
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"openspeedtest","secret":false},{"name":"HTTP_PORT","label":"HTTP Port","required":false,"default":"3000","secret":false},{"name":"HTTPS_PORT","label":"HTTPS Port","required":false,"default":"3001","secret":false}]"#,
+        ),
+        (
+            "tpl-excalidraw",
+            "Excalidraw",
+            "Virtual whiteboard for sketching hand-drawn diagrams. Collaborative, end-to-end encrypted.",
+            "development",
+            "excalidraw",
+            r#"services:
+  excalidraw:
+    image: excalidraw/excalidraw:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-excalidraw}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    labels:
+      - "rivetr.managed=true"
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"excalidraw","secret":false},{"name":"PORT","label":"Port","required":false,"default":"80","secret":false}]"#,
+        ),
+        (
+            "tpl-drawio",
+            "Draw.io (Diagrams.net)",
+            "Self-hosted diagramming tool. Create flowcharts, network diagrams, UML, ERDs, and more.",
+            "development",
+            "drawio",
+            r#"services:
+  drawio:
+    image: jgraph/drawio:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-drawio}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+      - "${HTTPS_PORT:-8443}:8443"
+    labels:
+      - "rivetr.managed=true"
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"drawio","secret":false},{"name":"PORT","label":"HTTP Port","required":false,"default":"8080","secret":false},{"name":"HTTPS_PORT","label":"HTTPS Port","required":false,"default":"8443","secret":false}]"#,
+        ),
+
+        // ==================== MEDIA / STREAMING ====================
+        (
+            "tpl-owncast",
+            "Owncast",
+            "Self-hosted live video streaming server. YouTube Live / Twitch alternative with chat support.",
+            "media",
+            "owncast",
+            r#"services:
+  owncast:
+    image: gabekangas/owncast:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-owncast}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+      - "${RTMP_PORT:-1935}:1935"
+    volumes:
+      - owncast_data:/app/data
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  owncast_data:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"owncast","secret":false},{"name":"HTTP_PORT","label":"HTTP Port","required":false,"default":"8080","secret":false},{"name":"RTMP_PORT","label":"RTMP Port","required":false,"default":"1935","secret":false}]"#,
+        ),
+        (
+            "tpl-mediamtx",
+            "MediaMTX",
+            "Ready-to-use RTSP/RTMP/HLS/WebRTC media server. Forward and record live streams.",
+            "media",
+            "mediamtx",
+            r#"services:
+  mediamtx:
+    image: bluenviron/mediamtx:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-mediamtx}
+    restart: unless-stopped
+    ports:
+      - "${RTSP_PORT:-8554}:8554"
+      - "${RTMP_PORT:-1935}:1935"
+      - "${HLS_PORT:-8888}:8888"
+      - "${WEBRTC_PORT:-8889}:8889"
+      - "${API_PORT:-9997}:9997"
+    labels:
+      - "rivetr.managed=true"
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"mediamtx","secret":false},{"name":"RTSP_PORT","label":"RTSP Port","required":false,"default":"8554","secret":false},{"name":"RTMP_PORT","label":"RTMP Port","required":false,"default":"1935","secret":false},{"name":"HLS_PORT","label":"HLS Port","required":false,"default":"8888","secret":false},{"name":"API_PORT","label":"API Port","required":false,"default":"9997","secret":false}]"#,
+        ),
+        (
+            "tpl-freshrss",
+            "FreshRSS",
+            "Free, self-hosted RSS and Atom feed aggregator. Lightweight and powerful news reader.",
+            "media",
+            "freshrss",
+            r#"services:
+  freshrss:
+    image: freshrss/freshrss:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-freshrss}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    environment:
+      - TZ=${TZ:-UTC}
+      - CRON_MIN=*/20
+    volumes:
+      - freshrss_data:/var/www/FreshRSS/data
+      - freshrss_extensions:/var/www/FreshRSS/extensions
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  freshrss_data:
+  freshrss_extensions:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"freshrss","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"TZ","label":"Timezone","required":false,"default":"UTC","secret":false}]"#,
+        ),
+        (
+            "tpl-photoprism",
+            "PhotoPrism",
+            "AI-powered photo app for the decentralized web. Browse, organize, and share your photo collection.",
+            "media",
+            "photoprism",
+            r#"services:
+  photoprism:
+    image: photoprism/photoprism:${VERSION:-latest}
+    container_name: ${CONTAINER_NAME:-photoprism}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-2342}:2342"
+    environment:
+      - PHOTOPRISM_ADMIN_USER=${ADMIN_USER:-admin}
+      - PHOTOPRISM_ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - PHOTOPRISM_AUTH_MODE=${AUTH_MODE:-password}
+      - PHOTOPRISM_SITE_URL=${SITE_URL:-http://localhost:2342/}
+      - PHOTOPRISM_ORIGINALS_LIMIT=10000
+      - PHOTOPRISM_HTTP_COMPRESSION=gzip
+      - PHOTOPRISM_DATABASE_DRIVER=sqlite
+    volumes:
+      - photoprism_originals:/photoprism/originals
+      - photoprism_storage:/photoprism/storage
+    labels:
+      - "rivetr.managed=true"
+
+volumes:
+  photoprism_originals:
+  photoprism_storage:
+"#,
+            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"photoprism","secret":false},{"name":"PORT","label":"Port","required":false,"default":"2342","secret":false},{"name":"ADMIN_USER","label":"Admin Username","required":false,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"","secret":true},{"name":"SITE_URL","label":"Site URL","required":false,"default":"http://localhost:2342/","secret":false}]"#,
+        ),
+    ]
+}

@@ -25,6 +25,8 @@ pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
 pub use tls::{CertStore, TlsConfig};
 
+pub use crate::db::RedirectRule;
+
 /// HTTP Basic Auth configuration for a backend
 #[derive(Debug, Clone, Default)]
 pub struct BasicAuthConfig {
@@ -69,6 +71,8 @@ pub struct Backend {
     pub failure_count: u32,
     /// HTTP Basic Auth configuration
     pub basic_auth: BasicAuthConfig,
+    /// URL redirect rules (evaluated in sort_order before forwarding)
+    pub redirect_rules: Vec<RedirectRule>,
 }
 
 impl Backend {
@@ -81,6 +85,7 @@ impl Backend {
             healthcheck_path: None,
             failure_count: 0,
             basic_auth: BasicAuthConfig::disabled(),
+            redirect_rules: Vec::new(),
         }
     }
 
@@ -99,6 +104,17 @@ impl Backend {
     /// Set basic auth config
     pub fn set_basic_auth(&mut self, config: BasicAuthConfig) {
         self.basic_auth = config;
+    }
+
+    /// Set redirect rules for this backend
+    pub fn with_redirect_rules(mut self, rules: Vec<RedirectRule>) -> Self {
+        self.redirect_rules = rules;
+        self
+    }
+
+    /// Set redirect rules (mutable reference version)
+    pub fn set_redirect_rules(&mut self, rules: Vec<RedirectRule>) {
+        self.redirect_rules = rules;
     }
 
     /// Get the backend address as a URI authority
@@ -204,6 +220,7 @@ impl RouteTable {
                         replica_backend.healthy = primary.healthy;
                         replica_backend.healthcheck_path = primary.healthcheck_path.clone();
                         replica_backend.basic_auth = primary.basic_auth.clone();
+                        replica_backend.redirect_rules = primary.redirect_rules.clone();
                         return Some(replica_backend);
                     }
                 }
@@ -273,6 +290,17 @@ impl RouteTable {
     /// Check if a domain is registered
     pub fn has_domain(&self, domain: &str) -> bool {
         self.routes.contains_key(domain)
+    }
+
+    /// Update redirect rules for a specific domain in-place.
+    /// Returns true if the domain was found and updated.
+    pub fn update_redirect_rules(&self, domain: &str, rules: Vec<RedirectRule>) -> bool {
+        if let Some(mut backend) = self.routes.get_mut(domain) {
+            backend.redirect_rules = rules;
+            true
+        } else {
+            false
+        }
     }
 }
 

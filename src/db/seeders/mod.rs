@@ -1,14 +1,24 @@
 //! Database seeders for built-in service templates.
 
+mod ai_extras;
 mod ai_ml;
 mod analytics_automation;
+mod auth_identity;
+mod business;
 mod cms_communication;
+mod cms_extra;
+mod communication_extra;
+mod databases_tools;
 mod devtools;
+mod devtools_extra;
 mod documentation;
 mod extra_services;
 mod infrastructure;
 mod media_monitoring;
 mod media_productivity;
+mod misc_extras;
+mod monitoring_extra;
+mod networking_extra;
 mod project_mgmt;
 mod security_search;
 
@@ -41,6 +51,17 @@ pub async fn seed_service_templates(pool: &SqlitePool) -> Result<()> {
     templates.extend(security_search::templates());
     templates.extend(project_mgmt::templates());
     templates.extend(extra_services::templates());
+    // Sprint 14 additions
+    templates.extend(ai_extras::templates());
+    templates.extend(auth_identity::templates());
+    templates.extend(business::templates());
+    templates.extend(cms_extra::templates());
+    templates.extend(communication_extra::templates());
+    templates.extend(databases_tools::templates());
+    templates.extend(devtools_extra::templates());
+    templates.extend(misc_extras::templates());
+    templates.extend(monitoring_extra::templates());
+    templates.extend(networking_extra::templates());
 
     let template_count = templates.len();
     for (id, name, description, category, icon, compose, env_schema) in templates {

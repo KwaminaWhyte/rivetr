@@ -44,6 +44,10 @@ import type {
   TeamsConfig,
   PushoverConfig,
   NtfyConfig,
+  MattermostConfig,
+  LarkConfig,
+  GotifyConfig,
+  ResendConfig,
 } from "@/types/api";
 import {
   Loader2,
@@ -67,6 +71,10 @@ import {
   PushoverConfigFields,
   NtfyConfigFields,
   EmailConfigFields,
+  MattermostConfigFields,
+  LarkConfigFields,
+  GotifyConfigFields,
+  ResendConfigFields,
 } from "@/components/notifications/channel-config-fields";
 
 function formatDate(dateStr: string): string {
@@ -89,6 +97,14 @@ function getChannelIcon(type: NotificationChannelType) {
       return <Bell className="h-4 w-4" />;
     case "ntfy":
       return <BellRing className="h-4 w-4" />;
+    case "mattermost":
+      return <MessageSquare className="h-4 w-4" />;
+    case "lark":
+      return <MessageSquare className="h-4 w-4" />;
+    case "gotify":
+      return <BellRing className="h-4 w-4" />;
+    case "resend":
+      return <Mail className="h-4 w-4" />;
   }
 }
 
@@ -108,6 +124,14 @@ function getChannelBadgeVariant(type: NotificationChannelType): "default" | "sec
       return "default";
     case "ntfy":
       return "secondary";
+    case "mattermost":
+      return "default";
+    case "lark":
+      return "secondary";
+    case "gotify":
+      return "default";
+    case "resend":
+      return "outline";
   }
 }
 
@@ -159,6 +183,14 @@ export default function SettingsNotificationsPage() {
   const [ntfyServerUrl, setNtfyServerUrl] = useState("");
   const [ntfyPriority, setNtfyPriority] = useState("3");
   const [ntfyTags, setNtfyTags] = useState("");
+  const [mattermostWebhookUrl, setMattermostWebhookUrl] = useState("");
+  const [larkWebhookUrl, setLarkWebhookUrl] = useState("");
+  const [gotifyServerUrl, setGotifyServerUrl] = useState("");
+  const [gotifyAppToken, setGotifyAppToken] = useState("");
+  const [gotifyPriority, setGotifyPriority] = useState("5");
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [resendFromAddress, setResendFromAddress] = useState("");
+  const [resendToAddresses, setResendToAddresses] = useState("");
 
   // Subscription form state
   const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");

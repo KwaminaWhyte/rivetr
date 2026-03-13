@@ -19,6 +19,8 @@ export interface OAuthProviderResponse {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** Provider-specific extra config JSON (e.g. `{"tenant_id": "..."}` for Azure AD) */
+  extra_config?: string | null;
 }
 
 /** OAuth authorization URL response */

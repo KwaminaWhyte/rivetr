@@ -9,6 +9,16 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 
 ---
 
+## Recently Completed
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| MariaDB managed database | ✅ Implemented | `mariadb:11` image, MARIADB_* env vars, mariadb-dump backups, separate `Mariadb` enum variant |
+| Database SSL/TLS configuration | ✅ Implemented | Per-database `ssl_enabled`/`ssl_mode` fields; Postgres (allow/prefer/require/verify-ca/verify-full) and MySQL/MariaDB (preferred/required/verify-ca/verify-identity) modes; Settings tab UI |
+| Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
+
+---
+
 ## Table of Contents
 
 1. [Databases](#1-databases)
@@ -33,25 +43,30 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 ### Missing database engines
 | Feature | Coolify | Dokploy | Rivetr |
 |---------|---------|---------|--------|
-| MariaDB | ✅ | ✅ | 🔴 (MySQL only) |
+| MariaDB | ✅ | ✅ | ✅ (implemented — separate engine, mariadb:11 default) |
 | DragonFly (Redis-compatible) | ✅ | ❌ | 🔴 |
 | KeyDB (Redis-compatible) | ✅ | ❌ | 🔴 |
 | ClickHouse | ✅ | ❌ | 🔴 |
 
 ### Database SSL/TLS
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify supports per-database SSL configuration with multiple modes: `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. It auto-generates a CA certificate and allows custom PEM certificate uploads with certificate regeneration. Neither SSL modes nor cert management exist in Rivetr's database layer.
+Per-database `ssl_enabled` toggle and `ssl_mode` selector are available in the Settings tab. Supported modes:
+- PostgreSQL: `allow`, `prefer`, `require`, `verify-ca`, `verify-full`
+- MySQL/MariaDB: `preferred`, `required`, `verify-ca`, `verify-identity`
+
+Certificate management (CA generation, custom PEM upload) is still missing compared to Coolify's implementation.
 
 ### Database dump import
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Both Coolify and Dokploy allow importing data into a running database:
-- PostgreSQL: `pg_dump --format=custom` file upload
-- MySQL/MariaDB: `mysqldump` file upload
-- MongoDB: `mongodump` archive upload
+`POST /api/databases/:id/import` accepts a multipart file upload and restores it inside the running container:
+- PostgreSQL: `psql` (plain SQL) or `pg_restore` (custom format)
+- MySQL: `mysql` client
+- MariaDB: `mariadb` client
+- MongoDB: `mongorestore --archive --gzip`
 
-Rivetr has no mechanism to seed or restore a managed database from an external dump.
+A dedicated **Import** tab is available in the database detail view.
 
 ### Database restore from S3 backup
 🟡 **Partial in Rivetr**

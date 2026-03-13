@@ -42,6 +42,11 @@ struct OAuthUserInfo {
 // Public endpoints
 // ============================================================================
 
+/// Supported login OAuth providers (social login — not git providers)
+fn is_supported_login_provider(p: &str) -> bool {
+    matches!(p, "github" | "google" | "gitlab" | "azure")
+}
+
 /// GET /api/auth/oauth/providers - List enabled OAuth providers (public)
 pub async fn list_enabled_providers(
     State(state): State<Arc<AppState>>,
@@ -69,7 +74,7 @@ pub async fn oauth_login_authorize(
     Path(provider): Path<String>,
 ) -> Result<Json<OAuthAuthorizeResponse>, (StatusCode, String)> {
     // Validate provider
-    if provider != "github" && provider != "google" {
+    if !is_supported_login_provider(&provider) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("Unsupported OAuth provider: {}", provider),
@@ -118,6 +123,24 @@ pub async fn oauth_login_authorize(
                 url_encode(&state_param),
             )
         }
+        "gitlab" => {
+            format!(
+                "https://gitlab.com/oauth/authorize?client_id={}&redirect_uri={}&response_type=code&scope=read_user&state={}",
+                url_encode(&oauth_provider.client_id),
+                url_encode(&redirect_uri),
+                url_encode(&state_param),
+            )
+        }
+        "azure" => {
+            let tenant_id = get_azure_tenant_id(&oauth_provider);
+            format!(
+                "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize?client_id={}&redirect_uri={}&response_type=code&scope=openid+email+profile&state={}",
+                tenant_id,
+                url_encode(&oauth_provider.client_id),
+                url_encode(&redirect_uri),
+                url_encode(&state_param),
+            )
+        }
         _ => unreachable!(),
     };
 
@@ -151,7 +174,7 @@ pub async fn oauth_login_callback(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Validate provider
-    if provider != "github" && provider != "google" {
+    if !is_supported_login_provider(&provider) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("Unsupported OAuth provider: {}", provider),
@@ -452,10 +475,10 @@ pub async fn create_oauth_provider(
     }
 
     // Validate provider type
-    if req.provider != "github" && req.provider != "google" {
+    if !is_supported_login_provider(&req.provider) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Provider must be 'github' or 'google'".to_string(),
+            "Provider must be 'github', 'google', 'gitlab', or 'azure'".to_string(),
         ));
     }
 
@@ -492,11 +515,13 @@ pub async fn create_oauth_provider(
             r#"UPDATE oauth_providers SET
                 client_id = ?,
                 enabled = ?,
+                extra_config = ?,
                 updated_at = ?
             WHERE provider = ?"#,
         )
         .bind(&req.client_id)
         .bind(enabled as i32)
+        .bind(&req.extra_config)
         .bind(&now)
         .bind(&req.provider)
         .execute(&state.db)
@@ -517,12 +542,13 @@ pub async fn create_oauth_provider(
         };
 
         sqlx::query(
-            r#"INSERT INTO oauth_providers (id, provider, client_id, client_secret, enabled, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            r#"INSERT INTO oauth_providers (id, provider, client_id, client_secret, enabled, extra_config, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(provider) DO UPDATE SET
                 client_id = excluded.client_id,
                 client_secret = excluded.client_secret,
                 enabled = excluded.enabled,
+                extra_config = excluded.extra_config,
                 updated_at = excluded.updated_at"#,
         )
         .bind(&id)
@@ -530,6 +556,7 @@ pub async fn create_oauth_provider(
         .bind(&req.client_id)
         .bind(&client_secret)
         .bind(enabled as i32)
+        .bind(&req.extra_config)
         .bind(&now)
         .bind(&now)
         .execute(&state.db)
@@ -669,6 +696,21 @@ pub async fn delete_user_connection(
 // Helper functions
 // ============================================================================
 
+/// Extract the Azure AD tenant_id from the provider's extra_config JSON.
+/// Falls back to "common" if not set (allows any Microsoft account to sign in).
+fn get_azure_tenant_id(provider: &OAuthProvider) -> String {
+    if let Some(ref extra) = provider.extra_config {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(extra) {
+            if let Some(tid) = v.get("tenant_id").and_then(|t| t.as_str()) {
+                if !tid.is_empty() {
+                    return tid.to_string();
+                }
+            }
+        }
+    }
+    "common".to_string()
+}
+
 /// URL-encode a string for use in query parameters
 fn url_encode(s: &str) -> String {
     let mut encoded = String::new();
@@ -763,6 +805,75 @@ async fn exchange_code_for_token(
 
             Ok((token_response.access_token, token_response.refresh_token))
         }
+        "gitlab" => {
+            #[derive(Deserialize)]
+            struct GitLabTokenResponse {
+                access_token: String,
+                refresh_token: Option<String>,
+            }
+
+            let response = client
+                .post("https://gitlab.com/oauth/token")
+                .form(&[
+                    ("client_id", client_id),
+                    ("client_secret", client_secret),
+                    ("code", code),
+                    ("redirect_uri", redirect_uri),
+                    ("grant_type", "authorization_code"),
+                ])
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to exchange code: {}", e),
+                    )
+                })?;
+
+            let token_response: GitLabTokenResponse = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse token response: {}", e),
+                )
+            })?;
+
+            Ok((token_response.access_token, token_response.refresh_token))
+        }
+        "azure" => {
+            #[derive(Deserialize)]
+            struct AzureTokenResponse {
+                access_token: String,
+                refresh_token: Option<String>,
+            }
+
+            let response = client
+                .post("https://login.microsoftonline.com/common/oauth2/v2.0/token")
+                .form(&[
+                    ("client_id", client_id),
+                    ("client_secret", client_secret),
+                    ("code", code),
+                    ("redirect_uri", redirect_uri),
+                    ("grant_type", "authorization_code"),
+                    ("scope", "openid email profile"),
+                ])
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to exchange code: {}", e),
+                    )
+                })?;
+
+            let token_response: AzureTokenResponse = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse token response: {}", e),
+                )
+            })?;
+
+            Ok((token_response.access_token, token_response.refresh_token))
+        }
         _ => Err((
             StatusCode::BAD_REQUEST,
             format!("Unsupported provider: {}", provider),
@@ -843,6 +954,77 @@ async fn fetch_user_info(
                 provider_user_id: user.id,
                 email: user.email,
                 name: user.name,
+            })
+        }
+        "gitlab" => {
+            #[derive(Deserialize)]
+            struct GitLabUser {
+                id: i64,
+                email: Option<String>,
+                name: Option<String>,
+            }
+
+            let response = client
+                .get("https://gitlab.com/api/v4/user")
+                .header("Authorization", format!("Bearer {}", access_token))
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to get user info: {}", e),
+                    )
+                })?;
+
+            let user: GitLabUser = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse user info: {}", e),
+                )
+            })?;
+
+            Ok(OAuthUserInfo {
+                provider_user_id: user.id.to_string(),
+                email: user.email,
+                name: user.name,
+            })
+        }
+        "azure" => {
+            #[derive(Deserialize)]
+            struct AzureUser {
+                id: String,
+                #[serde(rename = "displayName")]
+                display_name: Option<String>,
+                mail: Option<String>,
+                #[serde(rename = "userPrincipalName")]
+                user_principal_name: Option<String>,
+            }
+
+            let response = client
+                .get("https://graph.microsoft.com/v1.0/me")
+                .header("Authorization", format!("Bearer {}", access_token))
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to get user info: {}", e),
+                    )
+                })?;
+
+            let user: AzureUser = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse user info: {}", e),
+                )
+            })?;
+
+            let email = user.mail.or(user.user_principal_name);
+
+            Ok(OAuthUserInfo {
+                provider_user_id: user.id,
+                email,
+                name: user.display_name,
             })
         }
         _ => Err((

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-/// Configured OAuth provider for social login (GitHub, Google)
+/// Configured OAuth provider for social login (GitHub, Google, GitLab, Azure AD)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct OAuthProvider {
     pub id: String,
@@ -13,6 +13,9 @@ pub struct OAuthProvider {
     pub enabled: i32,
     pub created_at: String,
     pub updated_at: String,
+    /// Provider-specific extra configuration stored as JSON.
+    /// For Azure AD: `{"tenant_id": "common"}`.
+    pub extra_config: Option<String>,
 }
 
 /// Public response for OAuth provider (excludes client_secret)
@@ -31,6 +34,7 @@ pub struct OAuthProviderResponse {
     pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub extra_config: Option<String>,
 }
 
 impl From<OAuthProvider> for OAuthProviderResponse {
@@ -42,6 +46,7 @@ impl From<OAuthProvider> for OAuthProviderResponse {
             enabled: p.enabled != 0,
             created_at: p.created_at,
             updated_at: p.updated_at,
+            extra_config: p.extra_config,
         }
     }
 }
@@ -91,6 +96,8 @@ pub struct CreateOAuthProviderRequest {
     pub client_id: String,
     pub client_secret: String,
     pub enabled: Option<bool>,
+    /// Provider-specific extra config JSON (e.g., `{"tenant_id": "..."}` for Azure AD).
+    pub extra_config: Option<String>,
 }
 
 /// Audit action constants for OAuth

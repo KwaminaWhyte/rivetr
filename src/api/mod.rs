@@ -28,6 +28,7 @@ pub mod oauth;
 mod previews;
 mod projects;
 pub mod rate_limit;
+mod redirect_rules;
 mod replicas;
 mod routes;
 mod s3;
@@ -261,6 +262,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/apps/:id/basic-auth",
             delete(basic_auth::delete_basic_auth),
+        )
+        // URL Redirect Rules
+        .route(
+            "/apps/:id/redirects",
+            get(redirect_rules::list_redirect_rules).post(redirect_rules::create_redirect_rule),
+        )
+        .route(
+            "/apps/:id/redirects/:rid",
+            put(redirect_rules::update_redirect_rule).delete(redirect_rules::delete_redirect_rule),
         )
         // Volumes
         .route("/apps/:id/volumes", get(volumes::list_volumes))

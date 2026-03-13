@@ -91,7 +91,9 @@ pub async fn run_rollback(
         }
     }
 
-    let env_vars = collect_env_vars(db, app, encryption_key).await;
+    // Pass the rollback deployment ID so SOURCE_COMMIT is set from the rollback record
+    let env_vars =
+        collect_env_vars(db, app, encryption_key, Some(rollback_deployment_id)).await;
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(

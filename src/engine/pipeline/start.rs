@@ -9,11 +9,13 @@ use crate::DbPool;
 use super::super::{add_deployment_log, update_deployment_status, KEY_LENGTH};
 use super::DeploymentResult;
 
-/// Collect and decrypt all env vars for an app (app + environment + project + team layers)
+/// Collect and decrypt all env vars for an app (app + environment + project + team layers).
+/// `deployment_id` is used to look up the deployment's commit SHA for the SOURCE_COMMIT variable.
 pub(super) async fn collect_env_vars(
     db: &DbPool,
     app: &App,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
+    deployment_id: Option<&str>,
 ) -> Vec<(String, String)> {
     // Get env vars from database
     let raw_env_vars =
@@ -51,6 +53,30 @@ pub(super) async fn collect_env_vars(
     if !env_vars.iter().any(|(k, _)| k == "RIVETR_URL") {
         if let Some(domain) = app.get_primary_domain() {
             env_vars.push(("RIVETR_URL".to_string(), format!("https://{}", domain)));
+        }
+    }
+    // RIVETR_FQDN: bare hostname without protocol (convenient complement to RIVETR_URL)
+    if !env_vars.iter().any(|(k, _)| k == "RIVETR_FQDN") {
+        if let Some(domain) = app.get_primary_domain() {
+            env_vars.push(("RIVETR_FQDN".to_string(), domain));
+        }
+    }
+    // SOURCE_COMMIT: the git commit SHA for this deployment
+    if !env_vars.iter().any(|(k, _)| k == "SOURCE_COMMIT") {
+        if let Some(dep_id) = deployment_id {
+            let commit_sha: Option<String> =
+                sqlx::query_scalar("SELECT commit_sha FROM deployments WHERE id = ?")
+                    .bind(dep_id)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None)
+                    .flatten();
+            if let Some(sha) = commit_sha {
+                // Exclude upload-based "commit" paths
+                if !sha.is_empty() && !sha.contains("rivetr-upload-") {
+                    env_vars.push(("SOURCE_COMMIT".to_string(), sha));
+                }
+            }
         }
     }
 
@@ -201,7 +227,7 @@ pub(super) async fn start_container(
     add_deployment_log(db, deployment_id, "info", "Starting container...").await?;
     update_deployment_status(db, deployment_id, "starting", None).await?;
 
-    let env_vars = collect_env_vars(db, app, encryption_key).await;
+    let env_vars = collect_env_vars(db, app, encryption_key, Some(deployment_id)).await;
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(

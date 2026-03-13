@@ -14,6 +14,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use regex::Regex;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -193,6 +194,15 @@ impl ProxyHandler {
                             );
                             return Ok(response);
                         }
+                    }
+                }
+
+                // Apply redirect rules (evaluated before forwarding)
+                if !backend.redirect_rules.is_empty() {
+                    if let Some(redirect_response) =
+                        self.apply_redirect_rules(path, &backend.redirect_rules)
+                    {
+                        return Ok(redirect_response);
                     }
                 }
 
@@ -413,6 +423,55 @@ impl ProxyHandler {
         }
 
         Ok(())
+    }
+
+    /// Apply redirect rules to the given request path.
+    /// Returns `Some(redirect response)` if a rule matches, or `None` to continue proxying.
+    fn apply_redirect_rules(
+        &self,
+        path: &str,
+        rules: &[crate::proxy::RedirectRule],
+    ) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
+        for rule in rules {
+            let re = match Regex::new(&rule.source_pattern) {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(pattern = %rule.source_pattern, error = %e, "Invalid redirect rule regex");
+                    continue;
+                }
+            };
+
+            if re.is_match(path) {
+                let destination = re.replace(path, rule.destination.as_str()).to_string();
+
+                let status = if rule.is_permanent {
+                    StatusCode::MOVED_PERMANENTLY
+                } else {
+                    StatusCode::FOUND
+                };
+
+                debug!(
+                    path = %path,
+                    destination = %destination,
+                    permanent = rule.is_permanent,
+                    "Redirect rule matched"
+                );
+
+                let response = Response::builder()
+                    .status(status)
+                    .header(hyper::header::LOCATION, &destination)
+                    .header("X-Powered-By", "Rivetr")
+                    .body(
+                        Full::new(Bytes::new())
+                            .map_err(|e| match e {})
+                            .boxed(),
+                    )
+                    .unwrap();
+
+                return Some(response);
+            }
+        }
+        None
     }
 
     /// Create a 401 Unauthorized response with WWW-Authenticate header

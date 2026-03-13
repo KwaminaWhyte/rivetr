@@ -70,6 +70,30 @@ const GoogleIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+// GitLab icon SVG
+const GitLabIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51 1.22 3.78a.84.84 0 0 1-.3.92z" fill="#E24329"/>
+    <path d="M12 22.13L7.26 7.67h9.48L12 22.13z" fill="#FC6D26"/>
+    <path d="M12 22.13l-4.74-14.46H1.05L12 22.13z" fill="#FCA326"/>
+    <path d="M1.05 7.67L-.17 11.45a.84.84 0 0 0 .3.94L12 22.13z" fill="#E24329"/>
+    <path d="M1.05 7.67h6.21L4.82 0a.43.43 0 0 0-.82 0z" fill="#FC6D26"/>
+    <path d="M12 22.13l4.74-14.46h6.21L12 22.13z" fill="#FCA326"/>
+    <path d="M22.95 7.67l1.22 3.78a.84.84 0 0 1-.3.94L12 22.13z" fill="#E24329"/>
+    <path d="M22.95 7.67h-6.21L19.18 0a.43.43 0 0 1 .82 0z" fill="#FC6D26"/>
+  </svg>
+);
+
+// Microsoft icon SVG
+const MicrosoftIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0 0h11.5v11.5H0z" fill="#F25022"/>
+    <path d="M12.5 0H24v11.5H12.5z" fill="#7FBA00"/>
+    <path d="M0 12.5h11.5V24H0z" fill="#00A4EF"/>
+    <path d="M12.5 12.5H24V24H12.5z" fill="#FFB900"/>
+  </svg>
+);
+
 function ProviderConfigCard({
   provider,
   icon,

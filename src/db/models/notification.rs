@@ -15,6 +15,10 @@ pub enum NotificationChannelType {
     Teams,
     Pushover,
     Ntfy,
+    Mattermost,
+    Lark,
+    Gotify,
+    Resend,
 }
 
 impl std::fmt::Display for NotificationChannelType {
@@ -28,6 +32,10 @@ impl std::fmt::Display for NotificationChannelType {
             Self::Teams => write!(f, "teams"),
             Self::Pushover => write!(f, "pushover"),
             Self::Ntfy => write!(f, "ntfy"),
+            Self::Mattermost => write!(f, "mattermost"),
+            Self::Lark => write!(f, "lark"),
+            Self::Gotify => write!(f, "gotify"),
+            Self::Resend => write!(f, "resend"),
         }
     }
 }
@@ -45,6 +53,10 @@ impl std::str::FromStr for NotificationChannelType {
             "teams" => Ok(Self::Teams),
             "pushover" => Ok(Self::Pushover),
             "ntfy" => Ok(Self::Ntfy),
+            "mattermost" => Ok(Self::Mattermost),
+            "lark" => Ok(Self::Lark),
+            "gotify" => Ok(Self::Gotify),
+            "resend" => Ok(Self::Resend),
             _ => Err(format!("Unknown channel type: {}", s)),
         }
     }
@@ -166,6 +178,41 @@ pub struct NtfyConfig {
     pub tags: Option<String>,
 }
 
+/// Mattermost Incoming Webhook configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MattermostConfig {
+    pub webhook_url: String,
+}
+
+/// Lark (Feishu) custom bot webhook configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LarkConfig {
+    pub webhook_url: String,
+}
+
+/// Gotify push notification server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GotifyConfig {
+    /// Base URL of the Gotify server (e.g., "https://gotify.example.com")
+    pub server_url: String,
+    /// Gotify application token
+    pub app_token: String,
+    /// Message priority (default: 5)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+}
+
+/// Resend email API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResendConfig {
+    /// Resend API key (starts with "re_")
+    pub api_key: String,
+    /// From address (must be a verified sender in Resend)
+    pub from_address: String,
+    /// List of recipient email addresses
+    pub to_addresses: Vec<String>,
+}
+
 /// Generic webhook configuration with headers and payload template
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookConfig {
@@ -252,6 +299,26 @@ impl NotificationChannel {
     pub fn get_ntfy_config(&self) -> Option<NtfyConfig> {
         serde_json::from_str(&self.config).ok()
     }
+
+    /// Parse the config as MattermostConfig
+    pub fn get_mattermost_config(&self) -> Option<MattermostConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as LarkConfig
+    pub fn get_lark_config(&self) -> Option<LarkConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as GotifyConfig
+    pub fn get_gotify_config(&self) -> Option<GotifyConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
+
+    /// Parse the config as ResendConfig
+    pub fn get_resend_config(&self) -> Option<ResendConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
 }
 
 /// Response DTO for NotificationChannel (masks sensitive config data)
@@ -326,6 +393,26 @@ impl From<NotificationChannel> for NotificationChannelResponse {
                 if let serde_json::Value::Object(mut obj) = config {
                     if obj.contains_key("app_token") {
                         obj.insert("app_token".to_string(), serde_json::json!("********"));
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
+                }
+            }
+            "gotify" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    if obj.contains_key("app_token") {
+                        obj.insert("app_token".to_string(), serde_json::json!("********"));
+                    }
+                    serde_json::Value::Object(obj)
+                } else {
+                    config
+                }
+            }
+            "resend" => {
+                if let serde_json::Value::Object(mut obj) = config {
+                    if obj.contains_key("api_key") {
+                        obj.insert("api_key".to_string(), serde_json::json!("********"));
                     }
                     serde_json::Value::Object(obj)
                 } else {

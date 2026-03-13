@@ -5,8 +5,12 @@
 
 pub mod alert_notifications;
 pub mod email;
+pub mod gotify;
+pub mod lark;
+pub mod mattermost;
 pub mod ntfy;
 pub mod pushover;
+pub mod resend;
 pub mod teams;
 pub mod telegram;
 
@@ -308,6 +312,46 @@ impl NotificationService {
                     tracing::warn!(
                         channel_id = %channel.id,
                         "Invalid Ntfy config"
+                    );
+                }
+            }
+            NotificationChannelType::Mattermost => {
+                if let Some(config) = channel.get_mattermost_config() {
+                    mattermost::send_mattermost(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Mattermost config"
+                    );
+                }
+            }
+            NotificationChannelType::Lark => {
+                if let Some(config) = channel.get_lark_config() {
+                    lark::send_lark(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Lark config"
+                    );
+                }
+            }
+            NotificationChannelType::Gotify => {
+                if let Some(config) = channel.get_gotify_config() {
+                    gotify::send_gotify(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Gotify config"
+                    );
+                }
+            }
+            NotificationChannelType::Resend => {
+                if let Some(config) = channel.get_resend_config() {
+                    resend::send_resend(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Resend config"
                     );
                 }
             }
