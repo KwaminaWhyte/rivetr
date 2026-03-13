@@ -139,6 +139,12 @@ pub struct ManagedDatabase {
     /// SSL mode (e.g. "require", "verify-ca", "verify-full" for Postgres;
     /// "required", "verify-ca", "verify-identity" for MySQL/MariaDB)
     pub ssl_mode: Option<String>,
+    /// Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest").
+    /// When set, this image is used instead of the default image for the db_type.
+    pub custom_image: Option<String>,
+    /// JSON array of SQL command strings to execute after the database first starts.
+    /// Example: ["CREATE EXTENSION IF NOT EXISTS postgis;", "CREATE SCHEMA app;"]
+    pub init_commands: Option<String>,
 }
 
 impl ManagedDatabase {
@@ -302,6 +308,10 @@ pub struct ManagedDatabaseResponse {
     pub ssl_enabled: bool,
     /// SSL mode (e.g. "require", "verify-ca", "verify-full")
     pub ssl_mode: Option<String>,
+    /// Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest")
+    pub custom_image: Option<String>,
+    /// JSON array of SQL init commands to run after first start
+    pub init_commands: Option<String>,
 }
 
 impl ManagedDatabase {
@@ -349,6 +359,8 @@ impl ManagedDatabase {
             updated_at: self.updated_at.clone(),
             ssl_enabled: self.is_ssl_enabled(),
             ssl_mode: self.ssl_mode.clone(),
+            custom_image: self.custom_image.clone(),
+            init_commands: self.init_commands.clone(),
         }
     }
 }
@@ -380,6 +392,10 @@ pub struct CreateManagedDatabaseRequest {
     pub project_id: Option<String>,
     /// Associated team ID for multi-tenancy
     pub team_id: Option<String>,
+    /// Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest")
+    pub custom_image: Option<String>,
+    /// JSON array of SQL command strings to execute after the database first starts
+    pub init_commands: Option<String>,
 }
 
 fn default_db_version() -> String {
@@ -402,4 +418,8 @@ pub struct UpdateManagedDatabaseRequest {
     pub ssl_enabled: Option<bool>,
     /// SSL mode string
     pub ssl_mode: Option<String>,
+    /// Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest")
+    pub custom_image: Option<String>,
+    /// JSON array of SQL init command strings to run after first start
+    pub init_commands: Option<String>,
 }

@@ -1188,6 +1188,34 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 086: Cloudflare Tunnel integration
+    let has_cf_tunnels: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cloudflare_tunnels'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_cf_tunnels.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/086_cloudflare_tunnels.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 087: Add custom_image and init_commands columns to databases
+    let has_custom_image: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('databases') WHERE name = 'custom_image'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_custom_image.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/087_database_custom_image.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

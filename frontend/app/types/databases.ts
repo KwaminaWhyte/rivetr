@@ -48,6 +48,10 @@ export interface ManagedDatabase {
   updated_at: string;
   ssl_enabled: boolean;
   ssl_mode: string | null;
+  /** Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest") */
+  custom_image: string | null;
+  /** JSON array of SQL init commands to run after first start */
+  init_commands: string | null;
 }
 
 /** Request to create a managed database */
@@ -68,6 +72,10 @@ export interface CreateManagedDatabaseRequest {
   cpu_limit?: string;
   project_id?: string;
   team_id?: string;
+  /** Custom Docker image override (e.g. "timescaledb/timescaledb-ha:pg16-latest") */
+  custom_image?: string;
+  /** JSON array of SQL init commands, e.g. '["CREATE EXTENSION postgis;"]' */
+  init_commands?: string;
 }
 
 /** Request to update a managed database */
@@ -84,6 +92,10 @@ export interface UpdateManagedDatabaseRequest {
   ssl_enabled?: boolean;
   /** SSL mode */
   ssl_mode?: string;
+  /** Custom Docker image override */
+  custom_image?: string;
+  /** JSON array of SQL init command strings */
+  init_commands?: string;
 }
 
 /** Database type configuration (for UI) */

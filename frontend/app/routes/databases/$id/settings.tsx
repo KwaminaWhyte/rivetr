@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -41,6 +42,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Info,
+  Image,
 } from "lucide-react";
 
 const SSL_MODES_POSTGRES = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
@@ -76,6 +78,23 @@ export default function DatabaseSettingsTab() {
   // SSL/TLS state
   const [sslEnabled, setSslEnabled] = useState(database.ssl_enabled ?? false);
   const [sslMode, setSslMode] = useState(database.ssl_mode ?? "");
+
+  // Custom image & init commands state
+  const [customImage, setCustomImage] = useState(database.custom_image ?? "");
+  // init_commands is stored as a JSON array; display one command per line for editing
+  const parseInitCommands = (json: string | null): string => {
+    if (!json) return "";
+    try {
+      const arr = JSON.parse(json);
+      if (Array.isArray(arr)) return arr.join("\n");
+    } catch {
+      // Not valid JSON — show as-is
+    }
+    return json;
+  };
+  const [initCommandsText, setInitCommandsText] = useState(
+    parseInitCommands(database.init_commands)
+  );
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteDatabase(database.id),
@@ -113,7 +132,19 @@ export default function DatabaseSettingsTab() {
     },
   });
 
-  const isSubmitting = deleteMutation.isPending || updateMutation.isPending || sslMutation.isPending;
+  const imageMutation = useMutation({
+    mutationFn: (data: UpdateManagedDatabaseRequest) =>
+      api.updateDatabase(database.id, data),
+    onSuccess: () => {
+      toast.success("Image settings saved");
+      queryClient.invalidateQueries({ queryKey: ["database", database.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to save image settings");
+    },
+  });
+
+  const isSubmitting = deleteMutation.isPending || updateMutation.isPending || sslMutation.isPending || imageMutation.isPending;
   const canDelete = deleteConfirmName === database.name;
   const hasNetworkChanges =
     publicAccess !== database.public_access ||
@@ -146,6 +177,27 @@ export default function DatabaseSettingsTab() {
 
   const handleSslUpdate = () => {
     sslMutation.mutate({ ssl_enabled: sslEnabled, ssl_mode: sslMode || undefined });
+  };
+
+  // Helpers for image/init-commands card
+  const serializeInitCommands = (text: string): string | undefined => {
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length === 0) return undefined;
+    return JSON.stringify(lines);
+  };
+
+  const hasImageChanges =
+    customImage !== (database.custom_image ?? "") ||
+    initCommandsText !== parseInitCommands(database.init_commands);
+
+  const handleImageUpdate = () => {
+    imageMutation.mutate({
+      custom_image: customImage.trim() || undefined,
+      init_commands: serializeInitCommands(initCommandsText),
+    });
   };
 
   return (
@@ -475,6 +527,91 @@ export default function DatabaseSettingsTab() {
           </CardContent>
         </Card>
       )}
+
+      {/* Custom Image & Init Commands Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Image className="h-5 w-5" />
+            Custom Image & Init Commands
+          </CardTitle>
+          <CardDescription>
+            Override the default Docker image and run SQL commands after first start
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="custom_image">Custom Docker Image</Label>
+            <Input
+              id="custom_image"
+              placeholder={`Default: ${database.db_type === "postgres" ? "postgres" : database.db_type}:${database.version}`}
+              value={customImage}
+              onChange={(e) => setCustomImage(e.target.value)}
+              className="font-mono"
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              Override the default image for this database type. E.g.{" "}
+              <code className="bg-muted px-1 rounded">timescaledb/timescaledb-ha:pg16-latest</code>
+              {" "}or{" "}
+              <code className="bg-muted px-1 rounded">postgis/postgis:16-3.4</code>.
+              Leave blank to use the default image.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="init_commands">Init SQL Commands</Label>
+            <Textarea
+              id="init_commands"
+              placeholder={"CREATE EXTENSION IF NOT EXISTS postgis;\nCREATE SCHEMA app;"}
+              value={initCommandsText}
+              onChange={(e) => setInitCommandsText(e.target.value)}
+              className="font-mono text-sm min-h-[120px]"
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              One SQL command per line. These will be executed inside the container after
+              the database first starts. For PostgreSQL, each line is passed to{" "}
+              <code className="bg-muted px-1 rounded">psql -c</code>.
+            </p>
+          </div>
+
+          {hasImageChanges && (
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Info className="h-4 w-4" />
+                <span>
+                  {database.status === "running"
+                    ? "Recreate the container for the new image to take effect"
+                    : "Changes will apply on next start"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCustomImage(database.custom_image ?? "");
+                    setInitCommandsText(parseInitCommands(database.init_commands));
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleImageUpdate} disabled={isSubmitting}>
+                  {imageMutation.isPending ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Image Settings"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Resource Limits Card */}
       <Card>

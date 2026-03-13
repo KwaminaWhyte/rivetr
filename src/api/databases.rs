@@ -182,8 +182,9 @@ pub async fn create_database(
         INSERT INTO databases (
             id, name, db_type, version, status, internal_port, external_port,
             public_access, credentials, volume_name, volume_path, memory_limit,
-            cpu_limit, project_id, team_id, created_at, updated_at, container_slug
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cpu_limit, project_id, team_id, created_at, updated_at, container_slug,
+            custom_image, init_commands
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -204,6 +205,8 @@ pub async fn create_database(
     .bind(&now)
     .bind(&now)
     .bind(&container_slug)
+    .bind(&req.custom_image)
+    .bind(&req.init_commands)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -666,8 +669,12 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         .execute(&state.db)
         .await?;
 
-    // Pull the image
-    let image = format!("{}:{}", config.image, database.version);
+    // Pull the image — use custom_image if set, otherwise build from default config
+    let image = if let Some(ref custom) = database.custom_image {
+        custom.clone()
+    } else {
+        format!("{}:{}", config.image, database.version)
+    };
     tracing::info!("Pulling database image: {}", image);
     state.runtime.pull_image(&image, None).await?;
 
@@ -730,6 +737,7 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         gpus: None,
         ulimits: vec![],
         security_opt: vec![],
+        cmd: None,
     };
 
     // Start the container
@@ -767,7 +775,113 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         container_id
     );
 
+    // Execute init commands if present (only on first start — container_id was NULL before)
+    if let Some(ref init_json) = database.init_commands {
+        if let Ok(commands) = serde_json::from_str::<Vec<String>>(init_json) {
+            if !commands.is_empty() {
+                tracing::info!(
+                    "Executing {} init command(s) for database {}",
+                    commands.len(),
+                    database.name
+                );
+                // Wait briefly for the database process to become ready inside the container
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                for (i, cmd) in commands.iter().enumerate() {
+                    let exec_cmd = build_init_exec_cmd(&db_type, &credentials, cmd);
+                    match state.runtime.run_command(&container_id, exec_cmd).await {
+                        Ok(result) => {
+                            if result.exit_code != 0 {
+                                tracing::warn!(
+                                    "Init command {} for database {} exited with code {}: {}",
+                                    i + 1,
+                                    database.name,
+                                    result.exit_code,
+                                    result.stderr
+                                );
+                            } else {
+                                tracing::info!(
+                                    "Init command {} for database {} succeeded",
+                                    i + 1,
+                                    database.name
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to run init command {} for database {}: {}",
+                                i + 1,
+                                database.name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        } else {
+            tracing::warn!(
+                "Database {} has invalid init_commands JSON, skipping",
+                database.name
+            );
+        }
+    }
+
     Ok(())
+}
+
+/// Build the exec command vector for running a SQL init command inside a database container.
+fn build_init_exec_cmd(
+    db_type: &DatabaseType,
+    credentials: &crate::db::DatabaseCredentials,
+    sql: &str,
+) -> Vec<String> {
+    match db_type {
+        DatabaseType::Postgres => vec![
+            "psql".to_string(),
+            "-U".to_string(),
+            credentials.username.clone(),
+            "-d".to_string(),
+            credentials
+                .database
+                .clone()
+                .unwrap_or_else(|| credentials.username.clone()),
+            "-c".to_string(),
+            sql.to_string(),
+        ],
+        DatabaseType::Mysql | DatabaseType::Mariadb => {
+            let db_name = credentials
+                .database
+                .clone()
+                .unwrap_or_default();
+            vec![
+                "mysql".to_string(),
+                "-u".to_string(),
+                credentials.username.clone(),
+                format!("-p{}", credentials.password),
+                db_name,
+                "-e".to_string(),
+                sql.to_string(),
+            ]
+        }
+        DatabaseType::Mongodb => {
+            let db_name = credentials
+                .database
+                .clone()
+                .unwrap_or_else(|| "admin".to_string());
+            vec![
+                "mongosh".to_string(),
+                db_name,
+                "--eval".to_string(),
+                sql.to_string(),
+            ]
+        }
+        DatabaseType::Redis => {
+            // Redis does not support SQL init commands; skip gracefully
+            vec![
+                "redis-cli".to_string(),
+                "ping".to_string(),
+            ]
+        }
+    }
 }
 
 /// Update a managed database configuration
@@ -900,6 +1014,16 @@ pub async fn update_database(
         values.push(Box::new(ssl_mode.clone()));
     }
 
+    if req.custom_image.is_some() {
+        updates.push("custom_image = ?");
+        // value tracked separately via req.custom_image below
+    }
+
+    if req.init_commands.is_some() {
+        updates.push("init_commands = ?");
+        // value tracked separately via req.init_commands below
+    }
+
     if updates.is_empty() {
         // No changes
         let hostname = state.config.public_hostname();
@@ -932,6 +1056,12 @@ pub async fn update_database(
     }
     if let Some(ref ssl_mode) = req.ssl_mode {
         query = query.bind(ssl_mode.as_str());
+    }
+    if let Some(ref custom_image) = req.custom_image {
+        query = query.bind(custom_image.as_str());
+    }
+    if let Some(ref init_commands) = req.init_commands {
+        query = query.bind(init_commands.as_str());
     }
     query = query.bind(&id);
 

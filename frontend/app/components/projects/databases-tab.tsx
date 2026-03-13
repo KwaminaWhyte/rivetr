@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
@@ -95,6 +96,9 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
   const [dbPassword, setDbPassword] = useState("");
   const [dbDatabase, setDbDatabase] = useState("");
   const [dbRootPassword, setDbRootPassword] = useState("");
+  const [dbCustomImage, setDbCustomImage] = useState("");
+  const [dbInitCommands, setDbInitCommands] = useState("");
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
 
   const dbTypeConfig = DATABASE_TYPES.find((t) => t.type === selectedDbType);
 
@@ -106,8 +110,11 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
     setDbPassword("");
     setDbDatabase("");
     setDbRootPassword("");
+    setDbCustomImage("");
+    setDbInitCommands("");
     setSelectedDbType("postgres");
     setShowCustomCredentials(false);
+    setShowAdvancedOptions(false);
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -130,6 +137,12 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
       if (!dbName.trim()) {
         throw new Error("Database name is required");
       }
+      // Serialize init commands: one per line → JSON array
+      const initCommandLines = dbInitCommands
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
       return api.createDatabase({
         name: dbName.trim(),
         db_type: selectedDbType,
@@ -141,6 +154,10 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
         ...(dbPassword.trim() ? { password: dbPassword.trim() } : {}),
         ...(dbDatabase.trim() ? { database: dbDatabase.trim() } : {}),
         ...(dbRootPassword.trim() ? { root_password: dbRootPassword.trim() } : {}),
+        ...(dbCustomImage.trim() ? { custom_image: dbCustomImage.trim() } : {}),
+        ...(initCommandLines.length > 0
+          ? { init_commands: JSON.stringify(initCommandLines) }
+          : {}),
       });
     },
     onSuccess: () => {
@@ -484,6 +501,57 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       </p>
                     </div>
                   )}
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible open={showAdvancedOptions} onOpenChange={setShowAdvancedOptions}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-1 p-0 h-auto hover:bg-transparent"
+                  >
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        showAdvancedOptions ? "rotate-180" : ""
+                      }`}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Advanced options (custom image &amp; init commands)
+                    </span>
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 pt-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="db-custom-image">Custom Docker Image</Label>
+                    <Input
+                      id="db-custom-image"
+                      value={dbCustomImage}
+                      onChange={(e) => setDbCustomImage(e.target.value)}
+                      placeholder={`Default: ${selectedDbType}:${dbVersion}`}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Override the default image, e.g.{" "}
+                      <code className="bg-muted px-1 rounded">
+                        timescaledb/timescaledb-ha:pg16-latest
+                      </code>
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="db-init-commands">Init SQL Commands</Label>
+                    <Textarea
+                      id="db-init-commands"
+                      value={dbInitCommands}
+                      onChange={(e) => setDbInitCommands(e.target.value)}
+                      placeholder={"CREATE EXTENSION IF NOT EXISTS postgis;\nCREATE SCHEMA app;"}
+                      className="font-mono text-sm min-h-[80px]"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      One SQL command per line. Run after the database first starts.
+                    </p>
+                  </div>
                 </CollapsibleContent>
               </Collapsible>
             </div>
