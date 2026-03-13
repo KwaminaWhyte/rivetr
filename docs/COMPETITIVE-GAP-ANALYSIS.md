@@ -136,9 +136,9 @@ Coolify validates DNS by querying `1.1.1.1` when a user adds a custom domain, sh
 Both Coolify and Dokploy support defining regex-based URL redirect rules per application (e.g., `^/old-path(.*)` → `/new-path$1`, with optional 301 permanent flag). Rivetr now supports this via per-app redirect rules enforced at the proxy level — CRUD API at `/api/apps/:id/redirects`, with a UI card on the Network settings tab. Rules support capture group substitution (`$1`, `$2`), enable/disable toggles, sort order priority, and 301/302 selection.
 
 ### Per-app isolated Docker networks
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy auto-creates a dedicated Docker network per application, connecting only that app's containers to each other while Traefik bridges in. Rivetr puts all managed containers on a single shared `rivetr` network, which means all apps can reach each other by container name — a potential security/isolation concern. Dokploy also exposes the `dokploy-network` as an opt-in shared network for intentional cross-app communication.
+Each app now gets a dedicated Docker network `rivetr-app-{app_id}` in addition to the shared `rivetr` bridge. Docker Compose services also have the `rivetr` external network injected so they can reach app containers. Services have an `isolated_network` toggle (default on) exposing a per-service `rivetr-svc-{id}` network.
 
 ---
 
@@ -218,7 +218,7 @@ Rivetr now injects the following into every container at runtime (without overri
 |----------|-----------|
 | Coolify | 400+ |
 | Dokploy | 388+ |
-| **Rivetr** | **~211** *(sprint 15: +28 new templates — Mattermost, Rocket.Chat, Jitsi, Supabase, Appwrite, PocketBase, Directus, Strapi, Outline, Drone CI, Gitea Runner, Windmill, Ollama, Open WebUI, Flowise, Grafana+Prometheus, Checkmk, VictoriaMetrics, SigNoz, Healthchecks, MariaDB, CrowdSec, Harbor, Odoo, Mautic, LimeSurvey, Formbricks, Baserow)* |
+| **Rivetr** | **~250** *(sprint 16: +39 new templates — KeyDB, DragonflyDB, ClickHouse, CockroachDB, TimescaleDB, SurrealDB, Cassandra, Neo4j, QuestDB, Uptime Kuma, Prometheus, Jaeger, OpenTelemetry, Graylog, Concourse, Argo CD, Tekton, GitLab Runner, Woodpecker Server/Agent, Revolt, HumHub, Zulip, Chatwoot, Chroma, AnythingLLM, Langfuse, LocalAI, Wazuh, Passbolt, CrowdSec Dashboard, Dolibarr, Taiga, Twenty CRM, Plane, Monica, Listmonk, Cal.com, Restic)* |
 
 Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
@@ -228,7 +228,7 @@ Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a c
 Both Coolify and Dokploy accept community pull requests for new templates through their GitHub repos. Rivetr has a `community_templates` table and suggestion flow implemented but no public-facing submission/review process.
 
 ### Notable templates missing from Rivetr
-Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~211:
+Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~250:
 
 **Productivity / Business**
 - Cal.com (open-source Calendly)
@@ -294,14 +294,14 @@ Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~211:
 ## 5. CI/CD & Deployments
 
 ### Patches (build-time file injection)
-🔴 **Missing in Rivetr** — *unique Dokploy feature*
+✅ **Implemented in Rivetr**
 
-Dokploy's "Patches" feature applies file-level modifications (edit, create, delete) to the cloned repository **after clone but before build**, on every deploy. Unlike environment variables, patches can modify actual config files and code. This never touches the original repository. Practical uses: inject production config files, add secrets files, override vendor defaults. Rivetr has no equivalent.
+Rivetr now supports deployment patches: file-level modifications (create, append, delete) applied to the cloned repository **after clone but before build**, on every deploy. CRUD API at `/api/apps/:id/patches` with a dedicated Patches settings tab. Supports enable/disable toggles per patch.
 
 ### Registry-based rollbacks (any historical version)
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Rivetr has health-based automatic rollback but `[ ] Push built images to Docker registry on deploy` is still incomplete. Both competitors push every built image to a configured Docker registry tagged with the git commit SHA, enabling rollback to **any** historical deployment — not just the immediately previous one. Rivetr's rollback is currently limited to health-check-driven revert during the current deployment.
+Rivetr now pushes every built image to a configured Docker registry tagged with the git commit SHA (`{registry}/{app}:{sha}`). The `image_tag` is stored on each deployment and displayed as a copyable field in the deployment detail page. When a registry is configured (`registry_url` + credentials on the app), rollback to any historical build is possible by running `docker pull {image_tag}`.
 
 ### Deployment queue with cancellation
 🟡 **Partial in Rivetr**
@@ -419,10 +419,10 @@ When `POST /api/system/backup` creates a local `.tar.gz` archive, it performs a 
 | AWS S3 | ✅ | ✅ | ✅ |
 | Cloudflare R2 | ✅ | ✅ | ✅ |
 | MinIO | ✅ | ❌ | ✅ |
-| Backblaze B2 | ❌ | ✅ | 🔴 |
-| Google Cloud Storage | ❌ | ✅ | 🔴 |
+| Backblaze B2 | ❌ | ✅ | ✅ (provider preset auto-fills endpoint + region) |
+| Google Cloud Storage | ❌ | ✅ | ✅ (provider preset auto-fills endpoint + region) |
 
-Rivetr is missing Backblaze B2 and Google Cloud Storage as S3 backup destinations.
+Rivetr supports Backblaze B2 and Google Cloud Storage via their S3-compatible APIs. The S3 config form has a Provider dropdown (AWS S3, Cloudflare R2, Backblaze B2, GCS, MinIO) that auto-fills the endpoint and region.
 
 ### Test backup button
 ✅ **Implemented in Rivetr**
@@ -454,9 +454,9 @@ Dokploy runs automated validation after connecting a remote server: Docker insta
 Coolify monitors connected servers for available OS security patches and sends notifications when updates are available. Rivetr doesn't track server-level OS update status.
 
 ### ARM64 / Raspberry Pi support
-🟡 **Unknown**
+✅ **Implemented in Rivetr**
 
-Coolify explicitly supports ARM64 including Raspberry Pi OS 64-bit. Rivetr's cross-compilation target is `x86_64-unknown-linux-gnu` only. ARM builds are not documented.
+Rivetr now supports multi-platform Docker builds via `docker buildx --platform`. Apps have a "Target Platforms" setting (checkboxes for `linux/amd64`, `linux/arm64`, `linux/arm/v7`) in Build settings. When multiple platforms are selected, the build uses `docker buildx` CLI automatically.
 
 ---
 
@@ -545,20 +545,21 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 |---------|---------|---------|----------|
 | Cloudflare Tunnel | ✅ | ✅ | 🔴 High |
 | DNS validation on domain add | ✅ | ❌ | ✅ Done |
-| Per-app isolated Docker networks | ❌ | ✅ | 🟡 Medium |
+| Per-app isolated Docker networks | ❌ | ✅ | ✅ Done |
 | Proxy-level Basic Auth | ✅ | ✅ | ✅ Done |
 | URL redirect rules (per app) | ❌ | ✅ | ✅ Done |
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
-| Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
+| Registry-based rollbacks (any version) | ✅ | ✅ | ✅ Done |
 | Build-time Docker secrets | ❌ | ✅ | ✅ Done |
 | GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
 | Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | ✅ Done |
-| More service templates (~190 short, was ~280) | ✅ | ✅ | 🔴 High |
+| More service templates (~140 short, was ~280) | ✅ | ✅ | 🟡 Medium |
 | Community template submissions | ✅ | ✅ | 🔴 High |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
+| Container crash/restart notifications | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions workflow generator | ❌ | ✅ | ✅ Done |
@@ -569,13 +570,13 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Server security validation checklist | ❌ | ✅ | ✅ Done |
 | White labeling | ❌ | ✅ (Enterprise) | 🔴 High (enterprise) |
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
-| Patches (build-time file injection) | ❌ | ✅ | 🟡 Medium |
+| Patches (build-time file injection) | ❌ | ✅ | ✅ Done |
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
 | Bitbucket OAuth login | ✅ | ❌ | ✅ Done |
 | Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
-| ARM64 / Raspberry Pi builds | ✅ | ✅ | 🟡 Medium |
-| Backblaze B2 / GCS S3 destinations | ❌ | ✅ | 🟡 Low |
+| ARM64 / Raspberry Pi builds | ✅ | ✅ | ✅ Done |
+| Backblaze B2 / GCS S3 destinations | ❌ | ✅ | ✅ Done |
 | Instance backup to S3 | ❌ | ❌ | ✅ Done |
 | Test backup button | ❌ | ✅ | ✅ Done |
 | Ansible playbook | ❌ | ✅ | 🟡 Low |
