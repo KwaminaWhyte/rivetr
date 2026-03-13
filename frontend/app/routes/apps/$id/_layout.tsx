@@ -106,6 +106,7 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
 
 const TAB_DEFS = [
   { id: "general", label: "General", path: "" },
+  { id: "env-vars", label: "Env Vars", path: "/env-vars" },
   { id: "network", label: "Network", path: "/network" },
   { id: "settings", label: "Settings", path: "/settings" },
   { id: "deployments", label: "Deployments", path: "/deployments" },

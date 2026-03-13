@@ -606,6 +606,57 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         .get_credentials()
         .ok_or_else(|| anyhow::anyhow!("Invalid credentials"))?;
 
+    // If there's an existing container (previously stopped), try to start it directly
+    if let Some(ref existing_container_id) = database.container_id {
+        if !existing_container_id.is_empty() {
+            tracing::info!(
+                "Starting existing database container: {}",
+                existing_container_id
+            );
+
+            // Update status to starting
+            sqlx::query(
+                "UPDATE databases SET status = ?, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(DatabaseStatus::Starting.to_string())
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+
+            state.runtime.start(existing_container_id).await?;
+
+            // Get the assigned host port if public access is enabled
+            let external_port = if database.is_public() {
+                if database.external_port > 0 {
+                    database.external_port
+                } else {
+                    let info = state.runtime.inspect(existing_container_id).await?;
+                    info.host_port.unwrap_or(0) as i32
+                }
+            } else {
+                0
+            };
+
+            sqlx::query(
+                "UPDATE databases SET external_port = ?, status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(external_port)
+            .bind(DatabaseStatus::Running.to_string())
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+
+            tracing::info!(
+                "Database {} started successfully (existing container: {})",
+                database.name,
+                existing_container_id
+            );
+
+            return Ok(());
+        }
+    }
+
+    // No existing container — create a new one
     // Update status to pulling
     sqlx::query("UPDATE databases SET status = ?, updated_at = datetime('now') WHERE id = ?")
         .bind(DatabaseStatus::Pulling.to_string())
@@ -747,6 +798,58 @@ pub async fn update_database(
                     "message": "External port must be 0 (auto-assign) or between 1024 and 65535"
                 })),
             ));
+        }
+
+        // Check for port conflicts when a specific port is requested
+        if port != 0 {
+            let existing_service: Option<(String,)> =
+                sqlx::query_as("SELECT name FROM services WHERE port = ?")
+                    .bind(port)
+                    .fetch_optional(&state.db)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to check port conflict in services: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error": "Failed to check port availability"})),
+                        )
+                    })?;
+
+            if let Some((name,)) = existing_service {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": "Port conflict",
+                        "message": format!("Port {} is already used by service '{}'", port, name)
+                    })),
+                ));
+            }
+
+            // Check other databases (excluding this one)
+            let existing_db: Option<(String,)> = sqlx::query_as(
+                "SELECT name FROM databases WHERE external_port = ? AND public_access = 1 AND id != ?",
+            )
+            .bind(port)
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check port conflict in databases: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Failed to check port availability"})),
+                )
+            })?;
+
+            if let Some((name,)) = existing_db {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": "Port conflict",
+                        "message": format!("Port {} is already used by database '{}'", port, name)
+                    })),
+                ));
+            }
         }
     }
 

@@ -116,7 +116,14 @@ pub async fn deploy_template(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<DeployTemplateRequest>,
-) -> Result<(StatusCode, Json<DeployTemplateResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<DeployTemplateResponse>), (StatusCode, Json<serde_json::Value>)> {
+    let make_internal_err = || {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": { "code": "internal_error", "message": "An internal error occurred" } })),
+        )
+    };
+
     // Get the template
     let template =
         sqlx::query_as::<_, ServiceTemplate>("SELECT * FROM service_templates WHERE id = ?")
@@ -125,14 +132,22 @@ pub async fn deploy_template(
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get service template: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                make_internal_err()
             })?
-            .ok_or(StatusCode::NOT_FOUND)?;
+            .ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": { "code": "not_found", "message": "Template not found" } })),
+                )
+            })?;
 
     // Validate service name
     if req.name.is_empty() {
         tracing::warn!("Service name is empty");
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": { "code": "bad_request", "message": "Service name is required" } })),
+        ));
     }
 
     if !req
@@ -141,7 +156,63 @@ pub async fn deploy_template(
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         tracing::warn!("Service name contains invalid characters: {}", req.name);
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": { "code": "bad_request", "message": "Service name contains invalid characters" } })),
+        ));
+    }
+
+    // Check for port conflict if a PORT env var is provided
+    if let Some(port_str) = req.env_vars.get("PORT") {
+        if let Ok(port) = port_str.parse::<i64>() {
+            // Check if port is already used by another service
+            let existing_service: Option<(String,)> = sqlx::query_as(
+                "SELECT name FROM services WHERE port = ?",
+            )
+            .bind(port)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check port conflict in services: {}", e);
+                make_internal_err()
+            })?;
+
+            if let Some((name,)) = existing_service {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": {
+                            "code": "conflict",
+                            "message": format!("Port {} is already used by service '{}'", port, name)
+                        }
+                    })),
+                ));
+            }
+
+            // Check if port is already used by a public database
+            let existing_db: Option<(String,)> = sqlx::query_as(
+                "SELECT name FROM databases WHERE external_port = ? AND public_access = 1",
+            )
+            .bind(port as i32)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check port conflict in databases: {}", e);
+                make_internal_err()
+            })?;
+
+            if let Some((name,)) = existing_db {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": {
+                            "code": "conflict",
+                            "message": format!("Port {} is already used by database '{}'", port, name)
+                        }
+                    })),
+                ));
+            }
+        }
     }
 
     // Get the env schema to validate required variables
@@ -149,7 +220,10 @@ pub async fn deploy_template(
     for entry in &env_schema {
         if entry.required && !req.env_vars.contains_key(&entry.name) && entry.default.is_empty() {
             tracing::warn!("Missing required environment variable: {}", entry.name);
-            return Err(StatusCode::BAD_REQUEST);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": { "code": "bad_request", "message": format!("Missing required variable: {}", entry.name) } })),
+            ));
         }
     }
 
@@ -176,20 +250,32 @@ pub async fn deploy_template(
         compose_content = compose_content.replace(&pattern_simple, value);
     }
 
+    // Auto-generate subdomain for the service
+    let domain = state.config.proxy.generate_auto_domain(&req.name);
+
+    // Determine port from the PORT env var (default to 80)
+    let port: i32 = req
+        .env_vars
+        .get("PORT")
+        .and_then(|p| p.parse::<i32>().ok())
+        .unwrap_or(80);
+
     // Create the service record
     let service_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO services (id, name, project_id, compose_content, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO services (id, name, project_id, compose_content, domain, port, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&service_id)
     .bind(&req.name)
     .bind(&req.project_id)
     .bind(&compose_content)
+    .bind(&domain)
+    .bind(port)
     .bind(ServiceStatus::Pending.to_string())
     .bind(&now)
     .bind(&now)
@@ -198,9 +284,12 @@ pub async fn deploy_template(
     .map_err(|e| {
         tracing::error!("Failed to create service: {}", e);
         if e.to_string().contains("UNIQUE") {
-            StatusCode::CONFLICT
+            (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": { "code": "conflict", "message": "A service with this name already exists" } })),
+            )
         } else {
-            StatusCode::INTERNAL_SERVER_ERROR
+            make_internal_err()
         }
     })?;
 
@@ -328,6 +417,30 @@ async fn start_compose_service(
         .bind(service_id)
         .execute(&state.db)
         .await?;
+
+    // Register proxy route if the service has a domain configured
+    let service = sqlx::query_as::<_, crate::db::Service>("SELECT * FROM services WHERE id = ?")
+        .bind(service_id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if let Some(ref svc) = service {
+        if let Some(ref domain) = svc.domain {
+            if !domain.is_empty() {
+                let backend = crate::proxy::Backend::new(
+                    format!("rivetr-svc-{}", svc.name),
+                    "127.0.0.1".to_string(),
+                    svc.port as u16,
+                );
+                state.routes.load().add_route(domain.clone(), backend);
+                tracing::info!(
+                    "Registered proxy route for template service: {} -> port {}",
+                    domain,
+                    svc.port
+                );
+            }
+        }
+    }
 
     tracing::info!("Service {} started successfully", name);
 

@@ -146,6 +146,14 @@ export const servicesApi = {
       token
     ),
 
+  /** Check whether a port is available (not in use by any service or database) */
+  checkPort: (port: number, token?: string) =>
+    apiRequest<{ available: boolean; conflict?: string }>(
+      `/services/check-port?port=${port}`,
+      {},
+      token
+    ),
+
   /** Submit a community template suggestion */
   suggestTemplate: (
     data: {

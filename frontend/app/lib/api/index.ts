@@ -224,6 +224,7 @@ export const api = {
   getTemplate: servicesApi.getTemplate,
   getTemplateCategories: servicesApi.getTemplateCategories,
   deployTemplate: servicesApi.deployTemplate,
+  checkPort: servicesApi.checkPort,
 
   // Teams
   getTeams: teamsApi.getTeams,

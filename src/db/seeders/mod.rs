@@ -5,8 +5,10 @@ mod analytics_automation;
 mod cms_communication;
 mod devtools;
 mod documentation;
+mod extra_services;
 mod infrastructure;
 mod media_monitoring;
+mod media_productivity;
 mod project_mgmt;
 mod security_search;
 
@@ -35,8 +37,10 @@ pub async fn seed_service_templates(pool: &SqlitePool) -> Result<()> {
     templates.extend(devtools::templates());
     templates.extend(documentation::templates());
     templates.extend(media_monitoring::templates());
+    templates.extend(media_productivity::templates());
     templates.extend(security_search::templates());
     templates.extend(project_mgmt::templates());
+    templates.extend(extra_services::templates());
 
     let template_count = templates.len();
     for (id, name, description, category, icon, compose, env_schema) in templates {

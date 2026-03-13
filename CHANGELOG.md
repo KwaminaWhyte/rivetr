@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.5] - 2026-03-13
+
+### Added
+- **27 New Service Templates** — Added templates across 7 categories: Administration/Dashboards (Homepage, Homarr, Dashy, Organizr), AI Services (AnythingLLM, LibreChat, Langflow, LiteLLM, LibreTranslate), Analytics (GoatCounter, OpenPanel), Backup (Duplicati), Communication (Matrix Synapse), Development Tools (NocoDB, Budibase, Dozzle, Portainer CE, Jenkins, Appsmith), Media Servers (Plex, Emby, qBittorrent, Sonarr, Radarr), Storage (Nextcloud, Seafile), Security (Pi-hole). Total templates now ~119.
+- **Port Conflict Validation** — Users are now prevented from using ports already in use across the entire platform. Validation occurs in three places:
+  - Service template deployment: real-time debounced check (400ms) with red-border indicator and disabled deploy button
+  - Custom service creation: server-side 409 Conflict response
+  - Database `external_port` update: server-side 409 Conflict response with descriptive error toast
+  - New `GET /api/services/check-port?port=N` endpoint returning `{ available, conflict }` for frontend checks
+- **Auto-Subdomain for Template Services** — Services deployed from templates now automatically get a subdomain (`{name}.{base_domain}`) with a proxy route registered on startup, making them accessible via domain instead of raw `host:port` URLs.
+
+### Fixed
+- **Service Stop Status** — Services deployed from templates were showing "Failed" after stop instead of "Stopped". Root cause: `stop_service` was using `get_compose_dir` (data dir only) instead of `get_service_compose_dir` (falls back to temp dir used by template deployments).
+
+---
+
 ## [0.10.4] - 2026-03-12
 
 ### Added

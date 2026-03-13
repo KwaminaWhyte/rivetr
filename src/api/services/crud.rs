@@ -5,6 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
+use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -111,6 +112,42 @@ pub async fn create_service(
     if let Err(e) = validate_compose_content(&req.compose_content) {
         tracing::warn!("Invalid compose content: {}", e);
         return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Check for port conflict if a port is provided
+    if let Some(port) = req.port {
+        // Check if port is already used by another service
+        let existing_service: Option<(String,)> =
+            sqlx::query_as("SELECT name FROM services WHERE port = ?")
+                .bind(port)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to check port conflict in services: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+        if let Some((name,)) = existing_service {
+            tracing::warn!("Port {} already used by service '{}'", port, name);
+            return Err(StatusCode::CONFLICT);
+        }
+
+        // Check if port is already used by a public database
+        let existing_db: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM databases WHERE external_port = ? AND public_access = 1",
+        )
+        .bind(port)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check port conflict in databases: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        if let Some((name,)) = existing_db {
+            tracing::warn!("Port {} already used by database '{}'", port, name);
+            return Err(StatusCode::CONFLICT);
+        }
     }
 
     // Auto-generate domain if not provided
@@ -401,4 +438,79 @@ pub async fn delete_service(
 
     tracing::info!("Deleted Docker Compose service: {}", service.name);
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Port availability check
+// ---------------------------------------------------------------------------
+
+/// Query parameters for the check-port endpoint
+#[derive(Debug, serde::Deserialize)]
+pub struct CheckPortQuery {
+    pub port: i32,
+}
+
+/// Response body for the check-port endpoint
+#[derive(Debug, Serialize)]
+pub struct CheckPortResponse {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflict: Option<String>,
+}
+
+/// GET /services/check-port?port=N
+/// Returns whether the requested port is available for use.
+pub async fn check_port(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<CheckPortQuery>,
+) -> Result<Json<CheckPortResponse>, StatusCode> {
+    let port = query.port;
+
+    // Check services table
+    let existing_service: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM services WHERE port = ?")
+            .bind(port)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check port in services: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+    if let Some((name,)) = existing_service {
+        return Ok(Json(CheckPortResponse {
+            available: false,
+            conflict: Some(format!(
+                "Port {} is already used by service '{}'",
+                port, name
+            )),
+        }));
+    }
+
+    // Check databases table (public databases only)
+    let existing_db: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM databases WHERE external_port = ? AND public_access = 1",
+    )
+    .bind(port)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to check port in databases: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if let Some((name,)) = existing_db {
+        return Ok(Json(CheckPortResponse {
+            available: false,
+            conflict: Some(format!(
+                "Port {} is already used by database '{}'",
+                port, name
+            )),
+        }));
+    }
+
+    Ok(Json(CheckPortResponse {
+        available: true,
+        conflict: None,
+    }))
 }

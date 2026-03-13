@@ -572,6 +572,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Docker Compose Services
         .route("/services", get(services::list_services))
         .route("/services", post(services::create_service))
+        // Must be before /services/:id to avoid route conflict
+        .route("/services/check-port", get(services::check_port))
         .route("/services/:id", get(services::get_service))
         .route("/services/:id", put(services::update_service))
         .route("/services/:id", delete(services::delete_service))

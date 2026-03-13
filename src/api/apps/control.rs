@@ -197,17 +197,20 @@ pub async fn get_app_status(
             ("stable".to_string(), None, None)
         };
 
-    // Get the latest running deployment's container
-    let deployment: Option<(String,)> = sqlx::query_as(
-        "SELECT container_id FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+    // Get the latest running or stopped deployment's container
+    let deployment: Option<(String, String)> = sqlx::query_as(
+        "SELECT container_id, status FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1"
     )
     .bind(&id)
     .fetch_optional(&state.db)
     .await?;
 
-    let (container_id, running, status, host_port) = if let Some((cid,)) = deployment {
+    let (container_id, running, status, host_port) = if let Some((cid, dep_status)) = deployment {
         if cid.is_empty() {
             (None, false, "no_container".to_string(), None)
+        } else if dep_status == "stopped" {
+            // Manually stopped — don't inspect the container, just report stopped
+            (Some(cid), false, "stopped".to_string(), None)
         } else {
             // Check if container is running
             match state.runtime.inspect(&cid).await {
@@ -764,9 +767,11 @@ pub async fn restart_app(
         "Zero-downtime restart: old container teardown initiated"
     );
 
-    // 8. Update the deployment record with the new container ID
+    // 8. Update the deployment record with the new container ID.
+    // NOTE: SQLite does not support ORDER BY / LIMIT in UPDATE — use a subquery instead.
     let _ = sqlx::query(
-        "UPDATE deployments SET container_id = ? WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1",
+        "UPDATE deployments SET container_id = ? \
+         WHERE id = (SELECT id FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1)",
     )
     .bind(&new_container_id)
     .bind(&id)

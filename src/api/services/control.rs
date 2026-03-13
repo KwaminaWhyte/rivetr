@@ -180,7 +180,9 @@ pub async fn stop_service(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     let data_dir = &state.config.server.data_dir;
-    let compose_dir = get_compose_dir(data_dir, &service.name);
+    // Use get_service_compose_dir to check both data dir and temp dir
+    // (template-deployed services write their compose file to the temp dir)
+    let compose_dir = get_service_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
     // Run docker compose down

@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
   Layers,
@@ -71,6 +72,50 @@ export function ServicesTab({ project, projectId }: ServicesTabProps) {
   const [templateServiceName, setTemplateServiceName] = useState("");
   const [templateEnvVars, setTemplateEnvVars] = useState<Record<string, string>>({});
   const [showTemplateSecrets, setShowTemplateSecrets] = useState<Record<string, boolean>>({});
+  const [portConflict, setPortConflict] = useState<string | null>(null);
+  const [isCheckingPort, setIsCheckingPort] = useState(false);
+  const portCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced port availability check whenever the PORT env var changes
+  useEffect(() => {
+    const portStr = templateEnvVars["PORT"];
+    if (!portStr) {
+      setPortConflict(null);
+      return;
+    }
+    const port = parseInt(portStr, 10);
+    if (isNaN(port) || port <= 0) {
+      setPortConflict(null);
+      return;
+    }
+
+    if (portCheckTimerRef.current) {
+      clearTimeout(portCheckTimerRef.current);
+    }
+
+    portCheckTimerRef.current = setTimeout(async () => {
+      setIsCheckingPort(true);
+      try {
+        const result = await api.checkPort(port);
+        if (!result.available && result.conflict) {
+          setPortConflict(result.conflict);
+        } else {
+          setPortConflict(null);
+        }
+      } catch {
+        // Silently ignore check errors — don't block deployment
+        setPortConflict(null);
+      } finally {
+        setIsCheckingPort(false);
+      }
+    }, 400);
+
+    return () => {
+      if (portCheckTimerRef.current) {
+        clearTimeout(portCheckTimerRef.current);
+      }
+    };
+  }, [templateEnvVars["PORT"]]);
 
   // Form state
   const [serviceName, setServiceName] = useState("");
@@ -428,6 +473,7 @@ services:
             setSelectedCategory("all");
             setTemplateEnvVars({});
             setShowTemplateSecrets({});
+            setPortConflict(null);
           }
         }}
       >
@@ -488,6 +534,7 @@ services:
                             }
                             setTemplateEnvVars(defaults);
                             setShowTemplateSecrets({});
+                            setPortConflict(null);
                           }}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -564,10 +611,22 @@ services:
                     }
                     placeholder="8080"
                     required
+                    className={portConflict ? "border-destructive focus-visible:ring-destructive" : ""}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Container port to expose (use unique ports to avoid conflicts)
-                  </p>
+                  {isCheckingPort && (
+                    <p className="text-xs text-muted-foreground">Checking port availability…</p>
+                  )}
+                  {!isCheckingPort && portConflict && (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {portConflict}
+                    </p>
+                  )}
+                  {!isCheckingPort && !portConflict && (
+                    <p className="text-xs text-muted-foreground">
+                      Container port to expose (use unique ports to avoid conflicts)
+                    </p>
+                  )}
                 </div>
 
                 {selectedTemplate.env_schema && selectedTemplate.env_schema.length > 0 && (
@@ -633,11 +692,16 @@ services:
                     setTemplateServiceName("");
                     setTemplateEnvVars({});
                     setShowTemplateSecrets({});
+                    setPortConflict(null);
                   }}
                 >
                   Back
                 </Button>
-                <Button type="submit" disabled={deployTemplateMutation.isPending}>
+                <Button
+                  type="submit"
+                  disabled={deployTemplateMutation.isPending || !!portConflict || isCheckingPort}
+                  title={portConflict ?? undefined}
+                >
                   <Rocket className="mr-2 h-4 w-4" />
                   {deployTemplateMutation.isPending ? "Deploying..." : "Deploy Service"}
                 </Button>

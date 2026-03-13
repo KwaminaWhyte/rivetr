@@ -30,6 +30,7 @@ export default [
     route("apps/:id", "routes/apps/$id/_layout.tsx", [
       index("routes/apps/$id/_index.tsx"),
       route("network", "routes/apps/$id/network.tsx"),
+      route("env-vars", "routes/apps/$id/env-vars.tsx"),
       route("settings", "routes/apps/$id/settings/_layout.tsx", [
         index("routes/apps/$id/settings/_index.tsx"),
         route("build", "routes/apps/$id/settings/build.tsx"),
