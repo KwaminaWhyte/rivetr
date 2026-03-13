@@ -70,7 +70,8 @@ export type DeploymentStatus =
   | "running"
   | "failed"
   | "stopped"
-  | "replaced";
+  | "replaced"
+  | "cancelled";
 
 export interface DeploymentLog {
   id: string;

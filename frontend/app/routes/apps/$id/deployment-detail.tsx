@@ -83,6 +83,11 @@ const STATUS_CONFIG: Record<
     icon: <XCircle className="h-4 w-4" />,
     variant: "destructive",
   },
+  cancelled: {
+    label: "Cancelled",
+    icon: <XCircle className="h-4 w-4" />,
+    variant: "secondary",
+  },
 };
 
 const ACTIVE_STATUSES = ["pending", "cloning", "building", "starting", "checking"];

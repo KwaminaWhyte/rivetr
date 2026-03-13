@@ -115,6 +115,13 @@ const statusConfig: Record<
     icon: CheckCircle2,
     label: "Replaced",
   },
+  cancelled: {
+    color: "text-gray-500",
+    bgColor: "bg-gray-100 dark:bg-gray-800/50",
+    borderColor: "border-gray-400",
+    icon: XCircle,
+    label: "Cancelled",
+  },
 };
 
 // Active statuses that show animation
