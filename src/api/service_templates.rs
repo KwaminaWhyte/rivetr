@@ -253,11 +253,13 @@ pub async fn deploy_template(
     // Auto-generate subdomain for the service
     let domain = state.config.proxy.generate_auto_domain(&req.name);
 
-    // Determine port from the PORT env var (default to 80)
+    // Determine proxy port: prefer PORT env var, then extract first host port
+    // from the rendered compose file (e.g. "3000:3000" → 3000).
     let port: i32 = req
         .env_vars
         .get("PORT")
         .and_then(|p| p.parse::<i32>().ok())
+        .or_else(|| extract_first_host_port(&compose_content))
         .unwrap_or(80);
 
     // Create the service record
@@ -610,4 +612,39 @@ pub async fn approve_template_suggestion(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::OK)
+}
+
+/// Extract the first host-side port from a rendered docker-compose YAML string.
+/// Only reads entries inside a `ports:` block. Handles "HOST:CONTAINER" and
+/// "HOST:CONTAINER/proto" formats. Returns None if no ports section is found.
+fn extract_first_host_port(compose: &str) -> Option<i32> {
+    let mut in_ports = false;
+    for line in compose.lines() {
+        let trimmed = line.trim();
+        if trimmed == "ports:" {
+            in_ports = true;
+            continue;
+        }
+        if in_ports {
+            if trimmed.starts_with("- ") {
+                let value = trimmed
+                    .trim_start_matches("- ")
+                    .trim_matches('"')
+                    .trim_matches('\'');
+                // Remove /tcp or /udp suffix
+                let value = value.split('/').next().unwrap_or(value);
+                // Host port is before the first ':'
+                let host_part = value.split(':').next().unwrap_or("");
+                if let Ok(port) = host_part.trim().parse::<i32>() {
+                    if port > 0 && port < 65536 {
+                        return Some(port);
+                    }
+                }
+            } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                // Left the ports block
+                in_ports = false;
+            }
+        }
+    }
+    None
 }

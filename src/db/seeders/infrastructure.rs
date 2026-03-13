@@ -45,7 +45,9 @@ volumes:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__database__DB_TYPE=sqlite3
-      - GITEA__server__ROOT_URL=${ROOT_URL:-http://localhost:3000}
+      - GITEA__server__ROOT_URL=${ROOT_URL:-https://gitea.example.com}
+      - GITEA__server__SSH_DOMAIN=${SSH_DOMAIN:-gitea.example.com}
+      - GITEA__server__SSH_PORT=${SSH_PORT:-2222}
     ports:
       - "${HTTP_PORT:-3000}:3000"
       - "${SSH_PORT:-2222}:22"
@@ -57,7 +59,7 @@ volumes:
 volumes:
   gitea_data:
 "#,
-            r#"[{"name":"GITEA_VERSION","label":"Gitea Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"gitea","secret":false},{"name":"HTTP_PORT","label":"HTTP Port","required":false,"default":"3000","secret":false},{"name":"SSH_PORT","label":"SSH Port","required":false,"default":"2222","secret":false},{"name":"ROOT_URL","label":"Root URL","required":false,"default":"http://localhost:3000","secret":false}]"#,
+            r#"[{"name":"GITEA_VERSION","label":"Gitea Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"gitea","secret":false},{"name":"HTTP_PORT","label":"HTTP Port","required":false,"default":"3000","secret":false},{"name":"SSH_PORT","label":"SSH Port","required":false,"default":"2222","secret":false},{"name":"ROOT_URL","label":"Root URL (set to your actual domain)","required":true,"default":"https://gitea.example.com","secret":false},{"name":"SSH_DOMAIN","label":"SSH Domain","required":false,"default":"gitea.example.com","secret":false}]"#,
         ),
         (
             "n8n",
