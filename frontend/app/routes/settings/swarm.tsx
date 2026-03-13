@@ -45,6 +45,7 @@ import {
   RefreshCw,
   Loader2,
   ServerCrash,
+  AlertCircle,
   LogOut,
   Server,
 } from "lucide-react";
@@ -143,22 +144,32 @@ export default function SwarmPage() {
   // Queries
   // ---------------------------------------------------------------------------
 
-  const { data: status, isLoading: statusLoading } = useQuery({
+  const {
+    data: status,
+    isLoading: statusLoading,
+    isError: statusError,
+  } = useQuery({
     queryKey: ["swarm-status"],
     queryFn: () => swarmApi.getStatus(),
     retry: false,
   });
 
-  const { data: nodes = [], isLoading: nodesLoading } = useQuery<SwarmNode[]>({
+  const isSwarmActive = status?.local_node_state === "active";
+
+  const { data: nodes = [], isLoading: nodesLoading, isError: nodesError } = useQuery<SwarmNode[]>({
     queryKey: ["swarm-nodes"],
     queryFn: () => swarmApi.listNodes(),
+    enabled: isSwarmActive,
+    retry: false,
   });
 
-  const { data: services = [], isLoading: servicesLoading } = useQuery<
+  const { data: services = [], isLoading: servicesLoading, isError: servicesError } = useQuery<
     SwarmService[]
   >({
     queryKey: ["swarm-services"],
     queryFn: () => swarmApi.listServices(),
+    enabled: isSwarmActive,
+    retry: false,
   });
 
   // ---------------------------------------------------------------------------
@@ -286,9 +297,6 @@ export default function SwarmPage() {
     scaleServiceMutation.mutate({ id: scaleServiceId, replicas });
   };
 
-  const isSwarmActive =
-    status && status.local_node_state === "active";
-
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -332,6 +340,17 @@ export default function SwarmPage() {
           {statusLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : statusError ? (
+            <div className="text-center py-8 space-y-4">
+              <AlertCircle className="h-12 w-12 mx-auto text-destructive/50" />
+              <div>
+                <p className="text-lg font-medium">Could Not Reach Docker</p>
+                <p className="text-sm text-muted-foreground">
+                  Failed to get swarm status. Make sure Docker is running and the
+                  Rivetr process has access to the Docker socket.
+                </p>
+              </div>
             </div>
           ) : !isSwarmActive ? (
             <div className="text-center py-8 space-y-4">
@@ -446,6 +465,11 @@ export default function SwarmPage() {
           {nodesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : nodesError ? (
+            <div className="flex items-center gap-2 py-8 justify-center text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              Failed to load nodes. Try syncing again.
             </div>
           ) : nodes.length === 0 ? (
             <div className="text-center py-8">
@@ -564,6 +588,11 @@ export default function SwarmPage() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : servicesError ? (
+            <div className="flex items-center gap-2 py-8 justify-center text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              Failed to load services.
+            </div>
           ) : services.length === 0 ? (
             <div className="text-center py-8 space-y-4">
               <Network className="h-10 w-10 mx-auto text-muted-foreground/50" />
@@ -643,7 +672,9 @@ export default function SwarmPage() {
       {/* Leave Swarm Dialog */}
       <AlertDialog
         open={leaveDialogOpen}
-        onOpenChange={setLeaveDialogOpen}
+        onOpenChange={(open) => {
+          if (!leaveMutation.isPending) setLeaveDialogOpen(open);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -654,9 +685,12 @@ export default function SwarmPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={leaveMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => leaveMutation.mutate()}
+              disabled={leaveMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {leaveMutation.isPending ? (
@@ -797,7 +831,9 @@ export default function SwarmPage() {
       {/* Delete Service Dialog */}
       <AlertDialog
         open={!!deleteServiceId}
-        onOpenChange={() => setDeleteServiceId(null)}
+        onOpenChange={(open) => {
+          if (!open && !deleteServiceMutation.isPending) setDeleteServiceId(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -808,16 +844,23 @@ export default function SwarmPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteServiceMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteServiceId) {
                   deleteServiceMutation.mutate(deleteServiceId);
                 }
               }}
+              disabled={deleteServiceMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove
+              {deleteServiceMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Remove"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

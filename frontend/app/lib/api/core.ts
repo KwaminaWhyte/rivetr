@@ -54,8 +54,21 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `API error: ${response.status}`);
+    const text = await response.text();
+    // Try to extract a human-readable message from the JSON error envelope
+    // Backend returns: { "error": { "code": "...", "message": "..." } }
+    try {
+      const json = JSON.parse(text);
+      const message =
+        json?.error?.message || json?.message || text || `API error: ${response.status}`;
+      throw new Error(message);
+    } catch (parseErr) {
+      // If it's not JSON (or we just threw above), use text as-is
+      if (parseErr instanceof Error && parseErr.message !== text) {
+        throw parseErr;
+      }
+      throw new Error(text || `API error: ${response.status}`);
+    }
   }
 
   if (response.status === 204) {
@@ -89,8 +102,18 @@ export async function apiRawRequest(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `API error: ${response.status}`);
+    const text = await response.text();
+    try {
+      const json = JSON.parse(text);
+      const message =
+        json?.error?.message || json?.message || text || `API error: ${response.status}`;
+      throw new Error(message);
+    } catch (parseErr) {
+      if (parseErr instanceof Error && parseErr.message !== text) {
+        throw parseErr;
+      }
+      throw new Error(text || `API error: ${response.status}`);
+    }
   }
 
   return response;

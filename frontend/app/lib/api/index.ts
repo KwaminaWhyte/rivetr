@@ -31,6 +31,14 @@ export type { Server, CreateServerRequest, UpdateServerRequest } from "./servers
 export { ssoApi } from "./sso";
 export type { OidcProvider, CreateOidcProviderRequest } from "./sso";
 export { autoscalingApi } from "./autoscaling";
+export { swarmApi } from "./swarm";
+export type {
+  SwarmNode,
+  SwarmService,
+  SwarmInitResponse,
+  SwarmStatusResponse,
+  CreateServiceRequest as SwarmCreateServiceRequest,
+} from "./swarm";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
