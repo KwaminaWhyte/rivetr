@@ -30,6 +30,22 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | DNS validation on domain add | ✅ Implemented | `GET /api/domains/check?domain=` using Tokio DNS lookup; shows server IP match status |
 | +64 service templates (total ~183) | ✅ Implemented | 10 new seeder modules: AI extras, auth/identity, business, CMS, communication, DB tools, DevOps, misc, monitoring, networking |
 | Platform-injected env vars (partial) | ✅ Partial | `RIVETR_APP_NAME`, `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` injected at container start |
+| White labeling | ✅ Implemented | `white_label` table (migration 084); GET /api/white-label (public) + PUT (auth); custom CSS, app name, logo, favicon; WhiteLabelProvider in React injects CSS + updates title/favicon |
+| Docker Compose magic variables | ✅ Implemented | `substitute_magic_vars()` in compose.rs; `${SERVICE_PASSWORD_X}`, `${SERVICE_BASE64_X}`, `${VAR:?message}` substituted pre-deploy; stored in `service_generated_vars` table (migration 083) |
+| Extended Docker run options (GPU, ulimits, cap_drop, security_opt) | ✅ Implemented | Migration 085; RunConfig extended; Bollard DeviceRequest for GPU; cap_drop, security_opt, ulimits applied; Docker settings UI has all 9 options |
+| +40 service templates (total ~223) | ✅ Implemented | sprint18 templates: FerretDB, Qdrant, Weaviate, Milvus, n8n, SonarQube, Vault, Vaultwarden, Keycloak, InvoiceNinja, Ghost, Matrix, Loki and more |
+| TypeScript SDK download | ✅ Implemented | GET /api/sdk returns a downloadable TypeScript client SDK generated from live routes |
+| Deployment patches (build-time file injection) | ✅ Implemented | CRUD at /api/apps/:id/patches; file content injected before build; UI in Settings > Patches |
+| Per-app isolated Docker networks | ✅ Implemented | `rivetr-app-{app_id}` network created per app; containers connected on start |
+| ARM64 / multi-platform builds | ✅ Implemented | `build_platforms` field; passed to Bollard BuildImageOptions; Docker settings UI |
+| Backblaze B2 / GCS backup presets | ✅ Implemented | B2 / GCS endpoint presets in backup UI; custom endpoint field |
+| Container crash/restart notifications | ✅ Implemented | ContainerCrash / ContainerRestarted event types; rate-limited crash notifications (5 min/app) |
+| Registry-based rollbacks (any version) | ✅ Implemented | `rollback_to` accepts deployment ID with stored `image_tag`; Rollback button on deployment detail page |
+| GitHub Actions workflow generator | ✅ Implemented | GET /api/apps/:id/github-actions returns .yml workflow content |
+| OS patch notifications | ✅ Implemented | GET /api/system/updates checks apt/yum for pending updates |
+| Automated Docker resource cleanup | ✅ Implemented | POST /api/system/docker-cleanup runs docker system prune; UI button in Settings |
+| Auto Docker install on remote server add | ✅ Implemented | server provisioning installs Docker if not present |
+| Server security validation checklist | ✅ Implemented | GET /api/servers/:id/security-check returns firewall/SSH/updates status |
 
 ---
 
@@ -145,19 +161,20 @@ Each app now gets a dedicated Docker network `rivetr-app-{app_id}` in addition t
 ## 3. Container & Docker Features
 
 ### Custom Docker run options
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify exposes advanced Docker container options that Rivetr does not:
+Rivetr's Docker Options settings page exposes all major container run options:
 - `--cap-add` / `--cap-drop` (Linux capabilities)
 - `--privileged` mode
 - `--security-opt` (seccomp, apparmor profiles)
-- `--sysctl` (kernel parameter overrides)
-- `--device` (device passthrough — e.g., GPUs, USB)
-- `--ulimit` (file descriptor limits, etc.)
+- `--device` (device passthrough)
+- `--ulimit` (file descriptor limits)
 - `--shm-size` (shared memory size)
-- `--gpus` (GPU passthrough for AI/ML workloads)
-- `--ip` / `--ip6` (fixed IP addresses)
-- `--init` (run an init process)
+- `--gpus` (GPU passthrough via Nvidia DeviceRequest, format: `all` or `device=0,1`)
+- `--init` (run tini as PID 1)
+- Restart policy (`always`, `unless-stopped`, `on-failure`, `never`)
+
+Stored per-app in migration 085 columns: `docker_cap_drop`, `docker_gpus`, `docker_ulimits`, `docker_security_opt`.
 
 Rivetr doesn't expose any of these. Users who need GPU workloads, privileged containers, or custom Linux capabilities have no path forward.
 
@@ -189,9 +206,9 @@ Rivetr supports `${VAR:-default}` in compose templates but doesn't auto-generate
 Coolify has a "raw compose mode" that deploys a compose file exactly as written without injecting any Coolify-specific labels, health checks, or network overrides. This is important for services that have opinionated internal networking or label configurations.
 
 ### Restart policy configuration
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Both competitors expose container restart policy (`always`, `unless-stopped`, `on-failure:N`, `never`) as a UI option per application. Rivetr uses `unless-stopped` for all managed containers but doesn't expose this as a user-configurable setting.
+Restart policy (`always`, `unless-stopped`, `on-failure`, `never`) is configurable per app via the Docker Options settings tab. Stored in `apps.restart_policy` column.
 
 ### Platform-injected environment variables
 ✅ **Implemented in Rivetr**
@@ -551,24 +568,24 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | ✅ Done |
 | Build-time Docker secrets | ❌ | ✅ | ✅ Done |
-| GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
-| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
+| GPU / custom Docker run options | ✅ | ✅ | ✅ Done |
+| Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | ✅ Done |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | ✅ Done |
-| More service templates (~140 short, was ~280) | ✅ | ✅ | 🟡 Medium |
+| More service templates (~100 short, total ~223 vs ~320 needed) | ✅ | ✅ | 🟡 Medium |
 | Community template submissions | ✅ | ✅ | 🔴 High |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Container crash/restart notifications | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions workflow generator | ❌ | ✅ | ✅ Done |
-| JavaScript SDK | ❌ | ✅ | 🟡 Medium |
+| JavaScript SDK | ❌ | ✅ | ✅ Done |
 | Automated Docker resource cleanup | ✅ | ❌ | ✅ Done |
 | OS patch notifications | ✅ | ❌ | ✅ Done |
 | Auto Docker install on remote server add | ✅ | ✅ | ✅ Done |
 | Server security validation checklist | ❌ | ✅ | ✅ Done |
-| White labeling | ❌ | ✅ (Enterprise) | 🔴 High (enterprise) |
+| White labeling | ❌ | ✅ (Enterprise) | ✅ Done |
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
 | Patches (build-time file injection) | ❌ | ✅ | ✅ Done |
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
