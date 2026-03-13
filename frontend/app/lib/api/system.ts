@@ -251,6 +251,16 @@ export const systemApi = {
       token
     ),
 
+  // -------------------------------------------------------------------------
+  // Docker / Container Cleanup
+  // -------------------------------------------------------------------------
+
+  /** Remove dangling Docker images to free disk space */
+  runDockerCleanup: (token?: string) =>
+    apiRequest<{ success: boolean; output: string }>("/system/docker-cleanup", {
+      method: "POST",
+    }, token),
+
   /** Restore from a backup file upload */
   restoreBackup: async (file: File, token?: string): Promise<RestoreResult> => {
     const formData = new FormData();

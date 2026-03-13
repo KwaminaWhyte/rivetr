@@ -17,6 +17,7 @@ import {
   Database,
   Container,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import type { SystemHealthStatus, UpdateStatus } from "@/types/api";
 
@@ -85,6 +86,23 @@ export default function SettingsPage() {
   });
 
   const isLoading = healthLoading || versionLoading;
+
+  // Docker cleanup
+  const [cleanupOutput, setCleanupOutput] = useState<string | null>(null);
+  const dockerCleanupMutation = useMutation({
+    mutationFn: () => api.runDockerCleanup(),
+    onSuccess: (data) => {
+      setCleanupOutput(data.output || "No output returned.");
+      if (data.success) {
+        toast.success("Docker cleanup completed");
+      } else {
+        toast.error("Docker cleanup finished with errors");
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Docker cleanup failed");
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -314,6 +332,51 @@ acme_email = "you@yourdomain.com"`}
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Docker Cleanup */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trash2 className="h-5 w-5" />
+            Docker Cleanup
+          </CardTitle>
+          <CardDescription>
+            Remove dangling (untagged) Docker images to reclaim disk space. Running containers and named images are not affected.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCleanupOutput(null);
+                dockerCleanupMutation.mutate();
+              }}
+              disabled={dockerCleanupMutation.isPending}
+            >
+              {dockerCleanupMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Running…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Run Cleanup
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Runs <code className="bg-muted px-1 rounded font-mono">docker system prune --filter dangling=true -f</code>
+            </p>
+          </div>
+          {cleanupOutput !== null && (
+            <pre className="bg-muted rounded p-3 font-mono text-xs overflow-x-auto whitespace-pre-wrap">
+              {cleanupOutput}
+            </pre>
+          )}
         </CardContent>
       </Card>
     </div>

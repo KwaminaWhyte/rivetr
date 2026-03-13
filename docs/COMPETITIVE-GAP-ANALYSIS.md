@@ -18,8 +18,11 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
 | GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab` — full authorize + callback flow with read_user scope |
 | Azure AD OAuth login | ✅ Implemented | Configurable tenant_id via `extra_config` JSON; uses Microsoft login.microsoftonline.com endpoints |
+| Discord notifications | ✅ Implemented | Embed-style webhook channel; green/red colour coding per deployment result |
+| Slack notifications | ✅ Implemented | Incoming webhook channel; bold title + body format |
 | Mattermost notifications | ✅ Implemented | Incoming webhook channel type; configurable URL + username + icon |
 | Lark/Feishu notifications | ✅ Implemented | Webhook-based; supports custom sign secret for verification |
+| Docker resource cleanup endpoint | ✅ Implemented | `POST /api/system/docker-cleanup` prunes dangling images; "Run Cleanup" button in Settings |
 | Gotify notifications | ✅ Implemented | Self-hosted push server; configurable URL, token, priority |
 | Resend email notifications | ✅ Implemented | Transactional email API; configurable from address and Resend API key |
 | URL redirect rules (per-app) | ✅ Implemented | CRUD at `/api/apps/:id/redirects`; regex + capture group substitution; 301/302 selection; proxy enforcement |
@@ -364,8 +367,8 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 |---------|---------|---------|--------|
 | Email (SMTP) | ✅ | ✅ | ✅ |
 | Telegram | ✅ | ✅ | ✅ |
-| Discord | ✅ | ✅ | 🟡 (alerts only?) |
-| Slack | ✅ | ✅ | 🟡 (alerts only?) |
+| Discord | ✅ | ✅ | ✅ (full notification channel — embed-style webhook) |
+| Slack | ✅ | ✅ | ✅ (full notification channel — incoming webhook) |
 | Microsoft Teams | ❌ | ❌ | ✅ |
 | Pushover | ✅ | ✅ | ✅ |
 | Ntfy | ❌ | ✅ | ✅ |
@@ -375,7 +378,7 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 | Resend (email API) | ✅ | ✅ | ✅ (implemented — transactional email API) |
 | Custom Webhook | ✅ | ✅ | 🟡 (partial) |
 
-All four previously missing channels (Mattermost, Lark, Gotify, Resend) are now implemented. Discord and Slack may only exist in Rivetr's resource alert system but not yet as general deployment notification channels.
+All previously missing channels are now implemented. Discord and Slack are full notification channel types (not just alert-level integrations) — both support deployment success/failure events via their respective webhook formats.
 
 ### Notification event granularity
 🟡 **Review needed**
@@ -555,12 +558,12 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Database dump import | ✅ | ❌ | 🟡 Medium |
 | More service templates (~220 short, was ~280) | ✅ | ✅ | 🔴 High |
 | Community template submissions | ✅ | ✅ | 🔴 High |
-| Discord + Slack as notification channels | ✅ | ✅ | 🟡 Medium |
+| Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
 | Mattermost / Lark / Gotify notifications | ✅ | ✅ | ✅ Done |
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
-| Automated Docker resource cleanup | ✅ | ❌ | 🟡 Medium |
+| Automated Docker resource cleanup | ✅ | ❌ | ✅ Done |
 | OS patch notifications | ✅ | ❌ | 🟡 Medium |
 | Auto Docker install on remote server add | ✅ | ✅ | 🟡 Medium |
 | Server security validation checklist | ❌ | ✅ | 🟡 Medium |

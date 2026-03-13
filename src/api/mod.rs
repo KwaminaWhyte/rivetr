@@ -717,6 +717,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // System log cleanup
         .route("/system/log-cleanup", post(monitoring::trigger_log_cleanup))
+        // Docker/Podman resource cleanup (dangling image prune)
+        .route("/system/docker-cleanup", post(system::run_docker_cleanup))
         // S3 Storage Configs
         .route("/s3/configs", post(s3::create_config))
         .route("/s3/configs", get(s3::list_configs))

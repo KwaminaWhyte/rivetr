@@ -3,6 +3,7 @@
 //! Provides aggregate system stats, disk stats, recent events, and instance backup/restore.
 
 mod backup;
+mod cleanup;
 mod health;
 mod updates;
 
@@ -12,6 +13,7 @@ pub use backup::{
     delete_backup_schedule, download_backup, list_backup_schedules, list_backups, restore_backup,
     toggle_backup_schedule, upload_backup_to_s3,
 };
+pub use cleanup::run_docker_cleanup;
 pub use health::{
     get_detailed_health, get_disk_stats, get_recent_events, get_stats_history, get_stats_summary,
     get_system_stats,
