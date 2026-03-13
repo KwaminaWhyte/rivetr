@@ -201,6 +201,50 @@ impl ContainerRuntime for PodmanRuntime {
             args.push(cpu.clone());
         }
 
+        // Custom Docker run options
+        if config.privileged {
+            args.push("--privileged".to_string());
+        }
+
+        for cap in &config.cap_add {
+            args.push("--cap-add".to_string());
+            args.push(cap.clone());
+        }
+
+        for cap in &config.cap_drop {
+            args.push("--cap-drop".to_string());
+            args.push(cap.clone());
+        }
+
+        for device in &config.devices {
+            args.push("--device".to_string());
+            args.push(device.clone());
+        }
+
+        if let Some(shm) = config.shm_size {
+            args.push("--shm-size".to_string());
+            args.push(shm.to_string());
+        }
+
+        if config.init {
+            args.push("--init".to_string());
+        }
+
+        if let Some(ref gpus) = config.gpus {
+            args.push("--gpus".to_string());
+            args.push(gpus.clone());
+        }
+
+        for ulimit in &config.ulimits {
+            args.push("--ulimit".to_string());
+            args.push(ulimit.clone());
+        }
+
+        for sec_opt in &config.security_opt {
+            args.push("--security-opt".to_string());
+            args.push(sec_opt.clone());
+        }
+
         args.push(config.image.clone());
 
         self.run_command(&args).await

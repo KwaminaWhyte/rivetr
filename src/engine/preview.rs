@@ -286,12 +286,16 @@ pub async fn run_preview_deployment(
         ]),
         binds: vec![],
         restart_policy: app.restart_policy.clone(),
-        privileged: false,
+        privileged: app.privileged != 0,
         cap_add: vec![],
+        cap_drop: vec![],
         devices: vec![],
         shm_size: None,
         init: false,
         app_id: Some(app.id.clone()),
+        gpus: None,
+        ulimits: vec![],
+        security_opt: vec![],
     };
 
     let container_id = match runtime.run(&run_config).await {

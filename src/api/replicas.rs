@@ -124,12 +124,16 @@ pub async fn set_replica_count(
                     labels: app.get_container_labels(),
                     binds: vec![],
                     restart_policy: app.restart_policy.clone(),
-                    privileged: false,
-                    cap_add: vec![],
-                    devices: vec![],
-                    shm_size: None,
-                    init: false,
+                    privileged: app.privileged != 0,
+                    cap_add: app.cap_add.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+                    cap_drop: app.docker_cap_drop.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+                    devices: app.devices.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+                    shm_size: app.shm_size.as_ref().and_then(|s| crate::runtime::parse_shm_size(s)),
+                    init: app.init_process != 0,
                     app_id: Some(app.id.clone()),
+                    gpus: app.docker_gpus.clone(),
+                    ulimits: app.docker_ulimits.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+                    security_opt: app.docker_security_opt.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -287,12 +291,16 @@ pub async fn restart_replica(
         labels: app.get_container_labels(),
         binds: vec![],
         restart_policy: app.restart_policy.clone(),
-        privileged: false,
-        cap_add: vec![],
-        devices: vec![],
-        shm_size: None,
-        init: false,
+        privileged: app.privileged != 0,
+        cap_add: app.cap_add.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        cap_drop: app.docker_cap_drop.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        devices: app.devices.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        shm_size: app.shm_size.as_ref().and_then(|s| crate::runtime::parse_shm_size(s)),
+        init: app.init_process != 0,
         app_id: Some(app.id.clone()),
+        gpus: app.docker_gpus.clone(),
+        ulimits: app.docker_ulimits.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        security_opt: app.docker_security_opt.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
     };
 
     // Update status to starting

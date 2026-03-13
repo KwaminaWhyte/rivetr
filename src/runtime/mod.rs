@@ -120,6 +120,14 @@ pub struct RunConfig {
     /// When set, the container is also connected to a dedicated per-app network in
     /// addition to the shared `rivetr` bridge.
     pub app_id: Option<String>,
+    /// Capabilities to drop
+    pub cap_drop: Vec<String>,
+    /// GPU access: "all" or "device=0,1" — None means no GPU
+    pub gpus: Option<String>,
+    /// Ulimits (e.g. ["nofile=1024:1024"])
+    pub ulimits: Vec<String>,
+    /// Security options (e.g. ["seccomp=unconfined"])
+    pub security_opt: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

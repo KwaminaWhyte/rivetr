@@ -293,6 +293,14 @@ export interface App {
   build_secrets: string | null;
   /** Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64". */
   build_platforms: string | null;
+  /** Capabilities to drop (stored as JSON array, e.g. ["MKNOD"]) */
+  docker_cap_drop: string | null;
+  /** GPU access: "all" or "device=0,1" */
+  docker_gpus: string | null;
+  /** Ulimits (stored as JSON array, e.g. ["nofile=1024:1024"]) */
+  docker_ulimits: string | null;
+  /** Security options (stored as JSON array, e.g. ["seccomp=unconfined"]) */
+  docker_security_opt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -548,6 +556,14 @@ export interface UpdateAppRequest {
   build_secrets?: BuildSecret[];
   /** Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64". Empty string clears it. */
   build_platforms?: string;
+  /** Capabilities to drop (e.g. ["MKNOD"]) */
+  docker_cap_drop?: string[];
+  /** GPU access: "all" or "device=0,1" */
+  docker_gpus?: string;
+  /** Ulimits (e.g. ["nofile=1024:1024"]) */
+  docker_ulimits?: string[];
+  /** Security options (e.g. ["seccomp=unconfined"]) */
+  docker_security_opt?: string[];
 }
 
 // -------------------------------------------------------------------------

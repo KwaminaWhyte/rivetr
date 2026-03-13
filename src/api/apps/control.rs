@@ -593,6 +593,37 @@ pub async fn restart_app(
         })
         .collect();
 
+    // Parse custom Docker run options from app settings
+    let cap_add: Vec<String> = app
+        .cap_add
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let cap_drop: Vec<String> = app
+        .docker_cap_drop
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let restart_devices: Vec<String> = app
+        .devices
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let shm_size: Option<i64> = app
+        .shm_size
+        .as_ref()
+        .and_then(|s| crate::runtime::parse_shm_size(s));
+    let ulimits: Vec<String> = app
+        .docker_ulimits
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let security_opt: Vec<String> = app
+        .docker_security_opt
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
     let new_run_config = RunConfig {
         image: image_tag,
         name: new_container_name.clone(),
@@ -606,12 +637,16 @@ pub async fn restart_app(
         labels: app.get_container_labels(),
         binds,
         restart_policy: app.restart_policy.clone(),
-        privileged: false,
-        cap_add: vec![],
-        devices: vec![],
-        shm_size: None,
-        init: false,
+        privileged: app.privileged != 0,
+        cap_add,
+        cap_drop,
+        devices: restart_devices,
+        shm_size,
+        init: app.init_process != 0,
         app_id: Some(app.id.clone()),
+        gpus: app.docker_gpus.clone(),
+        ulimits,
+        security_opt,
     };
 
     // 3. Start the new container (old one is still running — no downtime yet)

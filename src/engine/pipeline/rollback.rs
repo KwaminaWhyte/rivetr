@@ -118,6 +118,36 @@ pub async fn run_rollback(
         })
         .collect();
 
+    let rollback_cap_add: Vec<String> = app
+        .cap_add
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let rollback_cap_drop: Vec<String> = app
+        .docker_cap_drop
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let rollback_devices: Vec<String> = app
+        .devices
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let rollback_shm_size: Option<i64> = app
+        .shm_size
+        .as_ref()
+        .and_then(|s| crate::runtime::parse_shm_size(s));
+    let rollback_ulimits: Vec<String> = app
+        .docker_ulimits
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let rollback_security_opt: Vec<String> = app
+        .docker_security_opt
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
     let run_config = RunConfig {
         image: image_tag.clone(),
         name: container_name.clone(),
@@ -131,12 +161,16 @@ pub async fn run_rollback(
         labels: app.get_container_labels(),
         binds,
         restart_policy: app.restart_policy.clone(),
-        privileged: false,
-        cap_add: vec![],
-        devices: vec![],
-        shm_size: None,
-        init: false,
+        privileged: app.privileged != 0,
+        cap_add: rollback_cap_add,
+        cap_drop: rollback_cap_drop,
+        devices: rollback_devices,
+        shm_size: rollback_shm_size,
+        init: app.init_process != 0,
         app_id: Some(app.id.clone()),
+        gpus: app.docker_gpus.clone(),
+        ulimits: rollback_ulimits,
+        security_opt: rollback_security_opt,
     };
 
     add_deployment_log(

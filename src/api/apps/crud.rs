@@ -148,8 +148,8 @@ pub async fn create_app(
 
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, restart_policy, privileged, cap_add, devices, shm_size, init_process, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, restart_policy, privileged, cap_add, devices, shm_size, init_process, docker_cap_drop, docker_gpus, docker_ulimits, docker_security_opt, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
         "#,
     )
     .bind(&id)
@@ -425,6 +425,28 @@ pub async fn update_app(
     let shm_size = merge_optional_string(&req.shm_size, &existing.shm_size);
     let init_process = req.init_process.unwrap_or(existing.init_process != 0);
 
+    // Extended Docker run options (migration 085)
+    let update_cap_drop = match &req.docker_cap_drop {
+        Some(v) if v.is_empty() => None,
+        Some(v) => serde_json::to_string(v).ok(),
+        None => existing.docker_cap_drop.clone(),
+    };
+    let update_gpus = match &req.docker_gpus {
+        Some(g) if g.is_empty() => None,
+        Some(g) => Some(g.clone()),
+        None => existing.docker_gpus.clone(),
+    };
+    let update_ulimits = match &req.docker_ulimits {
+        Some(v) if v.is_empty() => None,
+        Some(v) => serde_json::to_string(v).ok(),
+        None => existing.docker_ulimits.clone(),
+    };
+    let update_security_opt = match &req.docker_security_opt {
+        Some(v) if v.is_empty() => None,
+        Some(v) => serde_json::to_string(v).ok(),
+        None => existing.docker_security_opt.clone(),
+    };
+
     sqlx::query(
         r#"
         UPDATE apps SET
@@ -478,6 +500,10 @@ pub async fn update_app(
             init_process = ?,
             build_secrets = ?,
             build_platforms = ?,
+            docker_cap_drop = ?,
+            docker_gpus = ?,
+            docker_ulimits = ?,
+            docker_security_opt = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -532,6 +558,10 @@ pub async fn update_app(
     .bind(init_process)
     .bind(&build_secrets_json)
     .bind(&build_platforms)
+    .bind(&update_cap_drop)
+    .bind(&update_gpus)
+    .bind(&update_ulimits)
+    .bind(&update_security_opt)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

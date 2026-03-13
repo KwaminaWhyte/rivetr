@@ -267,6 +267,21 @@ pub(super) async fn start_container(
         .shm_size
         .as_ref()
         .and_then(|s| crate::runtime::parse_shm_size(s));
+    let cap_drop: Vec<String> = app
+        .docker_cap_drop
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let ulimits: Vec<String> = app
+        .docker_ulimits
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    let security_opt: Vec<String> = app
+        .docker_security_opt
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
 
     let run_config = RunConfig {
         image: image_tag,
@@ -283,10 +298,14 @@ pub(super) async fn start_container(
         restart_policy: app.restart_policy.clone(),
         privileged: app.privileged != 0,
         cap_add,
+        cap_drop,
         devices,
         shm_size,
         init: app.init_process != 0,
         app_id: Some(app.id.clone()),
+        gpus: app.docker_gpus.clone(),
+        ulimits,
+        security_opt,
     };
 
     let container_id = runtime

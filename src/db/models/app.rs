@@ -132,6 +132,14 @@ pub struct App {
     pub build_platforms: Option<String>,
     /// Timestamp of the last crash notification sent for this app (for rate-limiting)
     pub last_crash_notified_at: Option<String>,
+    /// JSON array of capabilities to drop (e.g. ["MKNOD"])
+    pub docker_cap_drop: Option<String>,
+    /// GPU access: "all" or "device=0,1"
+    pub docker_gpus: Option<String>,
+    /// JSON array of ulimit strings (e.g. ["nofile=1024:1024"])
+    pub docker_ulimits: Option<String>,
+    /// JSON array of security options (e.g. ["seccomp=unconfined"])
+    pub docker_security_opt: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -229,6 +237,14 @@ pub struct AppResponse {
     pub build_secrets: Option<String>,
     /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
     pub build_platforms: Option<String>,
+    /// JSON array of capabilities to drop (e.g. ["MKNOD"])
+    pub docker_cap_drop: Option<String>,
+    /// GPU access: "all" or "device=0,1"
+    pub docker_gpus: Option<String>,
+    /// JSON array of ulimit strings (e.g. ["nofile=1024:1024"])
+    pub docker_ulimits: Option<String>,
+    /// JSON array of security options (e.g. ["seccomp=unconfined"])
+    pub docker_security_opt: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -294,6 +310,10 @@ impl From<App> for AppResponse {
             init_process: app.init_process != 0,
             build_secrets: app.build_secrets,
             build_platforms: app.build_platforms,
+            docker_cap_drop: app.docker_cap_drop,
+            docker_gpus: app.docker_gpus,
+            docker_ulimits: app.docker_ulimits,
+            docker_security_opt: app.docker_security_opt,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -734,6 +754,14 @@ pub struct UpdateAppRequest {
     /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
     /// Set to empty string to clear and use the daemon default.
     pub build_platforms: Option<String>,
+    /// Capabilities to drop (e.g. ["MKNOD"])
+    pub docker_cap_drop: Option<Vec<String>>,
+    /// GPU access: "all" or "device=0,1"
+    pub docker_gpus: Option<String>,
+    /// Ulimits (e.g. ["nofile=1024:1024"])
+    pub docker_ulimits: Option<Vec<String>>,
+    /// Security options (e.g. ["seccomp=unconfined"])
+    pub docker_security_opt: Option<Vec<String>>,
 }
 
 /// Request specifically for updating domains

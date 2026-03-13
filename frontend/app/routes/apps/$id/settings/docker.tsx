@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import type { App, UpdateAppRequest } from "@/types/api";
 
@@ -33,38 +40,59 @@ export default function AppSettingsDocker() {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [restartPolicy, setRestartPolicy] = useState(app.restart_policy || "unless-stopped");
   const [privileged, setPrivileged] = useState(app.privileged || false);
   const [initProcess, setInitProcess] = useState(app.init_process || false);
-  const [capAdd, setCapAdd] = useState(
-    parseJsonArray(app.cap_add).join(", ")
-  );
-  const [devices, setDevices] = useState(
-    parseJsonArray(app.devices).join("\n")
-  );
+  const [capAdd, setCapAdd] = useState(parseJsonArray(app.cap_add).join(", "));
+  const [capDrop, setCapDrop] = useState(parseJsonArray(app.docker_cap_drop).join(", "));
+  const [devices, setDevices] = useState(parseJsonArray(app.devices).join("\n"));
   const [shmSize, setShmSize] = useState(app.shm_size || "");
+  const [gpus, setGpus] = useState(app.docker_gpus || "");
+  const [ulimits, setUlimits] = useState(parseJsonArray(app.docker_ulimits).join("\n"));
+  const [securityOpt, setSecurityOpt] = useState(
+    parseJsonArray(app.docker_security_opt).join("\n")
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Parse cap_add: comma-separated capabilities
       const parsedCapAdd = capAdd
         .split(",")
         .map((s) => s.trim().toUpperCase())
         .filter((s) => s.length > 0);
 
-      // Parse devices: one per line
+      const parsedCapDrop = capDrop
+        .split(",")
+        .map((s) => s.trim().toUpperCase())
+        .filter((s) => s.length > 0);
+
       const parsedDevices = devices
         .split("\n")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
+      const parsedUlimits = ulimits
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      const parsedSecurityOpt = securityOpt
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
       const updates: UpdateAppRequest = {
+        restart_policy: restartPolicy,
         privileged,
         init_process: initProcess,
         cap_add: parsedCapAdd,
+        docker_cap_drop: parsedCapDrop,
         devices: parsedDevices,
         shm_size: shmSize.trim() || undefined,
+        docker_gpus: gpus.trim() || "",
+        docker_ulimits: parsedUlimits,
+        docker_security_opt: parsedSecurityOpt,
       };
 
       await api.updateApp(app.id, updates);
@@ -90,6 +118,27 @@ export default function AppSettingsDocker() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Restart Policy */}
+            <div className="space-y-2">
+              <Label htmlFor="restart_policy">Restart Policy</Label>
+              <Select value={restartPolicy} onValueChange={setRestartPolicy}>
+                <SelectTrigger id="restart_policy">
+                  <SelectValue placeholder="Select restart policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unless-stopped">unless-stopped (default)</SelectItem>
+                  <SelectItem value="always">always</SelectItem>
+                  <SelectItem value="on-failure">on-failure (max 5 retries)</SelectItem>
+                  <SelectItem value="never">never</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Controls when Docker automatically restarts the container.{" "}
+                <code className="font-mono">unless-stopped</code> restarts the container on crash
+                but not after a manual stop.
+              </p>
+            </div>
+
             {/* Privileged Mode */}
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
@@ -126,6 +175,38 @@ export default function AppSettingsDocker() {
               />
             </div>
 
+            {/* SHM Size */}
+            <div className="space-y-2">
+              <Label htmlFor="shm_size">Shared Memory Size</Label>
+              <Input
+                id="shm_size"
+                placeholder="128m"
+                value={shmSize}
+                onChange={(e) => setShmSize(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Size of <code className="font-mono">/dev/shm</code> (e.g.{" "}
+                <code className="font-mono">128m</code>,{" "}
+                <code className="font-mono">1g</code>). Leave empty for the Docker default.
+              </p>
+            </div>
+
+            {/* GPU Access */}
+            <div className="space-y-2">
+              <Label htmlFor="gpus">GPU Access</Label>
+              <Input
+                id="gpus"
+                placeholder="all"
+                value={gpus}
+                onChange={(e) => setGpus(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Grant access to GPUs. Use <code className="font-mono">all</code> for all GPUs,
+                or <code className="font-mono">device=0,1</code> for specific devices. Requires
+                the NVIDIA Container Toolkit on the host. Leave empty to disable.
+              </p>
+            </div>
+
             {/* Cap Add */}
             <div className="space-y-2">
               <Label htmlFor="cap_add">Add Capabilities</Label>
@@ -139,6 +220,22 @@ export default function AppSettingsDocker() {
               <p className="text-xs text-muted-foreground">
                 Comma-separated list of Linux capabilities to add (e.g.{" "}
                 <code className="font-mono">NET_ADMIN, SYS_PTRACE</code>).
+              </p>
+            </div>
+
+            {/* Cap Drop */}
+            <div className="space-y-2">
+              <Label htmlFor="cap_drop">Drop Capabilities</Label>
+              <Textarea
+                id="cap_drop"
+                placeholder="MKNOD, NET_RAW"
+                value={capDrop}
+                onChange={(e) => setCapDrop(e.target.value)}
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated list of Linux capabilities to drop for extra hardening (e.g.{" "}
+                <code className="font-mono">MKNOD, NET_RAW</code>).
               </p>
             </div>
 
@@ -159,19 +256,37 @@ export default function AppSettingsDocker() {
               </p>
             </div>
 
-            {/* SHM Size */}
+            {/* Ulimits */}
             <div className="space-y-2">
-              <Label htmlFor="shm_size">Shared Memory Size</Label>
-              <Input
-                id="shm_size"
-                placeholder="128m"
-                value={shmSize}
-                onChange={(e) => setShmSize(e.target.value)}
+              <Label htmlFor="ulimits">Ulimits</Label>
+              <Textarea
+                id="ulimits"
+                placeholder="nofile=1024:1024"
+                value={ulimits}
+                onChange={(e) => setUlimits(e.target.value)}
+                rows={3}
               />
               <p className="text-xs text-muted-foreground">
-                Size of <code className="font-mono">/dev/shm</code> (e.g.{" "}
-                <code className="font-mono">128m</code>,{" "}
-                <code className="font-mono">1g</code>). Leave empty for the Docker default.
+                One ulimit per line in the format{" "}
+                <code className="font-mono">type=soft:hard</code> (e.g.{" "}
+                <code className="font-mono">nofile=1024:1024</code>).
+              </p>
+            </div>
+
+            {/* Security Options */}
+            <div className="space-y-2">
+              <Label htmlFor="security_opt">Security Options</Label>
+              <Textarea
+                id="security_opt"
+                placeholder="seccomp=unconfined"
+                value={securityOpt}
+                onChange={(e) => setSecurityOpt(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                One security option per line (e.g.{" "}
+                <code className="font-mono">seccomp=unconfined</code>,{" "}
+                <code className="font-mono">apparmor=unconfined</code>).
               </p>
             </div>
 

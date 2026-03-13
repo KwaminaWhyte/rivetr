@@ -166,6 +166,64 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         Some(config.cap_add.clone())
     };
 
+    let cap_drop: Option<Vec<String>> = if config.cap_drop.is_empty() {
+        None
+    } else {
+        Some(config.cap_drop.clone())
+    };
+
+    let security_opt: Option<Vec<String>> = if config.security_opt.is_empty() {
+        None
+    } else {
+        Some(config.security_opt.clone())
+    };
+
+    // Parse ulimits: "nofile=1024:1024" → ResourcesUlimits { name, soft, hard }
+    let ulimits: Option<Vec<bollard::service::ResourcesUlimits>> = if config.ulimits.is_empty() {
+        None
+    } else {
+        let parsed: Vec<bollard::service::ResourcesUlimits> = config
+            .ulimits
+            .iter()
+            .filter_map(|u| {
+                let (name, rest) = u.split_once('=')?;
+                let (soft_str, hard_str) = rest.split_once(':')?;
+                let soft: i64 = soft_str.parse().ok()?;
+                let hard: i64 = hard_str.parse().ok()?;
+                Some(bollard::service::ResourcesUlimits {
+                    name: Some(name.to_string()),
+                    soft: Some(soft),
+                    hard: Some(hard),
+                })
+            })
+            .collect();
+        if parsed.is_empty() { None } else { Some(parsed) }
+    };
+
+    // GPU device requests
+    let device_requests: Option<Vec<bollard::service::DeviceRequest>> =
+        config.gpus.as_ref().map(|gpus| {
+            if gpus == "all" {
+                vec![bollard::service::DeviceRequest {
+                    driver: Some("nvidia".to_string()),
+                    count: Some(-1),
+                    device_ids: None,
+                    capabilities: Some(vec![vec!["gpu".to_string()]]),
+                    options: None,
+                }]
+            } else {
+                let ids_str = gpus.trim_start_matches("device=");
+                let ids: Vec<String> = ids_str.split(',').map(|s| s.trim().to_string()).collect();
+                vec![bollard::service::DeviceRequest {
+                    driver: Some("nvidia".to_string()),
+                    count: None,
+                    device_ids: Some(ids),
+                    capabilities: Some(vec![vec!["gpu".to_string()]]),
+                    options: None,
+                }]
+            }
+        });
+
     let host_config = bollard::service::HostConfig {
         port_bindings: Some(port_bindings),
         memory: config.memory_limit.as_ref().and_then(|m| parse_memory(m)),
@@ -175,9 +233,13 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         restart_policy: Some(restart_policy),
         privileged: Some(config.privileged),
         cap_add,
+        cap_drop,
         devices,
         shm_size: config.shm_size,
         init: Some(config.init),
+        security_opt,
+        ulimits,
+        device_requests,
         ..Default::default()
     };
 

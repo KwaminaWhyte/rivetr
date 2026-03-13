@@ -676,6 +676,7 @@ mod tests {
             custom_template: Some(
                 r#"{"text": "Alert for {{app_name}}: {{metric_type}} at {{value}}%"}"#.to_string(),
             ),
+            webhook_secret: None,
         };
 
         let result = build_custom_alert_payload(&config, &payload);
@@ -702,6 +703,7 @@ mod tests {
             headers: std::collections::HashMap::new(),
             payload_template: "custom".to_string(),
             custom_template: None,
+            webhook_secret: None,
         };
 
         let result = build_custom_alert_payload(&config, &payload);

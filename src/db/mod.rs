@@ -1174,6 +1174,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 085: Add extended Docker run options per app (cap_drop, gpus, ulimits, security_opt)
+    let has_docker_cap_drop: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'docker_cap_drop'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_docker_cap_drop.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/085_docker_run_options.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

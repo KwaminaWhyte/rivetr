@@ -722,10 +722,14 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         restart_policy: "unless-stopped".to_string(),
         privileged: false,
         cap_add: vec![],
+        cap_drop: vec![],
         devices: vec![],
         shm_size: None,
         init: false,
         app_id: None,
+        gpus: None,
+        ulimits: vec![],
+        security_opt: vec![],
     };
 
     // Start the container
