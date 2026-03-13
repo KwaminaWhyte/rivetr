@@ -343,6 +343,16 @@ pub async fn run_deployment(
     build_limits: &BuildLimits,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
+    // Check if the deployment was cancelled while it was queued (before the pipeline picked it up)
+    let current_status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
+            .bind(deployment_id)
+            .fetch_optional(db)
+            .await?;
+    if current_status.as_deref() == Some("cancelled") {
+        anyhow::bail!("Deployment was cancelled before it could start");
+    }
+
     // Log remote deployment intent if a server is assigned to this app
     if let Some(ref server_id) = app.server_id {
         add_deployment_log(

@@ -552,6 +552,7 @@ pub(super) async fn start_container(
         "Deployment completed successfully",
     )
     .await?;
+
     update_deployment_status(db, deployment_id, "running", None).await?;
 
     // Step 10: Trim old deployments according to retention policy

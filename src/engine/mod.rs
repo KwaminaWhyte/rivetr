@@ -443,6 +443,22 @@ impl DeploymentEngine {
                             }
                         } else {
                             // Regular failure - no auto-rollback
+                            // Check if the deployment was cancelled — if so, preserve that status
+                            let current_status: Option<String> = sqlx::query_scalar(
+                                "SELECT status FROM deployments WHERE id = ?",
+                            )
+                            .bind(&deployment_id)
+                            .fetch_optional(&db)
+                            .await
+                            .ok()
+                            .flatten();
+
+                            if current_status.as_deref() == Some("cancelled") {
+                                tracing::info!(
+                                    "Deployment {} was cancelled — skipping failed status update",
+                                    deployment_id
+                                );
+                            } else {
                             record_deployment_failed();
                             let duration_secs = deploy_start.elapsed().as_secs_f64();
                             increment_deployments_total(&app.name, "failed");
@@ -486,6 +502,7 @@ impl DeploymentEngine {
                             {
                                 tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
                             }
+                            } // end else (not cancelled)
                         }
                     }
                 }
@@ -504,7 +521,7 @@ async fn update_deployment_status(
 
     if status == "running" || status == "failed" || status == "stopped" {
         sqlx::query(
-            "UPDATE deployments SET status = ?, error_message = ?, finished_at = ? WHERE id = ?",
+            "UPDATE deployments SET status = ?, error_message = ?, finished_at = ? WHERE id = ? AND status != 'cancelled'",
         )
         .bind(status)
         .bind(error)
@@ -513,7 +530,7 @@ async fn update_deployment_status(
         .execute(db)
         .await?;
     } else {
-        sqlx::query("UPDATE deployments SET status = ?, error_message = ? WHERE id = ?")
+        sqlx::query("UPDATE deployments SET status = ?, error_message = ? WHERE id = ? AND status != 'cancelled'")
             .bind(status)
             .bind(error)
             .bind(deployment_id)
