@@ -2,7 +2,7 @@
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path as AxumPath, State},
+    extract::{Multipart, Path as AxumPath, Query, State},
     http::{header, StatusCode},
     response::Response,
     Json,
@@ -478,4 +478,400 @@ fn compute_next_run(cron_expression: &str) -> Option<String> {
             Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Full system backup
+// ---------------------------------------------------------------------------
+
+/// Query parameters for the full backup endpoint.
+#[derive(Debug, Deserialize)]
+pub struct FullBackupQuery {
+    /// Optional team ID to scope the backup to a specific team.
+    pub team_id: Option<String>,
+}
+
+/// Create a full system backup of all team resources.
+///
+/// POST /api/system/backup/full
+///
+/// Produces a single .tar.gz archive containing:
+///   rivetr-full-backup-<timestamp>/
+///     metadata.json            – backup format version, team_id, timestamp
+///     rivetr.db                – full SQLite database (WAL-checkpointed)
+///     apps/<name>/
+///       config.json            – app config + env vars
+///     databases/<name>/
+///       config.json            – database metadata
+///       data.tar.gz            – volume data (via `docker cp`)
+///     services/<name>/
+///       docker-compose.yml     – compose file
+pub async fn create_full_backup(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<FullBackupQuery>,
+) -> Result<Response, ApiError> {
+    use crate::db::{App, EnvVar, ManagedDatabase, Service};
+    use chrono::Utc;
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+    use tar::Builder as TarBuilder;
+
+    let team_id = query.team_id.as_deref();
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S").to_string();
+    let root_dir = format!("rivetr-full-backup-{}", timestamp);
+    let archive_name = format!("{}.tar.gz", root_dir);
+
+    // 1. Checkpoint SQLite WAL so the DB file is consistent.
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("WAL checkpoint failed: {}", e)))?;
+
+    // 2. Read the raw database file into memory.
+    let data_dir = &state.config.server.data_dir;
+    let db_path = data_dir.join("rivetr.db");
+    let db_bytes = std::fs::read(&db_path)
+        .map_err(|e| ApiError::internal(format!("Cannot read rivetr.db: {}", e)))?;
+
+    // 3. Query apps (optionally scoped to team).
+    let apps: Vec<App> = match team_id {
+        Some(tid) if !tid.is_empty() => sqlx::query_as::<_, App>(
+            "SELECT * FROM apps WHERE team_id = ? OR team_id IS NULL ORDER BY name ASC",
+        )
+        .bind(tid)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to list apps: {}", e)))?,
+        _ => sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY name ASC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Failed to list apps: {}", e)))?,
+    };
+
+    // 4. Query managed databases (optionally scoped to team).
+    let databases: Vec<ManagedDatabase> = match team_id {
+        Some(tid) if !tid.is_empty() => sqlx::query_as::<_, ManagedDatabase>(
+            "SELECT * FROM managed_databases WHERE team_id = ? OR team_id IS NULL ORDER BY name ASC",
+        )
+        .bind(tid)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
+        _ => sqlx::query_as::<_, ManagedDatabase>(
+            "SELECT * FROM managed_databases ORDER BY name ASC",
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
+    };
+
+    // 5. Query Docker Compose services (optionally scoped to team).
+    let services: Vec<Service> = match team_id {
+        Some(tid) if !tid.is_empty() => sqlx::query_as::<_, Service>(
+            "SELECT * FROM services WHERE team_id = ? OR team_id IS NULL ORDER BY name ASC",
+        )
+        .bind(tid)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to list services: {}", e)))?,
+        _ => sqlx::query_as::<_, Service>("SELECT * FROM services ORDER BY name ASC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Failed to list services: {}", e)))?,
+    };
+
+    // 6. Build the in-memory tar.gz archive.
+    let mut raw_tar: Vec<u8> = Vec::new();
+    {
+        let mut builder = TarBuilder::new(&mut raw_tar);
+
+        // --- rivetr.db ---
+        add_bytes_to_tar(
+            &mut builder,
+            &format!("{}/rivetr.db", root_dir),
+            &db_bytes,
+        )
+        .map_err(|e| ApiError::internal(format!("Tar error (db): {}", e)))?;
+
+        // --- metadata.json ---
+        let metadata = serde_json::json!({
+            "backup_format_version": "1.0",
+            "team_id": team_id,
+            "timestamp": Utc::now().to_rfc3339(),
+            "app_count": apps.len(),
+            "database_count": databases.len(),
+            "service_count": services.len(),
+        });
+        let meta_bytes = serde_json::to_vec_pretty(&metadata)
+            .map_err(|e| ApiError::internal(format!("JSON error: {}", e)))?;
+        add_bytes_to_tar(
+            &mut builder,
+            &format!("{}/metadata.json", root_dir),
+            &meta_bytes,
+        )
+        .map_err(|e| ApiError::internal(format!("Tar error (metadata): {}", e)))?;
+
+        // --- apps/<name>/config.json ---
+        for app in &apps {
+            // Fetch env vars for this app.
+            let env_vars: Vec<EnvVar> =
+                sqlx::query_as::<_, EnvVar>("SELECT * FROM env_vars WHERE app_id = ?")
+                    .bind(&app.id)
+                    .fetch_all(&state.db)
+                    .await
+                    .unwrap_or_default();
+
+            let env_map: serde_json::Map<String, serde_json::Value> = env_vars
+                .iter()
+                .map(|ev| {
+                    (
+                        ev.key.clone(),
+                        serde_json::Value::String(ev.value.clone()),
+                    )
+                })
+                .collect();
+
+            // Sanitise app name for use as a directory name.
+            let safe_name = sanitise_name(&app.name);
+            let config = serde_json::json!({
+                "id": app.id,
+                "name": app.name,
+                "git_url": app.git_url,
+                "branch": app.branch,
+                "dockerfile": app.dockerfile,
+                "domain": app.domain,
+                "port": app.port,
+                "environment": app.environment,
+                "project_id": app.project_id,
+                "team_id": app.team_id,
+                "build_type": app.build_type,
+                "docker_image": app.docker_image,
+                "env_vars": env_map,
+            });
+            let config_bytes = serde_json::to_vec_pretty(&config)
+                .map_err(|e| ApiError::internal(format!("JSON error (app): {}", e)))?;
+            add_bytes_to_tar(
+                &mut builder,
+                &format!("{}/apps/{}/config.json", root_dir, safe_name),
+                &config_bytes,
+            )
+            .map_err(|e| ApiError::internal(format!("Tar error (app config): {}", e)))?;
+        }
+
+        // --- databases/<name>/config.json + data.tar.gz ---
+        for db in &databases {
+            let safe_name = sanitise_name(&db.name);
+
+            // Config (strip sensitive credential fields from the JSON).
+            let config = serde_json::json!({
+                "id": db.id,
+                "name": db.name,
+                "db_type": db.db_type,
+                "version": db.version,
+                "container_id": db.container_id,
+                "status": db.status,
+                "internal_port": db.internal_port,
+                "external_port": db.external_port,
+                "public_access": db.public_access,
+                "volume_name": db.volume_name,
+                "volume_path": db.volume_path,
+                "project_id": db.project_id,
+                "team_id": db.team_id,
+            });
+            let config_bytes = serde_json::to_vec_pretty(&config)
+                .map_err(|e| ApiError::internal(format!("JSON error (db): {}", e)))?;
+            add_bytes_to_tar(
+                &mut builder,
+                &format!("{}/databases/{}/config.json", root_dir, safe_name),
+                &config_bytes,
+            )
+            .map_err(|e| ApiError::internal(format!("Tar error (db config): {}", e)))?;
+
+            // Try to export volume data via `docker run --rm`.
+            // We do this best-effort: log a warning and continue if it fails.
+            if let Some(ref vol_name) = db.volume_name {
+                if !vol_name.is_empty() {
+                    match export_docker_volume(vol_name).await {
+                        Ok(vol_bytes) => {
+                            add_bytes_to_tar(
+                                &mut builder,
+                                &format!(
+                                    "{}/databases/{}/data.tar.gz",
+                                    root_dir, safe_name
+                                ),
+                                &vol_bytes,
+                            )
+                            .map_err(|e| {
+                                ApiError::internal(format!("Tar error (db volume): {}", e))
+                            })?;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                db = %db.name,
+                                volume = %vol_name,
+                                error = %e,
+                                "Skipping volume export – could not run docker export"
+                            );
+                        }
+                    }
+                }
+            } else if let Some(ref vol_path) = db.volume_path {
+                // Host-path based volume – tar the directory directly.
+                let path = std::path::Path::new(vol_path);
+                if path.exists() {
+                    match backup_directory(path).await {
+                        Ok(vol_bytes) => {
+                            add_bytes_to_tar(
+                                &mut builder,
+                                &format!(
+                                    "{}/databases/{}/data.tar.gz",
+                                    root_dir, safe_name
+                                ),
+                                &vol_bytes,
+                            )
+                            .map_err(|e| {
+                                ApiError::internal(format!("Tar error (db dir): {}", e))
+                            })?;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                db = %db.name,
+                                path = %vol_path,
+                                error = %e,
+                                "Skipping directory export – could not tar path"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- services/<name>/docker-compose.yml ---
+        for svc in &services {
+            let safe_name = sanitise_name(&svc.name);
+            add_bytes_to_tar(
+                &mut builder,
+                &format!("{}/services/{}/docker-compose.yml", root_dir, safe_name),
+                svc.compose_content.as_bytes(),
+            )
+            .map_err(|e| ApiError::internal(format!("Tar error (service): {}", e)))?;
+        }
+
+        builder
+            .finish()
+            .map_err(|e| ApiError::internal(format!("Tar finish error: {}", e)))?;
+    }
+
+    // 7. Compress the tar.
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(&raw_tar)
+        .map_err(|e| ApiError::internal(format!("Gzip write error: {}", e)))?;
+    let compressed = encoder
+        .finish()
+        .map_err(|e| ApiError::internal(format!("Gzip finish error: {}", e)))?;
+
+    tracing::info!(
+        archive = %archive_name,
+        apps = apps.len(),
+        databases = databases.len(),
+        services = services.len(),
+        size_bytes = compressed.len(),
+        "Full system backup created"
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/gzip")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", archive_name),
+        )
+        .header(header::CONTENT_LENGTH, compressed.len().to_string())
+        .body(Body::from(compressed))
+        .map_err(|e| ApiError::internal(format!("Failed to build response: {}", e)))?;
+
+    Ok(response)
+}
+
+/// Add a byte slice to a tar archive with the given path.
+fn add_bytes_to_tar<W: std::io::Write>(
+    builder: &mut tar::Builder<W>,
+    path: &str,
+    data: &[u8],
+) -> anyhow::Result<()> {
+    let mut header = tar::Header::new_gnu();
+    header.set_size(data.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append_data(&mut header, path, std::io::Cursor::new(data))?;
+    Ok(())
+}
+
+/// Sanitise a resource name for use as a filesystem directory name.
+fn sanitise_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Export a Docker named volume by spinning up an alpine container.
+///
+/// Runs: `docker run --rm -v <volume>:/data alpine tar czf - -C /data .`
+/// and captures stdout as the compressed archive bytes.
+async fn export_docker_volume(volume_name: &str) -> anyhow::Result<Vec<u8>> {
+    use tokio::process::Command;
+
+    let output = Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-v",
+            &format!("{}:/data", volume_name),
+            "alpine",
+            "tar",
+            "czf",
+            "-",
+            "-C",
+            "/data",
+            ".",
+        ])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("docker run for volume export failed: {}", stderr);
+    }
+
+    Ok(output.stdout)
+}
+
+/// Compress a host directory into a tar.gz and return the bytes.
+async fn backup_directory(path: &std::path::Path) -> anyhow::Result<Vec<u8>> {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut tar_data: Vec<u8> = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_data);
+            builder.append_dir_all(".", &path)?;
+            builder.finish()?;
+        }
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(&tar_data)?;
+        Ok(enc.finish()?)
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))?
 }

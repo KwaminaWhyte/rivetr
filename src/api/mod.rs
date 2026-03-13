@@ -667,6 +667,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/update/apply", post(system::apply_update))
         // Instance backup & restore
         .route("/system/backup", post(system::create_backup))
+        .route("/system/backup/full", post(system::create_full_backup))
         .route("/system/backups", get(system::list_backups))
         .route("/system/backups/:name", delete(system::delete_backup))
         .route(

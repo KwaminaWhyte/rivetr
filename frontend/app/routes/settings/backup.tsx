@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
+import { useTeamContext } from "@/lib/team-context";
 import type { BackupInfo, RestoreResult } from "@/types/api";
 import {
   Download,
@@ -27,6 +28,9 @@ import {
   CheckCircle,
   Loader2,
   CloudUpload,
+  Package,
+  Database,
+  Layers,
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
@@ -64,7 +68,9 @@ function formatDate(dateStr: string): string {
 
 export default function BackupPage() {
   const queryClient = useQueryClient();
+  const { currentTeamId } = useTeamContext();
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingFull, setIsCreatingFull] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [uploadingToS3, setUploadingToS3] = useState<string | null>(null);
@@ -119,6 +125,32 @@ export default function BackupPage() {
       console.error(error);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  // Create full system backup and download
+  const handleCreateFullBackup = async () => {
+    setIsCreatingFull(true);
+    try {
+      const blob = await api.createFullBackup(currentTeamId ?? undefined);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
+      link.download = `rivetr-full-backup-${timestamp}.tar.gz`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Full system backup created and downloaded");
+    } catch (error) {
+      toast.error("Failed to create full system backup");
+      console.error(error);
+    } finally {
+      setIsCreatingFull(false);
     }
   };
 
@@ -222,6 +254,63 @@ export default function BackupPage() {
               <>
                 <Download className="h-4 w-4 mr-2" />
                 Create & Download Backup
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Full System Backup Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Full System Backup
+          </CardTitle>
+          <CardDescription>
+            Create a comprehensive backup of all resources for the current team,
+            including app configs, environment variables, database volume data,
+            and Docker Compose service definitions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-muted-foreground" />
+              <span>SQLite database (all apps, deployments, users, teams)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-muted-foreground" />
+              <span>App configs and environment variables for each app</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span>Managed database metadata and volume data (Docker named volumes)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <span>Docker Compose service definitions</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-amber-500/10 rounded-lg text-sm text-amber-700 dark:text-amber-400 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Database volume exports may take several minutes for large datasets.
+              The download will begin automatically when the backup is ready.
+            </span>
+          </div>
+
+          <Button onClick={handleCreateFullBackup} disabled={isCreatingFull}>
+            {isCreatingFull ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating Full Backup...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Create Full System Backup
               </>
             )}
           </Button>

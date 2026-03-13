@@ -171,6 +171,19 @@ export const systemApi = {
     return response.blob();
   },
 
+  /** Create a full system backup (apps + env vars + databases + services + SQLite) */
+  createFullBackup: async (teamId?: string, token?: string): Promise<Blob> => {
+    const params = new URLSearchParams();
+    if (teamId) params.append("team_id", teamId);
+    const qs = params.toString();
+    const response = await apiRawRequest(
+      `/system/backup/full${qs ? `?${qs}` : ""}`,
+      { method: "POST" },
+      token
+    );
+    return response.blob();
+  },
+
   /** List existing backups */
   listBackups: (token?: string) =>
     apiRequest<BackupInfo[]>("/system/backups", {}, token),

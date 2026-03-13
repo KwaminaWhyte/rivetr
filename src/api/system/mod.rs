@@ -8,9 +8,9 @@ mod updates;
 
 // Re-export everything callers need
 pub use backup::{
-    create_backup, create_backup_schedule, delete_backup, delete_backup_schedule, download_backup,
-    list_backup_schedules, list_backups, restore_backup, toggle_backup_schedule,
-    upload_backup_to_s3,
+    create_backup, create_backup_schedule, create_full_backup, delete_backup,
+    delete_backup_schedule, download_backup, list_backup_schedules, list_backups, restore_backup,
+    toggle_backup_schedule, upload_backup_to_s3,
 };
 pub use health::{
     get_detailed_health, get_disk_stats, get_recent_events, get_stats_history, get_stats_summary,

@@ -293,6 +293,7 @@ export const api = {
 
   // Instance Backup & Restore
   createBackup: systemApi.createBackup,
+  createFullBackup: systemApi.createFullBackup,
   listBackups: systemApi.listBackups,
   deleteBackup: systemApi.deleteBackup,
   downloadBackup: systemApi.downloadBackup,
