@@ -27,7 +27,7 @@ import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare, Ban } from "lucide-react";
 
 interface DeploymentDiff {
   deployment_id: string;
@@ -208,6 +208,20 @@ export default function AppDeploymentsTab() {
     }
   };
 
+  // Handle cancel deployment
+  const handleCancel = async (deploymentId: string) => {
+    setIsSubmitting(true);
+    try {
+      await api.cancelDeployment(app.id, deploymentId);
+      toast.success("Deployment cancelled");
+      queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to cancel deployment");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Open diff dialog for a deployment
   const handleViewDiff = async (deploymentId: string) => {
     setDiffDeploymentId(deploymentId);
@@ -357,18 +371,32 @@ export default function AppDeploymentsTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Deployments
-            {hasActiveDeployment && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              Deployments
+              {hasActiveDeployment && (
+                <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                  </span>
+                  In Progress
                 </span>
-                In Progress
-              </span>
+              )}
+            </CardTitle>
+            {hasActiveDeployment && activeDeployment && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
+                disabled={isSubmitting}
+                onClick={() => handleCancel(activeDeployment.id)}
+              >
+                <Ban className="h-3.5 w-3.5" />
+                Cancel Deployment
+              </Button>
             )}
-          </CardTitle>
+          </div>
           {total > 0 && (
             <CardDescription>
               Showing {deployments.length} of {total} deployments

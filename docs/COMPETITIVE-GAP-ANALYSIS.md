@@ -147,21 +147,22 @@ Dokploy auto-creates a dedicated Docker network per application, connecting only
 ## 3. Container & Docker Features
 
 ### Custom Docker run options
-🔴 **Missing in Rivetr**
+🟡 **Partial in Rivetr**
 
-Coolify exposes advanced Docker container options that Rivetr does not:
-- `--cap-add` / `--cap-drop` (Linux capabilities)
-- `--privileged` mode
+Rivetr now exposes several advanced Docker container options via the **Docker** settings tab per app:
+- ✅ `--privileged` mode (toggle)
+- ✅ `--cap-add` (comma-separated Linux capabilities e.g. NET_ADMIN, SYS_PTRACE)
+- ✅ `--device` (device passthrough mappings e.g. /dev/snd:/dev/snd)
+- ✅ `--shm-size` (shared memory size e.g. 128m, 1g)
+- ✅ `--init` (run tini as PID 1)
+
+Still missing compared to Coolify/Dokploy:
+- `--gpus` (GPU passthrough for AI/ML workloads)
 - `--security-opt` (seccomp, apparmor profiles)
 - `--sysctl` (kernel parameter overrides)
-- `--device` (device passthrough — e.g., GPUs, USB)
-- `--ulimit` (file descriptor limits, etc.)
-- `--shm-size` (shared memory size)
-- `--gpus` (GPU passthrough for AI/ML workloads)
+- `--ulimit` (file descriptor limits)
+- `--cap-drop` (drop capabilities)
 - `--ip` / `--ip6` (fixed IP addresses)
-- `--init` (run an init process)
-
-Rivetr doesn't expose any of these. Users who need GPU workloads, privileged containers, or custom Linux capabilities have no path forward.
 
 ### Build-time Docker secrets
 🔴 **Missing in Rivetr**
@@ -306,9 +307,9 @@ Dokploy's "Patches" feature applies file-level modifications (edit, create, dele
 Rivetr has health-based automatic rollback but `[ ] Push built images to Docker registry on deploy` is still incomplete. Both competitors push every built image to a configured Docker registry tagged with the git commit SHA, enabling rollback to **any** historical deployment — not just the immediately previous one. Rivetr's rollback is currently limited to health-check-driven revert during the current deployment.
 
 ### Deployment queue with cancellation
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy uses Redis to queue deployments, preventing concurrent builds from overwhelming the server. Users can cancel queued (but not in-progress) deployments. Rivetr uses Tokio MPSC channels for serializing deployments but cancellation of queued deployments is not exposed in the UI.
+Rivetr uses Tokio MPSC channels for serializing deployments (no Redis dependency). Users can now cancel active deployments via a **Cancel Deployment** button in the Deployments tab — `POST /api/apps/:id/deployments/:deploymentId/cancel` signals a `CancellationToken` and marks the deployment as `cancelled` in the database. Dokploy only cancels queued deployments; Rivetr cancels in-progress ones too.
 
 ### GitHub Actions integration
 🔴 **Missing in Rivetr**
@@ -553,9 +554,11 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | 🔴 High |
 | Build-time Docker secrets | ❌ | ✅ | 🟡 Medium |
-| GPU / custom Docker run options | ✅ | ✅ | 🟡 Medium |
+| GPU / custom Docker run options | ✅ | ✅ | 🟡 Partial (privileged/cap_add/devices/shm_size/init done; GPU passthrough not yet) |
 | Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | ✅ Done |
 | Restart policy per app (always/on-failure/never) | ✅ | ✅ | ✅ Done |
+| Custom Docker run options (privileged/cap_add/devices/shm_size/init) | ✅ | ✅ | ✅ Done |
+| Deployment cancellation via UI | ❌ | ✅ | ✅ Done |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | 🟡 Medium |
@@ -576,7 +579,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
 | Bitbucket OAuth login | ✅ | ❌ | 🔴 Missing |
-| Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
+| Deployment queue cancellation | ❌ | ✅ | ✅ Done |
 | ARM64 / Raspberry Pi builds | ✅ | ✅ | 🟡 Medium |
 | Backblaze B2 / GCS S3 destinations | ❌ | ✅ | 🟡 Low |
 | Instance backup to S3 | ❌ | ❌ | 🟡 Planned |
