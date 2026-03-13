@@ -218,9 +218,9 @@ Rivetr now injects the following into every container at runtime (without overri
 |----------|-----------|
 | Coolify | 400+ |
 | Dokploy | 388+ |
-| **Rivetr** | **~183** *(sprint 14: +64 new templates)* |
+| **Rivetr** | **~211** *(sprint 15: +28 new templates — Mattermost, Rocket.Chat, Jitsi, Supabase, Appwrite, PocketBase, Directus, Strapi, Outline, Drone CI, Gitea Runner, Windmill, Ollama, Open WebUI, Flowise, Grafana+Prometheus, Checkmk, VictoriaMetrics, SigNoz, Healthchecks, MariaDB, CrowdSec, Harbor, Odoo, Mautic, LimeSurvey, Formbricks, Baserow)* |
 
-Rivetr is now ~2× behind on template count (down from 3×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
+Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
 ### Community template submissions
 🟡 **Partial in Rivetr** (foundation built, not active)
@@ -228,7 +228,7 @@ Rivetr is now ~2× behind on template count (down from 3×). Both competitors ha
 Both Coolify and Dokploy accept community pull requests for new templates through their GitHub repos. Rivetr has a `community_templates` table and suggestion flow implemented but no public-facing submission/review process.
 
 ### Notable templates missing from Rivetr
-Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~183:
+Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~211:
 
 **Productivity / Business**
 - Cal.com (open-source Calendly)
@@ -555,8 +555,8 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | 🟡 Medium |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
-| Database dump import | ✅ | ❌ | 🟡 Medium |
-| More service templates (~220 short, was ~280) | ✅ | ✅ | 🔴 High |
+| Database dump import | ✅ | ❌ | ✅ Done |
+| More service templates (~190 short, was ~280) | ✅ | ✅ | 🔴 High |
 | Community template submissions | ✅ | ✅ | 🔴 High |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
@@ -564,9 +564,9 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | GitHub Actions (official) | ❌ | ✅ | 🟡 Medium |
 | JavaScript SDK | ❌ | ✅ | 🟡 Medium |
 | Automated Docker resource cleanup | ✅ | ❌ | 🟡 Medium |
-| OS patch notifications | ✅ | ❌ | 🟡 Medium |
+| OS patch notifications | ✅ | ❌ | ✅ Done |
 | Auto Docker install on remote server add | ✅ | ✅ | 🟡 Medium |
-| Server security validation checklist | ❌ | ✅ | 🟡 Medium |
+| Server security validation checklist | ❌ | ✅ | ✅ Done |
 | White labeling | ❌ | ✅ (Enterprise) | 🔴 High (enterprise) |
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
 | Patches (build-time file injection) | ❌ | ✅ | 🟡 Medium |
