@@ -102,6 +102,7 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
   "/webhook-events": [{ label: "Webhook Events" }],
   "/tokens": [{ label: "API Tokens" }],
   "/costs": [{ label: "Cost Analysis" }],
+  "/tunnels": [{ label: "Tunnels" }],
 };
 
 function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
