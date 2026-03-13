@@ -103,12 +103,11 @@ function DiskUsageGauge({ used, total, usedHuman, totalHuman }: { used: number; 
 export default function MonitoringPage() {
   const { currentTeamId } = useTeamContext();
 
-  // Query for system stats, scoped to current team
-  const { data: stats } = useQuery<SystemStats | null>({
+  // Query for system stats, scoped to current team (teamId null = global/personal workspace)
+  const { data: stats, refetch: refetchStats } = useQuery<SystemStats | null>({
     queryKey: ["system-stats", currentTeamId],
-    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }).catch(() => null),
     refetchInterval: 10000, // Refresh every 10 seconds
-    enabled: currentTeamId !== null,
   });
 
   // Query for health status with polling
@@ -118,7 +117,7 @@ export default function MonitoringPage() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  // Query for disk stats with polling
+  // Query for disk stats with polling — same key as dashboard so both pages share one cache entry
   const { data: disk, isLoading: diskLoading, refetch: refetchDisk } = useQuery<DiskStats | null>({
     queryKey: ["diskStats"],
     queryFn: () => api.getDiskStats().catch(() => null),
@@ -126,6 +125,7 @@ export default function MonitoringPage() {
   });
 
   const handleRefresh = () => {
+    refetchStats();
     refetchHealth();
     refetchDisk();
   };

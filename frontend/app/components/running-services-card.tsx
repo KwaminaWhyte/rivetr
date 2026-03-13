@@ -195,16 +195,21 @@ export function RunningServicesCard() {
                       </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                    <div className="flex items-center gap-1" title="CPU">
-                      <Cpu className="h-3 w-3" />
-                      <span>{service.cpu_percent.toFixed(1)}%</span>
+                  {service.type === "service" ? (
+                    // Docker Compose services don't have per-container stats available
+                    <span className="text-xs text-muted-foreground shrink-0">running</span>
+                  ) : (
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+                      <div className="flex items-center gap-1" title="CPU">
+                        <Cpu className="h-3 w-3" />
+                        <span>{service.cpu_percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex items-center gap-1" title="Memory">
+                        <HardDrive className="h-3 w-3" />
+                        <span>{formatBytes(service.memory_usage)}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1" title="Memory">
-                      <HardDrive className="h-3 w-3" />
-                      <span>{formatBytes(service.memory_usage)}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </Link>
             ))}

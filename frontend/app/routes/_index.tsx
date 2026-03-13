@@ -100,16 +100,18 @@ export default function DashboardPage() {
   const { currentTeamId } = useTeamContext();
 
   // Use React Query for real-time updates
+  // Note: system stats are always fetched — teamId is optional server-side scoping,
+  // not a required parameter. Passing null means "all resources" (personal workspace).
   const { data: stats, isLoading: statsLoading } = useQuery<SystemStats | null>({
     queryKey: ["system-stats", currentTeamId],
-    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }).catch(() => null),
     refetchInterval: 10000, // Refresh every 10 seconds
-    enabled: currentTeamId !== null,
   });
 
+  // Use the same query key as the monitoring page so both share one cached result
   const { data: diskStats, isLoading: diskLoading } = useQuery<DiskStats | null>({
-    queryKey: ["disk-stats"],
-    queryFn: () => api.getDiskStats(),
+    queryKey: ["diskStats"],
+    queryFn: () => api.getDiskStats().catch(() => null),
     refetchInterval: 30000, // Refresh every 30 seconds (disk stats change less frequently)
   });
 
@@ -117,6 +119,7 @@ export default function DashboardPage() {
     queryKey: ["recent-events"],
     queryFn: () => api.getRecentEvents(),
     refetchInterval: 15000,
+    retry: 1,
   });
 
   // Calculate memory display values - use formatBytes for accurate display
@@ -184,9 +187,9 @@ export default function DashboardPage() {
           trendPositive={diskStats ? diskStats.usage_percent < 80 : true}
         />
         <StatCard
-          title="Uptime"
-          value={isLoading ? "..." : `${stats?.uptime_percent?.toFixed(2) ?? 99.99}%`}
-          subtitle={stats ? formatUptime(stats.uptime_seconds) : undefined}
+          title="Server Uptime"
+          value={isLoading ? "..." : stats ? formatUptime(stats.uptime_seconds) : "--"}
+          subtitle="since last restart"
           icon={<Clock className="h-5 w-5 text-amber-600" />}
           iconBgColor="bg-amber-100 dark:bg-amber-900/30"
         />
