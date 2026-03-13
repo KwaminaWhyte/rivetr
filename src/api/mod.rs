@@ -715,6 +715,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/backups/schedules/:id/toggle",
             put(system::toggle_backup_schedule),
         )
+        .route(
+            "/backups/schedules/:id/run",
+            post(system::run_backup_schedule),
+        )
         // System log cleanup
         .route("/system/log-cleanup", post(monitoring::trigger_log_cleanup))
         // S3 Storage Configs

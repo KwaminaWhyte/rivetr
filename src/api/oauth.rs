@@ -44,7 +44,7 @@ struct OAuthUserInfo {
 
 /// Supported login OAuth providers (social login — not git providers)
 fn is_supported_login_provider(p: &str) -> bool {
-    matches!(p, "github" | "google" | "gitlab" | "azure")
+    matches!(p, "github" | "google" | "gitlab" | "azure" | "bitbucket")
 }
 
 /// GET /api/auth/oauth/providers - List enabled OAuth providers (public)
@@ -141,6 +141,12 @@ pub async fn oauth_login_authorize(
                 url_encode(&state_param),
             )
         }
+        "bitbucket" => format!(
+            "https://bitbucket.org/site/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&state={}",
+            url_encode(&oauth_provider.client_id),
+            url_encode(&redirect_uri),
+            url_encode(&state_param),
+        ),
         _ => unreachable!(),
     };
 
@@ -250,9 +256,10 @@ pub async fn oauth_login_callback(
     // Fetch user info from the provider
     let user_info = fetch_user_info(&provider, &access_token).await?;
 
-    // For GitHub, email may be null in user profile, so fetch from /user/emails
+    // For GitHub and Bitbucket, email may be null in user profile, so fetch from emails endpoint
     let email = match (&user_info.email, provider.as_str()) {
         (None, "github") => fetch_github_primary_email(&access_token).await.ok(),
+        (None, "bitbucket") => fetch_bitbucket_primary_email(&access_token).await.ok(),
         (email, _) => email.clone(),
     };
 
@@ -478,7 +485,7 @@ pub async fn create_oauth_provider(
     if !is_supported_login_provider(&req.provider) {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Provider must be 'github', 'google', 'gitlab', or 'azure'".to_string(),
+            "Provider must be 'github', 'google', 'gitlab', 'azure', or 'bitbucket'".to_string(),
         ));
     }
 
@@ -874,6 +881,39 @@ async fn exchange_code_for_token(
 
             Ok((token_response.access_token, token_response.refresh_token))
         }
+        "bitbucket" => {
+            #[derive(Deserialize)]
+            struct BitbucketTokenResponse {
+                access_token: String,
+                refresh_token: Option<String>,
+            }
+
+            let response = client
+                .post("https://bitbucket.org/site/oauth2/access_token")
+                .basic_auth(client_id, Some(client_secret))
+                .form(&[
+                    ("grant_type", "authorization_code"),
+                    ("code", code),
+                    ("redirect_uri", redirect_uri),
+                ])
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to exchange code: {}", e),
+                    )
+                })?;
+
+            let token_response: BitbucketTokenResponse = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse token response: {}", e),
+                )
+            })?;
+
+            Ok((token_response.access_token, token_response.refresh_token))
+        }
         _ => Err((
             StatusCode::BAD_REQUEST,
             format!("Unsupported provider: {}", provider),
@@ -1027,6 +1067,41 @@ async fn fetch_user_info(
                 name: user.display_name,
             })
         }
+        "bitbucket" => {
+            #[derive(Deserialize)]
+            struct BitbucketUser {
+                #[serde(rename = "account_id")]
+                account_id: String,
+                #[serde(rename = "display_name")]
+                display_name: Option<String>,
+            }
+
+            let response = client
+                .get("https://api.bitbucket.org/2.0/user")
+                .header("Authorization", format!("Bearer {}", access_token))
+                .send()
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        format!("Failed to get user info: {}", e),
+                    )
+                })?;
+
+            let user: BitbucketUser = response.json().await.map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse user info: {}", e),
+                )
+            })?;
+
+            Ok(OAuthUserInfo {
+                provider_user_id: user.account_id,
+                // Email is fetched separately via /user/emails
+                email: None,
+                name: user.display_name,
+            })
+        }
         _ => Err((
             StatusCode::BAD_REQUEST,
             format!("Unsupported provider: {}", provider),
@@ -1074,5 +1149,55 @@ async fn fetch_github_primary_email(access_token: &str) -> Result<String, (Statu
         .ok_or((
             StatusCode::BAD_REQUEST,
             "No verified email found on GitHub account".to_string(),
+        ))
+}
+
+/// Fetch primary email from Bitbucket (when user profile email is null)
+async fn fetch_bitbucket_primary_email(
+    access_token: &str,
+) -> Result<String, (StatusCode, String)> {
+    let client = reqwest::Client::new();
+
+    #[derive(Deserialize)]
+    struct BitbucketEmailValue {
+        email: String,
+        is_primary: bool,
+        is_confirmed: bool,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketEmailsPage {
+        values: Vec<BitbucketEmailValue>,
+    }
+
+    let response = client
+        .get("https://api.bitbucket.org/2.0/user/emails")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to fetch Bitbucket emails: {}", e),
+            )
+        })?;
+
+    let page: BitbucketEmailsPage = response.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse Bitbucket emails: {}", e),
+        )
+    })?;
+
+    // Find primary confirmed email first, then any confirmed email
+    page.values
+        .iter()
+        .find(|e| e.is_primary && e.is_confirmed)
+        .or_else(|| page.values.iter().find(|e| e.is_confirmed))
+        .or_else(|| page.values.first())
+        .map(|e| e.email.clone())
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "No email found on Bitbucket account".to_string(),
         ))
 }

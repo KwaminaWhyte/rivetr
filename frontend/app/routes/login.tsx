@@ -69,6 +69,16 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+// Bitbucket icon SVG
+const BitbucketIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.891L.778 1.213zM14.52 15.53H9.522L8.17 8.471h7.561l-1.211 7.06z"
+      fill="#2684FF"
+    />
+  </svg>
+);
+
 export function meta() {
   return [
     { title: "Login - Rivetr" },
@@ -262,6 +272,7 @@ export default function LoginPage() {
   const googleEnabled = oauthProviders.some((p) => p.provider === "google");
   const gitlabEnabled = oauthProviders.some((p) => p.provider === "gitlab");
   const azureEnabled = oauthProviders.some((p) => p.provider === "azure");
+  const bitbucketEnabled = oauthProviders.some((p) => p.provider === "bitbucket");
 
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
@@ -437,6 +448,22 @@ export default function LoginPage() {
                               <MicrosoftIcon className="size-4" />
                             )}
                             Continue with Microsoft
+                          </Button>
+                        )}
+                        {bitbucketEnabled && (
+                          <Button
+                            variant="outline"
+                            type="button"
+                            className="w-full gap-2"
+                            disabled={oauthLoading !== null}
+                            onClick={() => handleOAuthLogin("bitbucket")}
+                          >
+                            {oauthLoading === "bitbucket" ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <BitbucketIcon className="size-4" />
+                            )}
+                            Continue with Bitbucket
                           </Button>
                         )}
                       </div>

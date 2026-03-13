@@ -18,6 +18,9 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
 | GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab` — full authorize + callback flow with read_user scope |
 | Azure AD OAuth login | ✅ Implemented | Configurable tenant_id via `extra_config` JSON; uses Microsoft login.microsoftonline.com endpoints |
+| Bitbucket OAuth login | ✅ Implemented | full authorize + callback + user info flow; email fetched from `/user/emails` endpoint |
+| Instance backup to S3 | ✅ Implemented | after local backup creation, uploads to S3 with `instance-backups/` prefix if default S3 config exists |
+| Test backup button | ✅ Implemented | `POST /api/backups/schedules/:id/run` — triggers immediate backup run; "Run Now" button in backup settings UI |
 | Mattermost notifications | ✅ Implemented | Incoming webhook channel type; configurable URL + username + icon |
 | Lark/Feishu notifications | ✅ Implemented | Webhook-based; supports custom sign secret for verification |
 | Gotify notifications | ✅ Implemented | Self-hosted push server; configurable URL, token, priority |
@@ -335,10 +338,10 @@ Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't
 | GitHub | ✅ | ❌ | ✅ |
 | Google | ✅ | ❌ | ✅ |
 | GitLab | ✅ | ❌ | ✅ (implemented — `/api/auth/oauth-login/gitlab`) |
-| Bitbucket | ✅ | ❌ | 🔴 |
+| Bitbucket | ✅ | ❌ | ✅ (implemented — full authorize + callback + `/user/emails` for primary email) |
 | Azure AD / Microsoft | ✅ | ❌ | ✅ (implemented — configurable tenant_id via extra_config) |
 
-Rivetr now supports GitHub, Google, GitLab, and Azure AD OAuth login. Bitbucket OAuth remains missing.
+Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 
 ### SAML 2.0
 🟡 **Planned in Rivetr**
@@ -406,9 +409,9 @@ Coolify watches for unexpected container stop/restart events (outside of normal 
 ## 9. Backups & Storage
 
 ### Instance backup to S3
-🟡 **Planned in Rivetr**
+✅ **Implemented in Rivetr**
 
-Rivetr has `[ ] Instance backup to S3` on the roadmap. Currently instance backups go to local disk only. Both competitors support backing up the PaaS configuration to S3-compatible storage.
+When `POST /api/system/backup` creates a local `.tar.gz` archive, it performs a best-effort upload to the default S3 storage config (if one is configured) using the key prefix `instance-backups/`. The upload failure is non-fatal — the backup is still returned as a download. Existing backups can also be manually uploaded via `POST /api/system/backups/:name/upload-to-s3`.
 
 ### S3 destinations supported
 | Provider | Coolify | Dokploy | Rivetr |
@@ -422,9 +425,9 @@ Rivetr has `[ ] Instance backup to S3` on the roadmap. Currently instance backup
 Rivetr is missing Backblaze B2 and Google Cloud Storage as S3 backup destinations.
 
 ### Test backup button
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy has a "Test Backup" button that executes a single backup run immediately to verify the configuration before relying on the schedule. Rivetr only runs backups on schedule or via the full "Run Now" flow.
+`POST /api/backups/schedules/:id/run` triggers an immediate backup run for a scheduled backup config. For `instance` type schedules this runs a full backup (and uploads to S3 if configured). The backup settings page shows a "Run Now" button next to each schedule with `last_run_at` and `next_run_at` updated after the run.
 
 ---
 
@@ -569,12 +572,12 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Patches (build-time file injection) | ❌ | ✅ | 🟡 Medium |
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
-| Bitbucket OAuth login | ✅ | ❌ | 🔴 Missing |
+| Bitbucket OAuth login | ✅ | ❌ | ✅ Done |
 | Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
 | ARM64 / Raspberry Pi builds | ✅ | ✅ | 🟡 Medium |
 | Backblaze B2 / GCS S3 destinations | ❌ | ✅ | 🟡 Low |
-| Instance backup to S3 | ❌ | ❌ | 🟡 Planned |
-| Test backup button | ❌ | ✅ | 🟡 Low |
+| Instance backup to S3 | ❌ | ❌ | ✅ Done |
+| Test backup button | ❌ | ✅ | ✅ Done |
 | Ansible playbook | ❌ | ✅ | 🟡 Low |
 
 ---

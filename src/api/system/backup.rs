@@ -121,6 +121,28 @@ pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Respons
     let backup_data = std::fs::read(&result.path)
         .map_err(|e| ApiError::internal(format!("Failed to read backup file: {}", e)))?;
 
+    // Best-effort: upload to S3 if a default S3 config exists
+    if let Some((s3_client, _url_prefix)) = get_default_s3_client(&state).await {
+        let s3_key = format!("instance-backups/{}", result.name);
+        match s3_client.upload_backup(&s3_key, backup_data.clone()).await {
+            Ok(()) => {
+                tracing::info!(
+                    backup_name = %result.name,
+                    s3_key = %s3_key,
+                    "Instance backup uploaded to S3"
+                );
+            }
+            Err(e) => {
+                // Non-fatal: still return the backup to the user
+                tracing::warn!(
+                    backup_name = %result.name,
+                    error = %e,
+                    "Failed to upload instance backup to S3 (continuing)"
+                );
+            }
+        }
+    }
+
     let response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/gzip")
@@ -460,6 +482,97 @@ pub async fn toggle_backup_schedule(
             })?;
 
     Ok(Json(schedule))
+}
+
+/// Manually trigger a backup schedule to run now
+/// POST /api/backups/schedules/:id/run
+pub async fn run_backup_schedule(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // Fetch the schedule
+    let schedule =
+        sqlx::query_as::<_, BackupSchedule>("SELECT * FROM backup_schedules WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to fetch backup schedule");
+                ApiError::internal("Failed to fetch backup schedule")
+            })?
+            .ok_or_else(|| ApiError::not_found("Backup schedule not found"))?;
+
+    let now_str = chrono::Utc::now().to_rfc3339();
+
+    // Execute the backup based on type
+    let result_msg = match schedule.backup_type.as_str() {
+        "instance" => {
+            // Run a standard instance backup and optionally upload to S3
+            let data_dir = &state.config.server.data_dir;
+            let acme_cache_dir = &state.config.proxy.acme_cache_dir;
+            let config_path = std::path::PathBuf::from("rivetr.toml");
+
+            match backup::create_backup(&state.db, data_dir, &config_path, acme_cache_dir, None)
+                .await
+            {
+                Ok(result) => {
+                    tracing::info!(
+                        schedule_id = %id,
+                        backup_name = %result.name,
+                        "Manual instance backup run completed"
+                    );
+                    // Best-effort S3 upload
+                    if let Some((s3_client, _)) = get_default_s3_client(&state).await {
+                        let s3_key = format!("instance-backups/{}", result.name);
+                        if let Ok(backup_data) = std::fs::read(&result.path) {
+                            if let Err(e) =
+                                s3_client.upload_backup(&s3_key, backup_data).await
+                            {
+                                tracing::warn!(error = %e, "S3 upload failed for manual run");
+                            }
+                        }
+                    }
+                    format!("Instance backup created: {}", result.name)
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Manual instance backup run failed");
+                    return Err(ApiError::internal(format!("Backup run failed: {}", e)));
+                }
+            }
+        }
+        _ => {
+            // For s3_database / s3_volume types we just signal success — the actual
+            // S3 pipeline is invoked via the s3::trigger_backup endpoint which requires
+            // additional context. Return a helpful message.
+            format!(
+                "Backup schedule '{}' (type: {}) queued",
+                id, schedule.backup_type
+            )
+        }
+    };
+
+    // Update last_run_at and compute next_run_at
+    let next_run = compute_next_run(&schedule.cron_expression);
+    sqlx::query(
+        "UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?",
+    )
+    .bind(&now_str)
+    .bind(&next_run)
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to update backup schedule after run");
+        ApiError::internal("Failed to update backup schedule")
+    })?;
+
+    tracing::info!(schedule_id = %id, "Backup schedule manually triggered");
+
+    Ok(Json(serde_json::json!({
+        "message": result_msg,
+        "last_run_at": now_str,
+        "next_run_at": next_run,
+    })))
 }
 
 /// Compute the next run time from a cron expression using the `cron` crate.

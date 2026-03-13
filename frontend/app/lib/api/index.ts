@@ -309,6 +309,13 @@ export const api = {
   downloadBackup: systemApi.downloadBackup,
   restoreBackup: systemApi.restoreBackup,
 
+  // Backup Schedules
+  listBackupSchedules: systemApi.listBackupSchedules,
+  createBackupSchedule: systemApi.createBackupSchedule,
+  deleteBackupSchedule: systemApi.deleteBackupSchedule,
+  toggleBackupSchedule: systemApi.toggleBackupSchedule,
+  runBackupSchedule: systemApi.runBackupSchedule,
+
   // Preview Deployments
   getAppPreviews: previewsApi.getAppPreviews,
   getPreview: previewsApi.getPreview,
