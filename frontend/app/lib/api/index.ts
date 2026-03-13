@@ -39,6 +39,8 @@ export type {
   SwarmStatusResponse,
   CreateServiceRequest as SwarmCreateServiceRequest,
 } from "./swarm";
+export { whiteLabelApi } from "./white-label";
+export type { WhiteLabel, UpdateWhiteLabelRequest } from "./white-label";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -60,6 +62,7 @@ import { s3Api } from "./s3";
 import { monitoringApi } from "./monitoring";
 import { sharedEnvVarsApi } from "./shared-env-vars";
 import { serversApi } from "./servers";
+import { whiteLabelApi } from "./white-label";
 
 /**
  * Combined API object for backward compatibility.
@@ -240,6 +243,10 @@ export const api = {
 
   // Service database import
   importServiceDb: servicesApi.importServiceDb,
+
+  // Service magic variables
+  previewCompose: servicesApi.previewCompose,
+  getServiceGeneratedVars: servicesApi.getServiceGeneratedVars,
 
   // Templates
   getTemplates: servicesApi.getTemplates,
@@ -432,6 +439,10 @@ export const api = {
   updateProjectEnvVar: sharedEnvVarsApi.updateProjectEnvVar,
   deleteProjectEnvVar: sharedEnvVarsApi.deleteProjectEnvVar,
   getResolvedEnvVars: sharedEnvVarsApi.getResolvedEnvVars,
+
+  // White Label
+  getWhiteLabel: whiteLabelApi.get,
+  updateWhiteLabel: whiteLabelApi.update,
 };
 
 export default api;

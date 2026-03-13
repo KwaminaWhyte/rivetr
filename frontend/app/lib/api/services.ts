@@ -186,6 +186,23 @@ export const servicesApi = {
     return response.json();
   },
 
+  /** Preview the final resolved compose YAML for a service (dry-run, no DB writes) */
+  previewCompose: (id: string, token?: string) =>
+    apiRequest<{ compose_yaml: string }>(`/services/${id}/preview-compose`, {}, token),
+
+  /** Get auto-generated magic variables (SERVICE_PASSWORD_*, SERVICE_BASE64_*) for a service */
+  getServiceGeneratedVars: (id: string, token?: string) =>
+    apiRequest<
+      {
+        id: string;
+        service_id: string;
+        key: string;
+        value: string;
+        created_at: string;
+        updated_at: string;
+      }[]
+    >(`/services/${id}/generated-vars`, {}, token),
+
   /** Submit a community template suggestion */
   suggestTemplate: (
     data: {

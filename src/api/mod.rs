@@ -47,6 +47,8 @@ mod validation;
 mod volumes;
 mod webhook_events;
 mod webhooks;
+mod white_label;
+mod sdk;
 mod ws;
 
 use axum::{
@@ -618,6 +620,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(services::stream_service_logs),
         )
         .route(
+            "/services/:id/preview-compose",
+            get(services::preview_compose),
+        )
+        .route(
+            "/services/:id/generated-vars",
+            get(services::get_service_generated_vars),
+        )
+        .route(
             "/services/:id/import-db",
             post(services::import_service_db),
         )
@@ -862,6 +872,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Project import/export
         .route("/projects/:id/export", get(bulk::export_project))
         .route("/projects/:id/import", post(bulk::import_project))
+        // White Label (update — admin only, protected by auth)
+        .route(
+            "/white-label",
+            put(white_label::update_white_label),
+        )
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -896,12 +911,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(sso::handle_sso_callback),
         );
 
+    // Public API routes (no auth required)
+    let public_api_routes = Router::new()
+        // White Label config — needed by the login page before auth
+        .route("/white-label", get(white_label::get_white_label))
+        // TypeScript SDK download
+        .route("/sdk", get(sdk::get_sdk));
+
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
         .route("/mcp", post(crate::mcp::server::mcp_handler))
         .nest("/api/auth", auth_routes)
         .nest("/api/auth", auth_info_routes)
+        .nest("/api", public_api_routes)
         .nest("/api", api_routes)
         .nest("/webhooks", webhook_routes)
         .merge(sso_routes)

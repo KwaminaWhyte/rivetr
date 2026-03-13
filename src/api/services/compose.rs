@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
+use crate::db::ServiceGeneratedVar;
+
 /// Validate docker-compose content
 /// Checks that it's valid YAML with a 'services' key
 pub fn validate_compose_content(content: &str) -> Result<(), String> {
@@ -247,6 +249,180 @@ pub async fn write_compose_file_with_options(
 
     tokio::fs::write(&compose_file, final_content).await?;
     Ok(dir)
+}
+
+/// Substitute magic variables in a compose YAML string.
+///
+/// Handles:
+/// - `${SERVICE_PASSWORD_<SUFFIX>}` — random 32-char alphanumeric, persisted to DB
+/// - `${SERVICE_BASE64_<SUFFIX>}` — random 32-byte base64-encoded, persisted to DB
+/// - `${SERVICE_BASE64_64_<SUFFIX>}` — random 64-byte base64-encoded, persisted to DB
+/// - `${SERVICE_FQDN_<SUFFIX>}` — the service domain (if set), or empty
+/// - `${SERVICE_URL_<SUFFIX>}` — `https://` + domain (if set), or empty
+/// - `${VAR:?error message}` — required var: if VAR is missing from `existing_vars`, returns `Err`
+///
+/// `existing_vars` maps key → value (unencrypted) for variables already known.
+/// `service_domain` is the service's configured domain, if any.
+/// `db` is used to load/persist generated PASSWORD/BASE64 values.
+/// `service_id` is the DB id of the service.
+///
+/// When `dry_run` is `true` the function generates values but does NOT write to the DB
+/// (used for the preview endpoint).
+pub async fn substitute_magic_vars(
+    compose_yaml: &str,
+    service_id: &str,
+    service_domain: Option<&str>,
+    existing_vars: &std::collections::HashMap<String, String>,
+    db: &sqlx::SqlitePool,
+    dry_run: bool,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    use rand::Rng as _;
+
+    let mut content = compose_yaml.to_string();
+
+    // -----------------------------------------------------------------------
+    // 1. ${VAR:?message} — required variable check
+    // -----------------------------------------------------------------------
+    {
+        let req_re = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\:\?([^}]*)\}")
+            .map_err(|e| format!("regex error: {e}"))?;
+
+        for cap in req_re.captures_iter(&content.clone()) {
+            let var_name = &cap[1];
+            let error_msg = &cap[2];
+            if !existing_vars.contains_key(var_name) {
+                return Err(format!(
+                    "Required variable {var_name} is not set: {error_msg}"
+                ));
+            }
+        }
+
+        // Substitute required vars that ARE set
+        for (key, val) in existing_vars {
+            let re = regex::Regex::new(&format!(
+                r"\$\{{{key}:[?][^}}]*\}}"
+            ))
+            .map_err(|e| format!("regex error: {e}"))?;
+            content = re.replace_all(&content, val.as_str()).to_string();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. ${SERVICE_FQDN_<SUFFIX>} and ${SERVICE_URL_<SUFFIX>}
+    // -----------------------------------------------------------------------
+    {
+        let fqdn_re = regex::Regex::new(r"\$\{SERVICE_FQDN_([A-Z0-9_]+)(?::-[^}]*)?\}")
+            .map_err(|e| format!("regex error: {e}"))?;
+        let url_re = regex::Regex::new(r"\$\{SERVICE_URL_([A-Z0-9_]+)(?::-[^}]*)?\}")
+            .map_err(|e| format!("regex error: {e}"))?;
+
+        let domain_value = service_domain.unwrap_or("").to_string();
+        let url_value = if domain_value.is_empty() {
+            String::new()
+        } else {
+            format!("https://{}", domain_value)
+        };
+
+        // Replace ${SERVICE_FQDN_*} and ${SERVICE_FQDN_*:-default}
+        let new_content = fqdn_re
+            .replace_all(&content, domain_value.as_str())
+            .to_string();
+        content = new_content;
+
+        // Replace ${SERVICE_URL_*} and ${SERVICE_URL_*:-default}
+        let new_content = url_re
+            .replace_all(&content, url_value.as_str())
+            .to_string();
+        content = new_content;
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. ${SERVICE_PASSWORD_<SUFFIX>} and ${SERVICE_BASE64_*} — generated, persisted
+    // -----------------------------------------------------------------------
+    {
+        let magic_re = regex::Regex::new(
+            r"\$\{(SERVICE_(?:PASSWORD|BASE64(?:_64)?)_([A-Z0-9_]+))(?::-[^}]*)?\}",
+        )
+        .map_err(|e| format!("regex error: {e}"))?;
+
+        // Collect unique variable names that appear in the compose content
+        let mut to_resolve: Vec<(String, String)> = Vec::new(); // (full_var, suffix_kind)
+        for cap in magic_re.captures_iter(&content.clone()) {
+            let full_var = cap[1].to_string();
+            if to_resolve.iter().any(|(v, _)| v == &full_var) {
+                continue;
+            }
+            to_resolve.push((full_var, cap[2].to_string()));
+        }
+
+        let mut generated: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        for (full_var, _suffix) in &to_resolve {
+            // Try loading from DB first (for stable values across restarts)
+            let existing: Option<ServiceGeneratedVar> = sqlx::query_as(
+                "SELECT * FROM service_generated_vars WHERE service_id = ? AND key = ?",
+            )
+            .bind(service_id)
+            .bind(full_var)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| format!("DB error loading generated var: {e}"))?;
+
+            if let Some(row) = existing {
+                generated.insert(full_var.clone(), row.value);
+                continue;
+            }
+
+            // Generate a new value
+            let value: String = if full_var.starts_with("SERVICE_PASSWORD_") {
+                let mut rng = rand::rng();
+                let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+                (0..32)
+                    .map(|_| chars[rng.random_range(0..chars.len())] as char)
+                    .collect()
+            } else if full_var.starts_with("SERVICE_BASE64_64_") {
+                // 64-byte random → base64
+                let mut rng = rand::rng();
+                let bytes: Vec<u8> = (0..64).map(|_| rng.random::<u8>()).collect();
+                base64::engine::general_purpose::STANDARD.encode(&bytes)
+            } else {
+                // SERVICE_BASE64_* (32-byte)
+                let mut rng = rand::rng();
+                let bytes: Vec<u8> = (0..32).map(|_| rng.random::<u8>()).collect();
+                base64::engine::general_purpose::STANDARD.encode(&bytes)
+            };
+
+            if !dry_run {
+                // Persist to DB
+                let id = uuid::Uuid::new_v4().to_string();
+                sqlx::query(
+                    "INSERT OR REPLACE INTO service_generated_vars (id, service_id, key, value, updated_at) \
+                     VALUES (?, ?, ?, ?, datetime('now'))",
+                )
+                .bind(&id)
+                .bind(service_id)
+                .bind(full_var)
+                .bind(&value)
+                .execute(db)
+                .await
+                .map_err(|e| format!("DB error saving generated var: {e}"))?;
+            }
+
+            generated.insert(full_var.clone(), value);
+        }
+
+        // Apply substitutions — both simple `${VAR}` and `${VAR:-default}` forms
+        for (var, value) in &generated {
+            content = content.replace(&format!("${{{var}}}"), value);
+            let re2 = regex::Regex::new(&format!(r"\$\{{{var}:-[^}}]*\}}"))
+                .map_err(|e| format!("regex error: {e}"))?;
+            content = re2.replace_all(&content, value.as_str()).to_string();
+        }
+    }
+
+    Ok(content)
 }
 
 /// Run docker compose command

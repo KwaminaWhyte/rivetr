@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function meta() {
@@ -24,11 +24,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
-import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download, Network } from "lucide-react";
+import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download, Network, Eye, Copy, Key } from "lucide-react";
 
 interface OutletContext {
   service: Service;
@@ -78,6 +85,11 @@ export default function ServiceSettingsTab() {
   const [domain, setDomain] = useState(service.domain ?? "");
   const [port, setPort] = useState(service.port ?? 80);
   const [isolatedNetwork, setIsolatedNetwork] = useState(service.isolated_network ?? true);
+
+  // Preview compose dialog state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewYaml, setPreviewYaml] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   // Database import state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,6 +165,27 @@ export default function ServiceSettingsTab() {
       toast.error(error instanceof Error ? error.message : "Failed to import database dump");
     },
   });
+
+  // Fetch auto-generated magic variables for this service
+  const { data: generatedVars = [] } = useQuery({
+    queryKey: ["service-generated-vars", service.id],
+    queryFn: () => api.getServiceGeneratedVars(service.id),
+  });
+
+  const handlePreviewCompose = async () => {
+    setIsPreviewLoading(true);
+    setPreviewYaml(null);
+    setIsPreviewOpen(true);
+    try {
+      const result = await api.previewCompose(service.id);
+      setPreviewYaml(result.compose_yaml);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to preview compose");
+      setIsPreviewOpen(false);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
 
   const isSubmitting = updateComposeMutation.isPending || updateDomainMutation.isPending || deleteMutation.isPending;
 
@@ -296,16 +329,27 @@ export default function ServiceSettingsTab() {
                 Edit the Docker Compose YAML for this service. Changes will take effect after restarting the service.
               </CardDescription>
             </div>
-            {!isEditing && (
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() => setIsEditing(true)}
+                onClick={handlePreviewCompose}
+                disabled={isPreviewLoading}
               >
-                <Pencil className="h-4 w-4" />
-                Edit
+                <Eye className="h-4 w-4" />
+                {isPreviewLoading ? "Loading…" : "Preview"}
               </Button>
-            )}
+              {!isEditing && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -363,6 +407,48 @@ export default function ServiceSettingsTab() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Auto-Generated Magic Variables — shown only if there are any */}
+      {generatedVars.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Generated Variables
+            </CardTitle>
+            <CardDescription>
+              These values were automatically generated from <code className="text-xs bg-muted px-1 py-0.5 rounded">SERVICE_PASSWORD_*</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">SERVICE_BASE64_*</code> placeholders in your compose file. They are stable across restarts.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {generatedVars.map((v) => (
+                <div
+                  key={v.id}
+                  className="flex items-center justify-between gap-4 p-3 rounded-md border bg-muted/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono font-medium truncate">{v.key}</p>
+                    <p className="text-xs font-mono text-muted-foreground truncate mt-0.5">{v.value}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 gap-1"
+                    onClick={() => {
+                      navigator.clipboard.writeText(v.value);
+                      toast.success("Copied to clipboard");
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Database Import/Export — only shown for services with database containers */}
       {showImportSection && (
@@ -534,6 +620,50 @@ export default function ServiceSettingsTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Preview Compose Dialog */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Compose Preview
+            </DialogTitle>
+            <DialogDescription>
+              The resolved Docker Compose YAML after variable substitution. Magic variables (SERVICE_PASSWORD_*, etc.) and the rivetr network are fully applied.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-hidden min-h-0 flex flex-col gap-3">
+            {isPreviewLoading && (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                Loading preview…
+              </div>
+            )}
+            {previewYaml && (
+              <>
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      navigator.clipboard.writeText(previewYaml);
+                      toast.success("YAML copied to clipboard");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy YAML
+                  </Button>
+                </div>
+                <pre className="flex-1 overflow-auto rounded-md bg-zinc-950 text-zinc-100 p-4 text-xs font-mono leading-relaxed whitespace-pre">
+                  {previewYaml}
+                </pre>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

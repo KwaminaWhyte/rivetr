@@ -33,6 +33,7 @@ pub mod s3;
 pub mod scheduled_job;
 pub mod server;
 pub mod service;
+pub mod service_generated_var;
 pub mod service_template;
 pub mod shared_env_var;
 pub mod ssh_key;
@@ -42,6 +43,7 @@ pub mod team;
 pub mod user;
 pub mod patch;
 pub mod volume;
+pub mod white_label;
 
 // Re-export all types for backwards compatibility
 pub use alert_config::*;
@@ -75,6 +77,7 @@ pub use s3::*;
 pub use scheduled_job::*;
 pub use server::*;
 pub use service::*;
+pub use service_generated_var::*;
 pub use service_template::*;
 pub use shared_env_var::*;
 pub use ssh_key::*;
@@ -84,3 +87,4 @@ pub use team::*;
 pub use user::*;
 pub use patch::*;
 pub use volume::*;
+pub use white_label::*;

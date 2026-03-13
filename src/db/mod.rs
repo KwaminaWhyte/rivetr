@@ -1146,6 +1146,33 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 083: Service generated variables
+    let has_service_generated_vars: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='service_generated_vars'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_service_generated_vars.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/083_service_generated_vars.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 084: White label configuration
+    let has_white_label: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='white_label'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_white_label.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/084_white_label.sql"),
+        )
+        .await?;
+    }
 
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;

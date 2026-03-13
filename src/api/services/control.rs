@@ -14,12 +14,12 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::db::{actions, resource_types, Service, ServiceResponse, ServiceStatus, User};
+use crate::db::{actions, resource_types, Service, ServiceGeneratedVar, ServiceResponse, ServiceStatus, User};
 use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
 use super::compose::{
-    get_compose_dir, get_service_compose_dir, run_compose_command,
+    get_compose_dir, get_service_compose_dir, run_compose_command, substitute_magic_vars,
     write_compose_file_with_options,
 };
 
@@ -65,6 +65,45 @@ pub async fn start_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
+    // Fetch generated vars for this service to pass as existing_vars context
+    let gen_vars_rows: Vec<crate::db::ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
+            .bind(&service.id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+
+    // Substitute magic variables (SERVICE_PASSWORD_*, SERVICE_BASE64_*, required vars, FQDN/URL)
+    let substituted_compose = match substitute_magic_vars(
+        &service.compose_content,
+        &service.id,
+        service.domain.as_deref(),
+        &existing_vars,
+        &state.db,
+        false,
+    )
+    .await
+    {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!("Failed to substitute magic vars in compose for service {}: {}", service.name, e);
+            // Update status to failed with error message
+            let _ = sqlx::query(
+                "UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(crate::db::ServiceStatus::Failed.to_string())
+            .bind(&e)
+            .bind(&id)
+            .execute(&state.db)
+            .await;
+            return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    };
+
     // Always write/overwrite compose file from database content (in case it was updated).
     // Inject isolated network if enabled (default: yes).
     let isolated_id = if service.isolated_network != 0 {
@@ -75,7 +114,7 @@ pub async fn start_service(
     if let Err(e) = write_compose_file_with_options(
         data_dir,
         &service.name,
-        &service.compose_content,
+        &substituted_compose,
         isolated_id,
     )
     .await
@@ -290,6 +329,44 @@ pub async fn restart_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
+    // Fetch generated vars for this service to pass as existing_vars context
+    let gen_vars_rows: Vec<crate::db::ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
+            .bind(&service.id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+
+    // Substitute magic variables
+    let substituted_compose = match substitute_magic_vars(
+        &service.compose_content,
+        &service.id,
+        service.domain.as_deref(),
+        &existing_vars,
+        &state.db,
+        false,
+    )
+    .await
+    {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!("Failed to substitute magic vars in compose for service {}: {}", service.name, e);
+            let _ = sqlx::query(
+                "UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
+            )
+            .bind(crate::db::ServiceStatus::Failed.to_string())
+            .bind(&e)
+            .bind(&id)
+            .execute(&state.db)
+            .await;
+            return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    };
+
     // Always write/overwrite compose file from database content.
     // Inject isolated network if enabled (default: yes).
     let isolated_id = if service.isolated_network != 0 {
@@ -300,7 +377,7 @@ pub async fn restart_service(
     if let Err(e) = write_compose_file_with_options(
         data_dir,
         &service.name,
-        &service.compose_content,
+        &substituted_compose,
         isolated_id,
     )
     .await
@@ -706,4 +783,118 @@ pub async fn stream_service_logs(
             .interval(Duration::from_secs(15))
             .text("keep-alive"),
     ))
+}
+
+/// List auto-generated magic variables for a service (SERVICE_PASSWORD_*, SERVICE_BASE64_*, etc.)
+///
+/// GET /api/services/:id/generated-vars
+///
+/// Returns all persisted generated variables. Values are shown in plain text
+/// (they are not secret per se — compose templates embed them as env vars).
+pub async fn get_service_generated_vars(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<crate::db::ServiceGeneratedVarResponse>>, (StatusCode, Json<serde_json::Value>)>
+{
+    // Verify service exists
+    let service_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM services WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check service: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Internal server error"})),
+            )
+        })?;
+
+    if service_exists == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Service not found"})),
+        ));
+    }
+
+    let rows: Vec<ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ? ORDER BY key ASC")
+            .bind(&id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch generated vars: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Failed to fetch generated vars"})),
+                )
+            })?;
+
+    let response: Vec<crate::db::ServiceGeneratedVarResponse> =
+        rows.into_iter().map(Into::into).collect();
+    Ok(Json(response))
+}
+
+/// Preview the final resolved compose YAML for a service without deploying.
+///
+/// GET /api/services/:id/preview-compose
+///
+/// Applies magic variable substitution (dry-run — nothing is written to DB)
+/// and injects the rivetr network, returning the rendered YAML.
+pub async fn preview_compose(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    // Fetch the service
+    let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get service: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get service"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Service not found"})),
+            )
+        })?;
+
+    // Load existing generated vars so preview shows stable values for already-generated vars
+    let gen_vars_rows: Vec<ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
+            .bind(&service.id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+
+    // Dry-run substitution — generates placeholder values but does NOT persist to DB
+    let substituted = substitute_magic_vars(
+        &service.compose_content,
+        &service.id,
+        service.domain.as_deref(),
+        &existing_vars,
+        &state.db,
+        true,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({"error": e})),
+        )
+    })?;
+
+    // Inject the rivetr network (same as the real deploy path)
+    use super::compose::inject_rivetr_network;
+    let final_yaml = inject_rivetr_network(&substituted).unwrap_or(substituted);
+
+    Ok(Json(serde_json::json!({ "compose_yaml": final_yaml })))
 }
