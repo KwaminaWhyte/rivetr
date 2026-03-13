@@ -11,7 +11,9 @@ export type NotificationEventType =
   | "deployment_success"
   | "deployment_failed"
   | "app_stopped"
-  | "app_started";
+  | "app_started"
+  | "container_crash"
+  | "container_restarted";
 
 /** Slack webhook configuration */
 export interface SlackConfig {

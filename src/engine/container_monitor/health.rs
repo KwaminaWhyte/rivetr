@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::api::metrics::{increment_container_restarts, set_container_restart_backoff_seconds};
 use crate::config::ContainerMonitorConfig;
-use crate::db::{Deployment, ManagedDatabase, Service};
+use crate::db::{App, Deployment, ManagedDatabase, NotificationEventType, Service};
+use crate::notifications::{NotificationPayload, NotificationService};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 
@@ -188,6 +189,69 @@ fn handle_running_container(
     }
 }
 
+/// Send a ContainerCrash notification, rate-limited to once per 5 minutes per app.
+async fn send_crash_notification_if_due(
+    db: &DbPool,
+    app_id: &str,
+    app_name: &str,
+    message: &str,
+) {
+    // Look up the app to check last_crash_notified_at
+    let app: Option<App> = sqlx::query_as("SELECT * FROM apps WHERE id = ?")
+        .bind(app_id)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+
+    let should_notify = match app {
+        None => true, // app not found, send anyway
+        Some(ref a) => match &a.last_crash_notified_at {
+            None => true,
+            Some(last_notified) => {
+                // Parse the stored timestamp and check if 5 minutes have elapsed
+                chrono::DateTime::parse_from_rfc3339(last_notified)
+                    .map(|dt| {
+                        let elapsed = chrono::Utc::now()
+                            .signed_duration_since(dt.with_timezone(&chrono::Utc));
+                        elapsed.num_seconds() >= 300
+                    })
+                    .unwrap_or(true)
+            }
+        },
+    };
+
+    if !should_notify {
+        return;
+    }
+
+    // Update last_crash_notified_at before sending
+    if let Err(e) = sqlx::query(
+        "UPDATE apps SET last_crash_notified_at = datetime('now') WHERE id = ?",
+    )
+    .bind(app_id)
+    .execute(db)
+    .await
+    {
+        tracing::warn!(
+            app_id = %app_id,
+            error = %e,
+            "Failed to update last_crash_notified_at"
+        );
+    }
+
+    let notification_service = NotificationService::new(db.clone());
+    let payload = NotificationPayload::app_event(
+        NotificationEventType::ContainerCrash,
+        app_id.to_string(),
+        app_name.to_string(),
+        message.to_string(),
+    );
+    if let Err(e) = notification_service.send(&payload).await {
+        tracing::warn!(error = %e, "Failed to send container_crash notification");
+    }
+}
+
 /// Handle a crashed container
 #[allow(clippy::too_many_arguments)]
 async fn handle_crashed_container(
@@ -245,6 +309,18 @@ async fn handle_crashed_container(
                 &format!(
                     "Container crashed and exceeded maximum restart attempts ({}). Manual intervention required.",
                     max_attempts
+                ),
+            )
+            .await;
+
+            // Send ContainerCrash notification (rate-limited to once per 5 minutes)
+            send_crash_notification_if_due(
+                db,
+                &deployment.app_id,
+                app_name,
+                &format!(
+                    "Container for {} has crashed and exceeded {} restart attempts. Manual intervention required.",
+                    app_name, max_attempts
                 ),
             )
             .await;
@@ -325,6 +401,21 @@ async fn handle_crashed_container(
                 ),
             )
             .await;
+
+            // Send ContainerRestarted notification
+            let notification_service = NotificationService::new(db.clone());
+            let payload = NotificationPayload::app_event(
+                NotificationEventType::ContainerRestarted,
+                deployment.app_id.clone(),
+                app_name.to_string(),
+                format!(
+                    "Container for {} was automatically restarted (attempt {}/{}). Next backoff: {}s.",
+                    app_name, restart_count, max_attempts, new_backoff
+                ),
+            );
+            if let Err(e) = notification_service.send(&payload).await {
+                tracing::warn!(error = %e, "Failed to send container_restarted notification");
+            }
         }
         Err(e) => {
             state.record_restart(max_backoff);

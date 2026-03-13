@@ -77,6 +77,8 @@ pub enum NotificationEventType {
     DeploymentFailed,
     AppStopped,
     AppStarted,
+    ContainerCrash,
+    ContainerRestarted,
 }
 
 impl std::fmt::Display for NotificationEventType {
@@ -87,6 +89,8 @@ impl std::fmt::Display for NotificationEventType {
             Self::DeploymentFailed => write!(f, "deployment_failed"),
             Self::AppStopped => write!(f, "app_stopped"),
             Self::AppStarted => write!(f, "app_started"),
+            Self::ContainerCrash => write!(f, "container_crash"),
+            Self::ContainerRestarted => write!(f, "container_restarted"),
         }
     }
 }
@@ -101,6 +105,8 @@ impl std::str::FromStr for NotificationEventType {
             "deployment_failed" => Ok(Self::DeploymentFailed),
             "app_stopped" => Ok(Self::AppStopped),
             "app_started" => Ok(Self::AppStarted),
+            "container_crash" => Ok(Self::ContainerCrash),
+            "container_restarted" => Ok(Self::ContainerRestarted),
             _ => Err(format!("Unknown event type: {}", s)),
         }
     }

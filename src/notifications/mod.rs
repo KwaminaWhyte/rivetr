@@ -103,6 +103,12 @@ impl NotificationPayload {
             }
             NotificationEventType::AppStopped => format!("App Stopped: {}", self.app_name),
             NotificationEventType::AppStarted => format!("App Started: {}", self.app_name),
+            NotificationEventType::ContainerCrash => {
+                format!("Container Crashed: {}", self.app_name)
+            }
+            NotificationEventType::ContainerRestarted => {
+                format!("Container Restarted: {}", self.app_name)
+            }
         }
     }
 
@@ -113,8 +119,11 @@ impl NotificationPayload {
             NotificationEventType::DeploymentSuccess | NotificationEventType::AppStarted => {
                 "#2ecc71"
             } // Green
-            NotificationEventType::DeploymentFailed => "#e74c3c",  // Red
-            NotificationEventType::AppStopped => "#f39c12",        // Orange
+            NotificationEventType::DeploymentFailed | NotificationEventType::ContainerCrash => {
+                "#e74c3c"
+            } // Red
+            NotificationEventType::AppStopped => "#f39c12", // Orange
+            NotificationEventType::ContainerRestarted => "#f39c12", // Orange
         }
     }
 
@@ -126,6 +135,8 @@ impl NotificationPayload {
             NotificationEventType::DeploymentFailed => ":x:",
             NotificationEventType::AppStopped => ":octagonal_sign:",
             NotificationEventType::AppStarted => ":arrow_forward:",
+            NotificationEventType::ContainerCrash => ":boom:",
+            NotificationEventType::ContainerRestarted => ":arrows_counterclockwise:",
         }
     }
 }

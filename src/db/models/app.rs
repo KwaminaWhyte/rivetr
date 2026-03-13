@@ -127,6 +127,11 @@ pub struct App {
     /// JSON array of build-time secrets: [{key: String, value: String}]
     /// Injected during `docker build` via BuildKit `--secret` — not baked into image layers.
     pub build_secrets: Option<String>,
+    /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
+    /// NULL means use the Docker daemon default (linux/amd64).
+    pub build_platforms: Option<String>,
+    /// Timestamp of the last crash notification sent for this app (for rate-limiting)
+    pub last_crash_notified_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -222,6 +227,8 @@ pub struct AppResponse {
     pub init_process: bool,
     /// JSON array of build-time secrets (values are masked in responses)
     pub build_secrets: Option<String>,
+    /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
+    pub build_platforms: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -286,6 +293,7 @@ impl From<App> for AppResponse {
             shm_size: app.shm_size,
             init_process: app.init_process != 0,
             build_secrets: app.build_secrets,
+            build_platforms: app.build_platforms,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -723,6 +731,9 @@ pub struct UpdateAppRequest {
     pub init_process: Option<bool>,
     /// Build-time secrets injected via BuildKit `--secret` (not baked into image layers)
     pub build_secrets: Option<Vec<BuildSecret>>,
+    /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
+    /// Set to empty string to clear and use the daemon default.
+    pub build_platforms: Option<String>,
 }
 
 /// Request specifically for updating domains

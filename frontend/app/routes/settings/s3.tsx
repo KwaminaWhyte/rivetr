@@ -114,6 +114,33 @@ function StatusBadge({ status }: { status: string }) {
 // S3 Config Form Dialog
 // ---------------------------------------------------------------------------
 
+type S3Provider = "aws" | "r2" | "minio" | "b2" | "gcs" | "custom";
+
+interface ProviderPreset {
+  label: string;
+  endpoint: string;
+  region: string;
+}
+
+const PROVIDER_PRESETS: Record<Exclude<S3Provider, "aws" | "minio" | "custom">, ProviderPreset> =
+  {
+    r2: {
+      label: "Cloudflare R2",
+      endpoint: "https://<account-id>.r2.cloudflarestorage.com",
+      region: "auto",
+    },
+    b2: {
+      label: "Backblaze B2",
+      endpoint: "https://s3.us-west-004.backblazeb2.com",
+      region: "us-west-004",
+    },
+    gcs: {
+      label: "Google Cloud Storage",
+      endpoint: "https://storage.googleapis.com",
+      region: "us",
+    },
+  };
+
 function ConfigFormDialog({
   existingConfig,
   onClose,
@@ -123,6 +150,7 @@ function ConfigFormDialog({
 }) {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(!!existingConfig);
+  const [provider, setProvider] = useState<S3Provider>("aws");
   const [name, setName] = useState(existingConfig?.name ?? "");
   const [endpoint, setEndpoint] = useState(existingConfig?.endpoint ?? "");
   const [bucket, setBucket] = useState(existingConfig?.bucket ?? "");
@@ -135,6 +163,21 @@ function ConfigFormDialog({
   const [isDefault, setIsDefault] = useState(
     existingConfig?.is_default ?? false
   );
+
+  const handleProviderChange = (value: S3Provider) => {
+    setProvider(value);
+    if (value === "aws") {
+      setEndpoint("");
+      setRegion("us-east-1");
+    } else if (value === "minio") {
+      setEndpoint("");
+      setRegion("us-east-1");
+    } else if (value !== "custom") {
+      const preset = PROVIDER_PRESETS[value as keyof typeof PROVIDER_PRESETS];
+      setEndpoint(preset.endpoint);
+      setRegion(preset.region);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: (config: CreateS3StorageConfigRequest) =>
@@ -226,10 +269,40 @@ function ConfigFormDialog({
           </DialogTitle>
           <DialogDescription>
             Configure an S3-compatible storage endpoint for remote backups.
-            Supports AWS S3, MinIO, Cloudflare R2, and more.
+            Supports AWS S3, Backblaze B2, Google Cloud Storage, Cloudflare R2, MinIO, and more.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!existingConfig && (
+            <div className="space-y-2">
+              <Label htmlFor="config-provider">Provider</Label>
+              <Select value={provider} onValueChange={(v) => handleProviderChange(v as S3Provider)}>
+                <SelectTrigger id="config-provider">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aws">AWS S3</SelectItem>
+                  <SelectItem value="r2">Cloudflare R2</SelectItem>
+                  <SelectItem value="b2">Backblaze B2</SelectItem>
+                  <SelectItem value="gcs">Google Cloud Storage</SelectItem>
+                  <SelectItem value="minio">MinIO</SelectItem>
+                  <SelectItem value="custom">Custom / Other</SelectItem>
+                </SelectContent>
+              </Select>
+              {provider === "b2" && (
+                <p className="text-xs text-muted-foreground">
+                  Use your Backblaze B2 application key ID as Access Key and application key as Secret Key.
+                  Update the endpoint region (e.g. <code>us-west-004</code>) to match your bucket&apos;s region.
+                </p>
+              )}
+              {provider === "gcs" && (
+                <p className="text-xs text-muted-foreground">
+                  Use a Google Cloud HMAC key (Access Key + Secret) from Cloud Storage settings.
+                  Ensure &quot;Interoperability&quot; is enabled in your GCS project.
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="config-name">Name</Label>
             <Input
@@ -242,17 +315,30 @@ function ConfigFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="config-endpoint">
-              Endpoint URL (optional, for MinIO/R2)
+              Endpoint URL {provider === "aws" ? "(optional)" : "(required)"}
             </Label>
             <Input
               id="config-endpoint"
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
-              placeholder="https://minio.example.com"
+              placeholder={
+                provider === "b2"
+                  ? "https://s3.us-west-004.backblazeb2.com"
+                  : provider === "gcs"
+                    ? "https://storage.googleapis.com"
+                    : provider === "r2"
+                      ? "https://<account-id>.r2.cloudflarestorage.com"
+                      : "https://minio.example.com"
+              }
             />
             <p className="text-xs text-muted-foreground">
-              Leave empty for AWS S3. Set for MinIO, Cloudflare R2, or other
-              S3-compatible providers.
+              {provider === "aws"
+                ? "Leave empty for standard AWS S3."
+                : provider === "b2"
+                  ? "Pre-filled for Backblaze B2. Change the region in the URL to match your bucket."
+                  : provider === "gcs"
+                    ? "Pre-filled for Google Cloud Storage S3-compatible API."
+                    : "Endpoint URL for your S3-compatible provider."}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -590,7 +676,7 @@ export default function S3StoragePage() {
           </CardTitle>
           <CardDescription>
             Configure S3-compatible storage endpoints for remote backups. Supports
-            AWS S3, MinIO, Cloudflare R2, and more.
+            AWS S3, Backblaze B2, Google Cloud Storage, Cloudflare R2, MinIO, and more.
           </CardDescription>
         </CardHeader>
         <CardContent>

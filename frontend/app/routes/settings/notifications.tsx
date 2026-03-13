@@ -141,6 +141,8 @@ const EVENT_TYPES: { value: NotificationEventType; label: string }[] = [
   { value: "deployment_failed", label: "Deployment Failed" },
   { value: "app_started", label: "App Started" },
   { value: "app_stopped", label: "App Stopped" },
+  { value: "container_crash", label: "Container Crashed" },
+  { value: "container_restarted", label: "Container Restarted" },
 ];
 
 export function meta() {
