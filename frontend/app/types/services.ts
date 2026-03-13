@@ -16,6 +16,8 @@ export interface Service {
   port: number;
   status: ServiceStatus;
   error_message: string | null;
+  /** When true (default), the service runs in a dedicated Docker network isolated from other services. */
+  isolated_network: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +38,8 @@ export interface UpdateServiceRequest {
   project_id?: string;
   domain?: string;
   port?: number;
+  /** Toggle isolated Docker network for this service */
+  isolated_network?: boolean;
 }
 
 /** Service log entry */

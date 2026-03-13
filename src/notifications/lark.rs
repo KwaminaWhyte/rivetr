@@ -52,6 +52,8 @@ fn format_lark_message(payload: &NotificationPayload) -> String {
         crate::db::NotificationEventType::DeploymentFailed => "[FAILED]",
         crate::db::NotificationEventType::AppStopped => "[STOPPED]",
         crate::db::NotificationEventType::AppStarted => "[STARTED]",
+        crate::db::NotificationEventType::ContainerCrash => "[CRASH]",
+        crate::db::NotificationEventType::ContainerRestarted => "[RESTARTED]",
     };
 
     let mut msg = format!(

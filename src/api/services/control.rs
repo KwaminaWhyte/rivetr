@@ -19,7 +19,8 @@ use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
 use super::compose::{
-    get_compose_dir, get_service_compose_dir, run_compose_command, write_compose_file,
+    get_compose_dir, get_service_compose_dir, run_compose_command,
+    write_compose_file_with_options,
 };
 
 /// Service log entry
@@ -64,8 +65,21 @@ pub async fn start_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    // Always write/overwrite compose file from database content (in case it was updated)
-    if let Err(e) = write_compose_file(data_dir, &service.name, &service.compose_content).await {
+    // Always write/overwrite compose file from database content (in case it was updated).
+    // Inject isolated network if enabled (default: yes).
+    let isolated_id = if service.isolated_network != 0 {
+        Some(service.id.as_str())
+    } else {
+        None
+    };
+    if let Err(e) = write_compose_file_with_options(
+        data_dir,
+        &service.name,
+        &service.compose_content,
+        isolated_id,
+    )
+    .await
+    {
         tracing::error!("Failed to write compose file: {}", e);
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -276,8 +290,21 @@ pub async fn restart_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    // Always write/overwrite compose file from database content
-    if let Err(e) = write_compose_file(data_dir, &service.name, &service.compose_content).await {
+    // Always write/overwrite compose file from database content.
+    // Inject isolated network if enabled (default: yes).
+    let isolated_id = if service.isolated_network != 0 {
+        Some(service.id.as_str())
+    } else {
+        None
+    };
+    if let Err(e) = write_compose_file_with_options(
+        data_dir,
+        &service.name,
+        &service.compose_content,
+        isolated_id,
+    )
+    .await
+    {
         tracing::error!("Failed to write compose file: {}", e);
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }

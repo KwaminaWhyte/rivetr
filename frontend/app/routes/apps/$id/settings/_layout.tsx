@@ -26,6 +26,7 @@ const SETTINGS_TABS = [
   { id: "snapshots", label: "Snapshots", path: "/snapshots" },
   { id: "sharing", label: "Sharing", path: "/sharing" },
   { id: "docker", label: "Docker", path: "/docker" },
+  { id: "patches", label: "Patches", path: "/patches" },
 ];
 
 export default function AppSettingsLayout() {
@@ -45,7 +46,7 @@ export default function AppSettingsLayout() {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-11">
+        <TabsList className="grid w-full grid-cols-12">
           {SETTINGS_TABS.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
               <Link to={`${basePath}${tab.path}`} className="gap-1">

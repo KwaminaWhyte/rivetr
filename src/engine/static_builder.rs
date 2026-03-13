@@ -493,6 +493,7 @@ CMD ["nginx", "-g", "daemon off;"]
             memory_limit: config.memory_limit.clone(),
             log_tx: None,
             build_secrets: vec![],
+            build_platforms: None,
         };
 
         let result = self

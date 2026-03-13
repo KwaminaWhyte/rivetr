@@ -42,8 +42,10 @@ fn build_adaptive_card(payload: &NotificationPayload) -> serde_json::Value {
     let status_color = match payload.event_type {
         crate::db::NotificationEventType::DeploymentStarted => "accent",
         crate::db::NotificationEventType::DeploymentSuccess
-        | crate::db::NotificationEventType::AppStarted => "good",
-        crate::db::NotificationEventType::DeploymentFailed => "attention",
+        | crate::db::NotificationEventType::AppStarted
+        | crate::db::NotificationEventType::ContainerRestarted => "good",
+        crate::db::NotificationEventType::DeploymentFailed
+        | crate::db::NotificationEventType::ContainerCrash => "attention",
         crate::db::NotificationEventType::AppStopped => "warning",
     };
 

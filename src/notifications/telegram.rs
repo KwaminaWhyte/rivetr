@@ -58,6 +58,8 @@ fn format_telegram_message(payload: &NotificationPayload) -> String {
         crate::db::NotificationEventType::DeploymentFailed => "❌",
         crate::db::NotificationEventType::AppStopped => "🛑",
         crate::db::NotificationEventType::AppStarted => "▶️",
+        crate::db::NotificationEventType::ContainerCrash => "💥",
+        crate::db::NotificationEventType::ContainerRestarted => "🔄",
     };
 
     let mut msg = format!(

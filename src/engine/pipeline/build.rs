@@ -15,18 +15,22 @@ use super::super::{add_deployment_log, BuildLimits, KEY_LENGTH};
 
 /// Push a built image to a Docker registry if the app has registry push enabled.
 /// Uses `docker tag` + `docker login` + `docker push` CLI commands.
+///
+/// Tags the image with both the commit SHA (or short deployment ID as fallback)
+/// and `latest`. Returns the remote tag (commit-SHA variant) so callers can
+/// persist it on the deployment record for registry-based rollbacks.
 pub(super) async fn push_image_to_registry(
     db: &DbPool,
     deployment_id: &str,
     app: &App,
     image_tag: &str,
     encryption_key: Option<&[u8; super::super::KEY_LENGTH]>,
-) -> Result<()> {
+) -> Result<Option<String>> {
     use crate::crypto;
     use tokio::process::Command;
 
     if !app.is_registry_push_enabled() {
-        return Ok(());
+        return Ok(None);
     }
 
     let registry_url = match app.registry_url.as_deref().filter(|s| !s.is_empty()) {
@@ -39,21 +43,34 @@ pub(super) async fn push_image_to_registry(
                 "Registry push is enabled but no registry URL is configured — skipping push",
             )
             .await?;
-            return Ok(());
+            return Ok(None);
         }
     };
 
-    // Short deployment ID for the remote tag (first 8 chars)
-    let short_id = if deployment_id.len() >= 8 {
-        &deployment_id[..8]
-    } else {
-        deployment_id
+    // Prefer commit SHA for deterministic rollbacks; fall back to short deployment ID.
+    let commit_sha: Option<String> = sqlx::query_scalar(
+        "SELECT commit_sha FROM deployments WHERE id = ?",
+    )
+    .bind(deployment_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .flatten();
+
+    let version_label = match commit_sha.as_deref().filter(|s| !s.is_empty()) {
+        Some(sha) => sha[..sha.len().min(40)].to_string(),
+        None => {
+            if deployment_id.len() >= 8 {
+                deployment_id[..8].to_string()
+            } else {
+                deployment_id.to_string()
+            }
+        }
     };
-    let remote_tag = format!(
-        "{}/{app_name}:{short_id}",
-        registry_url,
-        app_name = app.name
-    );
+
+    let remote_tag = format!("{}/{app_name}:{version_label}", registry_url, app_name = app.name);
+    let latest_tag = format!("{}/{app_name}:latest", registry_url, app_name = app.name);
 
     add_deployment_log(
         db,
@@ -63,7 +80,7 @@ pub(super) async fn push_image_to_registry(
     )
     .await?;
 
-    // Step 1: tag
+    // Step 1: tag with version label
     let tag_output = Command::new("docker")
         .args(["tag", image_tag, &remote_tag])
         .output()
@@ -113,7 +130,7 @@ pub(super) async fn push_image_to_registry(
         }
     }
 
-    // Step 3: docker push
+    // Step 3: push version-labelled tag
     let push_output = Command::new("docker")
         .args(["push", &remote_tag])
         .output()
@@ -125,6 +142,32 @@ pub(super) async fn push_image_to_registry(
         anyhow::bail!("docker push failed: {}", stderr);
     }
 
+    // Step 4: tag + push :latest (non-fatal if it fails)
+    let tag_latest = Command::new("docker")
+        .args(["tag", image_tag, &latest_tag])
+        .output()
+        .await;
+    if let Ok(out) = tag_latest {
+        if out.status.success() {
+            let push_latest = Command::new("docker")
+                .args(["push", &latest_tag])
+                .output()
+                .await;
+            if let Ok(out) = push_latest {
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Failed to push :latest tag (non-fatal): {}", stderr),
+                    )
+                    .await?;
+                }
+            }
+        }
+    }
+
     add_deployment_log(
         db,
         deployment_id,
@@ -133,7 +176,7 @@ pub(super) async fn push_image_to_registry(
     )
     .await?;
 
-    Ok(())
+    Ok(Some(remote_tag))
 }
 
 /// Execute deployment commands (pre or post) in a container
@@ -623,6 +666,7 @@ pub(super) async fn build_git_image(
                 memory_limit: build_limits.memory_limit.clone(),
                 log_tx: Some(log_tx),
                 build_secrets,
+                build_platforms: app.build_platforms.clone(),
             };
 
             // Log build resource limits if configured
@@ -1437,6 +1481,7 @@ pub(super) async fn build_upload_image(
                 memory_limit: build_limits.memory_limit.clone(),
                 log_tx: Some(log_tx2),
                 build_secrets: build_secrets2,
+                build_platforms: app.build_platforms.clone(),
             };
 
             runtime.build(&build_ctx).await.context("Build failed")?;

@@ -42,6 +42,9 @@ import type {
   AppRedirectRule,
   CreateRedirectRuleRequest,
   UpdateRedirectRuleRequest,
+  AppPatch,
+  CreatePatchRequest,
+  UpdatePatchRequest,
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
@@ -701,6 +704,34 @@ export const appsApi = {
   /** Delete a URL redirect rule */
   deleteRedirectRule: (appId: string, ruleId: string, token?: string) =>
     apiRequest<void>(`/apps/${appId}/redirects/${ruleId}`, {
+      method: "DELETE",
+    }, token),
+
+  // -------------------------------------------------------------------------
+  // Deployment Patches
+  // -------------------------------------------------------------------------
+
+  /** List all deployment patches for an app */
+  listPatches: (appId: string, token?: string) =>
+    apiRequest<AppPatch[]>(`/apps/${appId}/patches`, {}, token),
+
+  /** Create a new deployment patch */
+  createPatch: (appId: string, data: CreatePatchRequest, token?: string) =>
+    apiRequest<AppPatch>(`/apps/${appId}/patches`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, token),
+
+  /** Update an existing patch */
+  updatePatch: (appId: string, patchId: string, data: UpdatePatchRequest, token?: string) =>
+    apiRequest<AppPatch>(`/apps/${appId}/patches/${patchId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }, token),
+
+  /** Delete a patch */
+  deletePatch: (appId: string, patchId: string, token?: string) =>
+    apiRequest<void>(`/apps/${appId}/patches/${patchId}`, {
       method: "DELETE",
     }, token),
 

@@ -213,6 +213,105 @@ async fn run_git_deployment(
             .await?;
     }
 
+    // Step 1c: Apply deployment patches (file injection)
+    {
+        let patches = sqlx::query_as::<_, crate::db::AppPatch>(
+            "SELECT id, app_id, file_path, content, operation, is_enabled, created_at, updated_at \
+             FROM app_patches WHERE app_id = ? ORDER BY created_at ASC",
+        )
+        .bind(&app.id)
+        .fetch_all(db)
+        .await
+        .unwrap_or_default();
+
+        for patch in patches.iter().filter(|p| p.is_enabled()) {
+            let target = work_dir.join(&patch.file_path);
+            if let Some(parent) = target.parent() {
+                if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Could not create parent dir for patch {}: {}", patch.file_path, e),
+                    )
+                    .await?;
+                    continue;
+                }
+            }
+
+            match patch.operation.as_str() {
+                "create" => {
+                    if let Err(e) = tokio::fs::write(&target, &patch.content).await {
+                        add_deployment_log(
+                            db,
+                            deployment_id,
+                            "warn",
+                            &format!("Patch write failed for {}: {}", patch.file_path, e),
+                        )
+                        .await?;
+                    } else {
+                        add_deployment_log(
+                            db,
+                            deployment_id,
+                            "info",
+                            &format!("Patch applied (create): {}", patch.file_path),
+                        )
+                        .await?;
+                    }
+                }
+                "append" => {
+                    use tokio::io::AsyncWriteExt;
+                    match tokio::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&target)
+                        .await
+                    {
+                        Ok(mut f) => {
+                            if let Err(e) = f.write_all(patch.content.as_bytes()).await {
+                                add_deployment_log(
+                                    db,
+                                    deployment_id,
+                                    "warn",
+                                    &format!("Patch append failed for {}: {}", patch.file_path, e),
+                                )
+                                .await?;
+                            } else {
+                                add_deployment_log(
+                                    db,
+                                    deployment_id,
+                                    "info",
+                                    &format!("Patch applied (append): {}", patch.file_path),
+                                )
+                                .await?;
+                            }
+                        }
+                        Err(e) => {
+                            add_deployment_log(
+                                db,
+                                deployment_id,
+                                "warn",
+                                &format!("Patch open failed for {}: {}", patch.file_path, e),
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                "delete" => {
+                    let _ = tokio::fs::remove_file(&target).await;
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "info",
+                        &format!("Patch applied (delete): {}", patch.file_path),
+                    )
+                    .await?;
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Step 2: Build
     update_deployment_status(db, deployment_id, "building", None).await?;
 
@@ -273,10 +372,14 @@ pub async fn run_deployment(
         })
         .unwrap_or((None, None));
 
-    // Determine the image to use based on deployment source
-    let image_tag = if app.uses_registry_image() {
-        // Registry-based deployment: pull pre-built image
-        run_registry_deployment(db, runtime.clone(), deployment_id, app).await?
+    // Determine the image to use based on deployment source.
+    // `remote_image_tag` is Some(...) when the image was pushed to a registry —
+    // after start_container stores the local image tag we overwrite it with the
+    // remote reference so rollbacks can pull from registry.
+    let (image_tag, remote_image_tag): (String, Option<String>) = if app.uses_registry_image() {
+        // Registry-based deployment: pull pre-built image (no push needed)
+        let tag = run_registry_deployment(db, runtime.clone(), deployment_id, app).await?;
+        (tag, None)
     } else if let Some(ref existing_tag) = existing_image_tag {
         // Restart from existing image (for upload apps without source)
         add_deployment_log(
@@ -294,7 +397,7 @@ pub async fn run_deployment(
             "Skipping build - using existing image",
         )
         .await?;
-        existing_tag.clone()
+        (existing_tag.clone(), None)
     } else if let Some(source_path) = upload_source_path {
         // Upload-based deployment: use pre-extracted source
         let tag = run_upload_deployment(
@@ -306,37 +409,79 @@ pub async fn run_deployment(
             build_limits,
         )
         .await?;
-        // Optionally push to registry after upload build
-        if let Err(e) =
-            build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+        // Optionally push to registry; capture remote tag for image_tag update
+        let remote = match build::push_image_to_registry(
+            db,
+            deployment_id,
+            app,
+            &tag,
+            encryption_key,
+        )
+        .await
         {
-            add_deployment_log(
-                db,
-                deployment_id,
-                "warn",
-                &format!("Registry push failed (non-fatal): {}", e),
-            )
-            .await?;
-        }
-        tag
+            Ok(rt) => rt,
+            Err(e) => {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "warn",
+                    &format!("Registry push failed (non-fatal): {}", e),
+                )
+                .await?;
+                None
+            }
+        };
+        (tag, remote)
     } else {
         // Git-based deployment: clone and build
-        let tag = run_git_deployment(db, runtime.clone(), deployment_id, app, build_limits, encryption_key).await?;
-        // Optionally push to registry after git build
-        if let Err(e) =
-            build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+        let tag = run_git_deployment(
+            db,
+            runtime.clone(),
+            deployment_id,
+            app,
+            build_limits,
+            encryption_key,
+        )
+        .await?;
+        // Optionally push to registry; capture remote tag for image_tag update
+        let remote = match build::push_image_to_registry(
+            db,
+            deployment_id,
+            app,
+            &tag,
+            encryption_key,
+        )
+        .await
         {
-            add_deployment_log(
-                db,
-                deployment_id,
-                "warn",
-                &format!("Registry push failed (non-fatal): {}", e),
-            )
-            .await?;
-        }
-        tag
+            Ok(rt) => rt,
+            Err(e) => {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "warn",
+                    &format!("Registry push failed (non-fatal): {}", e),
+                )
+                .await?;
+                None
+            }
+        };
+        (tag, remote)
     };
 
     // Start container, health check, and finalize
-    start::start_container(db, runtime, deployment_id, app, image_tag, encryption_key).await
+    let result =
+        start::start_container(db, runtime, deployment_id, app, image_tag, encryption_key)
+            .await?;
+
+    // If the image was pushed to a registry, update the deployment's image_tag to the remote
+    // reference. start_container stored the local image name, but rollbacks need the registry URL.
+    if let Some(ref rmt) = remote_image_tag {
+        let _ = sqlx::query("UPDATE deployments SET image_tag = ? WHERE id = ?")
+            .bind(rmt)
+            .bind(deployment_id)
+            .execute(db)
+            .await;
+    }
+
+    Ok(result)
 }

@@ -34,3 +34,4 @@ nul
 
 # Live testing credentials (contains real secrets - never commit)
 live-testing/CREDENTIALS.md
+.claude/worktrees/

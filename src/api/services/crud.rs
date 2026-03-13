@@ -333,6 +333,20 @@ pub async fn update_service(
             })?;
     }
 
+    // Update isolated_network if provided
+    if let Some(isolated) = req.isolated_network {
+        sqlx::query("UPDATE services SET isolated_network = ?, updated_at = ? WHERE id = ?")
+            .bind(isolated as i32)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service isolated_network: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
     // Fetch and return the updated service
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(&id)

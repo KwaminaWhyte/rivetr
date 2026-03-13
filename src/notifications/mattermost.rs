@@ -50,6 +50,8 @@ fn format_mattermost_message(payload: &NotificationPayload) -> String {
         crate::db::NotificationEventType::DeploymentFailed => ":x:",
         crate::db::NotificationEventType::AppStopped => ":octagonal_sign:",
         crate::db::NotificationEventType::AppStarted => ":arrow_forward:",
+        crate::db::NotificationEventType::ContainerCrash => ":skull:",
+        crate::db::NotificationEventType::ContainerRestarted => ":arrows_counterclockwise:",
     };
 
     let mut msg = format!(

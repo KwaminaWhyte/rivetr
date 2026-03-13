@@ -22,6 +22,7 @@ mod networking_extra;
 mod project_mgmt;
 mod security_search;
 mod sprint15;
+mod sprint16;
 
 use anyhow::Result;
 use sqlx::SqlitePool;
@@ -65,6 +66,8 @@ pub async fn seed_service_templates(pool: &SqlitePool) -> Result<()> {
     templates.extend(networking_extra::templates());
     // Sprint 15 additions
     templates.extend(sprint15::templates());
+    // Sprint 16 additions
+    templates.extend(sprint16::templates());
 
     let template_count = templates.len();
     for (id, name, description, category, icon, compose, env_schema) in templates {

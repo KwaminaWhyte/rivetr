@@ -403,6 +403,13 @@ pub async fn update_app(
         None => existing.build_secrets.clone(),
     };
 
+    // Build platforms (simple text field, empty string clears it)
+    let build_platforms = match &req.build_platforms {
+        Some(p) if p.is_empty() => None,
+        Some(p) => Some(p.clone()),
+        None => existing.build_platforms.clone(),
+    };
+
     // Custom Docker run options
     let privileged = req.privileged.unwrap_or(existing.privileged != 0);
     let update_cap_add = match &req.cap_add {
@@ -470,6 +477,7 @@ pub async fn update_app(
             shm_size = ?,
             init_process = ?,
             build_secrets = ?,
+            build_platforms = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -523,6 +531,7 @@ pub async fn update_app(
     .bind(&shm_size)
     .bind(init_process)
     .bind(&build_secrets_json)
+    .bind(&build_platforms)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

@@ -56,8 +56,16 @@ pub struct Service {
     pub port: i32,
     pub status: String,
     pub error_message: Option<String>,
+    /// When 1 (default), the service uses a dedicated Docker network named
+    /// `rivetr-svc-{id_prefix}` so its containers are isolated from other services.
+    #[serde(default = "default_isolated_network")]
+    pub isolated_network: i32,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_isolated_network() -> i32 {
+    1
 }
 
 impl Service {
@@ -94,6 +102,8 @@ pub struct ServiceResponse {
     pub port: i32,
     pub status: String,
     pub error_message: Option<String>,
+    /// Whether the service runs in a dedicated isolated Docker network.
+    pub isolated_network: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -110,6 +120,7 @@ impl From<Service> for ServiceResponse {
             port: service.port,
             status: service.status,
             error_message: service.error_message,
+            isolated_network: service.isolated_network != 0,
             created_at: service.created_at,
             updated_at: service.updated_at,
         }
@@ -143,4 +154,6 @@ pub struct UpdateServiceRequest {
     pub domain: Option<String>,
     /// Update the proxy port
     pub port: Option<i32>,
+    /// Toggle isolated network for this service
+    pub isolated_network: Option<bool>,
 }

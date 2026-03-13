@@ -24,10 +24,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
-import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download } from "lucide-react";
+import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download, Network } from "lucide-react";
 
 interface OutletContext {
   service: Service;
@@ -76,6 +77,7 @@ export default function ServiceSettingsTab() {
   const [composeContent, setComposeContent] = useState(service.compose_content);
   const [domain, setDomain] = useState(service.domain ?? "");
   const [port, setPort] = useState(service.port ?? 80);
+  const [isolatedNetwork, setIsolatedNetwork] = useState(service.isolated_network ?? true);
 
   // Database import state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +109,18 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update domain configuration");
+    },
+  });
+
+  const updateNetworkMutation = useMutation({
+    mutationFn: (isolated: boolean) =>
+      api.updateService(service.id, { isolated_network: isolated }),
+    onSuccess: () => {
+      toast.success("Network isolation setting saved. Restart the service to apply changes.");
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update network settings");
     },
   });
 
@@ -153,7 +167,8 @@ export default function ServiceSettingsTab() {
   useEffect(() => {
     setDomain(service.domain ?? "");
     setPort(service.port ?? 80);
-  }, [service.domain, service.port]);
+    setIsolatedNetwork(service.isolated_network ?? true);
+  }, [service.domain, service.port, service.isolated_network]);
 
   const handleCancelEdit = () => {
     setComposeContent(service.compose_content);
@@ -230,6 +245,41 @@ export default function ServiceSettingsTab() {
               </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Networking */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Network className="h-5 w-5" />
+            Networking
+          </CardTitle>
+          <CardDescription>
+            Control how this service&apos;s containers are networked relative to other services.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="isolated-network" className="text-sm font-medium">
+                Isolated Network
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Run this service&apos;s containers in a dedicated Docker network, isolated from other services.
+                When enabled, a network named <code className="text-xs bg-muted px-1 py-0.5 rounded">rivetr-svc-{service.id.slice(0, 8)}</code> is created automatically.
+              </p>
+            </div>
+            <Switch
+              id="isolated-network"
+              checked={isolatedNetwork}
+              onCheckedChange={(checked) => {
+                setIsolatedNetwork(checked);
+                updateNetworkMutation.mutate(checked);
+              }}
+              disabled={updateNetworkMutation.isPending}
+            />
+          </div>
         </CardContent>
       </Card>
 

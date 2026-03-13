@@ -25,6 +25,7 @@ pub mod metrics;
 mod monitoring;
 mod notifications;
 pub mod oauth;
+mod patches;
 mod previews;
 mod projects;
 pub mod rate_limit;
@@ -262,6 +263,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
         .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
         .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
+        // Deployment Patches (file injection before build)
+        .route("/apps/:id/patches", get(patches::list_patches))
+        .route("/apps/:id/patches", post(patches::create_patch))
+        .route("/apps/:id/patches/:patch_id", put(patches::update_patch))
+        .route("/apps/:id/patches/:patch_id", delete(patches::delete_patch))
         // Alert Configurations
         .route("/apps/:id/alerts", get(alerts::list_alerts))
         .route("/apps/:id/alerts", post(alerts::create_alert))

@@ -40,6 +40,7 @@ pub mod stats;
 pub mod swarm;
 pub mod team;
 pub mod user;
+pub mod patch;
 pub mod volume;
 
 // Re-export all types for backwards compatibility
@@ -81,4 +82,5 @@ pub use stats::*;
 pub use swarm::*;
 pub use team::*;
 pub use user::*;
+pub use patch::*;
 pub use volume::*;

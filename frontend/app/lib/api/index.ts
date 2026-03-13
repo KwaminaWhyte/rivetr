@@ -172,6 +172,12 @@ export const api = {
   updateRedirectRule: appsApi.updateRedirectRule,
   deleteRedirectRule: appsApi.deleteRedirectRule,
 
+  // Deployment Patches
+  listPatches: appsApi.listPatches,
+  createPatch: appsApi.createPatch,
+  updatePatch: appsApi.updatePatch,
+  deletePatch: appsApi.deletePatch,
+
   // GitHub Actions Workflow Generator
   getGithubActionsWorkflow: appsApi.getGithubActionsWorkflow,
 

@@ -43,6 +43,7 @@ export default [
         route("snapshots", "routes/apps/$id/settings/snapshots.tsx"),
         route("sharing", "routes/apps/$id/settings/sharing.tsx"),
         route("docker", "routes/apps/$id/settings/docker.tsx"),
+        route("patches", "routes/apps/$id/settings/patches.tsx"),
       ]),
       route("deployments", "routes/apps/$id/deployments.tsx"),
       route("deployments/:deploymentId", "routes/apps/$id/deployment-detail.tsx"),
