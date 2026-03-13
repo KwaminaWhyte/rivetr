@@ -18,6 +18,7 @@ pub mod environments;
 pub mod error;
 mod git_providers;
 mod github_apps;
+mod instance_settings;
 mod jobs;
 mod log_drains;
 pub mod metrics;
@@ -609,6 +610,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/settings/alert-stats", get(alerts::get_alert_stats))
         .route("/settings/cost-rates", get(cost_rates::get_cost_rates))
         .route("/settings/cost-rates", put(cost_rates::update_cost_rates))
+        // Instance Settings (domain, name)
+        .route(
+            "/settings/instance",
+            get(instance_settings::get_instance_settings),
+        )
+        .route(
+            "/settings/instance",
+            put(instance_settings::update_instance_settings),
+        )
         // OAuth Provider Settings (admin)
         .route(
             "/settings/oauth-providers",
