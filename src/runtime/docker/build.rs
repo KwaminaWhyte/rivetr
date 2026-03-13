@@ -1,7 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bollard::image::BuildImageOptions;
 use bytes::Bytes;
 use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 use crate::runtime::BuildContext;
 
@@ -106,6 +107,138 @@ pub(super) fn parse_cpu_limits(cpu_limit: Option<&str>) -> (Option<i64>, Option<
 }
 
 pub async fn build(runtime: &DockerRuntime, ctx: &BuildContext) -> Result<String> {
+    // When build secrets are present we must use `docker buildx build` via CLI
+    // because the Bollard API does not support BuildKit --secret flags.
+    if !ctx.build_secrets.is_empty() {
+        return build_with_secrets_cli(ctx).await;
+    }
+
+    // Standard path: use the Bollard API (no secrets)
+    build_via_bollard(runtime, ctx).await
+}
+
+/// Use `docker buildx build` CLI when BuildKit secrets are required.
+/// Writes each secret value to a tmpfile, passes `--secret id=KEY,src=TMPFILE`,
+/// then cleans up tmpfiles on completion (success or failure).
+async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
+    use tokio::process::Command;
+
+    let dockerfile = ctx.dockerfile.trim_start_matches("./");
+
+    let mut args: Vec<String> = vec![
+        "buildx".to_string(),
+        "build".to_string(),
+        "--load".to_string(), // export to local Docker daemon
+        "-t".to_string(),
+        ctx.tag.clone(),
+        "-f".to_string(),
+        dockerfile.to_string(),
+    ];
+
+    if let Some(ref target) = ctx.build_target {
+        if !target.is_empty() {
+            args.push("--target".to_string());
+            args.push(target.clone());
+        }
+    }
+
+    // Resource limits via build-arg shim (buildx uses --memory / --cpu-quota on the daemon)
+    if let Some(ref memory) = ctx.memory_limit {
+        args.push("--memory".to_string());
+        args.push(memory.clone());
+    }
+
+    if let Some(ref cpu) = ctx.cpu_limit {
+        if let Ok(n) = cpu.parse::<f64>() {
+            // Convert CPUs to cpu-quota (period = 100000 µs)
+            let quota = (n * 100_000.0) as u64;
+            args.push("--cpu-quota".to_string());
+            args.push(quota.to_string());
+        }
+    }
+
+    // Custom options (--no-cache, --add-host, …)
+    let extra = parse_custom_build_args(ctx.custom_options.as_deref());
+    if extra.no_cache {
+        args.push("--no-cache".to_string());
+    }
+    if let Some(ref hosts) = extra.extra_hosts {
+        for h in hosts.split(',') {
+            args.push("--add-host".to_string());
+            args.push(h.to_string());
+        }
+    }
+
+    for (key, value) in &ctx.build_args {
+        args.push("--build-arg".to_string());
+        args.push(format!("{}={}", key, value));
+    }
+
+    // Write secrets to tmpfiles
+    let tag_safe = ctx.tag.replace([':', '/'], "-");
+    let mut secret_tmp_paths: Vec<std::path::PathBuf> = vec![];
+    for (key, value) in &ctx.build_secrets {
+        let tmp_path = std::path::PathBuf::from(format!(
+            "/tmp/rivetr-secret-{}-{}",
+            tag_safe, key
+        ));
+        let mut f = tokio::fs::File::create(&tmp_path)
+            .await
+            .context(format!("Failed to create secret tmpfile for '{}'", key))?;
+        f.write_all(value.as_bytes())
+            .await
+            .context(format!("Failed to write secret tmpfile for '{}'", key))?;
+        args.push("--secret".to_string());
+        args.push(format!("id={},src={}", key, tmp_path.display()));
+        secret_tmp_paths.push(tmp_path);
+    }
+
+    args.push(ctx.path.clone());
+
+    tracing::info!(
+        secrets = ?ctx.build_secrets.iter().map(|(k,_)| k.as_str()).collect::<Vec<_>>(),
+        "Building image with BuildKit secrets via CLI"
+    );
+
+    let output = Command::new("docker")
+        .args(&args)
+        .env("DOCKER_BUILDKIT", "1")
+        .output()
+        .await
+        .context("Failed to spawn docker buildx build")?;
+
+    // Clean up secret tmpfiles regardless of outcome
+    for tmp_path in &secret_tmp_paths {
+        if let Err(e) = tokio::fs::remove_file(tmp_path).await {
+            tracing::warn!("Failed to remove secret tmpfile {:?}: {}", tmp_path, e);
+        }
+    }
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // Forward output to log_tx if available
+        if let Some(ref tx) = ctx.log_tx {
+            for line in stdout.lines().chain(stderr.lines()) {
+                let _ = tx.send(line.to_string());
+            }
+        }
+        anyhow::bail!("docker buildx build failed:\n{}", stderr);
+    }
+
+    // Forward stdout to log_tx
+    if let Some(ref tx) = ctx.log_tx {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let _ = tx.send(line.to_string());
+        }
+    }
+
+    Ok(ctx.tag.clone())
+}
+
+/// Standard Bollard-based build (no secrets).
+async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Result<String> {
     // Create a tar archive of the build context
     let tar_path = format!("{}.tar", ctx.path);
     let tar_file = std::fs::File::create(&tar_path)?;

@@ -204,6 +204,7 @@ pub async fn run_preview_deployment(
         cpu_limit: Some("1".to_string()),
         memory_limit: Some("1g".to_string()),
         log_tx: None,
+        build_secrets: vec![],
     };
 
     if let Err(e) = runtime.build(&build_ctx).await {

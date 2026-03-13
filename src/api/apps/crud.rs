@@ -394,6 +394,13 @@ pub async fn update_app(
         existing.restart_policy.clone()
     };
 
+    // Build secrets (stored as JSON, serialized from Vec<BuildSecret>)
+    let build_secrets_json = match &req.build_secrets {
+        Some(secrets) if secrets.is_empty() => None,
+        Some(secrets) => serde_json::to_string(secrets).ok(),
+        None => existing.build_secrets.clone(),
+    };
+
     // Custom Docker run options
     let privileged = req.privileged.unwrap_or(existing.privileged != 0);
     let update_cap_add = match &req.cap_add {
@@ -460,6 +467,7 @@ pub async fn update_app(
             devices = ?,
             shm_size = ?,
             init_process = ?,
+            build_secrets = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -512,6 +520,7 @@ pub async fn update_app(
     .bind(&update_devices)
     .bind(&shm_size)
     .bind(init_process)
+    .bind(&build_secrets_json)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

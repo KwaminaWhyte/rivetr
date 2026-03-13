@@ -610,6 +610,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/services/:id/import-db",
             post(services::import_service_db),
         )
+        .route(
+            "/services/:id/export-db",
+            get(services::export_service_db),
+        )
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
         .route(

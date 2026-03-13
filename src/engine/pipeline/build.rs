@@ -593,6 +593,25 @@ pub(super) async fn build_git_image(
                 }
             });
 
+            let build_secrets: Vec<(String, String)> = app
+                .get_build_secrets()
+                .into_iter()
+                .map(|s| (s.key, s.value))
+                .collect();
+
+            if !build_secrets.is_empty() {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!(
+                        "Using {} build secret(s) via BuildKit --secret",
+                        build_secrets.len()
+                    ),
+                )
+                .await?;
+            }
+
             let build_ctx = BuildContext {
                 path: build_path.to_string_lossy().to_string(),
                 dockerfile,
@@ -603,6 +622,7 @@ pub(super) async fn build_git_image(
                 cpu_limit: build_limits.cpu_limit.clone(),
                 memory_limit: build_limits.memory_limit.clone(),
                 log_tx: Some(log_tx),
+                build_secrets,
             };
 
             // Log build resource limits if configured
@@ -1387,6 +1407,25 @@ pub(super) async fn build_upload_image(
                 }
             });
 
+            let build_secrets2: Vec<(String, String)> = app
+                .get_build_secrets()
+                .into_iter()
+                .map(|s| (s.key, s.value))
+                .collect();
+
+            if !build_secrets2.is_empty() {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "info",
+                    &format!(
+                        "Using {} build secret(s) via BuildKit --secret",
+                        build_secrets2.len()
+                    ),
+                )
+                .await?;
+            }
+
             let build_ctx = BuildContext {
                 path: build_path.to_string_lossy().to_string(),
                 dockerfile,
@@ -1397,6 +1436,7 @@ pub(super) async fn build_upload_image(
                 cpu_limit: build_limits.cpu_limit.clone(),
                 memory_limit: build_limits.memory_limit.clone(),
                 log_tx: Some(log_tx2),
+                build_secrets: build_secrets2,
             };
 
             runtime.build(&build_ctx).await.context("Build failed")?;

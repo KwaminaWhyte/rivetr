@@ -92,6 +92,23 @@ impl ContainerRuntime for PodmanRuntime {
             args.push(format!("{}={}", key, value));
         }
 
+        // Write build secrets to tmpfiles and add --secret flags.
+        // Podman supports BuildKit-compatible --secret natively.
+        let mut secret_tmp_paths: Vec<std::path::PathBuf> = vec![];
+        for (key, value) in &ctx.build_secrets {
+            let tmp_path = std::path::PathBuf::from(format!(
+                "/tmp/rivetr-secret-{}-{}",
+                ctx.tag.replace(':', "-"),
+                key
+            ));
+            tokio::fs::write(&tmp_path, value)
+                .await
+                .context(format!("Failed to write secret tmpfile for key '{}'", key))?;
+            args.push("--secret".to_string());
+            args.push(format!("id={},src={}", key, tmp_path.display()));
+            secret_tmp_paths.push(tmp_path);
+        }
+
         if ctx.memory_limit.is_some() || ctx.cpu_limit.is_some() {
             tracing::info!(
                 memory = ?ctx.memory_limit,
@@ -102,7 +119,16 @@ impl ContainerRuntime for PodmanRuntime {
 
         args.push(ctx.path.clone());
 
-        self.run_command(&args).await?;
+        let result = self.run_command(&args).await;
+
+        // Clean up secret tmpfiles regardless of build success/failure
+        for tmp_path in &secret_tmp_paths {
+            if let Err(e) = tokio::fs::remove_file(tmp_path).await {
+                tracing::warn!("Failed to remove secret tmpfile {:?}: {}", tmp_path, e);
+            }
+        }
+
+        result?;
         Ok(ctx.tag.clone())
     }
 

@@ -1076,6 +1076,20 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 078: Add build_secrets column to apps
+    let has_build_secrets: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'build_secrets'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_build_secrets.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/078_build_secrets.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

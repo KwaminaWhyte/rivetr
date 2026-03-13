@@ -124,6 +124,9 @@ pub struct App {
     /// Run tini as PID 1 (init process)
     #[serde(default)]
     pub init_process: i64,
+    /// JSON array of build-time secrets: [{key: String, value: String}]
+    /// Injected during `docker build` via BuildKit `--secret` — not baked into image layers.
+    pub build_secrets: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -217,6 +220,8 @@ pub struct AppResponse {
     pub shm_size: Option<String>,
     /// Run tini as PID 1 (init process)
     pub init_process: bool,
+    /// JSON array of build-time secrets (values are masked in responses)
+    pub build_secrets: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -280,6 +285,7 @@ impl From<App> for AppResponse {
             devices: app.devices,
             shm_size: app.shm_size,
             init_process: app.init_process != 0,
+            build_secrets: app.build_secrets,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -493,6 +499,21 @@ impl App {
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default()
     }
+
+    /// Parse build_secrets JSON into Vec<BuildSecret>
+    pub fn get_build_secrets(&self) -> Vec<BuildSecret> {
+        self.build_secrets
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// A single build-time secret injected via BuildKit `--secret`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildSecret {
+    pub key: String,
+    pub value: String,
 }
 
 // DTOs for API
@@ -700,6 +721,8 @@ pub struct UpdateAppRequest {
     pub shm_size: Option<String>,
     /// Run tini as PID 1 (init process)
     pub init_process: Option<bool>,
+    /// Build-time secrets injected via BuildKit `--secret` (not baked into image layers)
+    pub build_secrets: Option<Vec<BuildSecret>>,
 }
 
 /// Request specifically for updating domains

@@ -275,7 +275,7 @@ pub async fn delete_server(
 pub async fn check_server_health(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Server>, StatusCode> {
+) -> Result<Json<ServerHealthResponse>, StatusCode> {
     // Fetch the server record (with the encrypted key)
     let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
         .bind(&id)
@@ -326,6 +326,27 @@ pub async fn check_server_health(
     .await;
 
     let now = chrono::Utc::now().to_rfc3339();
+
+    // Capture docker status fields before moving stats into the DB update
+    let (docker_installed, docker_running, compose_installed, compose_version) =
+        match &health_result {
+            Ok(stats) => {
+                let installed = stats
+                    .docker_version
+                    .as_deref()
+                    .map(|v| v != "not installed" && !v.is_empty())
+                    .unwrap_or(false);
+                let running = stats.docker_running;
+                let c_installed = stats
+                    .compose_version
+                    .as_deref()
+                    .map(|v| v != "not installed" && !v.is_empty())
+                    .unwrap_or(false);
+                let c_version = stats.compose_version.clone();
+                (installed, running, c_installed, c_version)
+            }
+            Err(_) => (false, false, false, None),
+        };
 
     match health_result {
         Ok(stats) => {
@@ -391,7 +412,13 @@ pub async fn check_server_health(
     updated.ssh_private_key = updated.ssh_private_key.map(|_| "[encrypted]".to_string());
     updated.ssh_password = updated.ssh_password.map(|_| "[encrypted]".to_string());
 
-    Ok(Json(updated))
+    Ok(Json(ServerHealthResponse {
+        server: updated,
+        docker_installed,
+        docker_running,
+        compose_installed,
+        compose_version,
+    }))
 }
 
 /// Gathered stats from a remote server SSH health check
@@ -403,6 +430,26 @@ struct ServerHealthStats {
     disk_total: Option<i64>,
     os_info: Option<String>,
     docker_version: Option<String>,
+    /// Whether the Docker daemon is currently active (systemctl is-active docker)
+    docker_running: bool,
+    /// Docker Compose version string ("not installed" when absent)
+    compose_version: Option<String>,
+}
+
+/// Extended health-check response: the updated Server row plus Docker status fields
+/// that are not stored in the database.
+#[derive(Debug, Serialize)]
+pub struct ServerHealthResponse {
+    #[serde(flatten)]
+    pub server: Server,
+    /// True when `docker --version` reports a real version (not "not installed")
+    pub docker_installed: bool,
+    /// True when the Docker daemon is active on the remote server
+    pub docker_running: bool,
+    /// True when `docker compose version` (or `docker-compose --version`) succeeds
+    pub compose_installed: bool,
+    /// Raw version string from `docker compose version`, if available
+    pub compose_version: Option<String>,
 }
 
 /// Run SSH commands to gather server health statistics.
@@ -446,7 +493,9 @@ async fn run_ssh_health_check(
         echo "MEM:$(free -b 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "DISK:$(df -b / 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "OS:$(uname -a 2>/dev/null || echo 'N/A')";
-        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')"
+        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DOCKER_RUNNING:$(systemctl is-active docker 2>/dev/null || (docker info > /dev/null 2>&1 && echo 'active') || echo 'inactive')";
+        echo "COMPOSE:$(docker compose version --short 2>/dev/null || docker-compose --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'not installed')"
     "#;
 
     // Use sshpass for password authentication if provided and no key is available
@@ -499,6 +548,8 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
     let mut disk_total: Option<i64> = None;
     let mut os_info: Option<String> = None;
     let mut docker_version: Option<String> = None;
+    let mut docker_running = false;
+    let mut compose_version: Option<String> = None;
 
     for line in output.lines() {
         let line = line.trim();
@@ -545,9 +596,19 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
                 os_info = Some(val.to_string());
             }
         } else if let Some(val) = line.strip_prefix("DOCKER:") {
+            // This prefix must be checked before DOCKER_RUNNING to avoid mis-matching
+            // Only match the plain "DOCKER:" line (not "DOCKER_RUNNING:")
             let val = val.trim();
             if !val.is_empty() {
                 docker_version = Some(val.to_string());
+            }
+        } else if let Some(val) = line.strip_prefix("DOCKER_RUNNING:") {
+            let val = val.trim();
+            docker_running = val == "active";
+        } else if let Some(val) = line.strip_prefix("COMPOSE:") {
+            let val = val.trim();
+            if !val.is_empty() {
+                compose_version = Some(val.to_string());
             }
         }
     }
@@ -560,6 +621,8 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
         disk_total,
         os_info,
         docker_version,
+        docker_running,
+        compose_version,
     })
 }
 

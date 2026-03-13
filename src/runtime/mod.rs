@@ -31,6 +31,9 @@ pub struct BuildContext {
     pub memory_limit: Option<String>,
     /// Optional channel to stream build log lines to the deployment log store
     pub log_tx: Option<mpsc::UnboundedSender<String>>,
+    /// Build-time secrets injected via BuildKit `--secret` (key, plaintext value pairs).
+    /// Each secret is written to a tmpfile and passed as `--secret id=KEY,src=TMPFILE`.
+    pub build_secrets: Vec<(String, String)>,
 }
 
 impl std::fmt::Debug for BuildContext {
@@ -44,6 +47,14 @@ impl std::fmt::Debug for BuildContext {
             .field("cpu_limit", &self.cpu_limit)
             .field("memory_limit", &self.memory_limit)
             .field("log_tx", &self.log_tx.is_some())
+            .field(
+                "build_secrets",
+                &self
+                    .build_secrets
+                    .iter()
+                    .map(|(k, _)| k.as_str())
+                    .collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
