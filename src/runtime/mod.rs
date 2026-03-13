@@ -128,6 +128,9 @@ pub struct RunConfig {
     pub ulimits: Vec<String>,
     /// Security options (e.g. ["seccomp=unconfined"])
     pub security_opt: Vec<String>,
+    /// Override the container CMD (command + args after the entrypoint).
+    /// When `None` the image's default CMD is used.
+    pub cmd: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]

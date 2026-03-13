@@ -247,6 +247,11 @@ impl ContainerRuntime for PodmanRuntime {
 
         args.push(config.image.clone());
 
+        // Append CMD override (command + args after the image name)
+        if let Some(ref cmd) = config.cmd {
+            args.extend(cmd.clone());
+        }
+
         self.run_command(&args).await
     }
 

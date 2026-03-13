@@ -296,6 +296,7 @@ pub async fn run_preview_deployment(
         gpus: None,
         ulimits: vec![],
         security_opt: vec![],
+        cmd: None,
     };
 
     let container_id = match runtime.run(&run_config).await {

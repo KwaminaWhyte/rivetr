@@ -306,6 +306,7 @@ pub(super) async fn start_container(
         gpus: app.docker_gpus.clone(),
         ulimits,
         security_opt,
+        cmd: None,
     };
 
     let container_id = runtime

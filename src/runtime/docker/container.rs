@@ -258,6 +258,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         exposed_ports: Some(exposed_ports),
         host_config: Some(host_config),
         labels,
+        cmd: config.cmd.clone(),
         ..Default::default()
     };
 

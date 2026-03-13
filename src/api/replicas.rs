@@ -134,6 +134,7 @@ pub async fn set_replica_count(
                     gpus: app.docker_gpus.clone(),
                     ulimits: app.docker_ulimits.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
                     security_opt: app.docker_security_opt.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+                    cmd: None,
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -301,6 +302,7 @@ pub async fn restart_replica(
         gpus: app.docker_gpus.clone(),
         ulimits: app.docker_ulimits.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
         security_opt: app.docker_security_opt.as_ref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+        cmd: None,
     };
 
     // Update status to starting

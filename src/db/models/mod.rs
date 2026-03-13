@@ -5,6 +5,7 @@
 pub mod alert_config;
 pub mod alert_event;
 pub mod app;
+pub mod cloudflare_tunnel;
 pub mod audit;
 pub mod backup;
 pub mod bulk;
@@ -49,6 +50,7 @@ pub mod white_label;
 pub use alert_config::*;
 pub use alert_event::*;
 pub use app::*;
+pub use cloudflare_tunnel::*;
 pub use audit::*;
 pub use backup::*;
 pub use bulk::*;

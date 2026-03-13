@@ -2,6 +2,7 @@ mod alerts;
 mod apps;
 mod audit;
 pub mod auth;
+mod cloudflare_tunnels;
 mod autoscaling;
 mod bulk;
 mod basic_auth;
@@ -238,6 +239,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/servers/:id/apps/:app_id",
             post(servers::assign_app_to_server).delete(servers::unassign_app_from_server),
+        )
+        // Cloudflare Tunnels
+        .route(
+            "/tunnels",
+            get(cloudflare_tunnels::list_tunnels).post(cloudflare_tunnels::create_tunnel),
+        )
+        .route("/tunnels/:id", delete(cloudflare_tunnels::delete_tunnel))
+        .route("/tunnels/:id/start", post(cloudflare_tunnels::start_tunnel))
+        .route("/tunnels/:id/stop", post(cloudflare_tunnels::stop_tunnel))
+        .route(
+            "/tunnels/:id/routes",
+            get(cloudflare_tunnels::list_tunnel_routes)
+                .post(cloudflare_tunnels::create_tunnel_route),
+        )
+        .route(
+            "/tunnels/:id/routes/:route_id",
+            delete(cloudflare_tunnels::delete_tunnel_route),
         )
         // Build Servers
         .route(

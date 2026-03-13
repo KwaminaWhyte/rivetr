@@ -647,6 +647,7 @@ pub async fn restart_app(
         gpus: app.docker_gpus.clone(),
         ulimits,
         security_opt,
+        cmd: None,
     };
 
     // 3. Start the new container (old one is still running — no downtime yet)

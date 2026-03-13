@@ -41,6 +41,13 @@ export type {
 } from "./swarm";
 export { whiteLabelApi } from "./white-label";
 export type { WhiteLabel, UpdateWhiteLabelRequest } from "./white-label";
+export { tunnelsApi } from "./tunnels";
+export type {
+  CloudflareTunnel,
+  CloudflareTunnelRoute,
+  CreateTunnelRequest,
+  CreateTunnelRouteRequest,
+} from "./tunnels";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -63,6 +70,7 @@ import { monitoringApi } from "./monitoring";
 import { sharedEnvVarsApi } from "./shared-env-vars";
 import { serversApi } from "./servers";
 import { whiteLabelApi } from "./white-label";
+import { tunnelsApi } from "./tunnels";
 
 /**
  * Combined API object for backward compatibility.
@@ -443,6 +451,16 @@ export const api = {
   // White Label
   getWhiteLabel: whiteLabelApi.get,
   updateWhiteLabel: whiteLabelApi.update,
+
+  // Cloudflare Tunnels
+  getTunnels: tunnelsApi.list,
+  createTunnel: tunnelsApi.create,
+  deleteTunnel: tunnelsApi.delete,
+  startTunnel: tunnelsApi.start,
+  stopTunnel: tunnelsApi.stop,
+  getTunnelRoutes: tunnelsApi.listRoutes,
+  createTunnelRoute: tunnelsApi.createRoute,
+  deleteTunnelRoute: tunnelsApi.deleteRoute,
 };
 
 export default api;
