@@ -71,7 +71,34 @@ pub(super) async fn check_and_restart(
         // Check if container is running
         match runtime.inspect(container_id).await {
             Ok(info) => {
-                if info.running {
+                // Even if running, a high Docker-level restart count means a crash loop:
+                // the container keeps crashing and Docker restarts it before our monitor fires.
+                let crash_loop = info.running
+                    && info.restart_count >= config.max_restart_attempts;
+
+                if crash_loop {
+                    result.containers_crashed += 1;
+                    tracing::warn!(
+                        container = %container_name,
+                        app = %app_name,
+                        restart_count = info.restart_count,
+                        "Container is in a crash loop (Docker restart count exceeded threshold), stopping"
+                    );
+                    let _ = runtime.stop(container_id).await;
+                    handle_crashed_container(
+                        db,
+                        runtime,
+                        deployment,
+                        container_id,
+                        &container_name,
+                        &app_name,
+                        config,
+                        restart_states,
+                        healthy_containers,
+                        &mut result,
+                    )
+                    .await;
+                } else if info.running {
                     handle_running_container(
                         container_name.as_str(),
                         &app_name,

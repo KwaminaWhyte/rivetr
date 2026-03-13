@@ -111,7 +111,7 @@ impl ContainerRuntime for PodmanRuntime {
             "run".to_string(),
             "-d".to_string(),
             "--restart".to_string(),
-            "unless-stopped".to_string(), // Ensure container restarts after server reboot
+            "unless-stopped".to_string(), // Restart on reboot; crash loops caught by restart_count check
             "--name".to_string(),
             config.name.clone(),
         ];
@@ -310,6 +310,7 @@ impl ContainerRuntime for PodmanRuntime {
                 port: host_port,
                 running: is_running,
                 host_port,
+                restart_count: 0,
             })
         } else {
             anyhow::bail!("Invalid inspect output")
@@ -359,6 +360,7 @@ impl ContainerRuntime for PodmanRuntime {
                     port,
                     running: is_running,
                     host_port: port,
+                    restart_count: 0,
                 });
             }
         }
@@ -399,6 +401,7 @@ impl ContainerRuntime for PodmanRuntime {
                     port,
                     running: is_running,
                     host_port: port,
+                    restart_count: 0,
                 });
             }
         }

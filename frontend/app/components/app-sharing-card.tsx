@@ -123,7 +123,8 @@ export function AppSharingCard({ app }: AppSharingCardProps) {
   };
 
   // Only show if this app belongs to the current team (not a shared app)
-  const isOwner = app.team_id === currentTeamId;
+  // Allow when: both are null (personal workspace), both match, or app has no team assigned
+  const isOwner = app.team_id === currentTeamId || !app.team_id;
 
   if (!isOwner) {
     return null;

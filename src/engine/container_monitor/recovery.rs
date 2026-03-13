@@ -164,22 +164,24 @@ pub(super) async fn reconcile_deployments(
     db: &DbPool,
     runtime: &Arc<dyn ContainerRuntime>,
 ) -> usize {
-    let running_deployments: Vec<Deployment> = match sqlx::query_as(
-        "SELECT * FROM deployments WHERE status = 'running' AND container_id IS NOT NULL",
+    // Reconcile both 'running' and 'starting' states — containers can be left in
+    // 'starting' if Rivetr restarts mid-deployment or right after container creation.
+    let deployments: Vec<Deployment> = match sqlx::query_as(
+        "SELECT * FROM deployments WHERE status IN ('running', 'starting') AND container_id IS NOT NULL",
     )
     .fetch_all(db)
     .await
     {
         Ok(deployments) => deployments,
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to fetch running deployments for reconciliation");
+            tracing::warn!(error = %e, "Failed to fetch deployments for reconciliation");
             return 0;
         }
     };
 
     let mut updated = 0;
 
-    for deployment in running_deployments {
+    for deployment in deployments {
         let container_id = match &deployment.container_id {
             Some(id) if !id.is_empty() => id,
             _ => continue,
@@ -190,7 +192,21 @@ pub(super) async fn reconcile_deployments(
             Err(_) => false,
         };
 
-        if !is_running {
+        if is_running && deployment.status == "starting" {
+            // Container is running but DB says starting — fix it
+            if let Err(e) = sqlx::query(
+                "UPDATE deployments SET status = 'running' WHERE id = ?"
+            )
+            .bind(&deployment.id)
+            .execute(db)
+            .await
+            {
+                tracing::warn!(deployment = %deployment.id, error = %e, "Failed to update deployment status during reconciliation");
+            } else {
+                tracing::info!(deployment = %deployment.id, container = %container_id, "Deployment status reconciled: starting -> running");
+                updated += 1;
+            }
+        } else if !is_running {
             if let Err(e) = sqlx::query(
                 "UPDATE deployments SET status = 'stopped', finished_at = datetime('now') WHERE id = ?"
             )
@@ -207,7 +223,7 @@ pub(super) async fn reconcile_deployments(
                 tracing::info!(
                     deployment = %deployment.id,
                     container = %container_id,
-                    "Deployment status reconciled: running -> stopped"
+                    "Deployment status reconciled: {} -> stopped", deployment.status
                 );
                 updated += 1;
             }
@@ -225,7 +241,7 @@ pub(super) async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn Container
                external_port, public_access, credentials, volume_name, volume_path,
                memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at
         FROM databases
-        WHERE status = 'running' AND container_id IS NOT NULL
+        WHERE status IN ('running', 'starting') AND container_id IS NOT NULL
         "#,
     )
     .fetch_all(db)
@@ -251,7 +267,20 @@ pub(super) async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn Container
             Err(_) => false,
         };
 
-        if !is_running {
+        if is_running && database.status == "starting" {
+            if let Err(e) = sqlx::query(
+                "UPDATE databases SET status = 'running', updated_at = datetime('now') WHERE id = ?"
+            )
+            .bind(&database.id)
+            .execute(db)
+            .await
+            {
+                tracing::warn!(database = %database.id, error = %e, "Failed to update database status during reconciliation");
+            } else {
+                tracing::info!(database = %database.name, container = %container_id, "Database status reconciled: starting -> running");
+                updated += 1;
+            }
+        } else if !is_running {
             if let Err(e) = sqlx::query(
                 "UPDATE databases SET status = 'stopped', updated_at = datetime('now') WHERE id = ?"
             )
@@ -268,7 +297,7 @@ pub(super) async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn Container
                 tracing::info!(
                     database = %database.name,
                     container = %container_id,
-                    "Database status reconciled: running -> stopped"
+                    "Database status reconciled: {} -> stopped", database.status
                 );
                 updated += 1;
             }

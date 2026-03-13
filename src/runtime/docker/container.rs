@@ -120,7 +120,8 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         Some(config.binds.clone())
     };
 
-    // Set restart policy to ensure containers restart after server reboot
+    // unless-stopped ensures containers restart after server reboots.
+    // Crash loops are detected by monitoring Docker's restart_count field.
     let restart_policy = bollard::service::RestartPolicy {
         name: Some(bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED),
         maximum_retry_count: None,
@@ -319,6 +320,8 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         })
         .unwrap_or((false, String::new()));
 
+    let restart_count = info.restart_count.unwrap_or(0).max(0) as u32;
+
     Ok(ContainerInfo {
         id: info.id.unwrap_or_default(),
         name: info.name.unwrap_or_default(),
@@ -326,6 +329,7 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         port: host_port,
         running,
         host_port,
+        restart_count,
     })
 }
 
@@ -377,6 +381,7 @@ pub async fn list_containers(
             port,
             running: is_running,
             host_port: port,
+            restart_count: 0,
         });
     }
 
@@ -433,6 +438,7 @@ pub async fn list_compose_containers(
             port,
             running: is_running,
             host_port: port,
+            restart_count: 0,
         });
     }
 

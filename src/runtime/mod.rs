@@ -99,6 +99,8 @@ pub struct ContainerInfo {
     pub running: bool,
     /// Host port the container is listening on
     pub host_port: Option<u16>,
+    /// Number of times Docker/Podman has restarted this container
+    pub restart_count: u32,
 }
 
 #[derive(Debug, Clone)]
