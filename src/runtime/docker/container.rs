@@ -224,7 +224,16 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
     } else {
         vec![config.name.clone()]
     };
-    connect_to_rivetr_network(runtime, &response.id, aliases).await;
+    connect_to_rivetr_network(runtime, &response.id, aliases.clone()).await;
+
+    // Also connect to the per-app isolated network so that containers belonging
+    // to the same app (e.g. replicas) can communicate privately while remaining
+    // isolated from other apps on the shared bridge.
+    if let Some(ref app_id) = config.app_id {
+        let per_app_net = format!("rivetr-app-{}", app_id);
+        ensure_named_network(runtime, &per_app_net).await;
+        connect_to_named_network(runtime, &response.id, &per_app_net, aliases).await;
+    }
 
     Ok(response.id)
 }
@@ -278,6 +287,58 @@ pub async fn connect_to_rivetr_network(
             "Could not connect container {} to network '{}': {}",
             container_id,
             RIVETR_NETWORK,
+            e
+        );
+    }
+}
+
+/// Create a Docker bridge network with the given name if it does not already exist.
+pub async fn ensure_named_network(runtime: &DockerRuntime, net_name: &str) {
+    let result = runtime
+        .client
+        .create_network(CreateNetworkOptions {
+            name: net_name,
+            check_duplicate: true,
+            driver: "bridge",
+            ..Default::default()
+        })
+        .await;
+
+    match result {
+        Ok(_) => tracing::info!("Created Docker network '{}'", net_name),
+        Err(bollard::errors::Error::DockerResponseServerError { status_code: 409, .. }) => {
+            // Network already exists – nothing to do.
+        }
+        Err(e) => tracing::warn!("Could not create Docker network '{}': {}", net_name, e),
+    }
+}
+
+/// Connect a container to the named Docker network with the given aliases.
+pub async fn connect_to_named_network(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    net_name: &str,
+    aliases: Vec<String>,
+) {
+    let result = runtime
+        .client
+        .connect_network(
+            net_name,
+            ConnectNetworkOptions {
+                container: container_id,
+                endpoint_config: EndpointSettings {
+                    aliases: Some(aliases),
+                    ..Default::default()
+                },
+            },
+        )
+        .await;
+
+    if let Err(e) = result {
+        tracing::warn!(
+            "Could not connect container {} to network '{}': {}",
+            container_id,
+            net_name,
             e
         );
     }

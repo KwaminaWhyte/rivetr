@@ -611,6 +611,7 @@ pub async fn restart_app(
         devices: vec![],
         shm_size: None,
         init: false,
+        app_id: Some(app.id.clone()),
     };
 
     // 3. Start the new container (old one is still running — no downtime yet)

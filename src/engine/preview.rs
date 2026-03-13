@@ -205,6 +205,7 @@ pub async fn run_preview_deployment(
         memory_limit: Some("1g".to_string()),
         log_tx: None,
         build_secrets: vec![],
+        build_platforms: None,
     };
 
     if let Err(e) = runtime.build(&build_ctx).await {
@@ -290,6 +291,7 @@ pub async fn run_preview_deployment(
         devices: vec![],
         shm_size: None,
         init: false,
+        app_id: Some(app.id.clone()),
     };
 
     let container_id = match runtime.run(&run_config).await {

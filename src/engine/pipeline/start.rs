@@ -286,6 +286,7 @@ pub(super) async fn start_container(
         devices,
         shm_size,
         init: app.init_process != 0,
+        app_id: Some(app.id.clone()),
     };
 
     let container_id = runtime

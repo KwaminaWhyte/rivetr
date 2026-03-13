@@ -34,6 +34,9 @@ pub struct BuildContext {
     /// Build-time secrets injected via BuildKit `--secret` (key, plaintext value pairs).
     /// Each secret is written to a tmpfile and passed as `--secret id=KEY,src=TMPFILE`.
     pub build_secrets: Vec<(String, String)>,
+    /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
+    /// When set, `docker buildx build --platform` is used instead of the default daemon build.
+    pub build_platforms: Option<String>,
 }
 
 impl std::fmt::Debug for BuildContext {
@@ -55,6 +58,7 @@ impl std::fmt::Debug for BuildContext {
                     .map(|(k, _)| k.as_str())
                     .collect::<Vec<_>>(),
             )
+            .field("build_platforms", &self.build_platforms)
             .finish()
     }
 }
@@ -112,6 +116,10 @@ pub struct RunConfig {
     pub shm_size: Option<i64>,
     /// Run tini as PID 1
     pub init: bool,
+    /// App ID used to name the per-app Docker network (`rivetr-app-{app_id}`).
+    /// When set, the container is also connected to a dedicated per-app network in
+    /// addition to the shared `rivetr` bridge.
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -136,6 +136,7 @@ pub async fn run_rollback(
         devices: vec![],
         shm_size: None,
         init: false,
+        app_id: Some(app.id.clone()),
     };
 
     add_deployment_log(

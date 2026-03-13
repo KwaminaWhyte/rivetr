@@ -291,6 +291,8 @@ export interface App {
   init_process: boolean;
   /** Build secrets injected via BuildKit --secret (stored as JSON array) */
   build_secrets: string | null;
+  /** Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64". */
+  build_platforms: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -544,6 +546,8 @@ export interface UpdateAppRequest {
   init_process?: boolean;
   /** Build secrets injected via BuildKit --secret (not stored in image layers) */
   build_secrets?: BuildSecret[];
+  /** Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64". Empty string clears it. */
+  build_platforms?: string;
 }
 
 // -------------------------------------------------------------------------
@@ -1034,4 +1038,37 @@ export interface UpdateRedirectRuleRequest {
   is_permanent?: boolean;
   is_enabled?: boolean;
   sort_order?: number;
+}
+
+// -------------------------------------------------------------------------
+// Deployment Patch Types
+// -------------------------------------------------------------------------
+
+/** A file-level patch applied to the cloned repository before building */
+export interface AppPatch {
+  id: string;
+  app_id: string;
+  /** Relative file path inside the repo, e.g. "config/production.env" */
+  file_path: string;
+  /** File content to write (unused for 'delete' operation) */
+  content: string;
+  /** Operation: "create" | "append" | "delete" */
+  operation: "create" | "append" | "delete";
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePatchRequest {
+  file_path: string;
+  content?: string;
+  operation?: "create" | "append" | "delete";
+  is_enabled?: boolean;
+}
+
+export interface UpdatePatchRequest {
+  file_path?: string;
+  content?: string;
+  operation?: "create" | "append" | "delete";
+  is_enabled?: boolean;
 }

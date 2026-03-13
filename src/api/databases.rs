@@ -725,6 +725,7 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         devices: vec![],
         shm_size: None,
         init: false,
+        app_id: None,
     };
 
     // Start the container

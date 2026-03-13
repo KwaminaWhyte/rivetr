@@ -107,17 +107,25 @@ pub(super) fn parse_cpu_limits(cpu_limit: Option<&str>) -> (Option<i64>, Option<
 }
 
 pub async fn build(runtime: &DockerRuntime, ctx: &BuildContext) -> Result<String> {
-    // When build secrets are present we must use `docker buildx build` via CLI
-    // because the Bollard API does not support BuildKit --secret flags.
-    if !ctx.build_secrets.is_empty() {
+    // When build secrets are present, or when a non-default platform is requested,
+    // we must use `docker buildx build` via CLI because the Bollard API does not
+    // support BuildKit --secret flags or --platform builds.
+    let needs_buildx = !ctx.build_secrets.is_empty()
+        || ctx
+            .build_platforms
+            .as_deref()
+            .map(|p| !p.is_empty() && p != "linux/amd64")
+            .unwrap_or(false);
+
+    if needs_buildx {
         return build_with_secrets_cli(ctx).await;
     }
 
-    // Standard path: use the Bollard API (no secrets)
+    // Standard path: use the Bollard API (no secrets, default platform)
     build_via_bollard(runtime, ctx).await
 }
 
-/// Use `docker buildx build` CLI when BuildKit secrets are required.
+/// Use `docker buildx build` CLI when BuildKit secrets or custom platforms are required.
 /// Writes each secret value to a tmpfile, passes `--secret id=KEY,src=TMPFILE`,
 /// then cleans up tmpfiles on completion (success or failure).
 async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
@@ -134,6 +142,14 @@ async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
         "-f".to_string(),
         dockerfile.to_string(),
     ];
+
+    // Inject --platform when a target platform is specified
+    if let Some(ref platforms) = ctx.build_platforms {
+        if !platforms.is_empty() {
+            args.push("--platform".to_string());
+            args.push(platforms.clone());
+        }
+    }
 
     if let Some(ref target) = ctx.build_target {
         if !target.is_empty() {

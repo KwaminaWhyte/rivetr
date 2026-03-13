@@ -1146,61 +1146,6 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
-    // Migration 079: Add isolated_network column to services table
-    let has_isolated_network: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('services') WHERE name = 'isolated_network'",
-    )
-    .fetch_optional(pool)
-    .await?;
-    if has_isolated_network.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/079_service_isolated_network.sql"),
-        )
-        .await?;
-    }
-
-    // Migration 080: Add build_platforms column to apps
-    let has_build_platforms: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'build_platforms'",
-    )
-    .fetch_optional(pool)
-    .await?;
-    if has_build_platforms.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/080_build_platforms.sql"),
-        )
-        .await?;
-    }
-
-    // Migration 081: App deployment patches table
-    let has_app_patches_table: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_patches'",
-    )
-    .fetch_optional(pool)
-    .await?;
-    if has_app_patches_table.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/081_app_patches.sql"),
-        )
-        .await?;
-    }
-
-    // Migration 082: Add last_crash_notified_at column to apps
-    let has_last_crash_notified: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'last_crash_notified_at'",
-    )
-    .fetch_optional(pool)
-    .await?;
-    if has_last_crash_notified.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/082_app_crash_notification.sql"),
-        )
-        .await?;
-    }
 
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;

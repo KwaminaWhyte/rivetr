@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github, Cpu } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -40,6 +41,30 @@ export default function AppSettingsBuild() {
   const [previewEnabled, setPreviewEnabled] = useState(app.preview_enabled || false);
   const [publishDirectory, setPublishDirectory] = useState(app.publish_directory || "dist");
   const [buildServerId, setBuildServerId] = useState<string>(app.build_server_id || "");
+
+  // Target platforms state: parse comma-separated string into a Set
+  const parsePlatforms = (val: string | null): Set<string> => {
+    if (!val) return new Set(["linux/amd64"]);
+    const parts = val.split(",").map(s => s.trim()).filter(Boolean);
+    return parts.length > 0 ? new Set(parts) : new Set(["linux/amd64"]);
+  };
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
+    parsePlatforms(app.build_platforms)
+  );
+
+  const togglePlatform = (platform: string) => {
+    setSelectedPlatforms(prev => {
+      const next = new Set(prev);
+      if (next.has(platform)) {
+        next.delete(platform);
+        // Always keep at least one platform selected
+        if (next.size === 0) next.add("linux/amd64");
+      } else {
+        next.add(platform);
+      }
+      return next;
+    });
+  };
 
   const { data: buildServers = [] } = useQuery<BuildServer[]>({
     queryKey: ["build-servers"],
@@ -88,7 +113,8 @@ export default function AppSettingsBuild() {
     setPublishDirectory(app.publish_directory || "dist");
     setNixpacksConfig(parseNixpacksConfig(app.nixpacks_config));
     setBuildServerId(app.build_server_id || "");
-  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id]);
+    setSelectedPlatforms(parsePlatforms(app.build_platforms));
+  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id, app.build_platforms]);
 
   const handleBuildSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +133,13 @@ export default function AppSettingsBuild() {
         }
       }
 
+      // Serialize platforms: if only linux/amd64 selected (default), send null to clear
+      const platformsArray = Array.from(selectedPlatforms).sort();
+      const buildPlatformsValue =
+        platformsArray.length === 1 && platformsArray[0] === "linux/amd64"
+          ? ""
+          : platformsArray.join(",");
+
       const updates: UpdateAppRequest = {
         dockerfile: buildType === "dockerfile" ? buildForm.dockerfile : undefined,
         dockerfile_path: buildType === "dockerfile" ? buildForm.dockerfile_path : undefined,
@@ -120,6 +153,7 @@ export default function AppSettingsBuild() {
         preview_enabled: previewEnabled,
         // Empty string clears the build server assignment on the backend
         build_server_id: buildServerId || "",
+        build_platforms: buildPlatformsValue || undefined,
       };
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
@@ -450,6 +484,46 @@ export default function AppSettingsBuild() {
               <p className="text-xs text-muted-foreground">
                 Offload Docker builds to a dedicated remote build server. Leave blank to build locally.
               </p>
+            </div>
+
+            {/* Target Platforms */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-base">Target Platforms</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Select which CPU architectures to build for. Multi-platform builds use{" "}
+                <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">docker buildx</code>{" "}
+                and may take longer. Requires BuildKit.
+              </p>
+              <div className="flex flex-col gap-2">
+                {[
+                  { value: "linux/amd64", label: "linux/amd64", description: "x86-64 (Intel/AMD) — default" },
+                  { value: "linux/arm64", label: "linux/arm64", description: "ARM 64-bit (Apple Silicon, AWS Graviton)" },
+                  { value: "linux/arm/v7", label: "linux/arm/v7", description: "ARM 32-bit v7 (Raspberry Pi)" },
+                ].map(({ value, label, description }) => (
+                  <div key={value} className="flex items-center gap-3">
+                    <Checkbox
+                      id={`platform-${value.replace(/\//g, "-")}`}
+                      checked={selectedPlatforms.has(value)}
+                      onCheckedChange={() => togglePlatform(value)}
+                    />
+                    <label
+                      htmlFor={`platform-${value.replace(/\//g, "-")}`}
+                      className="flex flex-col cursor-pointer"
+                    >
+                      <span className="text-sm font-mono font-medium">{label}</span>
+                      <span className="text-xs text-muted-foreground">{description}</span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+              {selectedPlatforms.size > 1 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Multi-platform builds require <code className="font-mono">docker buildx</code> with QEMU or a multi-platform builder.
+                </p>
+              )}
             </div>
 
             {/* Preview deployments toggle */}

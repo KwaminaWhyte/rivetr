@@ -129,6 +129,7 @@ pub async fn set_replica_count(
                     devices: vec![],
                     shm_size: None,
                     init: false,
+                    app_id: Some(app.id.clone()),
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -291,6 +292,7 @@ pub async fn restart_replica(
         devices: vec![],
         shm_size: None,
         init: false,
+        app_id: Some(app.id.clone()),
     };
 
     // Update status to starting
