@@ -9,6 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
+use rivetr::db::InstanceSettings;
 use rivetr::engine::{
     reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
     spawn_container_monitor_task, spawn_cost_calculator_task, spawn_disk_monitor_task,
@@ -68,6 +69,21 @@ async fn main() -> Result<()> {
 
     // Initialize database
     let db = rivetr::db::init(&config.server.data_dir).await?;
+
+    // DB takes priority over toml for instance_domain: load from instance_settings table
+    // and override the config value so the rest of startup uses the correct domain.
+    let mut config = config;
+    if let Ok(db_settings) = InstanceSettings::load(&db).await {
+        if let Some(ref db_domain) = db_settings.instance_domain {
+            if !db_domain.is_empty() {
+                tracing::info!(
+                    domain = %db_domain,
+                    "Using instance_domain from database (overrides toml)"
+                );
+                config.proxy.instance_domain = Some(db_domain.clone());
+            }
+        }
+    }
 
     // Run startup self-checks
     if cli.skip_checks {
