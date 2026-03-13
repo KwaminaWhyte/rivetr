@@ -125,11 +125,10 @@ export default function ServiceSettingsTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
-            Domain Configuration
+            Domain & Proxy Port
           </CardTitle>
           <CardDescription>
-            Configure a subdomain to route traffic to this service through the reverse proxy.
-            For example: <code className="text-xs bg-muted px-1 py-0.5 rounded">myservice.rivetr.site</code>
+            Configure the subdomain and the host port the proxy forwards to. If your service shows a 502 error, verify the port matches the host-side port in your compose <code className="text-xs bg-muted px-1 py-0.5 rounded">ports:</code> mapping.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -160,7 +159,7 @@ export default function ServiceSettingsTab() {
                   onChange={(e) => setPort(Number(e.target.value))}
                 />
                 <p className="text-xs text-muted-foreground">
-                  The port your service listens on inside the container.
+                  The host port the proxy forwards traffic to (the left side of <code className="font-mono">HOST:CONTAINER</code> in your compose ports mapping). If you see a 502 error, check this matches the port in your compose file.
                 </p>
               </div>
             </div>
