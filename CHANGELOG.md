@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **TUI (`rivetr tui`)**: terminal UI for managing Rivetr from the command line; tabbed Apps/Deployments/Servers/Logs views; keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling every 5s; connects to any instance via --url/--token; built with ratatui + crossterm (enable with `--features tui`)
+
 ### Planned
 - SAML 2.0 support
 - Remote build execution (SSH-based, RemoteContext foundation in place)

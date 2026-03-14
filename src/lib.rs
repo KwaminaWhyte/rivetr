@@ -2,6 +2,8 @@ pub mod api;
 pub mod backup;
 pub mod cli;
 pub mod config;
+#[cfg(feature = "tui")]
+pub mod tui;
 pub mod crypto;
 pub mod db;
 pub mod engine;
