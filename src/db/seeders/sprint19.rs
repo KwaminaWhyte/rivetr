@@ -122,39 +122,6 @@ volumes:
         ),
         // ==================== DEVELOPER TOOLS ====================
         (
-            "tpl-forgejo",
-            "Forgejo",
-            "Self-hosted lightweight software forge. Community-driven fork of Gitea with focus on privacy and federation.",
-            "devops",
-            "forgejo",
-            r#"services:
-  forgejo:
-    image: forgejo/forgejo:latest
-    container_name: ${CONTAINER_NAME:-forgejo}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
-      - "${SSH_PORT:-22}:22"
-    environment:
-      - USER_UID=1000
-      - USER_GID=1000
-      - FORGEJO__database__DB_TYPE=sqlite3
-      - FORGEJO__database__PATH=/data/forgejo.db
-      - FORGEJO__server__DOMAIN=${DOMAIN:-localhost}
-      - FORGEJO__server__ROOT_URL=${ROOT_URL:-http://localhost:3000}
-    volumes:
-      - forgejo_data:/data
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/localtime:/etc/localtime:ro
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  forgejo_data:
-"#,
-            r#"[{"name":"DOMAIN","label":"Domain Name","required":false,"default":"localhost","secret":false},{"name":"ROOT_URL","label":"Root URL","required":false,"default":"http://localhost:3000","secret":false},{"name":"PORT","label":"HTTP Port","required":false,"default":"3000","secret":false},{"name":"SSH_PORT","label":"SSH Port","required":false,"default":"22","secret":false}]"#,
-        ),
-        (
             "tpl-code-server",
             "Code-Server",
             "VS Code in the browser. Run Visual Studio Code on any machine and access it from the browser anywhere.",
@@ -312,27 +279,6 @@ volumes:
   pgadmin_data:
 "#,
             r#"[{"name":"ADMIN_EMAIL","label":"Admin Email","required":true,"default":"admin@example.com","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"changeme","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"5050","secret":false}]"#,
-        ),
-        (
-            "tpl-adminer",
-            "Adminer",
-            "Lightweight database management tool for MySQL, PostgreSQL, SQLite, MS SQL, and more. Single PHP file, fast and simple.",
-            "devops",
-            "adminer",
-            r#"services:
-  adminer:
-    image: adminer:latest
-    container_name: ${CONTAINER_NAME:-adminer}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8080"
-    environment:
-      - ADMINER_DEFAULT_SERVER=${DB_HOST:-localhost}
-      - ADMINER_DESIGN=${DESIGN:-pepa-linha}
-    labels:
-      - "rivetr.managed=true"
-"#,
-            r#"[{"name":"DB_HOST","label":"Default Database Host","required":false,"default":"localhost","secret":false},{"name":"PORT","label":"Host Port","required":false,"default":"8080","secret":false}]"#,
         ),
         // ==================== MONITORING & OBSERVABILITY ====================
         (
@@ -798,34 +744,6 @@ volumes:
         ),
         // ==================== STORAGE & FILES ====================
         (
-            "tpl-minio",
-            "MinIO",
-            "High-performance S3-compatible object storage. Deploy on-premises object storage for AI/ML, analytics, and backup workloads.",
-            "storage",
-            "minio",
-            r#"services:
-  minio:
-    image: minio/minio:latest
-    container_name: ${CONTAINER_NAME:-minio}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-9000}:9000"
-      - "${CONSOLE_PORT:-9001}:9001"
-    environment:
-      - MINIO_ROOT_USER=${ROOT_USER:-admin}
-      - MINIO_ROOT_PASSWORD=${ROOT_PASSWORD:-changeme}
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  minio_data:
-"#,
-            r#"[{"name":"ROOT_USER","label":"Root User","required":true,"default":"admin","secret":false},{"name":"ROOT_PASSWORD","label":"Root Password","required":true,"default":"changeme","secret":true},{"name":"PORT","label":"API Port","required":false,"default":"9000","secret":false},{"name":"CONSOLE_PORT","label":"Console Port","required":false,"default":"9001","secret":false}]"#,
-        ),
-        (
             "tpl-sftpgo",
             "SFTPGo",
             "Fully featured and configurable SFTP server with optional HTTP/S, FTP/S and WebDAV support. Multiple storage backends.",
@@ -855,56 +773,6 @@ volumes:
   sftpgo_home:
 "#,
             r#"[{"name":"ADMIN_USERNAME","label":"Admin Username","required":true,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"changeme","secret":true},{"name":"SFTP_PORT","label":"SFTP Port","required":false,"default":"8022","secret":false},{"name":"HTTP_PORT","label":"Web Admin Port","required":false,"default":"8080","secret":false}]"#,
-        ),
-        (
-            "tpl-tandoor-recipes",
-            "Tandoor Recipes",
-            "Recipe manager with meal planning, shopping lists, and nutritional values. Self-hosted cooking assistant.",
-            "productivity",
-            "tandoor",
-            r#"services:
-  tandoor:
-    image: vabene1111/recipes:latest
-    container_name: ${CONTAINER_NAME:-tandoor}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8080"
-    environment:
-      - DB_ENGINE=django.db.backends.postgresql
-      - POSTGRES_HOST=tandoor_db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${DB_USER:-tandoor}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-tandoor}
-      - POSTGRES_DB=tandoor
-      - SECRET_KEY=${SECRET_KEY:-changeme}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
-      - GUNICORN_MEDIA=${GUNICORN_MEDIA:-0}
-    depends_on:
-      - tandoor_db
-    volumes:
-      - tandoor_media:/opt/recipes/mediafiles
-      - tandoor_static:/opt/recipes/staticfiles
-    labels:
-      - "rivetr.managed=true"
-
-  tandoor_db:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${DB_USER:-tandoor}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-tandoor}
-      - POSTGRES_DB=tandoor
-    volumes:
-      - tandoor_pg_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  tandoor_media:
-  tandoor_static:
-  tandoor_pg_data:
-"#,
-            r#"[{"name":"SECRET_KEY","label":"Secret Key","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"tandoor","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"8080","secret":false}]"#,
         ),
         (
             "tpl-mealie",
@@ -966,105 +834,6 @@ volumes:
             r#"[{"name":"PORT","label":"Host Port","required":false,"default":"9283","secret":false},{"name":"TZ","label":"Timezone","required":false,"default":"UTC","secret":false}]"#,
         ),
         // ==================== ANALYTICS ====================
-        (
-            "tpl-umami",
-            "Umami",
-            "Simple, fast, privacy-focused web analytics. Open-source Google Analytics alternative with a clean dashboard.",
-            "analytics",
-            "umami",
-            r#"services:
-  umami:
-    image: ghcr.io/umami-software/umami:postgresql-latest
-    container_name: ${CONTAINER_NAME:-umami}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
-    environment:
-      - DATABASE_URL=postgresql://${DB_USER:-umami}:${DB_PASSWORD:-umami}@umami_db:5432/umami
-      - DATABASE_TYPE=postgresql
-      - APP_SECRET=${APP_SECRET:-changeme}
-    depends_on:
-      - umami_db
-    labels:
-      - "rivetr.managed=true"
-
-  umami_db:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${DB_USER:-umami}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-umami}
-      - POSTGRES_DB=umami
-    volumes:
-      - umami_pg_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  umami_pg_data:
-"#,
-            r#"[{"name":"APP_SECRET","label":"App Secret","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"umami","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"3000","secret":false}]"#,
-        ),
-        (
-            "tpl-plausible",
-            "Plausible Analytics",
-            "Lightweight, open-source web analytics. Privacy-friendly Google Analytics alternative. Compliant with GDPR, CCPA.",
-            "analytics",
-            "plausible",
-            r#"services:
-  plausible:
-    image: ghcr.io/plausible/community-edition:v2
-    container_name: ${CONTAINER_NAME:-plausible}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
-    command: sh -c "sleep 10 && /entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
-    environment:
-      - BASE_URL=${BASE_URL:-http://localhost:8000}
-      - SECRET_KEY_BASE=${SECRET_KEY:-changeme}
-      - DATABASE_URL=postgres://${DB_USER:-plausible}:${DB_PASSWORD:-plausible}@plausible_db:5432/plausible
-      - CLICKHOUSE_DATABASE_URL=http://plausible_ch:8123/plausible
-      - MAILER_EMAIL=${MAILER_EMAIL:-noreply@example.com}
-      - SMTP_HOST_ADDR=${SMTP_HOST:-}
-      - SMTP_HOST_PORT=${SMTP_PORT:-587}
-    depends_on:
-      - plausible_db
-      - plausible_ch
-    labels:
-      - "rivetr.managed=true"
-
-  plausible_db:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${DB_USER:-plausible}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-plausible}
-      - POSTGRES_DB=plausible
-    volumes:
-      - plausible_pg_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-  plausible_ch:
-    image: clickhouse/clickhouse-server:23-alpine
-    restart: unless-stopped
-    volumes:
-      - plausible_ch_data:/var/lib/clickhouse
-      - plausible_ch_logs:/var/log/clickhouse-server
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  plausible_pg_data:
-  plausible_ch_data:
-  plausible_ch_logs:
-"#,
-            r#"[{"name":"BASE_URL","label":"Base URL","required":true,"default":"http://localhost:8000","secret":false},{"name":"SECRET_KEY","label":"Secret Key Base","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"DB Password","required":true,"default":"plausible","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"8000","secret":false}]"#,
-        ),
         // ==================== SECURITY ====================
         (
             "tpl-wazuh-manager",
@@ -1403,39 +1172,6 @@ volumes:
         ),
         // ==================== NETWORKING ====================
         (
-            "tpl-traefik",
-            "Traefik",
-            "Modern HTTP reverse proxy and load balancer. Automatic service discovery, SSL termination, and dynamic configuration.",
-            "devops",
-            "traefik",
-            r#"services:
-  traefik:
-    image: traefik:latest
-    container_name: ${CONTAINER_NAME:-traefik}
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "${DASHBOARD_PORT:-8080}:8080"
-    command:
-      - "--api.insecure=${API_INSECURE:-true}"
-      - "--api.dashboard=${ENABLE_DASHBOARD:-true}"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_certs:/letsencrypt
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  traefik_certs:
-"#,
-            r#"[{"name":"DASHBOARD_PORT","label":"Dashboard Port","required":false,"default":"8080","secret":false},{"name":"API_INSECURE","label":"Enable Insecure API","required":false,"default":"true","secret":false},{"name":"ENABLE_DASHBOARD","label":"Enable Dashboard","required":false,"default":"true","secret":false}]"#,
-        ),
-        (
             "tpl-caddy",
             "Caddy",
             "Powerful, enterprise-ready, open-source web server with automatic HTTPS. Reverse proxy, file server, and more.",
@@ -1465,33 +1201,6 @@ volumes:
         ),
         // ==================== COMMUNICATION ====================
         (
-            "tpl-gotify-server",
-            "Gotify",
-            "Simple self-hosted server for sending and receiving messages via a REST API. Push notifications for your apps.",
-            "communication",
-            "gotify",
-            r#"services:
-  gotify:
-    image: gotify/server:latest
-    container_name: ${CONTAINER_NAME:-gotify}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
-    environment:
-      - GOTIFY_DEFAULTUSER_NAME=${ADMIN_USER:-admin}
-      - GOTIFY_DEFAULTUSER_PASS=${ADMIN_PASSWORD:-changeme}
-      - GOTIFY_SERVER_PORT=80
-    volumes:
-      - gotify_data:/app/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  gotify_data:
-"#,
-            r#"[{"name":"ADMIN_USER","label":"Admin Username","required":true,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"changeme","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"80","secret":false}]"#,
-        ),
-        (
             "tpl-apprise",
             "Apprise",
             "Push notification service that works with every major notification platform. Send alerts to 65+ services from one API.",
@@ -1519,34 +1228,6 @@ volumes:
             r#"[{"name":"PORT","label":"Host Port","required":false,"default":"8000","secret":false},{"name":"STATELESS_URLS","label":"Default Notification URLs","required":false,"default":"","secret":false}]"#,
         ),
         // ==================== DASHBOARDS ====================
-        (
-            "tpl-heimdall",
-            "Heimdall",
-            "Application dashboard and launcher. Organize and access all your web applications from a single beautiful page.",
-            "productivity",
-            "heimdall",
-            r#"services:
-  heimdall:
-    image: lscr.io/linuxserver/heimdall:latest
-    container_name: ${CONTAINER_NAME:-heimdall}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
-      - "${SSL_PORT:-443}:443"
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-UTC}
-    volumes:
-      - heimdall_config:/config
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  heimdall_config:
-"#,
-            r#"[{"name":"PORT","label":"HTTP Port","required":false,"default":"80","secret":false},{"name":"SSL_PORT","label":"HTTPS Port","required":false,"default":"443","secret":false},{"name":"TZ","label":"Timezone","required":false,"default":"UTC","secret":false}]"#,
-        ),
         (
             "tpl-dasherr",
             "Dasherr",
@@ -1620,50 +1301,6 @@ volumes:
   crater_db_data:
 "#,
             r#"[{"name":"APP_URL","label":"App URL","required":true,"default":"http://localhost:8000","secret":false},{"name":"APP_KEY","label":"App Key (base64)","required":true,"default":"base64:changeme32characterlongkeyyyyy=","secret":true},{"name":"DB_PASSWORD","label":"DB Password","required":true,"default":"crater","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"8000","secret":false}]"#,
-        ),
-        (
-            "tpl-hoppscotch",
-            "Hoppscotch",
-            "Open-source API development platform. Lightweight, fast alternative to Postman with a beautiful web UI.",
-            "devops",
-            "hoppscotch",
-            r#"services:
-  hoppscotch:
-    image: hoppscotch/hoppscotch:latest
-    container_name: ${CONTAINER_NAME:-hoppscotch}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
-      - "${BACKEND_PORT:-3170}:3170"
-      - "${ADMIN_PORT:-3100}:3100"
-    environment:
-      - DATABASE_URL=postgresql://${DB_USER:-hoppscotch}:${DB_PASSWORD:-hoppscotch}@hoppscotch_db:5432/hoppscotch
-      - JWT_SECRET=${JWT_SECRET:-changeme}
-      - SESSION_SECRET=${SESSION_SECRET:-changeme}
-      - MAILER_SMTP_URL=${SMTP_URL:-smtp://localhost:587}
-      - VITE_ALLOWED_AUTH_PROVIDERS=${AUTH_PROVIDERS:-EMAIL}
-      - MAILER_ADDRESS_FROM=${FROM_EMAIL:-noreply@example.com}
-    depends_on:
-      - hoppscotch_db
-    labels:
-      - "rivetr.managed=true"
-
-  hoppscotch_db:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${DB_USER:-hoppscotch}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-hoppscotch}
-      - POSTGRES_DB=hoppscotch
-    volumes:
-      - hoppscotch_pg_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  hoppscotch_pg_data:
-"#,
-            r#"[{"name":"JWT_SECRET","label":"JWT Secret","required":true,"default":"changeme","secret":true},{"name":"SESSION_SECRET","label":"Session Secret","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"DB Password","required":true,"default":"hoppscotch","secret":true},{"name":"PORT","label":"Frontend Port","required":false,"default":"3000","secret":false}]"#,
         ),
     ]
 }

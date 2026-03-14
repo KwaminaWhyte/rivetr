@@ -162,47 +162,6 @@ volumes:
 
         // ==================== BATCH 2: OTHER ====================
         (
-            "tpl-batch2-paperless-ngx",
-            "Paperless-ngx",
-            "Document management system that transforms physical documents into a searchable online archive.",
-            "other",
-            "paperless-ngx",
-            r#"services:
-  paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-paperless}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
-    environment:
-      - PAPERLESS_REDIS=redis://paperless_redis:6379
-      - PAPERLESS_SECRET_KEY=${SECRET_KEY:-change-me-to-a-long-random-string}
-      - PAPERLESS_ADMIN_USER=${ADMIN_USER:-admin}
-      - PAPERLESS_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - PAPERLESS_URL=${URL:-http://localhost:8000}
-    volumes:
-      - paperless_data:/usr/src/paperless/data
-      - paperless_media:/usr/src/paperless/media
-      - paperless_consume:/usr/src/paperless/consume
-    depends_on:
-      - paperless_redis
-    labels:
-      - "rivetr.managed=true"
-
-  paperless_redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  paperless_data:
-  paperless_media:
-  paperless_consume:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"paperless","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8000","secret":false},{"name":"SECRET_KEY","label":"Secret Key","required":true,"default":"","secret":true},{"name":"ADMIN_USER","label":"Admin Username","required":false,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"","secret":true},{"name":"URL","label":"Public URL","required":false,"default":"http://localhost:8000","secret":false}]"#,
-        ),
-        (
             "tpl-batch2-trilium",
             "Trilium",
             "Hierarchical note-taking application with focus on building personal knowledge bases.",

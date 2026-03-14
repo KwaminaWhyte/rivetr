@@ -54,48 +54,6 @@ volumes:
 "#,
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"obsidian-couchdb","secret":false},{"name":"PORT","label":"Port","required":false,"default":"5984","secret":false},{"name":"ADMIN_USER","label":"Admin Username","required":false,"default":"admin","secret":false},{"name":"ADMIN_PASSWORD","label":"Admin Password","required":true,"default":"","secret":true}]"#,
         ),
-        (
-            "tpl-wiki-js",
-            "Wiki.js",
-            "Powerful open-source wiki built on Node.js. Markdown, WYSIWYG, and API-driven. Multilingual support.",
-            "documentation",
-            "wiki",
-            r#"services:
-  wikijs:
-    image: ghcr.io/requarks/wiki:${VERSION:-2}
-    container_name: ${CONTAINER_NAME:-wikijs}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
-    environment:
-      - DB_TYPE=postgres
-      - DB_HOST=wikijs_db
-      - DB_PORT=5432
-      - DB_USER=wikijs
-      - DB_PASS=${DB_PASSWORD:-wikijs}
-      - DB_NAME=wikijs
-    depends_on:
-      - wikijs_db
-    labels:
-      - "rivetr.managed=true"
-
-  wikijs_db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=wikijs
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-wikijs}
-      - POSTGRES_DB=wikijs
-    volumes:
-      - wikijs_db_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  wikijs_db_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"2","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"wikijs","secret":false},{"name":"PORT","label":"Port","required":false,"default":"3000","secret":false},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true}]"#,
-        ),
 
         // ==================== UTILITIES ====================
         (
@@ -115,40 +73,6 @@ volumes:
       - "rivetr.managed=true"
 "#,
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"it-tools","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false}]"#,
-        ),
-        (
-            "tpl-vaultwarden-advanced",
-            "Vaultwarden (Advanced)",
-            "Unofficial Bitwarden server with organization support, Duo auth, and email notifications configured.",
-            "security",
-            "vaultwarden",
-            r#"services:
-  vaultwarden:
-    image: vaultwarden/server:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-vaultwarden-adv}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:80"
-    environment:
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-change-me-to-a-random-string}
-      - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
-      - DOMAIN=${DOMAIN:-http://localhost:8080}
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USERNAME=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - INVITATIONS_ALLOWED=${INVITATIONS_ALLOWED:-true}
-      - WEBSOCKET_ENABLED=true
-    volumes:
-      - vaultwarden_adv_data:/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  vaultwarden_adv_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"vaultwarden-adv","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"ADMIN_TOKEN","label":"Admin Token","required":true,"default":"","secret":true},{"name":"DOMAIN","label":"Domain URL","required":true,"default":"http://localhost:8080","secret":false},{"name":"SIGNUPS_ALLOWED","label":"Allow Signups","required":false,"default":"false","secret":false},{"name":"SMTP_HOST","label":"SMTP Host","required":false,"default":"","secret":false},{"name":"SMTP_FROM","label":"SMTP From","required":false,"default":"noreply@example.com","secret":false},{"name":"SMTP_PORT","label":"SMTP Port","required":false,"default":"587","secret":false},{"name":"SMTP_USER","label":"SMTP Username","required":false,"default":"","secret":false},{"name":"SMTP_PASSWORD","label":"SMTP Password","required":false,"default":"","secret":true}]"#,
         ),
         (
             "tpl-open-speed-test",
