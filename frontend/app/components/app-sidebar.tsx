@@ -15,6 +15,7 @@ import {
   KeyRound,
   Paintbrush,
   Globe,
+  LayoutTemplate,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
@@ -34,6 +35,7 @@ const navPlatform: NavMainItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Monitoring", url: "/monitoring", icon: BarChart3 },
+  { title: "Templates", url: "/templates", icon: LayoutTemplate },
 ];
 
 const navInfrastructure: NavMainItem[] = [

@@ -451,7 +451,9 @@ pub(super) async fn check_databases(
                external_port, public_access, credentials, volume_name, volume_path,
                memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at,
                COALESCE(ssl_enabled, 0) AS ssl_enabled,
-               ssl_mode
+               ssl_mode,
+               custom_image,
+               init_commands
         FROM databases
         WHERE status = 'running' AND container_id IS NOT NULL
         "#,
@@ -528,7 +530,9 @@ pub(super) async fn check_services(
 ) {
     let running_services: Vec<Service> = match sqlx::query_as(
         r#"
-        SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at
+        SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at,
+               COALESCE(isolated_network, 1) AS isolated_network,
+               COALESCE(raw_compose_mode, 0) AS raw_compose_mode
         FROM services
         WHERE status = 'running'
         "#,

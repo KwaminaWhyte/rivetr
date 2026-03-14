@@ -540,9 +540,17 @@ pub async fn get_current_user(
     config: &crate::config::Config,
     token: &str,
 ) -> Result<User, StatusCode> {
-    // For admin token, return a system user
+    // For admin token, return the first admin user from DB (or synthetic fallback)
     if token == config.auth.admin_token {
-        // Return a synthetic admin user for API token auth
+        if let Ok(Some(admin_user)) = sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        {
+            return Ok(admin_user);
+        }
+        // Fallback synthetic user if no admin in DB yet
         return Ok(User {
             id: "system".to_string(),
             email: "system@rivetr.local".to_string(),
