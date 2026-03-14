@@ -873,3 +873,50 @@ pub async fn get_app_activity(
     let result = list_audit_logs(&state.db, &query).await?;
     Ok(Json(result))
 }
+
+/// Apply resource limits (CPU/memory) to a running container live, without restarting.
+/// Uses `docker update` to apply cgroup-level changes immediately.
+/// The app's `cpu_limit` and `memory_limit` fields must be set first via PUT /apps/:id.
+pub async fn apply_resource_limits(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Get container_id from the latest running deployment
+    let container_id: Option<String> = sqlx::query_scalar(
+        "SELECT container_id FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.db)
+    .await?
+    .flatten();
+
+    let container_id = container_id
+        .ok_or_else(|| ApiError::bad_request("App has no running container"))?;
+
+    state
+        .runtime
+        .apply_resource_limits(
+            &container_id,
+            app.memory_limit.as_deref(),
+            app.cpu_limit.as_deref(),
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "message": "Resource limits applied to running container",
+        "memory_limit": app.memory_limit,
+        "cpu_limit": app.cpu_limit,
+        "container_id": container_id
+    })))
+}

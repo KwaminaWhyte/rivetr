@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use bollard::container::LogOutput;
 use bollard::container::{
     Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions, StatsOptions,
-    StopContainerOptions,
+    StopContainerOptions, UpdateContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
 use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
@@ -966,5 +966,38 @@ pub async fn pull_image(
     }
 
     tracing::info!(image = %image, "Successfully pulled image");
+    Ok(())
+}
+
+/// Update CPU and memory limits on a running container without restarting it.
+/// Uses the Docker `update_container` API which applies cgroup-level changes live.
+pub async fn update_container_limits(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    memory_limit: Option<&str>,
+    cpu_limit: Option<&str>,
+) -> Result<()> {
+    let memory = memory_limit.and_then(|m| parse_memory(m));
+    let nano_cpus = cpu_limit.and_then(|c| parse_cpu(c));
+
+    let options = UpdateContainerOptions::<String> {
+        memory,
+        nano_cpus,
+        ..Default::default()
+    };
+
+    runtime
+        .client
+        .update_container(container_id, options)
+        .await
+        .context("Failed to update container resource limits")?;
+
+    tracing::info!(
+        container_id = %container_id,
+        memory = ?memory,
+        nano_cpus = ?nano_cpus,
+        "Updated container resource limits"
+    );
+
     Ok(())
 }

@@ -118,6 +118,15 @@ impl ContainerRuntime for DockerRuntime {
         container::rename_container(self, container_id, new_name).await
     }
 
+    async fn apply_resource_limits(
+        &self,
+        container_id: &str,
+        memory_limit: Option<&str>,
+        cpu_limit: Option<&str>,
+    ) -> Result<()> {
+        container::update_container_limits(self, container_id, memory_limit, cpu_limit).await
+    }
+
     async fn setup_shared_network(&self) {
         // Create the shared Rivetr network if it doesn't exist.
         container::ensure_rivetr_network(self).await;

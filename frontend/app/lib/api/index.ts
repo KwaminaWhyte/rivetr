@@ -117,6 +117,7 @@ export const api = {
   startApp: appsApi.startApp,
   stopApp: appsApi.stopApp,
   restartApp: appsApi.restartApp,
+  applyResourceLimits: appsApi.applyResourceLimits,
   getDeployments: appsApi.getDeployments,
   getDeployment: appsApi.getDeployment,
   getDeploymentLogs: appsApi.getDeploymentLogs,

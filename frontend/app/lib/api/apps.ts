@@ -136,6 +136,10 @@ export const appsApi = {
   restartApp: (id: string, token?: string) =>
     apiRequest<AppStatus>(`/apps/${id}/restart`, { method: "POST" }, token),
 
+  /** Apply CPU/memory limits to the running container immediately (no redeploy) */
+  applyResourceLimits: (id: string, token?: string) =>
+    apiRequest<{ message: string; memory_limit: string | null; cpu_limit: string | null }>(`/apps/${id}/apply-limits`, { method: "POST" }, token),
+
   // -------------------------------------------------------------------------
   // Deployments
   // -------------------------------------------------------------------------

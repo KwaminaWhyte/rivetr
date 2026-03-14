@@ -282,6 +282,17 @@ pub trait ContainerRuntime: Send + Sync {
     async fn rename_container(&self, _container_id: &str, _new_name: &str) -> Result<()> {
         Ok(())
     }
+
+    /// Update CPU/memory limits on a running container without restarting it.
+    /// Default implementation returns an error (not all runtimes support live updates).
+    async fn apply_resource_limits(
+        &self,
+        _container_id: &str,
+        _memory_limit: Option<&str>,
+        _cpu_limit: Option<&str>,
+    ) -> Result<()> {
+        anyhow::bail!("Live resource limit updates not supported by this runtime. Redeploy to apply new limits.")
+    }
 }
 
 /// A no-op runtime used when no container runtime is available
