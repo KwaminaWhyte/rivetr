@@ -252,9 +252,9 @@ Rivetr now injects the following into every container at runtime (without overri
 Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
 ### Community template submissions
-🟡 **Partial in Rivetr** (foundation built, not active)
+✅ **Implemented in Rivetr**
 
-Both Coolify and Dokploy accept community pull requests for new templates through their GitHub repos. Rivetr has a `community_templates` table and suggestion flow implemented but no public-facing submission/review process.
+Users can submit Docker Compose templates via `POST /api/templates/submit`. Admins review at `GET /api/templates/submissions` and approve/reject via `PUT /api/templates/submissions/:id/review`. Approval inserts the template into `service_templates` automatically. Users see their own submissions via `GET /api/templates/my-submissions`. Frontend: "Submit Template" button on the templates page; "My Submissions" page with status badges; admin review queue with Approve/Reject actions.
 
 ### Notable templates missing from Rivetr
 Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~250:
@@ -333,9 +333,9 @@ Rivetr now supports deployment patches: file-level modifications (create, append
 Rivetr now pushes every built image to a configured Docker registry tagged with the git commit SHA (`{registry}/{app}:{sha}`). The `image_tag` is stored on each deployment and displayed as a copyable field in the deployment detail page. When a registry is configured (`registry_url` + credentials on the app), rollback to any historical build is possible by running `docker pull {image_tag}`.
 
 ### Deployment queue with cancellation
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy uses Redis to queue deployments, preventing concurrent builds from overwhelming the server. Users can cancel queued (but not in-progress) deployments. Rivetr uses Tokio MPSC channels for serializing deployments but cancellation of queued deployments is not exposed in the UI.
+Rivetr uses Tokio MPSC channels for serialized deployment queuing. Each deployment now gets a `CancellationToken` stored in `AppState.cancel_tokens` (DashMap). `POST /api/apps/:id/deployments/:dep_id/cancel` triggers cancellation and sets `cancelled_at` (migration 090). A Cancel button appears on queued/running/building deployments in the UI.
 
 ### GitHub Actions integration
 🔴 **Missing in Rivetr**
@@ -378,9 +378,9 @@ Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 Coolify and Dokploy (Enterprise) support SAML 2.0. Rivetr has OIDC (Auth0, Keycloak, Azure AD, Okta) but SAML 2.0 is still on the future roadmap.
 
 ### Fine-grained RBAC
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Rivetr has 4 roles (owner/admin/developer/viewer). Dokploy Enterprise has **fine-grained per-resource permissions**. Coolify's team model includes per-member permission overrides. Neither competitor's fine-grained model is currently matched by Rivetr.
+Rivetr has 4 roles (owner/admin/developer/viewer) plus per-resource permission overrides via `team_resource_permissions` table (migration 089). Admins can grant/deny a specific member access to individual apps, projects, or databases via `GET/PUT /api/teams/:id/members/:user_id/permissions`. A "Manage Permissions" dialog is available on each member in the team settings UI.
 
 ### Basic auth on deployed apps (proxy-level)
 ✅ **Implemented in Rivetr**
@@ -463,9 +463,9 @@ Rivetr supports Backblaze B2 and Google Cloud Storage via their S3-compatible AP
 ## 10. Server & Infrastructure Management
 
 ### Remote file system browser
-🟡 **Planned in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy provides a Traefik File System interface for browsing remote server files (useful for editing Traefik dynamic configs). Rivetr has this on the roadmap as `[ ] File system browser for remote servers`.
+`GET /api/servers/:id/files?path=` lists directory contents via SSH (`ls -la`). `GET /api/servers/:id/files/content?path=` reads file content (`cat`). `PUT /api/servers/:id/files/content` writes back (`echo`/heredoc). `DELETE /api/servers/:id/files?path=` removes files. Frontend: full browser with breadcrumb navigation, file/dir icons, size/date columns, inline text editor with Save, and Delete with confirmation. Accessible via the Files button on each server in the servers list.
 
 ### Automated Docker installation on server add
 ✅ **Implemented in Rivetr**
@@ -586,7 +586,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | ✅ Done |
 | More service templates (~100 short, total ~223 vs ~320 needed) | ✅ | ✅ | 🟡 Medium |
-| Community template submissions | ✅ | ✅ | 🟡 Partial (suggestion flow done; admin approval UI pending) |
+| Community template submissions | ✅ | ✅ | ✅ Done (migration 091; submit/review/approve flow; My Submissions page) |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Container crash/restart notifications | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |
@@ -603,12 +603,15 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
 | Bitbucket OAuth login | ✅ | ❌ | ✅ Done |
-| Deployment queue cancellation | ❌ | ✅ | 🟡 Medium |
+| Deployment queue cancellation | ❌ | ✅ | ✅ Done (migration 090; CancellationToken per deployment; Cancel button in UI) |
 | ARM64 / Raspberry Pi builds | ✅ | ✅ | ✅ Done |
 | Backblaze B2 / GCS S3 destinations | ❌ | ✅ | ✅ Done |
 | Instance backup to S3 | ❌ | ❌ | ✅ Done |
 | Test backup button | ❌ | ✅ | ✅ Done |
 | Ansible playbook | ❌ | ✅ | 🟡 Low |
+| Fine-grained RBAC | ❌ | ✅ (Enterprise) | ✅ Done (migration 089; per-resource allow/deny overrides; admin dialog in team settings) |
+| Remote filesystem browser | ❌ | ✅ | ✅ Done (SSH-based ls/cat/write/rm; breadcrumb frontend; Files button on servers) |
+| Terminal UI (TUI) | ❌ | ✅ (community) | ✅ Done (`rivetr tui`; ratatui; Apps/Deployments/Servers/Logs tabs; keyboard nav) |
 
 ---
 
