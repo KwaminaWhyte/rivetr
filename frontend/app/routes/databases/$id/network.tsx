@@ -26,6 +26,7 @@ const DEFAULT_PORTS: Record<string, number> = {
   mysql: 3306,
   mongodb: 27017,
   redis: 6379,
+  clickhouse: 8123,
 };
 
 export default function DatabaseNetworkTab() {
@@ -415,6 +416,26 @@ function ConnectionExamples({ database }: { database: ManagedDatabase }) {
         command: `const Redis = require('ioredis');\nconst redis = new Redis('${database.internal_connection_string || "redis://..."}');`,
       },
     ],
+    clickhouse: [
+      {
+        label: "clickhouse-client (internal)",
+        command: `clickhouse-client --host ${containerName} --port 9000 --user ${username} --password *** --database ${dbName || ""}`,
+      },
+      {
+        label: "HTTP API (internal)",
+        command: `curl 'http://${containerName}:${port}/?query=SELECT+1' -u '${username}:***'`,
+      },
+      {
+        label: "clickhouse-client (external)",
+        command: database.public_access && externalPort
+          ? `clickhouse-client --host localhost --port ${externalPort} --user ${username} --password *** --database ${dbName || ""}`
+          : "Enable public access for external connection",
+      },
+      {
+        label: "Node.js",
+        command: `const { createClient } = require('@clickhouse/client');\nconst client = createClient({ url: '${database.internal_connection_string || "clickhouse://..."}' });`,
+      },
+    ],
   };
 
   const dbExamples = examples[database.db_type] || [];
@@ -474,8 +495,8 @@ function EnvironmentVariableExamples({ database }: { database: ManagedDatabase }
     { name: `${envVarPrefix}_PASSWORD`, value: password || "********" },
   ];
 
-  // Add database name for non-Redis databases
-  if (database.db_type !== "redis" && dbName) {
+  // Add database name for non-Redis-compatible databases
+  if (database.db_type !== "redis" && database.db_type !== "dragonfly" && database.db_type !== "keydb" && dbName) {
     envVars.push({ name: `${envVarPrefix}_DATABASE`, value: dbName });
   }
 

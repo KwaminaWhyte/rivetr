@@ -198,7 +198,8 @@ impl DatabaseBackupTask {
             "mysql" => ("sql", "sql"),
             "mariadb" => ("sql", "sql"),
             "mongodb" => ("archive", "archive"),
-            "redis" => ("rdb", "rdb"),
+            "redis" | "dragonfly" | "keydb" => ("rdb", "rdb"),
+            "clickhouse" => ("dump", "dump"),
             _ => ("dump", "dump"),
         };
         let backup_filename = format!("{}_{}.{}", database.name, timestamp, extension);
@@ -221,7 +222,10 @@ impl DatabaseBackupTask {
                 self.backup_mongodb(container_id, &creds, &backup_path)
                     .await
             }
-            "redis" => self.backup_redis(container_id, &backup_path).await,
+            "redis" | "dragonfly" | "keydb" => self.backup_redis(container_id, &backup_path).await,
+            "clickhouse" => Err(anyhow::anyhow!(
+                "Automated backup is not yet supported for ClickHouse"
+            )),
             _ => Err(anyhow::anyhow!(
                 "Unsupported database type: {}",
                 database.db_type

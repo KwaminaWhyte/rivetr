@@ -85,8 +85,8 @@ Enhanced rollback with registry integration.
 
 - [x] Automatic health-based rollback
 - [x] Rollback settings UI
-- [ ] Push built images to Docker registry on deploy
-- [ ] Configure rollback retention policies
+- [x] Push built images to Docker registry on deploy ✅
+- [x] Configure rollback retention policies ✅
 
 ---
 
@@ -169,13 +169,13 @@ Features that both Coolify and Dokploy have. Required to compete.
 - [x] Expand from 26 to 74 templates (AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, Media, Monitoring, Security, Search, PM) ✅
 - [x] Template categories (Ai, Analytics, Automation, Cms, Communication, Development, Documentation, Media, Monitoring, Security, Search, ProjectManagement) ✅
 - [x] Template search and filtering ✅
-- [ ] Community template submissions
+- [x] Community template submissions ✅ (suggestion flow + pending approval; admin review UI pending)
 
 ### Instance Backup & Restore ✅ COMPLETE
 - [x] Full instance backup (SQLite DB + config + SSL certs) ✅
 - [x] Scheduled instance backups ✅
 - [x] One-click instance restore ✅
-- [ ] Instance backup to S3
+- [x] Instance backup to S3 ✅
 
 ### Scheduled Jobs ✅ COMPLETE
 - [x] Cron-based job scheduling per app ✅

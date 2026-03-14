@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 /** Supported database types for managed databases */
-export type DatabaseType = "postgres" | "mysql" | "mariadb" | "mongodb" | "redis";
+export type DatabaseType = "postgres" | "mysql" | "mariadb" | "mongodb" | "redis" | "dragonfly" | "keydb" | "clickhouse";
 
 /** Database deployment status */
 export type DatabaseStatus =
@@ -209,5 +209,29 @@ export const DATABASE_TYPES: DatabaseTypeInfo[] = [
     defaultPort: 6379,
     versions: ["7", "7.2", "6", "6.2"],
     defaultVersion: "7",
+  },
+  {
+    type: "dragonfly",
+    name: "DragonFlyDB",
+    description: "A Redis-compatible in-memory data store with high performance",
+    defaultPort: 6379,
+    versions: ["latest"],
+    defaultVersion: "latest",
+  },
+  {
+    type: "keydb",
+    name: "KeyDB",
+    description: "A Redis-compatible database with multithreading support",
+    defaultPort: 6379,
+    versions: ["latest"],
+    defaultVersion: "latest",
+  },
+  {
+    type: "clickhouse",
+    name: "ClickHouse",
+    description: "A high-performance column-oriented database for real-time analytics",
+    defaultPort: 8123,
+    versions: ["latest", "24", "23"],
+    defaultVersion: "latest",
   },
 ];

@@ -12,6 +12,9 @@ pub enum DatabaseType {
     Mariadb,
     Mongodb,
     Redis,
+    Dragonfly,
+    Keydb,
+    ClickHouse,
 }
 
 impl std::fmt::Display for DatabaseType {
@@ -22,6 +25,9 @@ impl std::fmt::Display for DatabaseType {
             Self::Mariadb => write!(f, "mariadb"),
             Self::Mongodb => write!(f, "mongodb"),
             Self::Redis => write!(f, "redis"),
+            Self::Dragonfly => write!(f, "dragonfly"),
+            Self::Keydb => write!(f, "keydb"),
+            Self::ClickHouse => write!(f, "clickhouse"),
         }
     }
 }
@@ -36,6 +42,9 @@ impl std::str::FromStr for DatabaseType {
             "mariadb" => Ok(Self::Mariadb),
             "mongodb" | "mongo" => Ok(Self::Mongodb),
             "redis" => Ok(Self::Redis),
+            "dragonfly" | "dragonflydb" => Ok(Self::Dragonfly),
+            "keydb" => Ok(Self::Keydb),
+            "clickhouse" => Ok(Self::ClickHouse),
             _ => Err(format!("Unknown database type: {}", s)),
         }
     }
@@ -219,7 +228,7 @@ impl ManagedDatabase {
                 self.internal_port,
                 creds.database.unwrap_or_else(|| "admin".to_string())
             )),
-            DatabaseType::Redis => {
+            DatabaseType::Redis | DatabaseType::Dragonfly | DatabaseType::Keydb => {
                 if creds.password.is_empty() {
                     Some(format!("redis://{}:{}", container_name, self.internal_port))
                 } else {
@@ -229,6 +238,14 @@ impl ManagedDatabase {
                     ))
                 }
             }
+            DatabaseType::ClickHouse => Some(format!(
+                "clickhouse://{}:{}@{}:{}/{}",
+                creds.username,
+                creds.password,
+                container_name,
+                self.internal_port,
+                creds.database.unwrap_or_else(|| creds.username.clone())
+            )),
         }
     }
 
@@ -265,7 +282,7 @@ impl ManagedDatabase {
                 self.external_port,
                 creds.database.unwrap_or_else(|| "admin".to_string())
             )),
-            DatabaseType::Redis => {
+            DatabaseType::Redis | DatabaseType::Dragonfly | DatabaseType::Keydb => {
                 if creds.password.is_empty() {
                     Some(format!("redis://{}:{}", host, self.external_port))
                 } else {
@@ -275,6 +292,14 @@ impl ManagedDatabase {
                     ))
                 }
             }
+            DatabaseType::ClickHouse => Some(format!(
+                "clickhouse://{}:{}@{}:{}/{}",
+                creds.username,
+                creds.password,
+                host,
+                self.external_port,
+                creds.database.unwrap_or_else(|| creds.username.clone())
+            )),
         }
     }
 }

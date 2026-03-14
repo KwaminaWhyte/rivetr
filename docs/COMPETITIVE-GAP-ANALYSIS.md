@@ -560,21 +560,21 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 
 | Feature | Coolify | Dokploy | Priority |
 |---------|---------|---------|----------|
-| Cloudflare Tunnel | ✅ | ✅ | 🔴 High |
+| Cloudflare Tunnel | ✅ | ✅ | ✅ Done (migration 086; cloudflared container; tunnel routes UI) |
 | DNS validation on domain add | ✅ | ❌ | ✅ Done |
 | Per-app isolated Docker networks | ❌ | ✅ | ✅ Done |
 | Proxy-level Basic Auth | ✅ | ✅ | ✅ Done |
 | URL redirect rules (per app) | ❌ | ✅ | ✅ Done |
 | Platform-injected env vars (FQDN, SHA) | ✅ | ✅ | ✅ Done |
 | Registry-based rollbacks (any version) | ✅ | ✅ | ✅ Done |
-| Build-time Docker secrets | ❌ | ✅ | ✅ Done |
+| Build-time Docker secrets | ❌ | ✅ | ✅ Done (migration 078; `--secret` flag via BuildKit) |
 | GPU / custom Docker run options | ✅ | ✅ | ✅ Done |
 | Docker Compose magic vars (SERVICE_PASSWORD) | ✅ | ❌ | ✅ Done |
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | ✅ Done |
 | More service templates (~100 short, total ~223 vs ~320 needed) | ✅ | ✅ | 🟡 Medium |
-| Community template submissions | ✅ | ✅ | 🔴 High |
+| Community template submissions | ✅ | ✅ | 🟡 Partial (suggestion flow done; admin approval UI pending) |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Container crash/restart notifications | ✅ | ✅ | ✅ Done |
 | Resend email API for notifications | ✅ | ✅ | ✅ Done |

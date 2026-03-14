@@ -28,6 +28,7 @@ const DB_DESCRIPTIONS: Record<string, string> = {
   mariadb: "A community-developed fork of MySQL",
   mongodb: "A document-oriented NoSQL database",
   redis: "In-memory data structure store for caching and messaging",
+  clickhouse: "A high-performance column-oriented database for real-time analytics",
 };
 
 export default function DatabaseGeneralTab() {

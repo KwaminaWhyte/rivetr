@@ -18,6 +18,8 @@ pub struct DatabaseTypeConfig {
     pub env_vars: DatabaseEnvVars,
     /// Data directory path inside container
     pub data_path: &'static str,
+    /// Additional static environment variables (key, value)
+    pub extra_env: &'static [(&'static str, &'static str)],
 }
 
 /// Environment variable mappings for database credentials
@@ -47,6 +49,7 @@ pub fn postgres_config() -> DatabaseTypeConfig {
             root_password: None,
         },
         data_path: "/var/lib/postgresql/data",
+        extra_env: &[],
     }
 }
 
@@ -64,6 +67,7 @@ pub fn mysql_config() -> DatabaseTypeConfig {
             root_password: Some("MYSQL_ROOT_PASSWORD"),
         },
         data_path: "/var/lib/mysql",
+        extra_env: &[],
     }
 }
 
@@ -81,6 +85,7 @@ pub fn mongodb_config() -> DatabaseTypeConfig {
             root_password: None,
         },
         data_path: "/data/db",
+        extra_env: &[],
     }
 }
 
@@ -98,6 +103,7 @@ pub fn redis_config() -> DatabaseTypeConfig {
             root_password: None,
         },
         data_path: "/data",
+        extra_env: &[],
     }
 }
 
@@ -115,6 +121,61 @@ pub fn mariadb_config() -> DatabaseTypeConfig {
             root_password: Some("MARIADB_ROOT_PASSWORD"),
         },
         data_path: "/var/lib/mysql",
+        extra_env: &[],
+    }
+}
+
+/// Get configuration for DragonFlyDB (Redis-compatible)
+pub fn dragonfly_config() -> DatabaseTypeConfig {
+    DatabaseTypeConfig {
+        image: "docker.dragonflydb.io/dragonflydb/dragonfly",
+        default_version: "latest",
+        versions: &["latest"],
+        port: 6379,
+        env_vars: DatabaseEnvVars {
+            username: None,
+            password: "DRAGONFLY_requirepass",
+            database: None,
+            root_password: None,
+        },
+        data_path: "/data",
+        extra_env: &[],
+    }
+}
+
+/// Get configuration for KeyDB (Redis-compatible)
+pub fn keydb_config() -> DatabaseTypeConfig {
+    DatabaseTypeConfig {
+        image: "eqalpha/keydb",
+        default_version: "latest",
+        versions: &["latest"],
+        port: 6379,
+        env_vars: DatabaseEnvVars {
+            username: None,
+            password: "KEYDB_PASSWORD",
+            database: None,
+            root_password: None,
+        },
+        data_path: "/data",
+        extra_env: &[],
+    }
+}
+
+/// Get configuration for ClickHouse
+pub fn clickhouse_config() -> DatabaseTypeConfig {
+    DatabaseTypeConfig {
+        image: "clickhouse/clickhouse-server",
+        default_version: "latest",
+        versions: &["latest", "24", "23"],
+        port: 8123,
+        env_vars: DatabaseEnvVars {
+            username: Some("CLICKHOUSE_USER"),
+            password: "CLICKHOUSE_PASSWORD",
+            database: Some("CLICKHOUSE_DB"),
+            root_password: None,
+        },
+        data_path: "/var/lib/clickhouse",
+        extra_env: &[("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")],
     }
 }
 
@@ -126,6 +187,9 @@ pub fn get_config(db_type: &DatabaseType) -> DatabaseTypeConfig {
         DatabaseType::Mariadb => mariadb_config(),
         DatabaseType::Mongodb => mongodb_config(),
         DatabaseType::Redis => redis_config(),
+        DatabaseType::Dragonfly => dragonfly_config(),
+        DatabaseType::Keydb => keydb_config(),
+        DatabaseType::ClickHouse => clickhouse_config(),
     }
 }
 
@@ -160,6 +224,11 @@ pub fn generate_env_vars(
         if let Some(ref root_pass) = credentials.root_password {
             env.push((root_var.to_string(), root_pass.clone()));
         }
+    }
+
+    // Add static extra env vars (e.g. CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1)
+    for (key, val) in config.extra_env {
+        env.push((key.to_string(), val.to_string()));
     }
 
     env

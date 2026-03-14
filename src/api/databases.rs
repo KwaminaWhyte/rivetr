@@ -775,6 +775,51 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         container_id
     );
 
+    // For ClickHouse, create the database after the server is ready (CLICKHOUSE_DB env var
+    // sets the default but does not always auto-create it; this ensures it exists).
+    if db_type == DatabaseType::ClickHouse {
+        if let Some(ref db_name) = credentials.database {
+            tracing::info!(
+                "Creating ClickHouse database '{}' for {}",
+                db_name,
+                database.name
+            );
+            // Wait for ClickHouse HTTP server to be ready
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            let create_cmd = vec![
+                "clickhouse-client".to_string(),
+                "--password".to_string(),
+                credentials.password.clone(),
+                "--query".to_string(),
+                format!("CREATE DATABASE IF NOT EXISTS `{}`", db_name),
+            ];
+            match state.runtime.run_command(&container_id, create_cmd).await {
+                Ok(result) if result.exit_code != 0 => {
+                    tracing::warn!(
+                        "ClickHouse CREATE DATABASE for {} exited with code {}: {}",
+                        database.name,
+                        result.exit_code,
+                        result.stderr
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create ClickHouse database for {}: {}",
+                        database.name,
+                        e
+                    );
+                }
+                _ => {
+                    tracing::info!(
+                        "ClickHouse database '{}' created for {}",
+                        db_name,
+                        database.name
+                    );
+                }
+            }
+        }
+    }
+
     // Execute init commands if present (only on first start — container_id was NULL before)
     if let Some(ref init_json) = database.init_commands {
         if let Ok(commands) = serde_json::from_str::<Vec<String>>(init_json) {
@@ -874,11 +919,20 @@ fn build_init_exec_cmd(
                 sql.to_string(),
             ]
         }
-        DatabaseType::Redis => {
-            // Redis does not support SQL init commands; skip gracefully
+        DatabaseType::Redis | DatabaseType::Dragonfly | DatabaseType::Keydb => {
+            // Redis-compatible stores do not support SQL init commands; skip gracefully
             vec![
                 "redis-cli".to_string(),
                 "ping".to_string(),
+            ]
+        }
+        DatabaseType::ClickHouse => {
+            vec![
+                "clickhouse-client".to_string(),
+                "--password".to_string(),
+                credentials.password.clone(),
+                "--query".to_string(),
+                sql.to_string(),
             ]
         }
     }
