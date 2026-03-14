@@ -25,11 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ClickHouse** — New managed database type. Analytics-focused columnar store on port 8123, `clickhouse://` connection string, `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1` enabled by default, post-start database init.
 - **Docker Compose Raw Mode** — New per-service toggle that deploys the compose file exactly as written, skipping all Rivetr network injection, container name namespacing, and label additions. Essential for services with opinionated internal networking.
 - **Ansible Playbook** — `ansible/rivetr.yml` provides an idempotent playbook for automated server provisioning on Ubuntu 22.04/24.04 and Debian 12. Installs Docker, downloads the Rivetr binary, configures systemd service, and sets up UFW firewall rules.
-- **18 New Service Templates** — Authentik, Infisical, VictoriaMetrics added (unique to this sprint). See [docs/SERVICE-TEMPLATES.md](./docs/SERVICE-TEMPLATES.md) for the full registry of 285 templates.
-- **Service Templates Master Registry** — `docs/SERVICE-TEMPLATES.md` lists all 285 templates by category with IDs and source files. Read before adding new templates to prevent duplicates.
+- **Service Templates Master Registry** — `docs/SERVICE-TEMPLATES.md` lists all 273 unique templates by category with IDs and source files. Referenced before adding new templates to prevent duplicates.
 
 ### Fixed
-- **Duplicate Service Templates** — Removed 16 templates from `sprint20.rs` that already existed in earlier seeder files. Total unique templates: 285 (was counting duplicates as separate entries).
+- **Duplicate Service Templates** — Removed 55 duplicate template entries (same app, different IDs across sprint files). Total unique templates reduced from 328 → 273 after full deduplication. All future templates must be checked against `docs/SERVICE-TEMPLATES.md` first.
 - **Env Vars in Storage Settings** — Removed the duplicate Environment Variables panel from Settings → Storage. Env vars are only managed from the dedicated Env Vars tab.
 
 ---
