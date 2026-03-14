@@ -108,22 +108,22 @@ async fn get_remote_context(
         None
     };
 
-    // Write key to a temp file if available (RemoteContext takes a path)
-    let key_path = if let Some(ref key) = private_key_content {
-        let tmp = format!("/tmp/rivetr-fs-key-{}", uuid::Uuid::new_v4());
-        std::fs::write(&tmp, key).map_err(|e| {
-            tracing::error!("Failed to write temp key: {}", e);
-            ApiError::internal("Failed to prepare SSH key")
-        })?;
-        // chmod 600
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    // Write key to a temp file only if content is non-empty (RemoteContext takes a path)
+    let key_path = match private_key_content.as_deref() {
+        Some(key) if !key.trim().is_empty() => {
+            let tmp = format!("/tmp/rivetr-fs-key-{}", uuid::Uuid::new_v4());
+            std::fs::write(&tmp, key).map_err(|e| {
+                tracing::error!("Failed to write temp key: {}", e);
+                ApiError::internal("Failed to prepare SSH key")
+            })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+            }
+            Some(tmp)
         }
-        Some(tmp)
-    } else {
-        None
+        _ => None,
     };
 
     let ctx = RemoteContext {
