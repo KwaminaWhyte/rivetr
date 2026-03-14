@@ -23,6 +23,8 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 | **Git providers** | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Bitbucket |
 | **Preview deployments** | Yes | Yes | No |
 | **MCP server** | Yes | No | No |
+| **Terminal UI (TUI)** | Yes | No | No |
+| **Remote filesystem browser** | Yes | No | No |
 | **License** | MIT | Apache 2.0 | MIT |
 
 ## Features
@@ -38,18 +40,20 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 - Deploy by specific commit SHA or git tag
 - Container replicas with round-robin load balancing
 - ZIP file upload as an alternative to Git
+- Deployment queue cancellation: cancel any queued or running deployment mid-flight
 
 ### Platform Services
 
-- Managed databases: PostgreSQL, MySQL, MongoDB, Redis (one-click provisioning)
-- Docker Compose multi-container deployments
-- 74 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
+- Managed databases: PostgreSQL, MySQL, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse (one-click provisioning)
+- Docker Compose multi-container deployments with optional raw mode (skip Rivetr network injection)
+- 273 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
 - Scheduled jobs: cron-based command execution inside running containers
+- Community template submissions: users can submit custom templates for admin review and promotion
 
 ### Team Collaboration
 
 - Multi-tenant with full resource isolation between teams
-- RBAC: owner / admin / developer / viewer roles
+- RBAC: owner / admin / developer / viewer roles with fine-grained per-resource permission overrides
 - Team invitations via email with 7-day expiry
 - Audit logging for all team operations
 - App sharing between teams
@@ -62,6 +66,7 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 - SSO/OIDC: Auth0, Keycloak, Azure AD, Okta
 - TOTP-based 2FA with recovery codes
 - AES-256-GCM encryption for secrets and SSH keys at rest
+- Named API tokens: create scoped tokens for CI/CD and scripts (prefixed `rvt_`, stored as SHA-256 hashes)
 - Rate limiting on API, webhook, and auth endpoints
 - Strict input validation and security headers
 
@@ -72,6 +77,7 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 - Scheduled deployments: trigger a deploy at a specific date and time
 - DockerHub webhook: auto-deploy when a new image is pushed
 - Watch paths: only trigger a deploy when specific file paths change in a push
+- Container resource limits: set CPU and memory limits per app, apply live via `docker update` (no redeploy)
 
 ### Operations and Monitoring
 
@@ -82,17 +88,21 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 - Scheduled container restarts (cron-based)
 - Prometheus `/metrics` endpoint for external monitoring
 - Webhook audit log
+- Recharts-powered dashboard for CPU, memory, and deployment history
 
 ### Developer Experience
 
 - Modern React + TypeScript dashboard using shadcn/ui components
 - Browser-based terminal for running containers and remote servers (SSH)
+- Remote filesystem browser: browse, read, write, and delete files on any registered server over SSH
+- Terminal UI (`rivetr tui`): keyboard-driven dashboard for managing apps, deployments, and servers from any terminal
 - Environment variables with AES-256-GCM encrypted storage
 - Shared env vars with inheritance: team → project → environment → app
 - Service dependency graph
 - Config snapshots: save and restore full app configuration
 - Export and import projects as JSON
 - MCP server for AI assistant integration (Claude, Copilot, etc.)
+- Named API tokens for programmatic access from scripts and CI systems
 
 ### Backup and Storage
 
@@ -104,11 +114,64 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 ### Multi-Server and Scale
 
 - Multi-server support: register and deploy to remote servers via SSH
-- Remote server browser-based terminal
+- Remote server browser-based terminal and filesystem browser
 - Docker Swarm: init swarm, manage nodes, scale services
 - Build servers: offload builds to dedicated remote nodes
 - Container registry push after build
 - Log draining: Axiom, New Relic, Datadog, Logtail, or any HTTP endpoint
+- Ansible playbook (`ansible/rivetr.yml`) for automated server provisioning on Ubuntu/Debian
+
+## Terminal UI (TUI)
+
+Rivetr ships with an optional keyboard-driven terminal dashboard built with [ratatui](https://ratatui.rs/). It connects to any running Rivetr instance — local or remote — without opening a browser.
+
+### Using the TUI from your local machine
+
+**Prerequisites:** A running Rivetr instance (e.g. `https://rivetr.site`) and an API token from **Settings → API Tokens**.
+
+**Option 1 — Download the pre-built binary (macOS/Linux):**
+
+```bash
+# Download the TUI-enabled binary for macOS (Apple Silicon)
+curl -Lo rivetr https://github.com/KwaminaWhyte/rivetr/releases/latest/download/rivetr-macos-arm64
+chmod +x rivetr
+
+# Connect to your Rivetr instance
+./rivetr tui --url https://rivetr.site --token rvt_your_token_here
+```
+
+**Option 2 — Build from source:**
+
+```bash
+git clone https://github.com/KwaminaWhyte/rivetr.git
+cd rivetr
+cargo build --release --features tui
+./target/release/rivetr tui --url https://rivetr.site --token rvt_your_token_here
+```
+
+**Using environment variables (avoids typing the token every time):**
+
+```bash
+export RIVETR_URL=https://rivetr.site
+export RIVETR_TOKEN=rvt_your_token_here
+./rivetr tui
+```
+
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `1–4` | Switch between Apps / Deployments / Servers / Logs tabs |
+| `↑` / `↓` | Navigate list |
+| `d` | Deploy selected app |
+| `s` | Stop selected app |
+| `r` | Restart selected app |
+| `?` | Toggle help overlay |
+| `q` / `Ctrl-C` | Quit |
+
+Data refreshes automatically every 5 seconds. The status bar shows the connected instance URL and live connection state.
+
+---
 
 ## Quick Start
 
@@ -271,6 +334,35 @@ memory = "256mb"
 cpu = "0.5"
 ```
 
+## CLI Reference
+
+Rivetr ships a full CLI that can control a running instance from any machine:
+
+```bash
+# Check instance health and version
+rivetr status --api-url https://rivetr.site --token rvt_…
+
+# List apps
+rivetr apps list
+
+# Trigger a deployment
+rivetr deploy my-app
+
+# Stream live logs
+rivetr logs my-app --follow
+
+# Launch the terminal dashboard
+rivetr tui --url https://rivetr.site --token rvt_…
+
+# Backup and restore
+rivetr backup --output ./my-backup.tar.gz
+rivetr restore ./my-backup.tar.gz
+```
+
+Environment variables `RIVETR_API_URL` and `RIVETR_TOKEN` are accepted for all subcommands.
+
+The `tui` subcommand requires a build with `--features tui`. Pre-built binaries from GitHub Releases include it by default.
+
 ## Project Structure
 
 ```
@@ -305,8 +397,9 @@ rivetr/
 │   ├── monitoring/          # Uptime, metrics, Prometheus exporter
 │   ├── notifications/       # Alert channels (Slack, Discord, email, Telegram, etc.)
 │   ├── mcp/                 # MCP server for AI assistant integration
+│   ├── tui/                 # Terminal UI (ratatui + crossterm, --features tui)
 │   ├── crypto/              # AES-256-GCM encryption utilities
-│   ├── cli/                 # CLI subcommands (backup, restore, server)
+│   ├── cli/                 # CLI subcommands (backup, restore, server, tui)
 │   ├── config/              # Configuration parsing (TOML)
 │   ├── startup/             # Self-checks and initialization
 │   └── utils/               # Git operations and shared helpers
@@ -319,6 +412,7 @@ rivetr/
 ├── migrations/              # SQLite schema migrations
 ├── static/dist/             # Built frontend assets (served by Rivetr)
 ├── docs/                    # Architecture and reference documentation
+├── ansible/                 # Ansible playbook for automated provisioning
 ├── scripts/ralph/           # Ralph autonomous agent loop
 ├── .claude/                 # Claude Code agents and skills
 ├── live-testing/            # Manual testing guides
@@ -347,8 +441,11 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | [ROADMAP.md](ROADMAP.md) | Planned features and future direction |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and component breakdown |
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Technology choices and crate selection |
+| [docs/SERVICE-TEMPLATES.md](docs/SERVICE-TEMPLATES.md) | Catalogue of all 273 service templates by category |
+| [docs/COMPETITIVE-GAP-ANALYSIS.md](docs/COMPETITIVE-GAP-ANALYSIS.md) | Feature comparison with Coolify and Dokploy |
 | [docs/REFACTORING.md](docs/REFACTORING.md) | Code organization and module splitting guide |
 | [docs/RALPH_GUIDE.md](docs/RALPH_GUIDE.md) | Ralph autonomous agent loop for feature development |
+| [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
 | [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |
 
 ## License

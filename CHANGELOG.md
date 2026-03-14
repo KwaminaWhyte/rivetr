@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Community Template Submissions** — Users can submit custom Docker Compose templates for admin review from a new Submit dialog on the Templates page. Submissions are stored in `community_template_submissions` (migration 091) with `pending`/`approved`/`rejected` status. Admins review from an All Submissions page; approved submissions are automatically promoted to the live service template registry. Users can track their own submissions from My Submissions.
 - **Remote Filesystem Browser** — Browse, read, write, and delete files on any connected remote server over SSH. API: `GET /api/servers/:id/files` (directory listing), `GET /api/servers/:id/files/content` (read), `PUT /api/servers/:id/files/content` (write), `DELETE /api/servers/:id/files` (delete). Frontend: full file browser at `/servers/:id/files` with breadcrumb navigation and inline text editor. Accessible via the new Files button on the Servers settings page.
 
+### Fixed
+- **API Token Auth in Middleware** — `rvt_`-prefixed API tokens were only validated inside the `User` extractor (used by handlers that declare a user parameter). The `auth_middleware` itself only checked session tokens and the admin config token, causing 401s on endpoints like `GET /api/apps` that don't use the user extractor. Fixed by adding an `api_tokens` DB lookup in `auth_middleware` for `rvt_`-prefixed tokens, with a fire-and-forget `last_used_at` update.
+- **TUI ping using auth-required endpoint** — `ping()` called `/api/system/health` (auth required), causing the TUI to show "Disconnected" even when the server was reachable but the token was invalid. Changed to use the public `/health` endpoint so connectivity and auth failures are reported separately.
+- **TUI `/api/deployments` 404** — No global deployments endpoint exists; they are per-app. Fixed by replacing the single global query with per-app requests (up to 5 apps × 5 deployments, merged and sorted by date) inside the `refresh()` cycle.
+
 ### Planned
 - SAML 2.0 support
 - Remote build execution (SSH-based, RemoteContext foundation in place)

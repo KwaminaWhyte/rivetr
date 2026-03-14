@@ -362,8 +362,36 @@ pub async fn auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // Otherwise, check for a valid session
     let token_hash = hash_token(token);
+
+    // Check user-created API tokens (rvt_ prefix)
+    if token.starts_with("rvt_") {
+        let api_token_valid: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM api_tokens WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > datetime('now'))",
+        )
+        .bind(&token_hash)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if api_token_valid.is_some() {
+            // Update last_used_at asynchronously (fire-and-forget)
+            let db = state.db.clone();
+            let hash = token_hash.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "UPDATE api_tokens SET last_used_at = datetime('now') WHERE token_hash = ?",
+                )
+                .bind(&hash)
+                .execute(&db)
+                .await;
+            });
+            return Ok(next.run(request).await);
+        }
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Otherwise, check for a valid session
     let session: Option<Session> = sqlx::query_as(
         "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
     )

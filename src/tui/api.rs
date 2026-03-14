@@ -118,6 +118,9 @@ impl ApiClient {
                 .await
                 .context("GET /api/apps failed")?;
 
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!("Authentication failed (401) — check your API token");
+            }
             if !resp.status().is_success() {
                 anyhow::bail!("GET /api/apps returned {}", resp.status());
             }
@@ -135,21 +138,26 @@ impl ApiClient {
         })
     }
 
-    pub fn list_deployments(&self, limit: u32) -> Result<Vec<Deployment>> {
+    /// Fetch recent deployments for a specific app.
+    pub fn list_app_deployments(&self, app_id: &str, limit: u32) -> Result<Vec<Deployment>> {
+        let app_id = app_id.to_string();
         self.block(async {
-            let url = self.url(&format!("/api/deployments?limit={}", limit));
+            let url = self.url(&format!("/api/apps/{}/deployments?limit={}", app_id, limit));
             let resp = self
                 .client
                 .get(url)
                 .send()
                 .await
-                .context("GET /api/deployments failed")?;
+                .context("GET /api/apps/:id/deployments failed")?;
 
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!("Authentication failed (401) — check your API token");
+            }
             if !resp.status().is_success() {
-                anyhow::bail!("GET /api/deployments returned {}", resp.status());
+                anyhow::bail!("GET /api/apps/{}/deployments returned {}", app_id, resp.status());
             }
 
-            let text = resp.text().await.context("reading /api/deployments body")?;
+            let text = resp.text().await?;
             if let Ok(deps) = serde_json::from_str::<Vec<Deployment>>(&text) {
                 return Ok(deps);
             }
@@ -157,7 +165,7 @@ impl ApiClient {
             struct Wrapper {
                 deployments: Vec<Deployment>,
             }
-            let w: Wrapper = serde_json::from_str(&text).context("parsing /api/deployments")?;
+            let w: Wrapper = serde_json::from_str(&text).context("parsing deployments")?;
             Ok(w.deployments)
         })
     }
@@ -270,12 +278,12 @@ impl ApiClient {
         })
     }
 
-    /// Returns true if the server is reachable.
+    /// Returns true if the server is reachable (uses public /health, no auth required).
     pub fn ping(&self) -> bool {
         self.block(async {
             let result = self
                 .client
-                .get(self.url("/api/system/health"))
+                .get(self.url("/health"))
                 .send()
                 .await;
             Ok::<bool, anyhow::Error>(result.map(|r: reqwest::Response| r.status().is_success()).unwrap_or(false))

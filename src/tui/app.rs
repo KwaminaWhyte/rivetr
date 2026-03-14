@@ -105,6 +105,9 @@ impl AppState {
             return;
         }
 
+        // Clear previous status before refreshing
+        self.status_message = None;
+
         match self.api.list_apps() {
             Ok(apps) => {
                 // Keep cursor in bounds after refresh
@@ -115,22 +118,26 @@ impl AppState {
                 if let Some(ref sel) = self.selected_app.clone() {
                     self.selected_app = apps.iter().find(|a| a.id == sel.id).cloned();
                 }
+                // Fetch recent deployments across all apps (up to 5 apps, 5 each)
+                let mut all_deps: Vec<super::api::Deployment> = Vec::new();
+                for app in apps.iter().take(5) {
+                    if let Ok(mut deps) = self.api.list_app_deployments(&app.id, 5) {
+                        all_deps.append(&mut deps);
+                    }
+                }
+                // Sort by started_at descending and keep the most recent 20
+                all_deps.sort_by(|a, b| {
+                    b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+                });
+                all_deps.truncate(20);
+                if self.deployment_cursor >= all_deps.len() && !all_deps.is_empty() {
+                    self.deployment_cursor = all_deps.len() - 1;
+                }
+                self.deployments = all_deps;
                 self.apps = apps;
             }
             Err(e) => {
-                self.status_message = Some(format!("Apps refresh error: {}", e));
-            }
-        }
-
-        match self.api.list_deployments(20) {
-            Ok(deps) => {
-                if self.deployment_cursor >= deps.len() && !deps.is_empty() {
-                    self.deployment_cursor = deps.len() - 1;
-                }
-                self.deployments = deps;
-            }
-            Err(e) => {
-                self.status_message = Some(format!("Deployments refresh error: {}", e));
+                self.status_message = Some(format!("Apps error: {}", e));
             }
         }
 
