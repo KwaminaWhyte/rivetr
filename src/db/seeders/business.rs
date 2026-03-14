@@ -51,54 +51,6 @@ volumes:
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"monica","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"APP_KEY","label":"App Key (32 chars)","required":true,"default":"","secret":true},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true}]"#,
         ),
         (
-            "tpl-invoice-ninja",
-            "Invoice Ninja",
-            "Open-source invoicing, billing, and payment platform for freelancers and businesses.",
-            "project-management",
-            "invoice-ninja",
-            r#"services:
-  invoiceninja:
-    image: invoiceninja/invoiceninja:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-invoiceninja}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:80"
-    environment:
-      - APP_KEY=${APP_KEY:-change-me-to-a-32-char-key}
-      - APP_URL=${APP_URL:-http://localhost:8080}
-      - DB_HOST=invoiceninja_db
-      - DB_USERNAME=ninja
-      - DB_PASSWORD=${DB_PASSWORD:-ninja}
-      - DB_DATABASE=ninja
-    depends_on:
-      - invoiceninja_db
-    volumes:
-      - invoiceninja_public:/var/www/app/public
-      - invoiceninja_storage:/var/www/app/storage
-    labels:
-      - "rivetr.managed=true"
-
-  invoiceninja_db:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      - MYSQL_DATABASE=ninja
-      - MYSQL_USER=ninja
-      - MYSQL_PASSWORD=${DB_PASSWORD:-ninja}
-      - MYSQL_RANDOM_ROOT_PASSWORD=yes
-    volumes:
-      - invoiceninja_db_data:/var/lib/mysql
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  invoiceninja_public:
-  invoiceninja_storage:
-  invoiceninja_db_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"invoiceninja","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"APP_KEY","label":"App Key (32 chars)","required":true,"default":"","secret":true},{"name":"APP_URL","label":"App URL","required":false,"default":"http://localhost:8080","secret":false},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true}]"#,
-        ),
-        (
             "tpl-kimai",
             "Kimai",
             "Open-source time-tracking application for freelancers and teams. Multi-user, reporting, invoicing.",
@@ -160,77 +112,6 @@ volumes:
   focalboard_data:
 "#,
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"focalboard","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8000","secret":false}]"#,
-        ),
-        (
-            "tpl-firefly-iii",
-            "Firefly III",
-            "Free, open-source personal finance manager. Track expenses, budgets, and savings goals.",
-            "analytics",
-            "firefly-iii",
-            r#"services:
-  firefly:
-    image: fireflyiii/core:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-firefly}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8080"
-    environment:
-      - APP_KEY=${APP_KEY:-change-me-to-a-32-char-key}
-      - DB_CONNECTION=pgsql
-      - DB_HOST=firefly_db
-      - DB_PORT=5432
-      - DB_DATABASE=firefly
-      - DB_USERNAME=firefly
-      - DB_PASSWORD=${DB_PASSWORD:-firefly}
-      - TRUSTED_PROXIES=**
-      - APP_URL=${APP_URL:-http://localhost:8080}
-    depends_on:
-      - firefly_db
-    volumes:
-      - firefly_upload:/var/www/html/storage/upload
-    labels:
-      - "rivetr.managed=true"
-
-  firefly_db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=firefly
-      - POSTGRES_USER=firefly
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-firefly}
-    volumes:
-      - firefly_db_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  firefly_upload:
-  firefly_db_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"firefly","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"APP_KEY","label":"App Key (32 chars)","required":true,"default":"","secret":true},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true},{"name":"APP_URL","label":"App URL","required":false,"default":"http://localhost:8080","secret":false}]"#,
-        ),
-        (
-            "tpl-actual-budget",
-            "Actual Budget",
-            "Local-first personal finance app with real budgeting. Privacy-focused, works offline.",
-            "analytics",
-            "actual-budget",
-            r#"services:
-  actual:
-    image: actualbudget/actual-server:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-actual}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-5006}:5006"
-    volumes:
-      - actual_data:/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  actual_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"actual","secret":false},{"name":"PORT","label":"Port","required":false,"default":"5006","secret":false}]"#,
         ),
         (
             "tpl-medusa",

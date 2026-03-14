@@ -48,8 +48,8 @@
 
 | ID | Name | File |
 |----|------|------|
-| `tpl-actual-budget` | Actual Budget | `business.rs` |
-| `tpl-firefly-iii` | Firefly III | `business.rs` |
+| `tpl-actual-budget` | Actual Budget | `media_productivity.rs` |
+| `tpl-firefly-iii` | Firefly III | `media_productivity.rs` |
 | `tpl-goatcounter` | GoatCounter | `extra_services.rs` |
 | `tpl-openpanel` | OpenPanel | `extra_services.rs` |
 | `tpl-plausible` | Plausible Analytics | `sprint19.rs` |
@@ -350,7 +350,7 @@
 |----|------|------|
 | `tpl-batch2-calcom` | Cal.com | `project_mgmt.rs` |
 | `tpl-focalboard` | Focalboard | `business.rs` |
-| `tpl-invoice-ninja` | Invoice Ninja | `business.rs` |
+| `tpl-invoice-ninja` | Invoice Ninja | `media_productivity.rs` |
 | `tpl-kimai` | Kimai | `business.rs` |
 | `tpl-batch2-leantime` | Leantime | `project_mgmt.rs` |
 | `tpl-monica` | Monica | `business.rs` |

@@ -151,47 +151,6 @@ volumes:
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"vaultwarden-adv","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"ADMIN_TOKEN","label":"Admin Token","required":true,"default":"","secret":true},{"name":"DOMAIN","label":"Domain URL","required":true,"default":"http://localhost:8080","secret":false},{"name":"SIGNUPS_ALLOWED","label":"Allow Signups","required":false,"default":"false","secret":false},{"name":"SMTP_HOST","label":"SMTP Host","required":false,"default":"","secret":false},{"name":"SMTP_FROM","label":"SMTP From","required":false,"default":"noreply@example.com","secret":false},{"name":"SMTP_PORT","label":"SMTP Port","required":false,"default":"587","secret":false},{"name":"SMTP_USER","label":"SMTP Username","required":false,"default":"","secret":false},{"name":"SMTP_PASSWORD","label":"SMTP Password","required":false,"default":"","secret":true}]"#,
         ),
         (
-            "tpl-changedetection",
-            "Changedetection.io",
-            "Self-hosted website change detection and notification service. Monitor any web page for changes.",
-            "monitoring",
-            "changedetection",
-            r#"services:
-  changedetection:
-    image: ghcr.io/dgtlmoon/changedetection.io:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-changedetection}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-5000}:5000"
-    environment:
-      - PORT=5000
-      - PLAYWRIGHT_DRIVER_URL=${PLAYWRIGHT_URL:-ws://playwright-chrome:3000/?stealth=1&--disable-web-security=true}
-    volumes:
-      - changedetection_data:/datastore
-    labels:
-      - "rivetr.managed=true"
-
-  playwright-chrome:
-    image: browserless/chrome:${CHROME_VERSION:-latest}
-    container_name: playwright-chrome
-    restart: unless-stopped
-    environment:
-      - SCREEN_WIDTH=1920
-      - SCREEN_HEIGHT=1024
-      - SCREEN_DEPTH=16
-      - ENABLE_DEBUGGER=false
-      - PREBOOT_CHROME=true
-      - CONNECTION_TIMEOUT=300000
-      - MAX_CONCURRENT_SESSIONS=${MAX_SESSIONS:-10}
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  changedetection_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"changedetection","secret":false},{"name":"PORT","label":"Port","required":false,"default":"5000","secret":false},{"name":"MAX_SESSIONS","label":"Max Browser Sessions","required":false,"default":"10","secret":false}]"#,
-        ),
-        (
             "tpl-open-speed-test",
             "OpenSpeedTest",
             "Self-hosted HTML5 internet speed test. No third-party services, no Flash, no Java required.",
@@ -209,24 +168,6 @@ volumes:
       - "rivetr.managed=true"
 "#,
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"openspeedtest","secret":false},{"name":"HTTP_PORT","label":"HTTP Port","required":false,"default":"3000","secret":false},{"name":"HTTPS_PORT","label":"HTTPS Port","required":false,"default":"3001","secret":false}]"#,
-        ),
-        (
-            "tpl-excalidraw",
-            "Excalidraw",
-            "Virtual whiteboard for sketching hand-drawn diagrams. Collaborative, end-to-end encrypted.",
-            "development",
-            "excalidraw",
-            r#"services:
-  excalidraw:
-    image: excalidraw/excalidraw:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-excalidraw}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
-    labels:
-      - "rivetr.managed=true"
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"excalidraw","secret":false},{"name":"PORT","label":"Port","required":false,"default":"80","secret":false}]"#,
         ),
         (
             "tpl-drawio",
@@ -294,34 +235,6 @@ volumes:
       - "rivetr.managed=true"
 "#,
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"mediamtx","secret":false},{"name":"RTSP_PORT","label":"RTSP Port","required":false,"default":"8554","secret":false},{"name":"RTMP_PORT","label":"RTMP Port","required":false,"default":"1935","secret":false},{"name":"HLS_PORT","label":"HLS Port","required":false,"default":"8888","secret":false},{"name":"API_PORT","label":"API Port","required":false,"default":"9997","secret":false}]"#,
-        ),
-        (
-            "tpl-freshrss",
-            "FreshRSS",
-            "Free, self-hosted RSS and Atom feed aggregator. Lightweight and powerful news reader.",
-            "media",
-            "freshrss",
-            r#"services:
-  freshrss:
-    image: freshrss/freshrss:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-freshrss}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:80"
-    environment:
-      - TZ=${TZ:-UTC}
-      - CRON_MIN=*/20
-    volumes:
-      - freshrss_data:/var/www/FreshRSS/data
-      - freshrss_extensions:/var/www/FreshRSS/extensions
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  freshrss_data:
-  freshrss_extensions:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"freshrss","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8080","secret":false},{"name":"TZ","label":"Timezone","required":false,"default":"UTC","secret":false}]"#,
         ),
         (
             "tpl-photoprism",

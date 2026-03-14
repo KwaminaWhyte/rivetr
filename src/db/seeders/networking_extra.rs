@@ -6,43 +6,6 @@ pub fn templates() -> Vec<TemplateEntry> {
     vec![
         // ==================== NETWORKING / INFRASTRUCTURE ====================
         (
-            "tpl-wireguard-easy",
-            "WireGuard Easy",
-            "The easiest way to run WireGuard VPN. Beautiful web UI for managing VPN clients.",
-            "infrastructure",
-            "wireguard",
-            r#"services:
-  wg-easy:
-    image: ghcr.io/wg-easy/wg-easy:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-wg-easy}
-    restart: unless-stopped
-    ports:
-      - "${WG_PORT:-51820}:51820/udp"
-      - "${UI_PORT:-51821}:51821/tcp"
-    environment:
-      - WG_HOST=${WG_HOST:-change-me-to-your-public-ip}
-      - PASSWORD=${PASSWORD:-changeme}
-      - WG_PORT=${WG_PORT:-51820}
-      - WG_DEFAULT_DNS=${DNS:-1.1.1.1}
-      - WG_ALLOWED_IPS=${ALLOWED_IPS:-0.0.0.0/0,::/0}
-      - UI_TRAFFIC_STATS=true
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv4.ip_forward=1
-    volumes:
-      - wg_easy_data:/etc/wireguard
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  wg_easy_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"wg-easy","secret":false},{"name":"WG_PORT","label":"WireGuard Port (UDP)","required":false,"default":"51820","secret":false},{"name":"UI_PORT","label":"Web UI Port","required":false,"default":"51821","secret":false},{"name":"WG_HOST","label":"Public IP / Hostname","required":true,"default":"","secret":false},{"name":"PASSWORD","label":"Web UI Password","required":true,"default":"","secret":true},{"name":"DNS","label":"DNS Server","required":false,"default":"1.1.1.1","secret":false},{"name":"ALLOWED_IPS","label":"Allowed IPs","required":false,"default":"0.0.0.0/0,::/0","secret":false}]"#,
-        ),
-        (
             "tpl-adguard-home",
             "AdGuard Home",
             "Network-wide ad and tracker blocking DNS server. Parental controls and per-client statistics.",

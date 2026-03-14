@@ -638,43 +638,6 @@ volumes:
 "#,
             r#"[{"name":"DOMAIN","label":"Domain Name","required":true,"default":"localhost","secret":false},{"name":"SESSION_SECRET","label":"Session Secret","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"hedgedoc","secret":true},{"name":"PORT","label":"Host Port","required":false,"default":"3000","secret":false}]"#,
         ),
-        (
-            "tpl-zulip",
-            "Zulip",
-            "Organized team chat with topics. Open-source alternative to Slack with powerful threading and search.",
-            "communication",
-            "zulip",
-            r#"services:
-  zulip:
-    image: zulip/docker-zulip:latest
-    container_name: ${CONTAINER_NAME:-zulip}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
-      - "${SSL_PORT:-443}:443"
-    environment:
-      - SETTING_EXTERNAL_HOST=${DOMAIN:-localhost}
-      - SETTING_ZULIP_ADMINISTRATOR=${ADMIN_EMAIL:-admin@example.com}
-      - DISABLE_HTTPS=${DISABLE_HTTPS:-true}
-      - SECRETS_email_password=${EMAIL_PASSWORD:-changeme}
-      - SECRETS_secret_key=${SECRET_KEY:-changeme}
-      - SECRETS_postgres_password=${DB_PASSWORD:-zulip}
-      - SECRETS_rabbitmq_password=${RABBITMQ_PASSWORD:-zulip}
-      - SECRETS_redis_password=${REDIS_PASSWORD:-zulip}
-      - SETTING_EMAIL_HOST=${EMAIL_HOST:-}
-      - SETTING_EMAIL_HOST_USER=${EMAIL_USER:-}
-      - SETTING_EMAIL_PORT=${EMAIL_PORT:-587}
-      - SETTING_EMAIL_USE_TLS=${EMAIL_TLS:-true}
-    volumes:
-      - zulip_data:/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  zulip_data:
-"#,
-            r#"[{"name":"DOMAIN","label":"Domain Name","required":true,"default":"localhost","secret":false},{"name":"ADMIN_EMAIL","label":"Admin Email","required":true,"default":"admin@example.com","secret":false},{"name":"SECRET_KEY","label":"Secret Key","required":true,"default":"changeme","secret":true},{"name":"DB_PASSWORD","label":"DB Password","required":true,"default":"zulip","secret":true},{"name":"PORT","label":"HTTP Port","required":false,"default":"80","secret":false}]"#,
-        ),
         // ==================== PROJECT MANAGEMENT ====================
         (
             "tpl-openproject",

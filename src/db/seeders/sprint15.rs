@@ -620,36 +620,6 @@ volumes:
             r#"[{"name":"VERSION","label":"Version","required":false,"default":"2","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"drone","secret":false},{"name":"PORT","label":"HTTP Port","required":false,"default":"80","secret":false},{"name":"GITEA_SERVER","label":"Gitea Server URL","required":true,"default":"http://gitea:3000","secret":false},{"name":"GITEA_CLIENT_ID","label":"Gitea OAuth Client ID","required":true,"default":"","secret":false},{"name":"GITEA_CLIENT_SECRET","label":"Gitea OAuth Client Secret","required":true,"default":"","secret":true},{"name":"RPC_SECRET","label":"RPC Secret","required":true,"default":"","secret":true},{"name":"SERVER_HOST","label":"Drone Server Hostname","required":true,"default":"localhost","secret":false},{"name":"SERVER_PROTO","label":"Protocol (http/https)","required":false,"default":"http","secret":false},{"name":"ADMIN_USER","label":"Admin Username","required":false,"default":"admin","secret":false}]"#,
         ),
         (
-            "tpl-gitea-runner",
-            "Gitea Act Runner",
-            "Gitea Actions runner based on act. Execute CI workflows on your own infrastructure.",
-            "devtools",
-            "gitea",
-            r#"services:
-  gitea-runner:
-    image: gitea/act_runner:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-gitea-runner}
-    restart: unless-stopped
-    environment:
-      - GITEA_INSTANCE_URL=${GITEA_INSTANCE_URL:-http://gitea:3000}
-      - GITEA_RUNNER_REGISTRATION_TOKEN=${REGISTRATION_TOKEN:-change-me-to-your-runner-token}
-      - GITEA_RUNNER_NAME=${RUNNER_NAME:-rivetr-runner}
-      - GITEA_RUNNER_LABELS=${RUNNER_LABELS:-ubuntu-latest:docker://node:16-bullseye,ubuntu-22.04:docker://node:16-bullseye}
-      - CONFIG_FILE=/config/config.yaml
-    volumes:
-      - gitea_runner_data:/data
-      - gitea_runner_config:/config
-      - /var/run/docker.sock:/var/run/docker.sock
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  gitea_runner_data:
-  gitea_runner_config:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"gitea-runner","secret":false},{"name":"GITEA_INSTANCE_URL","label":"Gitea Instance URL","required":true,"default":"http://gitea:3000","secret":false},{"name":"REGISTRATION_TOKEN","label":"Runner Registration Token","required":true,"default":"","secret":true},{"name":"RUNNER_NAME","label":"Runner Name","required":false,"default":"rivetr-runner","secret":false},{"name":"RUNNER_LABELS","label":"Runner Labels","required":false,"default":"ubuntu-latest:docker://node:16-bullseye","secret":false}]"#,
-        ),
-        (
             "tpl-windmill",
             "Windmill",
             "Open-source developer platform for scripts, workflows, and apps. Alternative to Retool and Airplane.",
@@ -1270,49 +1240,6 @@ volumes:
         ),
         // ==================== EXTRA MONITORING / OBSERVABILITY ====================
         (
-            "tpl-victoria-metrics",
-            "VictoriaMetrics",
-            "Fast, cost-effective monitoring solution. Drop-in Prometheus replacement with better performance and compression.",
-            "monitoring",
-            "victoria-metrics",
-            r#"services:
-  victoriametrics:
-    image: victoriametrics/victoria-metrics:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-victoriametrics}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8428}:8428"
-    command:
-      - "--storageDataPath=/storage"
-      - "--retentionPeriod=${RETENTION:-1}"
-      - "--httpListenAddr=:8428"
-    volumes:
-      - vm_data:/storage
-    labels:
-      - "rivetr.managed=true"
-
-  vmagent:
-    image: victoriametrics/vmagent:${VERSION:-latest}
-    restart: unless-stopped
-    ports:
-      - "${AGENT_PORT:-8429}:8429"
-    command:
-      - "--promscrape.config=/etc/prometheus/prometheus.yml"
-      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
-    volumes:
-      - vmagent_config:/etc/prometheus
-      - vmagent_data:/vmagentdata
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  vm_data:
-  vmagent_config:
-  vmagent_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"victoriametrics","secret":false},{"name":"PORT","label":"VictoriaMetrics Port","required":false,"default":"8428","secret":false},{"name":"AGENT_PORT","label":"VMAgent Port","required":false,"default":"8429","secret":false},{"name":"RETENTION","label":"Retention Period (months)","required":false,"default":"1","secret":false}]"#,
-        ),
-        (
             "tpl-signoz",
             "SigNoz",
             "Open-source APM and observability platform. Distributed tracing, metrics, and logs in one unified UI.",
@@ -1373,57 +1300,6 @@ volumes:
   signoz_clickhouse_data:
 "#,
             r#"[{"name":"VERSION","label":"SigNoz Version","required":false,"default":"latest","secret":false},{"name":"CLICKHOUSE_VERSION","label":"ClickHouse Version","required":false,"default":"23.11","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"signoz","secret":false},{"name":"PORT","label":"Frontend Port","required":false,"default":"3301","secret":false},{"name":"OTLP_GRPC_PORT","label":"OTLP gRPC Port","required":false,"default":"4317","secret":false},{"name":"OTLP_HTTP_PORT","label":"OTLP HTTP Port","required":false,"default":"4318","secret":false}]"#,
-        ),
-        (
-            "tpl-healthchecks",
-            "Healthchecks.io",
-            "Cron job and scheduled task monitoring. Get alerted when your cron jobs fail to run on time.",
-            "monitoring",
-            "healthchecks",
-            r#"services:
-  healthchecks:
-    image: healthchecks/healthchecks:${VERSION:-latest}
-    container_name: ${CONTAINER_NAME:-healthchecks}
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
-    environment:
-      - DEBUG=False
-      - SECRET_KEY=${SECRET_KEY:-change-me-to-a-long-random-string}
-      - SITE_ROOT=${SITE_ROOT:-http://localhost:8000}
-      - SITE_NAME=${SITE_NAME:-Healthchecks}
-      - DEFAULT_FROM_EMAIL=${FROM_EMAIL:-healthchecks@example.com}
-      - EMAIL_HOST=${EMAIL_HOST:-smtp.example.com}
-      - EMAIL_PORT=${EMAIL_PORT:-587}
-      - EMAIL_USE_TLS=${EMAIL_TLS:-True}
-      - DB=postgres
-      - DB_HOST=healthchecks_db
-      - DB_PORT=5432
-      - DB_NAME=healthchecks
-      - DB_USER=healthchecks
-      - DB_PASSWORD=${DB_PASSWORD:-healthchecks}
-      - REGISTRATION_OPEN=False
-    depends_on:
-      - healthchecks_db
-    labels:
-      - "rivetr.managed=true"
-
-  healthchecks_db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=healthchecks
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-healthchecks}
-      - POSTGRES_DB=healthchecks
-    volumes:
-      - healthchecks_db_data:/var/lib/postgresql/data
-    labels:
-      - "rivetr.managed=true"
-
-volumes:
-  healthchecks_db_data:
-"#,
-            r#"[{"name":"VERSION","label":"Version","required":false,"default":"latest","secret":false},{"name":"CONTAINER_NAME","label":"Container Name","required":false,"default":"healthchecks","secret":false},{"name":"PORT","label":"Port","required":false,"default":"8000","secret":false},{"name":"SECRET_KEY","label":"Secret Key","required":true,"default":"","secret":true},{"name":"SITE_ROOT","label":"Site Root URL","required":true,"default":"http://localhost:8000","secret":false},{"name":"SITE_NAME","label":"Site Name","required":false,"default":"Healthchecks","secret":false},{"name":"DB_PASSWORD","label":"Database Password","required":true,"default":"","secret":true},{"name":"FROM_EMAIL","label":"From Email","required":false,"default":"healthchecks@example.com","secret":false},{"name":"EMAIL_HOST","label":"SMTP Host","required":false,"default":"smtp.example.com","secret":false},{"name":"EMAIL_PORT","label":"SMTP Port","required":false,"default":"587","secret":false}]"#,
         ),
     ]
 }
