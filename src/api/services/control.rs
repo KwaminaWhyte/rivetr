@@ -105,8 +105,9 @@ pub async fn start_service(
     };
 
     // Always write/overwrite compose file from database content (in case it was updated).
-    // Inject isolated network if enabled (default: yes).
-    let isolated_id = if service.isolated_network != 0 {
+    // Inject isolated network if enabled (default: yes), unless raw mode is active.
+    let raw_mode = service.raw_compose_mode != 0;
+    let isolated_id = if !raw_mode && service.isolated_network != 0 {
         Some(service.id.as_str())
     } else {
         None
@@ -116,6 +117,7 @@ pub async fn start_service(
         &service.name,
         &substituted_compose,
         isolated_id,
+        raw_mode,
     )
     .await
     {
@@ -368,8 +370,9 @@ pub async fn restart_service(
     };
 
     // Always write/overwrite compose file from database content.
-    // Inject isolated network if enabled (default: yes).
-    let isolated_id = if service.isolated_network != 0 {
+    // Inject isolated network if enabled (default: yes), unless raw mode is active.
+    let raw_mode = service.raw_compose_mode != 0;
+    let isolated_id = if !raw_mode && service.isolated_network != 0 {
         Some(service.id.as_str())
     } else {
         None
@@ -379,6 +382,7 @@ pub async fn restart_service(
         &service.name,
         &substituted_compose,
         isolated_id,
+        raw_mode,
     )
     .await
     {

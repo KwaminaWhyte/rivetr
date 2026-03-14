@@ -19,6 +19,7 @@ use super::super::audit::{audit_log, extract_client_ip};
 use super::super::teams::log_team_audit;
 use super::compose::{
     get_compose_dir, run_compose_command, validate_compose_content, write_compose_file,
+    write_compose_file_with_options,
 };
 
 /// Query parameters for listing services
@@ -283,9 +284,18 @@ pub async fn update_service(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-        // Write updated compose file to disk
+        // Write updated compose file to disk, respecting the current raw_compose_mode setting.
+        // Use the raw_compose_mode from the request if provided, otherwise use the existing value.
+        let raw_mode = req.raw_compose_mode.unwrap_or(existing.raw_compose_mode != 0);
         let data_dir = &state.config.server.data_dir;
-        if let Err(e) = write_compose_file(data_dir, &existing.name, content).await {
+        let isolated_id = if !raw_mode && existing.isolated_network != 0 {
+            Some(existing.id.as_str())
+        } else {
+            None
+        };
+        if let Err(e) =
+            write_compose_file_with_options(data_dir, &existing.name, content, isolated_id, raw_mode).await
+        {
             tracing::error!("Failed to write compose file: {}", e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
@@ -343,6 +353,20 @@ pub async fn update_service(
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update service isolated_network: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
+    // Update raw_compose_mode if provided
+    if let Some(raw_mode) = req.raw_compose_mode {
+        sqlx::query("UPDATE services SET raw_compose_mode = ?, updated_at = ? WHERE id = ?")
+            .bind(raw_mode as i32)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service raw_compose_mode: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }

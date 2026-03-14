@@ -60,6 +60,10 @@ pub struct Service {
     /// `rivetr-svc-{id_prefix}` so its containers are isolated from other services.
     #[serde(default = "default_isolated_network")]
     pub isolated_network: i32,
+    /// When 1, the compose file is deployed verbatim without any Rivetr-injected
+    /// network overrides, container name namespacing, or label modifications.
+    #[serde(default)]
+    pub raw_compose_mode: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -104,6 +108,8 @@ pub struct ServiceResponse {
     pub error_message: Option<String>,
     /// Whether the service runs in a dedicated isolated Docker network.
     pub isolated_network: bool,
+    /// When true, the compose file is deployed verbatim without any Rivetr network/label injections.
+    pub raw_compose_mode: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -121,6 +127,7 @@ impl From<Service> for ServiceResponse {
             status: service.status,
             error_message: service.error_message,
             isolated_network: service.isolated_network != 0,
+            raw_compose_mode: service.raw_compose_mode != 0,
             created_at: service.created_at,
             updated_at: service.updated_at,
         }
@@ -156,4 +163,6 @@ pub struct UpdateServiceRequest {
     pub port: Option<i32>,
     /// Toggle isolated network for this service
     pub isolated_network: Option<bool>,
+    /// Toggle raw compose mode for this service
+    pub raw_compose_mode: Option<bool>,
 }

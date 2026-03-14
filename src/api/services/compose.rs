@@ -196,22 +196,33 @@ pub async fn write_compose_file(
     service_name: &str,
     content: &str,
 ) -> Result<PathBuf, std::io::Error> {
-    write_compose_file_with_options(data_dir, service_name, content, None).await
+    write_compose_file_with_options(data_dir, service_name, content, None, false).await
 }
 
 /// Write compose content to file with optional network isolation.
 ///
 /// `service_id` — when `Some`, injects a per-service Docker network so the
 /// stack is isolated from other Rivetr-managed stacks.
+///
+/// `raw_mode` — when `true`, the compose file is written verbatim: no
+/// container name namespacing, no isolated-network injection, and no shared
+/// `rivetr` network injection are applied.
 pub async fn write_compose_file_with_options(
     data_dir: &Path,
     service_name: &str,
     content: &str,
     service_id: Option<&str>,
+    raw_mode: bool,
 ) -> Result<PathBuf, std::io::Error> {
     let dir = get_compose_dir(data_dir, service_name);
     tokio::fs::create_dir_all(&dir).await?;
     let compose_file = dir.join("docker-compose.yml");
+
+    if raw_mode {
+        // Raw mode: write the compose file exactly as provided, no modifications.
+        tokio::fs::write(&compose_file, content).await?;
+        return Ok(dir);
+    }
 
     // Namespace container names to prevent global conflicts
     let namespaced_content = namespace_container_names(content, service_name).unwrap_or_else(|e| {

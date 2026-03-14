@@ -85,6 +85,7 @@ export default function ServiceSettingsTab() {
   const [domain, setDomain] = useState(service.domain ?? "");
   const [port, setPort] = useState(service.port ?? 80);
   const [isolatedNetwork, setIsolatedNetwork] = useState(service.isolated_network ?? true);
+  const [rawComposeMode, setRawComposeMode] = useState(service.raw_compose_mode ?? false);
 
   // Preview compose dialog state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -133,6 +134,18 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update network settings");
+    },
+  });
+
+  const updateRawComposeMutation = useMutation({
+    mutationFn: (raw: boolean) =>
+      api.updateService(service.id, { raw_compose_mode: raw }),
+    onSuccess: () => {
+      toast.success("Raw Compose Mode setting saved. Restart the service to apply changes.");
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update Raw Compose Mode");
     },
   });
 
@@ -201,7 +214,8 @@ export default function ServiceSettingsTab() {
     setDomain(service.domain ?? "");
     setPort(service.port ?? 80);
     setIsolatedNetwork(service.isolated_network ?? true);
-  }, [service.domain, service.port, service.isolated_network]);
+    setRawComposeMode(service.raw_compose_mode ?? false);
+  }, [service.domain, service.port, service.isolated_network, service.raw_compose_mode]);
 
   const handleCancelEdit = () => {
     setComposeContent(service.compose_content);
@@ -311,6 +325,43 @@ export default function ServiceSettingsTab() {
                 updateNetworkMutation.mutate(checked);
               }}
               disabled={updateNetworkMutation.isPending}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Raw Compose Mode */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Code className="h-5 w-5" />
+            Raw Compose Mode
+          </CardTitle>
+          <CardDescription>
+            When enabled, deploys the compose file exactly as written without injecting Rivetr&apos;s
+            network labels, container name prefixes, or network configuration. Use this for services
+            with opinionated internal networking.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="raw-compose-mode" className="text-sm font-medium">
+                Raw Compose Mode
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Skip all Rivetr-managed network and container name transformations. The compose file
+                will be used verbatim as provided.
+              </p>
+            </div>
+            <Switch
+              id="raw-compose-mode"
+              checked={rawComposeMode}
+              onCheckedChange={(checked) => {
+                setRawComposeMode(checked);
+                updateRawComposeMutation.mutate(checked);
+              }}
+              disabled={updateRawComposeMutation.isPending}
             />
           </div>
         </CardContent>

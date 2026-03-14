@@ -18,6 +18,8 @@ export interface Service {
   error_message: string | null;
   /** When true (default), the service runs in a dedicated Docker network isolated from other services. */
   isolated_network: boolean;
+  /** When true, the compose file is deployed verbatim without Rivetr network/label injections. */
+  raw_compose_mode: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +42,8 @@ export interface UpdateServiceRequest {
   port?: number;
   /** Toggle isolated Docker network for this service */
   isolated_network?: boolean;
+  /** Toggle raw compose mode for this service */
+  raw_compose_mode?: boolean;
 }
 
 /** Service log entry */
