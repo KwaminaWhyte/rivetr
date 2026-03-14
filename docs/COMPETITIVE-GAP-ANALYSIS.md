@@ -527,9 +527,9 @@ Coolify has Cloudflare API integration for tunnel management and DNS validation.
 Coolify has a Hetzner Cloud integration (create/delete/manage Hetzner servers from within Coolify). Neither Rivetr nor Dokploy have cloud provider API integrations for server provisioning.
 
 ### Terminal UI (TUI)
-🔴 **Missing in Rivetr**
+✅ **Implemented** — `rivetr tui` command; tabbed interface (Apps/Deployments/Servers/Logs); keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling; connects to any instance via --url/--token
 
-The Dokploy community has built **Dokli**, a terminal UI for managing Dokploy from the command line. Rivetr has a CLI tool but no TUI.
+Built with ratatui + crossterm, enabled via `--features tui`. The Dokploy community built **Dokli** as a separate tool; Rivetr ships the TUI as a first-party built-in subcommand.
 
 ---
 

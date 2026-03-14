@@ -97,6 +97,17 @@ pub enum Commands {
         /// Path to the backup .tar.gz file
         backup_file: PathBuf,
     },
+
+    /// Launch the interactive Terminal UI (requires --features tui)
+    Tui {
+        /// Rivetr API URL (overrides RIVETR_API_URL env var)
+        #[arg(long, env = "RIVETR_URL", default_value = "http://localhost:8080")]
+        url: String,
+
+        /// API token (overrides RIVETR_TOKEN env var)
+        #[arg(long, env = "RIVETR_TOKEN", default_value = "")]
+        token: String,
+    },
 }
 
 /// Apps subcommands
@@ -254,6 +265,26 @@ pub async fn run_command(cli: &Cli) -> Result<()> {
         }
         Some(Commands::Backup { output }) => backup::cmd_backup(cli, output.as_deref()).await,
         Some(Commands::Restore { backup_file }) => backup::cmd_restore(cli, backup_file).await,
+        Some(Commands::Tui { url, token }) => {
+            #[cfg(feature = "tui")]
+            {
+                // Run the TUI in a blocking context (ratatui uses crossterm which is synchronous)
+                let url = url.clone();
+                let token = token.clone();
+                tokio::task::spawn_blocking(move || crate::tui::run(url, token))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("TUI task panicked: {}", e))??;
+                Ok(())
+            }
+            #[cfg(not(feature = "tui"))]
+            {
+                let _ = (url, token);
+                anyhow::bail!(
+                    "The TUI feature is not enabled in this build.\n\
+                     Rebuild with: cargo build --features tui"
+                )
+            }
+        }
         None => {
             // No subcommand means start the server - this is handled in main.rs
             Ok(())
