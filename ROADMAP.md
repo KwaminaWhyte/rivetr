@@ -34,7 +34,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 ### Platform Services
 - One-click managed databases (PostgreSQL, MySQL, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
 - Docker Compose multi-container deployments with raw mode, preview, and magic variables
-- ~250+ pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more)
+- 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more — see [docs/SERVICE-TEMPLATES.md](./docs/SERVICE-TEMPLATES.md))
 - Port conflict validation across services and databases (real-time frontend checks + server-side enforcement)
 - Auto-subdomain assignment for template-deployed services
 - Automated database backup scheduling with retention policies

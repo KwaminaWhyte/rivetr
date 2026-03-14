@@ -1,6 +1,5 @@
 import { useOutletContext } from "react-router";
 import { VolumesCard } from "@/components/volumes-card";
-import { EnvVarsTab } from "@/components/env-vars-tab";
 import type { App } from "@/types/api";
 
 export default function AppSettingsStorage() {
@@ -8,7 +7,6 @@ export default function AppSettingsStorage() {
   return (
     <div className="space-y-6">
       <VolumesCard appId={app.id} />
-      <EnvVarsTab appId={app.id} />
     </div>
   );
 }
