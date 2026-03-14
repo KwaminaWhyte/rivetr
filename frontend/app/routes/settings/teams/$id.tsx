@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { toast } from "sonner";
+import { teamsApi } from "@/lib/api/teams";
 import { Button } from "@/components/ui/button";
 
 export function meta() {
@@ -73,6 +74,7 @@ import { SharedEnvVarsTable } from "@/components/shared-env-vars-table";
 import { MembersTab } from "@/components/teams/members-tab";
 import { InvitationsTab } from "@/components/teams/invitations-tab";
 import { AuditTab } from "@/components/teams/audit-tab";
+import { ResourcePermissionsDialog } from "@/components/teams/resource-permissions-dialog";
 
 const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] = [
   { value: "owner", label: "Owner", description: "Full access, can delete team" },
@@ -99,6 +101,8 @@ export default function TeamDetailPage() {
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
   const [showRevokeInvitationDialog, setShowRevokeInvitationDialog] = useState(false);
   const [showRoleChangeDialog, setShowRoleChangeDialog] = useState(false);
+  const [showPermissionsDialog, setShowPermissionsDialog] = useState(false);
+  const [permissionsMember, setPermissionsMember] = useState<TeamMemberWithUser | null>(null);
   const [selectedMember, setSelectedMember] = useState<TeamMemberWithUser | null>(null);
   const [selectedInvitation, setSelectedInvitation] = useState<TeamInvitation | null>(null);
   const [pendingRoleChange, setPendingRoleChange] = useState<{
@@ -411,6 +415,10 @@ export default function TeamDetailPage() {
               setSelectedMember(member);
               setShowRemoveMemberDialog(true);
             }}
+            onManagePermissions={(member) => {
+              setPermissionsMember(member);
+              setShowPermissionsDialog(true);
+            }}
           />
         </TabsContent>
 
@@ -638,6 +646,17 @@ export default function TeamDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Resource Permissions Dialog */}
+      <ResourcePermissionsDialog
+        open={showPermissionsDialog}
+        onOpenChange={(open) => {
+          setShowPermissionsDialog(open);
+          if (!open) setPermissionsMember(null);
+        }}
+        teamId={id!}
+        member={permissionsMember}
+      />
 
       {/* Delete Team Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

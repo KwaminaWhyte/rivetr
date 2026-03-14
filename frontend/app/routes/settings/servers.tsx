@@ -69,7 +69,9 @@ import {
   ChevronUp,
   Container,
   Download,
+  FolderOpen,
 } from "lucide-react";
+import { Link } from "react-router";
 import { ContainerTerminal } from "@/components/container-terminal";
 
 export function meta() {
@@ -875,6 +877,18 @@ export default function ServersPage() {
                         >
                           <Terminal className="h-3 w-3" />
                           Terminal
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          className="gap-1"
+                          title="Browse server files"
+                        >
+                          <Link to={`/servers/${server.id}/files`}>
+                            <FolderOpen className="h-3 w-3" />
+                            Files
+                          </Link>
                         </Button>
                         <Button
                           variant="outline"

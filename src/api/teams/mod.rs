@@ -4,6 +4,7 @@ mod audit;
 mod crud;
 mod invitations;
 mod members;
+mod permissions;
 
 use crate::db::{CreateTeamRequest, TeamMember, TeamRole, UpdateTeamRequest};
 
@@ -19,6 +20,7 @@ pub use invitations::{
     validate_invitation,
 };
 pub use members::{invite_member, list_members, remove_member, update_member_role};
+pub use permissions::{delete_member_permission, list_member_permissions, set_member_permissions};
 
 /// Query parameters for listing audit logs
 #[derive(Debug, serde::Deserialize)]

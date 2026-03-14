@@ -48,6 +48,14 @@ export type {
   CreateTunnelRequest,
   CreateTunnelRouteRequest,
 } from "./tunnels";
+export { communityTemplatesApi } from "./community-templates";
+export type {
+  CommunityTemplateSubmission,
+  SubmitTemplateRequest,
+  ReviewSubmissionRequest,
+} from "./community-templates";
+export { filesystemApi } from "./filesystem";
+export type { FileEntry } from "./filesystem";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -71,6 +79,8 @@ import { sharedEnvVarsApi } from "./shared-env-vars";
 import { serversApi } from "./servers";
 import { whiteLabelApi } from "./white-label";
 import { tunnelsApi } from "./tunnels";
+import { communityTemplatesApi } from "./community-templates";
+import { filesystemApi } from "./filesystem";
 
 /**
  * Combined API object for backward compatibility.
@@ -284,6 +294,11 @@ export const api = {
   // Team Audit Logs
   getTeamAuditLogs: teamsApi.getTeamAuditLogs,
 
+  // Fine-grained RBAC
+  getMemberPermissions: teamsApi.getMemberPermissions,
+  setMemberPermissions: teamsApi.setMemberPermissions,
+  deleteMemberPermission: teamsApi.deleteMemberPermission,
+
   // Notifications
   getNotificationChannels: notificationsApi.getNotificationChannels,
   getNotificationChannel: notificationsApi.getNotificationChannel,
@@ -452,6 +467,20 @@ export const api = {
   // White Label
   getWhiteLabel: whiteLabelApi.get,
   updateWhiteLabel: whiteLabelApi.update,
+
+  // Community Template Submissions
+  submitTemplate: communityTemplatesApi.submit,
+  listAllSubmissions: communityTemplatesApi.listAll,
+  getSubmission: communityTemplatesApi.get,
+  reviewSubmission: communityTemplatesApi.review,
+  myTemplateSubmissions: communityTemplatesApi.mySubmissions,
+  deleteSubmission: communityTemplatesApi.delete,
+
+  // Remote Filesystem Browser
+  browseFiles: filesystemApi.browse,
+  readRemoteFile: filesystemApi.readFile,
+  writeRemoteFile: filesystemApi.writeFile,
+  deleteRemoteFile: filesystemApi.delete,
 
   // Cloudflare Tunnels
   getTunnels: tunnelsApi.list,

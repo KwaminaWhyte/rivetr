@@ -17,6 +17,8 @@ import type {
   CreateInvitationRequest,
   TeamAuditLogPage,
   TeamAuditLogQuery,
+  ResourcePermission,
+  SetResourcePermissionsRequest,
 } from "@/types/api";
 
 export const teamsApi = {
@@ -201,6 +203,47 @@ export const teamsApi = {
   // -------------------------------------------------------------------------
   // Team Audit Logs
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Fine-grained RBAC — per-resource permission overrides
+  // -------------------------------------------------------------------------
+
+  /** List all resource permission overrides for a specific team member */
+  getMemberPermissions: (teamId: string, userId: string, token?: string) =>
+    apiRequest<ResourcePermission[]>(
+      `/teams/${teamId}/members/${userId}/permissions`,
+      {},
+      token
+    ),
+
+  /** Bulk-upsert resource permissions for a team member */
+  setMemberPermissions: (
+    teamId: string,
+    userId: string,
+    data: SetResourcePermissionsRequest,
+    token?: string
+  ) =>
+    apiRequest<ResourcePermission[]>(
+      `/teams/${teamId}/members/${userId}/permissions`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+      token
+    ),
+
+  /** Remove a single resource permission override */
+  deleteMemberPermission: (
+    teamId: string,
+    userId: string,
+    permId: string,
+    token?: string
+  ) =>
+    apiRequest<void>(
+      `/teams/${teamId}/members/${userId}/permissions/${permId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   /** Get paginated audit logs for a team */
   getTeamAuditLogs: (

@@ -1216,6 +1216,62 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 088: Add raw_compose_mode column to services
+    let has_raw_compose_mode: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('services') WHERE name = 'raw_compose_mode'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_raw_compose_mode.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/088_service_raw_mode.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 089: Fine-grained RBAC — per-member, per-resource permission overrides
+    let has_team_resource_permissions: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_resource_permissions'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_team_resource_permissions.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/089_resource_permissions.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 090: Add cancelled_at column to deployments
+    let has_cancelled_at: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'cancelled_at'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_cancelled_at.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/090_deployment_cancellation.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 091: Community template submissions
+    let has_community_template_submissions: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='community_template_submissions'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_community_template_submissions.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/091_community_template_submissions.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

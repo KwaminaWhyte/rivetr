@@ -203,6 +203,33 @@ export interface TeamAuditLogQuery {
 }
 
 // -------------------------------------------------------------------------
+// Fine-grained RBAC — per-resource permission overrides
+// -------------------------------------------------------------------------
+
+/** A per-member, per-resource permission override */
+export interface ResourcePermission {
+  id: string;
+  team_id: string;
+  user_id: string;
+  resource_type: string; // 'app', 'project', 'database', 'service'
+  resource_id: string;
+  permission: string; // 'allow' or 'deny'
+  created_at: string;
+}
+
+/** A single permission entry in a bulk-upsert request */
+export interface ResourcePermissionInput {
+  resource_type: string;
+  resource_id: string;
+  permission: string;
+}
+
+/** Bulk-upsert request for member resource permissions */
+export interface SetResourcePermissionsRequest {
+  permissions: ResourcePermissionInput[];
+}
+
+// -------------------------------------------------------------------------
 // Team Role Helper Functions
 // -------------------------------------------------------------------------
 

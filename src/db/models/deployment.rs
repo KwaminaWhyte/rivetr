@@ -83,6 +83,9 @@ pub struct Deployment {
     /// Scheduled deployment time (ISO 8601) — scheduler picks this up
     #[sqlx(default)]
     pub scheduled_at: Option<String>,
+    /// Timestamp when the deployment was cancelled (if applicable)
+    #[sqlx(default)]
+    pub cancelled_at: Option<String>,
 }
 
 impl Deployment {

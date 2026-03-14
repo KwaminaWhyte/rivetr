@@ -3,6 +3,8 @@ mod apps;
 mod audit;
 pub mod auth;
 mod cloudflare_tunnels;
+mod community_templates;
+mod filesystem;
 mod autoscaling;
 mod bulk;
 mod basic_auth;
@@ -234,6 +236,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/servers/:id/security-check",
             get(servers::check_server_security),
+        )
+        // Remote filesystem browser
+        .route(
+            "/servers/:id/files",
+            get(filesystem::browse_files).delete(filesystem::delete_file),
+        )
+        .route(
+            "/servers/:id/files/content",
+            get(filesystem::read_file).put(filesystem::write_file),
         )
         // Server app assignments
         .route("/servers/:id/apps", get(servers::list_server_apps))
@@ -472,6 +483,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(teams::update_member_role),
         )
         .route("/teams/:id/members/:user_id", delete(teams::remove_member))
+        // Team member resource permissions (fine-grained RBAC)
+        .route(
+            "/teams/:id/members/:user_id/permissions",
+            get(teams::list_member_permissions).put(teams::set_member_permissions),
+        )
+        .route(
+            "/teams/:id/members/:user_id/permissions/:perm_id",
+            delete(teams::delete_member_permission),
+        )
         // Team Invitations
         .route("/teams/:id/invitations", get(teams::list_invitations))
         .route("/teams/:id/invitations", post(teams::create_invitation))
@@ -676,6 +696,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/templates/:id/deploy",
             post(service_templates::deploy_template),
+        )
+        // Community template submissions
+        .route(
+            "/templates/submit",
+            post(community_templates::submit_template),
+        )
+        .route(
+            "/templates/submissions",
+            get(community_templates::list_submissions),
+        )
+        .route(
+            "/templates/my-submissions",
+            get(community_templates::my_submissions),
+        )
+        .route(
+            "/templates/submissions/:id",
+            get(community_templates::get_submission)
+                .delete(community_templates::delete_submission),
+        )
+        .route(
+            "/templates/submissions/:id/review",
+            put(community_templates::review_submission),
         )
         // Two-Factor Authentication (authenticated)
         .route("/auth/2fa/setup", post(two_factor::setup_2fa))

@@ -9,11 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **TUI (`rivetr tui`)**: terminal UI for managing Rivetr from the command line; tabbed Apps/Deployments/Servers/Logs views; keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling every 5s; connects to any instance via --url/--token; built with ratatui + crossterm (enable with `--features tui`)
+- **Fine-grained RBAC** — Per-resource permission overrides allow team admins to grant or deny individual members access to specific apps, projects, databases, or services. Overrides are stored in the new `team_resource_permissions` table (migration 089). Managed via GET/PUT `/api/teams/:id/members/:user_id/permissions` and DELETE `/api/teams/:id/members/:user_id/permissions/:perm_id`. Admin UI available as a dialog in team member settings.
+- **Deployment Queue Cancellation** — Any queued or running deployment can now be cancelled via the Cancel button in the deployment detail view. The backend records `cancelled_at` (migration 090) and signals the engine's per-deployment `CancellationToken` to abort the current pipeline stage.
+- **Community Template Submissions** — Users can submit custom Docker Compose templates for admin review from a new Submit dialog on the Templates page. Submissions are stored in `community_template_submissions` (migration 091) with `pending`/`approved`/`rejected` status. Admins review from an All Submissions page; approved submissions are automatically promoted to the live service template registry. Users can track their own submissions from My Submissions.
+- **Remote Filesystem Browser** — Browse, read, write, and delete files on any connected remote server over SSH. API: `GET /api/servers/:id/files` (directory listing), `GET /api/servers/:id/files/content` (read), `PUT /api/servers/:id/files/content` (write), `DELETE /api/servers/:id/files` (delete). Frontend: full file browser at `/servers/:id/files` with breadcrumb navigation and inline text editor. Accessible via the new Files button on the Servers settings page.
 
 ### Planned
 - SAML 2.0 support
 - Remote build execution (SSH-based, RemoteContext foundation in place)
-- File system browser for remote servers
 - Overlay networking for Docker Swarm
 - Rolling updates with Swarm
 

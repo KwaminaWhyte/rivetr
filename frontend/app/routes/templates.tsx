@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useNavigate, Link } from "react-router";
 import { toast } from "sonner";
+import { communityTemplatesApi } from "@/lib/api/community-templates";
 import {
   Activity,
   Database,
@@ -22,6 +23,7 @@ import {
   FileText,
   MessageCircle,
   Lightbulb,
+  Send,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { servicesApi } from "@/lib/api/services";
@@ -153,6 +155,35 @@ export default function TemplatesPage() {
   const [deployName, setDeployName] = useState("");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  // Submit Community Template state
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [submitForm, setSubmitForm] = useState({
+    name: "",
+    description: "",
+    category: "other",
+    icon: "",
+    compose_content: "",
+  });
+
+  const submitTemplateMutation = useMutation({
+    mutationFn: () =>
+      communityTemplatesApi.submit({
+        name: submitForm.name.trim(),
+        description: submitForm.description.trim(),
+        category: submitForm.category,
+        icon: submitForm.icon.trim() || undefined,
+        compose_content: submitForm.compose_content.trim(),
+      }),
+    onSuccess: () => {
+      toast.success("Template submitted for admin review!");
+      setShowSubmitDialog(false);
+      setSubmitForm({ name: "", description: "", category: "other", icon: "", compose_content: "" });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to submit template");
+    },
+  });
 
   // Suggest Template state
   const [showSuggestDialog, setShowSuggestDialog] = useState(false);
@@ -289,10 +320,21 @@ export default function TemplatesPage() {
             Deploy pre-configured services with one click
           </p>
         </div>
-        <Button variant="outline" onClick={() => setShowSuggestDialog(true)}>
-          <Lightbulb className="mr-2 h-4 w-4" />
-          Suggest a Template
-        </Button>
+        <div className="flex gap-2">
+          <Link to="/templates/submissions">
+            <Button variant="outline" size="sm">
+              My Submissions
+            </Button>
+          </Link>
+          <Button variant="outline" onClick={() => setShowSubmitDialog(true)}>
+            <Send className="mr-2 h-4 w-4" />
+            Submit Template
+          </Button>
+          <Button variant="outline" onClick={() => setShowSuggestDialog(true)}>
+            <Lightbulb className="mr-2 h-4 w-4" />
+            Suggest a Template
+          </Button>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -483,6 +525,96 @@ export default function TemplatesPage() {
                 <Lightbulb className="mr-2 h-4 w-4" />
               )}
               {suggestMutation.isPending ? "Submitting..." : "Submit Suggestion"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Submit Community Template Dialog */}
+      <Dialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Submit a Community Template</DialogTitle>
+            <DialogDescription>
+              Share a Docker Compose template with the community. Admins will review and approve it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Name *</Label>
+                <Input
+                  placeholder="e.g. My App"
+                  value={submitForm.name}
+                  onChange={(e) => setSubmitForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Category *</Label>
+                <Select
+                  value={submitForm.category}
+                  onValueChange={(v) => setSubmitForm((f) => ({ ...f, category: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUGGEST_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat} className="capitalize">
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description *</Label>
+              <Input
+                placeholder="Brief description of what this template does"
+                value={submitForm.description}
+                onChange={(e) => setSubmitForm((f) => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Icon (emoji, optional)</Label>
+              <Input
+                placeholder="e.g. 🚀"
+                value={submitForm.icon}
+                onChange={(e) => setSubmitForm((f) => ({ ...f, icon: e.target.value }))}
+                className="w-24"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Docker Compose Content *</Label>
+              <Textarea
+                placeholder={"services:\n  myapp:\n    image: myapp:latest\n    ports:\n      - '8080:8080'"}
+                value={submitForm.compose_content}
+                onChange={(e) => setSubmitForm((f) => ({ ...f, compose_content: e.target.value }))}
+                rows={8}
+                className="font-mono text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSubmitDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                submitTemplateMutation.isPending ||
+                !submitForm.name.trim() ||
+                !submitForm.description.trim() ||
+                !submitForm.compose_content.trim()
+              }
+              onClick={() => submitTemplateMutation.mutate()}
+            >
+              {submitTemplateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Submit for Review
             </Button>
           </DialogFooter>
         </DialogContent>

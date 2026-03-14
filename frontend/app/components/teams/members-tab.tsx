@@ -6,6 +6,7 @@ import {
   Trash2,
   Users,
   UserPlus,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ interface MembersTabProps {
   onShowInviteDialog: () => void;
   onRoleChange: (member: TeamMemberWithUser, newRole: TeamRole) => void;
   onRemoveMember: (member: TeamMemberWithUser) => void;
+  onManagePermissions?: (member: TeamMemberWithUser) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -90,6 +92,7 @@ export function MembersTab({
   onShowInviteDialog,
   onRoleChange,
   onRemoveMember,
+  onManagePermissions,
 }: MembersTabProps) {
   return (
     <>
@@ -172,6 +175,16 @@ export function MembersTab({
                             </SelectContent>
                           </Select>
                         ) : null}
+                        {onManagePermissions && canManage && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onManagePermissions(member)}
+                            title="Manage resource permissions"
+                          >
+                            <Settings2 className="h-4 w-4" />
+                          </Button>
+                        )}
                         {(currentUserRole === "owner" ||
                           (currentUserRole === "admin" &&
                             (member.role === "developer" || member.role === "viewer"))) && (

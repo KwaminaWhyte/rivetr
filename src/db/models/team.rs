@@ -455,6 +455,32 @@ impl std::str::FromStr for TeamAuditResourceType {
     }
 }
 
+/// Per-member, per-resource permission override
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ResourcePermission {
+    pub id: String,
+    pub team_id: String,
+    pub user_id: String,
+    pub resource_type: String,
+    pub resource_id: String,
+    pub permission: String, // "allow" or "deny"
+    pub created_at: String,
+}
+
+/// Bulk-upsert request for member resource permissions
+#[derive(Debug, Deserialize)]
+pub struct SetResourcePermissionsRequest {
+    pub permissions: Vec<ResourcePermissionInput>,
+}
+
+/// A single permission entry in a bulk-upsert request
+#[derive(Debug, Deserialize)]
+pub struct ResourcePermissionInput {
+    pub resource_type: String,
+    pub resource_id: String,
+    pub permission: String,
+}
+
 /// Team audit log entry
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TeamAuditLog {

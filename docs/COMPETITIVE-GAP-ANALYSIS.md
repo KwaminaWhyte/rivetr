@@ -55,6 +55,10 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Container resource limits UI + live apply | ✅ Implemented | Memory/CPU limit fields in Docker settings; "Apply Now" button calls POST /api/apps/:id/apply-limits (docker update, no redeploy) |
 | Ansible playbook | ✅ Implemented | `ansible/rivetr.yml` — idempotent playbook for Ubuntu/Debian; installs Docker, binary, systemd service, UFW rules |
 | +18 service templates (sprint 20) | ✅ Implemented | PocketBase, Appwrite, Directus, Strapi, Outline, Authentik, Authelia, Zitadel, Rocket.Chat, Jitsi, Mautic, Twenty CRM, VictoriaMetrics, Netdata, MinIO, Photoprism, Infisical, Checkmk |
+| Fine-grained RBAC (per-resource permissions) | ✅ Implemented | Migration 089; `team_resource_permissions` table; GET/PUT `/teams/:id/members/:user_id/permissions`, DELETE per-entry; admin dialog in team member settings |
+| Deployment queue cancellation | ✅ Implemented | Migration 090 adds `cancelled_at`; CancellationToken per deployment in AppState DashMap; Cancel button in deployment detail UI |
+| Community template submissions | ✅ Implemented | Migration 091; `community_template_submissions` table; submit/list/review/approve/reject flow; My Submissions page; Submit button on templates page |
+| Remote filesystem browser | ✅ Implemented | GET/PUT/DELETE `/api/servers/:id/files`; SSH-based ls/cat/write/rm; frontend file browser with breadcrumb nav, inline editor, Files button on servers page |
 
 ---
 

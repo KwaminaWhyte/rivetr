@@ -3,6 +3,7 @@
 //! This module re-exports all types for backwards compatibility.
 
 pub mod alert_config;
+pub mod community_template;
 pub mod alert_event;
 pub mod app;
 pub mod cloudflare_tunnel;
@@ -48,6 +49,7 @@ pub mod white_label;
 
 // Re-export all types for backwards compatibility
 pub use alert_config::*;
+pub use community_template::*;
 pub use alert_event::*;
 pub use app::*;
 pub use cloudflare_tunnel::*;
