@@ -144,10 +144,13 @@ fn cleanup_key(key_path: Option<String>) {
     }
 }
 
-/// Parse `ls -la --full-time` output into FileEntry structs.
+/// Parse `ls -la --time-style=+%Y-%m-%dT%H:%M:%SZ` output into FileEntry structs.
 /// Expected format (GNU coreutils):
 ///   drwxr-xr-x 2 root root 4096 2024-01-15T12:34:56Z dirname
 ///   -rw-r--r-- 1 root root 1234 2024-01-15T12:34:56Z filename
+///   lrwxrwxrwx 1 root root    7 2024-01-15T12:34:56Z bin -> usr/bin
+///
+/// Uses split_whitespace() so that ls column padding (multiple spaces) is handled correctly.
 fn parse_ls_output(output: &str, base_path: &str) -> Vec<FileEntry> {
     let mut entries = Vec::new();
     for line in output.lines() {
@@ -155,26 +158,46 @@ fn parse_ls_output(output: &str, base_path: &str) -> Vec<FileEntry> {
         if line.starts_with("total") || line.trim().is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.splitn(9, ' ').filter(|s| !s.is_empty()).collect();
-        // We need at least 9 columns: perms, links, user, group, size, date, time(?), tz(?), name
-        // With --full-time and --time-style=+%Y-%m-%dT%H:%M:%SZ we get one date column
-        if parts.len() < 6 {
+
+        // Parse the 6 fixed fields using whitespace splitting (handles ls column padding)
+        // Fields: permissions links user group size date [name...]
+        let mut tokens = line.split_whitespace();
+        let permissions = match tokens.next() {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let _links = match tokens.next() {
+            Some(_) => (),
+            None => continue,
+        };
+        let _user = match tokens.next() {
+            Some(_) => (),
+            None => continue,
+        };
+        let _group = match tokens.next() {
+            Some(_) => (),
+            None => continue,
+        };
+        let size: Option<u64> = match tokens.next() {
+            Some(s) => s.parse().ok(),
+            None => continue,
+        };
+        let modified = tokens.next().map(|s| s.to_string());
+
+        // Collect remaining tokens as the name, stripping symlink target " -> ..."
+        let name_parts: Vec<&str> = tokens.collect();
+        let arrow_pos = name_parts.iter().position(|&s| s == "->");
+        let name_tokens = match arrow_pos {
+            Some(pos) => &name_parts[..pos],
+            None => &name_parts[..],
+        };
+        let name = name_tokens.join(" ");
+
+        if name.is_empty() || name == "." || name == ".." {
             continue;
         }
 
-        let permissions = parts[0].to_string();
         let is_dir = permissions.starts_with('d');
-        let size: Option<u64> = parts[4].parse().ok();
-
-        // The date is in column index 5 (after perms, links, user, group, size)
-        let modified = parts.get(5).map(|s| s.to_string());
-
-        // Name is the last part (may contain spaces if we use splitn correctly)
-        let name = parts.last().unwrap_or(&"").to_string();
-        // Skip . and ..
-        if name == "." || name == ".." {
-            continue;
-        }
 
         // Build the full path
         let full_path = if base_path.ends_with('/') {

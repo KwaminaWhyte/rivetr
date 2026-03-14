@@ -252,9 +252,11 @@ Rivetr now injects the following into every container at runtime (without overri
 Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
 ### Community template submissions
-✅ **Implemented in Rivetr**
+✅ **Implemented in Rivetr** · ✅ **Live-tested 2026-03-14**
 
 Users can submit Docker Compose templates via `POST /api/templates/submit`. Admins review at `GET /api/templates/submissions` and approve/reject via `PUT /api/templates/submissions/:id/review`. Approval inserts the template into `service_templates` automatically. Users see their own submissions via `GET /api/templates/my-submissions`. Frontend: "Submit Template" button on the templates page; "My Submissions" page with status badges; admin review queue with Approve/Reject actions.
+
+**Tested:** Submitted "Uptime Kuma Community" template via API; admin approved it via API; template appeared in `/templates` browse page. "My Submissions" page at `/templates/submissions` shows both an "Approved" submission (with reviewer note "Looks great!") and a "Pending Review" submission. Fixed auth bug: admin config token now resolves to a real DB user (not synthetic "system") to pass FK constraints.
 
 ### Notable templates missing from Rivetr
 Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~250:
@@ -333,9 +335,11 @@ Rivetr now supports deployment patches: file-level modifications (create, append
 Rivetr now pushes every built image to a configured Docker registry tagged with the git commit SHA (`{registry}/{app}:{sha}`). The `image_tag` is stored on each deployment and displayed as a copyable field in the deployment detail page. When a registry is configured (`registry_url` + credentials on the app), rollback to any historical build is possible by running `docker pull {image_tag}`.
 
 ### Deployment queue with cancellation
-✅ **Implemented in Rivetr**
+✅ **Implemented in Rivetr** · ✅ **Live-tested 2026-03-14**
 
 Rivetr uses Tokio MPSC channels for serialized deployment queuing. Each deployment now gets a `CancellationToken` stored in `AppState.cancel_tokens` (DashMap). `POST /api/apps/:id/deployments/:dep_id/cancel` triggers cancellation and sets `cancelled_at` (migration 090). A Cancel button appears on queued/running/building deployments in the UI.
+
+**Tested:** Triggered deployment via API, immediately cancelled via `POST /api/apps/:id/deployments/:id/cancel` (HTTP 200). Verified deployment status shows as "Cancelled" badge in the deployments list UI. Two successful cancellations confirmed (deployments `825e1426` and `7157ba81`).
 
 ### GitHub Actions integration
 🔴 **Missing in Rivetr**
@@ -378,9 +382,11 @@ Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 Coolify and Dokploy (Enterprise) support SAML 2.0. Rivetr has OIDC (Auth0, Keycloak, Azure AD, Okta) but SAML 2.0 is still on the future roadmap.
 
 ### Fine-grained RBAC
-✅ **Implemented in Rivetr**
+✅ **Implemented in Rivetr** · ✅ **Live-tested 2026-03-14**
 
 Rivetr has 4 roles (owner/admin/developer/viewer) plus per-resource permission overrides via `team_resource_permissions` table (migration 089). Admins can grant/deny a specific member access to individual apps, projects, or databases via `GET/PUT /api/teams/:id/members/:user_id/permissions`. A "Manage Permissions" dialog is available on each member in the team settings UI.
+
+**Tested:** Opened Teams → Main team → clicked "Manage resource permissions" for Jacob Test. Dialog shows existing `app allow` override for app `9c103e46` and form to add new overrides. Verified GET/PUT API endpoints return correct permission sets.
 
 ### Basic auth on deployed apps (proxy-level)
 ✅ **Implemented in Rivetr**
@@ -463,9 +469,11 @@ Rivetr supports Backblaze B2 and Google Cloud Storage via their S3-compatible AP
 ## 10. Server & Infrastructure Management
 
 ### Remote file system browser
-✅ **Implemented in Rivetr**
+✅ **Implemented in Rivetr** · ✅ **Live-tested 2026-03-14**
 
 `GET /api/servers/:id/files?path=` lists directory contents via SSH (`ls -la`). `GET /api/servers/:id/files/content?path=` reads file content (`cat`). `PUT /api/servers/:id/files/content` writes back (`echo`/heredoc). `DELETE /api/servers/:id/files?path=` removes files. Frontend: full browser with breadcrumb navigation, file/dir icons, size/date columns, inline text editor with Save, and Delete with confirmation. Accessible via the Files button on each server in the servers list.
+
+**Tested:** Browsed root `/` directory of test server; navigated into `/opt/rivetr`; read `rivetr.toml` content in inline editor. Fixed bug: `parse_ls_output` used `splitn(9, ' ').filter(!empty)` which misaligned columns when `ls` padded with multiple spaces (e.g., symlinks). Fixed by using `split_whitespace()` iterator for the 6 header fields, stripping `->` symlink targets from name.
 
 ### Automated Docker installation on server add
 ✅ **Implemented in Rivetr**
@@ -531,9 +539,11 @@ Coolify has Cloudflare API integration for tunnel management and DNS validation.
 Coolify has a Hetzner Cloud integration (create/delete/manage Hetzner servers from within Coolify). Neither Rivetr nor Dokploy have cloud provider API integrations for server provisioning.
 
 ### Terminal UI (TUI)
-✅ **Implemented** — `rivetr tui` command; tabbed interface (Apps/Deployments/Servers/Logs); keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling; connects to any instance via --url/--token
+✅ **Implemented** — `rivetr tui` command; tabbed interface (Apps/Deployments/Servers/Logs); keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling; connects to any instance via --url/--token · ✅ **Live-tested 2026-03-14**
 
 Built with ratatui + crossterm, enabled via `--features tui`. The Dokploy community built **Dokli** as a separate tool; Rivetr ships the TUI as a first-party built-in subcommand.
+
+**Tested:** Confirmed `rivetr tui --help` output on server. Ran `rivetr tui --url https://rivetr.site --token <admin>` via `script` pseudo-TTY: binary entered alternate screen (`[?1049h`), enabled mouse tracking, rendered TUI frames, exited cleanly. Deploy script updated to always build with `--features tui`.
 
 ---
 

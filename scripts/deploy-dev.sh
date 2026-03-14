@@ -26,7 +26,7 @@ fi
 
 if [ "$FRONTEND_ONLY" = false ]; then
   echo "→ Cross-compiling Rust binary for Linux x86_64..."
-  cargo zigbuild --release --target "$TARGET" 2>&1 | grep -E "Compiling rivetr|Finished|error"
+  cargo zigbuild --release --target "$TARGET" --features tui 2>&1 | grep -E "Compiling rivetr|Finished|error"
   echo "  ✓ Binary compiled: $(du -sh target/$TARGET/release/rivetr | cut -f1)"
 fi
 
