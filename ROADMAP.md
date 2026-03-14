@@ -32,9 +32,9 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 - Real-time build and runtime log streaming via WebSocket
 
 ### Platform Services
-- One-click managed databases (PostgreSQL, MySQL, MongoDB, Redis)
-- Docker Compose multi-container deployments
-- ~119 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, and many more)
+- One-click managed databases (PostgreSQL, MySQL, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
+- Docker Compose multi-container deployments with raw mode, preview, and magic variables
+- ~250+ pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more)
 - Port conflict validation across services and databases (real-time frontend checks + server-side enforcement)
 - Auto-subdomain assignment for template-deployed services
 - Automated database backup scheduling with retention policies
@@ -66,6 +66,8 @@ Full multi-tenant team support with resource isolation.
 - Environment variables with encrypted secret storage
 - **Single binary deployment** - Frontend embedded in binary, no external files needed
 - **One-liner production install** - `curl | bash` installs Docker, Rivetr, and systemd service
+- **Ansible playbook** - `ansible/rivetr.yml` for automated server provisioning (Ubuntu/Debian)
+- **Container resource limits** - Per-app CPU/memory limits with live apply via `docker update` (no redeploy)
 
 ---
 

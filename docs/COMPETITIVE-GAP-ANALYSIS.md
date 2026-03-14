@@ -46,6 +46,15 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Automated Docker resource cleanup | ✅ Implemented | POST /api/system/docker-cleanup runs docker system prune; UI button in Settings |
 | Auto Docker install on remote server add | ✅ Implemented | server provisioning installs Docker if not present |
 | Server security validation checklist | ✅ Implemented | GET /api/servers/:id/security-check returns firewall/SSH/updates status |
+| DragonFlyDB (Redis-compatible) | ✅ Implemented | Port 6379, redis:// connection string, RDB backup format, same interface as Redis |
+| KeyDB (Redis-compatible) | ✅ Implemented | Port 6379, redis:// connection string, RDB backup format, same interface as Redis |
+| ClickHouse analytics database | ✅ Implemented | Port 8123, clickhouse:// connection string, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1, post-start DB init |
+| Docker Compose raw mode | ✅ Implemented | Migration 088; per-service toggle skips all Rivetr network injection/namespacing — deploys verbatim |
+| Docker Compose preview before deploy | ✅ Implemented | GET /api/services/:id/preview-compose with dry-run mode; "Preview" button in service settings |
+| Docker Compose magic variables | ✅ Implemented | SERVICE_PASSWORD, SERVICE_BASE64, SERVICE_FQDN, SERVICE_URL, VAR:?message — all implemented |
+| Container resource limits UI + live apply | ✅ Implemented | Memory/CPU limit fields in Docker settings; "Apply Now" button calls POST /api/apps/:id/apply-limits (docker update, no redeploy) |
+| Ansible playbook | ✅ Implemented | `ansible/rivetr.yml` — idempotent playbook for Ubuntu/Debian; installs Docker, binary, systemd service, UFW rules |
+| +18 service templates (sprint 20) | ✅ Implemented | PocketBase, Appwrite, Directus, Strapi, Outline, Authentik, Authelia, Zitadel, Rocket.Chat, Jitsi, Mautic, Twenty CRM, VictoriaMetrics, Netdata, MinIO, Photoprism, Infisical, Checkmk |
 
 ---
 
@@ -74,9 +83,9 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | Feature | Coolify | Dokploy | Rivetr |
 |---------|---------|---------|--------|
 | MariaDB | ✅ | ✅ | ✅ (implemented — separate engine, mariadb:11 default) |
-| DragonFly (Redis-compatible) | ✅ | ❌ | 🔴 |
-| KeyDB (Redis-compatible) | ✅ | ❌ | 🔴 |
-| ClickHouse | ✅ | ❌ | 🔴 |
+| DragonFly (Redis-compatible) | ✅ | ❌ | ✅ (implemented — port 6379, redis:// connection string, RDB backup format) |
+| KeyDB (Redis-compatible) | ✅ | ❌ | ✅ (implemented — port 6379, redis:// connection string, RDB backup format) |
+| ClickHouse | ✅ | ❌ | ✅ (implemented — port 8123, clickhouse:// connection string, post-start DB init) |
 
 ### Database SSL/TLS
 ✅ **Implemented in Rivetr**
@@ -184,26 +193,25 @@ Rivetr doesn't expose any of these. Users who need GPU workloads, privileged con
 Dokploy supports injecting build-time secrets (SSH keys, API tokens) via Docker's `--secret` flag so they're available during the build but **never baked into the final image**. Rivetr's build-time environment variables are visible in the image layer history.
 
 ### Docker Compose "preview before deploy"
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Dokploy has a "Preview Compose" button that shows the final rendered docker-compose.yml (with all variables substituted) before the user clicks deploy. Useful for catching misconfigured env vars or variable substitution errors.
+`GET /api/services/:id/preview-compose` returns the final rendered compose YAML with all magic variables substituted (dry-run mode — no DB writes). A "Preview Compose" button is available in the service settings page.
 
 ### Docker Compose magic variables
-🟡 **Partial in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify auto-injects and generates special compose variables:
-- `SERVICE_URL_<NAME>` — the FQDN assigned to a service
-- `SERVICE_FQDN_<NAME>` — same, for use in Traefik labels
-- `SERVICE_PASSWORD_<NAME>` — auto-generated password (32 chars random)
-- `SERVICE_BASE64_<NAME>` — auto-generated base64-encoded secret
-- `${VAR:?}` — required variable (blocks deploy with error if unset)
-
-Rivetr supports `${VAR:-default}` in compose templates but doesn't auto-generate passwords/FQDNs or enforce required variables.
+Rivetr supports all major Coolify compose magic variables via `substitute_magic_vars()`:
+- `${SERVICE_PASSWORD_<NAME>}` — auto-generated 32-char alphanumeric, persisted to DB
+- `${SERVICE_BASE64_<NAME>}` — 32-byte random base64-encoded, persisted
+- `${SERVICE_BASE64_64_<NAME>}` — 64-byte random base64-encoded, persisted
+- `${SERVICE_FQDN_<NAME>}` — the service's assigned domain
+- `${SERVICE_URL_<NAME>}` — `https://` + domain
+- `${VAR:?message}` — required variable (blocks deploy with error if unset)
 
 ### Docker Compose "raw mode"
-🔴 **Missing in Rivetr**
+✅ **Implemented in Rivetr**
 
-Coolify has a "raw compose mode" that deploys a compose file exactly as written without injecting any Coolify-specific labels, health checks, or network overrides. This is important for services that have opinionated internal networking or label configurations.
+A "Raw Compose Mode" toggle is available on the service settings page (migration 088). When enabled, the compose file is deployed exactly as written — no container name namespacing, no isolated network injection, and no `rivetr` external network injection. Essential for services with opinionated internal networking.
 
 ### Restart policy configuration
 ✅ **Implemented in Rivetr**
