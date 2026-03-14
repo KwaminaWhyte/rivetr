@@ -1,0 +1,58 @@
+---
+# ansible/group_vars/rivetr.yml.example
+#
+# Copy this file to group_vars/rivetr.yml and fill in your values.
+# Values here apply to all hosts in the [rivetr] inventory group.
+#
+# IMPORTANT: commit group_vars/rivetr.yml to version control ONLY if you use
+# Ansible Vault to encrypt sensitive fields (jwt_secret, admin_password, etc.).
+# Otherwise add group_vars/rivetr.yml to .gitignore.
+
+# ── Domain & networking ───────────────────────────────────────────────────────
+
+# The primary domain for the Rivetr dashboard.
+# Wildcard DNS (*.yourdomain.com) must point to this server so that
+# deployed apps are reachable at <app-name>.yourdomain.com.
+rivetr_domain: "yourdomain.com"
+
+# Port Rivetr listens on for its dashboard / API.
+# Rivetr's built-in reverse proxy handles ports 80/443 for deployed apps.
+rivetr_port: 8080
+
+# Ports used by Rivetr's built-in HTTP/HTTPS reverse proxy.
+rivetr_http_port: 80
+rivetr_https_port: 443
+
+# ── Admin credentials ─────────────────────────────────────────────────────────
+
+rivetr_admin_email: "admin@yourdomain.com"
+
+# Change before running the playbook. Must be at least 8 characters.
+rivetr_admin_password: "changeme123"
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+
+# Random string used to sign JWT tokens. Generate one with:
+#   openssl rand -hex 32
+# Must be at least 32 characters long.
+rivetr_jwt_secret: "change-this-to-a-random-secret-at-least-32-chars"
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+# Directory where Rivetr stores its SQLite database and other persistent data.
+rivetr_data_dir: "/var/lib/rivetr"
+
+# Directory where the Rivetr binary and config are installed.
+rivetr_install_dir: "/opt/rivetr"
+
+# ── Binary version ────────────────────────────────────────────────────────────
+
+# "latest" always downloads the most recent GitHub release.
+# Pin to a specific tag (e.g. "v0.10.4") for reproducible deploys.
+rivetr_version: "latest"
+
+# ── Optional Nginx front-proxy ────────────────────────────────────────────────
+
+# Set to true to install Nginx and configure it to proxy traffic to Rivetr.
+# Useful if you want TLS termination via certbot outside of Rivetr itself.
+install_nginx: false

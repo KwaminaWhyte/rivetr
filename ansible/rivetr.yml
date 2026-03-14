@@ -1,0 +1,327 @@
+---
+# Rivetr PaaS — Automated Server Setup Playbook
+# Supports: Ubuntu 22.04/24.04, Debian 12
+# Usage:   ansible-playbook -i inventory rivetr.yml
+#
+# Tags:
+#   setup    — base packages, directories, user
+#   docker   — Docker CE installation
+#   rivetr   — binary download, config, systemd service
+#   firewall — UFW rules
+
+- name: Rivetr PaaS — Full Server Setup
+  hosts: rivetr
+  become: true
+
+  vars:
+    rivetr_domain: "yourdomain.com"
+    rivetr_admin_email: "admin@yourdomain.com"
+    rivetr_admin_password: "changeme123"
+    rivetr_jwt_secret: "change-this-to-a-random-secret-at-least-32-chars"
+    rivetr_version: "latest"
+    rivetr_data_dir: "/var/lib/rivetr"
+    rivetr_install_dir: "/opt/rivetr"
+    rivetr_port: 8080
+    rivetr_http_port: 80
+    rivetr_https_port: 443
+    rivetr_binary_url: "https://github.com/KwaminaWhyte/rivetr/releases/latest/download/rivetr-linux-x86_64"
+    install_nginx: false   # Set to true to install Nginx as a TLS front-proxy
+
+  handlers:
+    - name: restart rivetr
+      ansible.builtin.systemd:
+        name: rivetr
+        state: restarted
+        daemon_reload: true
+
+    - name: restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SETUP — base packages and directory structure
+  # ─────────────────────────────────────────────────────────────────────────────
+  tasks:
+    - name: "[setup] Update apt cache"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      tags: setup
+
+    - name: "[setup] Install prerequisite packages"
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - ufw
+          - jq
+        state: present
+      tags: setup
+
+    - name: "[setup] Create Rivetr install directory"
+      ansible.builtin.file:
+        path: "{{ rivetr_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: setup
+
+    - name: "[setup] Create Rivetr data directory"
+      ansible.builtin.file:
+        path: "{{ rivetr_data_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      tags: setup
+
+    - name: "[setup] Create Rivetr log directory"
+      ansible.builtin.file:
+        path: /var/log/rivetr
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: setup
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # DOCKER — install Docker CE
+  # ─────────────────────────────────────────────────────────────────────────────
+    - name: "[docker] Remove conflicting legacy packages"
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-doc
+          - docker-compose
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+      tags: docker
+
+    - name: "[docker] Create apt keyrings directory"
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+      tags: docker
+
+    - name: "[docker] Add Docker GPG key"
+      ansible.builtin.shell: |
+        curl -fsSL https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg \
+          | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+      tags: docker
+
+    - name: "[docker] Add Docker apt repository"
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') }}
+          signed-by=/etc/apt/keyrings/docker.gpg]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        state: present
+        filename: docker
+      tags: docker
+
+    - name: "[docker] Install Docker CE packages"
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      tags: docker
+
+    - name: "[docker] Enable and start Docker service"
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+      tags: docker
+
+    - name: "[docker] Verify Docker is running"
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+      tags: docker
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RIVETR — binary, config, systemd service
+  # ─────────────────────────────────────────────────────────────────────────────
+    - name: "[rivetr] Determine download URL"
+      ansible.builtin.set_fact:
+        _rivetr_url: >-
+          {{
+            rivetr_binary_url
+            if rivetr_version == 'latest'
+            else 'https://github.com/KwaminaWhyte/rivetr/releases/download/'
+                 ~ rivetr_version ~ '/rivetr-linux-x86_64'
+          }}
+      tags: rivetr
+
+    - name: "[rivetr] Download Rivetr binary"
+      ansible.builtin.get_url:
+        url: "{{ _rivetr_url }}"
+        dest: "{{ rivetr_install_dir }}/rivetr"
+        mode: "0755"
+        owner: root
+        group: root
+        force: "{{ rivetr_version == 'latest' }}"
+      notify: restart rivetr
+      tags: rivetr
+
+    - name: "[rivetr] Write rivetr.toml config"
+      ansible.builtin.template:
+        src: templates/rivetr.toml.j2
+        dest: "{{ rivetr_install_dir }}/rivetr.toml"
+        owner: root
+        group: root
+        mode: "0600"
+      notify: restart rivetr
+      tags: rivetr
+
+    - name: "[rivetr] Install systemd service unit"
+      ansible.builtin.template:
+        src: templates/rivetr.service.j2
+        dest: /etc/systemd/system/rivetr.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - reload systemd
+        - restart rivetr
+      tags: rivetr
+
+    - name: "[rivetr] Enable and start Rivetr service"
+      ansible.builtin.systemd:
+        name: rivetr
+        enabled: true
+        state: started
+        daemon_reload: true
+      tags: rivetr
+
+    - name: "[rivetr] Wait for Rivetr API to become available"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ rivetr_port }}/health"
+        status_code: [200, 404]   # 404 acceptable — means the binary is up
+      register: _health
+      retries: 15
+      delay: 4
+      until: _health.status in [200, 404]
+      ignore_errors: true
+      tags: rivetr
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # FIREWALL — UFW rules
+  # ─────────────────────────────────────────────────────────────────────────────
+    - name: "[firewall] Allow SSH"
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+      tags: firewall
+
+    - name: "[firewall] Allow HTTP (port {{ rivetr_http_port }})"
+      community.general.ufw:
+        rule: allow
+        port: "{{ rivetr_http_port }}"
+        proto: tcp
+      tags: firewall
+
+    - name: "[firewall] Allow HTTPS (port {{ rivetr_https_port }})"
+      community.general.ufw:
+        rule: allow
+        port: "{{ rivetr_https_port }}"
+        proto: tcp
+      tags: firewall
+
+    - name: "[firewall] Allow Rivetr dashboard (port {{ rivetr_port }})"
+      community.general.ufw:
+        rule: allow
+        port: "{{ rivetr_port }}"
+        proto: tcp
+      tags: firewall
+
+    - name: "[firewall] Enable UFW with default deny-incoming"
+      community.general.ufw:
+        state: enabled
+        default: deny
+        direction: incoming
+      tags: firewall
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # NGINX (optional) — TLS termination front-proxy
+  # ─────────────────────────────────────────────────────────────────────────────
+    - name: "[nginx] Install Nginx"
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+      when: install_nginx | bool
+      tags: nginx
+
+    - name: "[nginx] Write Nginx vhost for Rivetr"
+      ansible.builtin.template:
+        src: templates/nginx-rivetr.conf.j2
+        dest: /etc/nginx/sites-available/rivetr
+        owner: root
+        group: root
+        mode: "0644"
+      when: install_nginx | bool
+      notify: restart nginx
+      tags: nginx
+
+    - name: "[nginx] Enable Rivetr vhost"
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/rivetr
+        dest: /etc/nginx/sites-enabled/rivetr
+        state: link
+      when: install_nginx | bool
+      notify: restart nginx
+      tags: nginx
+
+    - name: "[nginx] Remove default Nginx vhost"
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      when: install_nginx | bool
+      notify: restart nginx
+      tags: nginx
+
+    - name: "[nginx] Enable and start Nginx"
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: started
+      when: install_nginx | bool
+      tags: nginx
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SUMMARY
+  # ─────────────────────────────────────────────────────────────────────────────
+    - name: "[info] Print access information"
+      ansible.builtin.debug:
+        msg:
+          - "Rivetr is running!"
+          - "Dashboard : http://{{ ansible_host }}:{{ rivetr_port }}"
+          - "Domain    : http://{{ rivetr_domain }}"
+          - "Admin     : {{ rivetr_admin_email }}"
+          - "Data dir  : {{ rivetr_data_dir }}"
+          - ""
+          - "Check service status : systemctl status rivetr"
+          - "Follow logs          : journalctl -u rivetr -f"
+      tags: always

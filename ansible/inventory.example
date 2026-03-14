@@ -1,0 +1,19 @@
+# Rivetr — example Ansible inventory
+# Copy this file to `inventory` (or any name) and fill in your server details.
+
+[rivetr]
+# Replace with your server's IP address or hostname.
+# You can list multiple hosts to set up several Rivetr nodes.
+your-server-ip ansible_user=root
+
+# ── Optional per-host SSH settings ───────────────────────────────────────────
+# your-server-ip ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_ed25519
+# your-server-ip ansible_user=root ansible_port=2222
+
+# ── Example with a DNS name ───────────────────────────────────────────────────
+# rivetr.yourdomain.com ansible_user=root
+
+[rivetr:vars]
+# Variables defined here override group_vars for all hosts in [rivetr].
+# For per-host overrides, add them after the host line above.
+# See group_vars/rivetr.yml.example for the full list of variables.
