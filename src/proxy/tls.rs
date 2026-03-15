@@ -180,6 +180,29 @@ impl CertStore {
     }
 }
 
+/// Hot-reloadable TLS acceptor — swaps atomically when a new certificate is issued.
+///
+/// The HTTPS proxy reads the current acceptor on each new connection, so a certificate
+/// renewal takes effect immediately for the next connection without restarting the server.
+#[derive(Clone)]
+pub struct TlsReloadHandle(Arc<parking_lot::RwLock<TlsAcceptor>>);
+
+impl TlsReloadHandle {
+    pub fn new(acceptor: TlsAcceptor) -> Self {
+        Self(Arc::new(parking_lot::RwLock::new(acceptor)))
+    }
+
+    /// Get a clone of the current TLS acceptor (cheap — TlsAcceptor wraps Arc<ServerConfig>).
+    pub fn current(&self) -> TlsAcceptor {
+        self.0.read().clone()
+    }
+
+    /// Replace the TLS acceptor; takes effect on the next incoming connection.
+    pub fn update(&self, new_acceptor: TlsAcceptor) {
+        *self.0.write() = new_acceptor;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,7 +23,7 @@ pub use acme::{
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
-pub use tls::{CertStore, TlsConfig};
+pub use tls::{CertStore, TlsConfig, TlsReloadHandle};
 
 pub use crate::db::RedirectRule;
 
@@ -369,19 +369,19 @@ impl ProxyServer {
 pub struct HttpsProxyServer {
     routes: Arc<ArcSwap<RouteTable>>,
     bind_addr: SocketAddr,
-    tls_config: tls::TlsConfig,
+    tls_reload: Arc<tls::TlsReloadHandle>,
 }
 
 impl HttpsProxyServer {
     pub fn new(
         bind_addr: SocketAddr,
         routes: Arc<ArcSwap<RouteTable>>,
-        tls_config: tls::TlsConfig,
+        tls_reload: Arc<tls::TlsReloadHandle>,
     ) -> Self {
         Self {
             routes,
             bind_addr,
-            tls_config,
+            tls_reload,
         }
     }
 
@@ -391,13 +391,14 @@ impl HttpsProxyServer {
         info!("Proxy server listening on https://{}", self.bind_addr);
 
         let handler = ProxyHandler::new(self.routes.clone());
-        let acceptor = self.tls_config.acceptor;
+        let tls_reload = self.tls_reload;
 
         loop {
             match listener.accept().await {
                 Ok((stream, remote_addr)) => {
                     let handler = handler.clone();
-                    let acceptor = acceptor.clone();
+                    // Read current acceptor per-connection so cert renewals take effect immediately
+                    let acceptor = tls_reload.current();
 
                     tokio::spawn(async move {
                         // Perform TLS handshake

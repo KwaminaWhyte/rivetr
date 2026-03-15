@@ -630,6 +630,21 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
 
             state.runtime.start(existing_container_id).await?;
 
+            // For MySQL/MariaDB: ensure the app user exists even if the data directory
+            // was pre-initialized (Docker only creates MYSQL_USER on first boot).
+            if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
+                if let Some(ref db_name) = credentials.database {
+                    let runtime = state.runtime.clone();
+                    let cid = existing_container_id.clone();
+                    let creds = credentials.clone();
+                    let db_nm = db_name.clone();
+                    let dt = db_type.clone();
+                    tokio::spawn(async move {
+                        ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
+                    });
+                }
+            }
+
             // Get the assigned host port if public access is enabled
             let external_port = if database.is_public() {
                 if database.external_port > 0 {
@@ -775,6 +790,23 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         container_id
     );
 
+    // For MySQL/MariaDB: ensure the app user exists. Docker only runs its init scripts
+    // (which create MYSQL_USER) when the data directory is empty on first boot. If the
+    // bind-mount directory already has data from a previous container, the user is never
+    // created and the app cannot connect. We provision the user idempotently via socket.
+    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
+        if let Some(ref db_name) = credentials.database {
+            let runtime = state.runtime.clone();
+            let cid = container_id.clone();
+            let creds = credentials.clone();
+            let db_nm = db_name.clone();
+            let dt = db_type.clone();
+            tokio::spawn(async move {
+                ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
+            });
+        }
+    }
+
     // For ClickHouse, create the database after the server is ready (CLICKHOUSE_DB env var
     // sets the default but does not always auto-create it; this ensures it exists).
     if db_type == DatabaseType::ClickHouse {
@@ -871,6 +903,90 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
     }
 
     Ok(())
+}
+
+/// Ensure the MySQL/MariaDB app user and database exist inside the container.
+///
+/// The official Docker MySQL/MariaDB image only runs its init scripts (which create
+/// `MYSQL_USER`) when the data directory is **empty** on first boot. If a bind-mount
+/// directory already contains data from a previous container, the user is never created
+/// and any app that relies on it gets `SQLSTATE[HY000] [1130] Host … not allowed`.
+///
+/// This function connects via the Unix socket as root (no password required) and issues
+/// `CREATE USER IF NOT EXISTS … GRANT …` — a no-op when the user already exists.
+async fn ensure_mysql_user(
+    runtime: &std::sync::Arc<dyn crate::runtime::ContainerRuntime>,
+    container_id: &str,
+    credentials: &crate::db::DatabaseCredentials,
+    db_name: &str,
+    db_type: &DatabaseType,
+) {
+    let client = match db_type {
+        DatabaseType::Mysql => "mysql",
+        DatabaseType::Mariadb => "mariadb",
+        _ => return,
+    };
+
+    // Escape single quotes for SQL string literals (passwords are auto-generated
+    // alphanumerics so this is purely defensive)
+    let safe_pass = credentials.password.replace('\'', "''");
+    let safe_user = credentials.username.replace('\'', "''");
+    let safe_db = db_name.replace('`', "");
+
+    let sql = format!(
+        "CREATE USER IF NOT EXISTS '{safe_user}'@'%' IDENTIFIED BY '{safe_pass}'; \
+         CREATE DATABASE IF NOT EXISTS `{safe_db}`; \
+         GRANT ALL PRIVILEGES ON `{safe_db}`.* TO '{safe_user}'@'%'; \
+         FLUSH PRIVILEGES;"
+    );
+
+    // Retry up to 6 × 5 s = 30 s for MySQL to finish initialising
+    for attempt in 1u8..=6 {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        let cmd = vec![
+            client.to_string(),
+            "--socket=/var/run/mysqld/mysqld.sock".to_string(),
+            "-uroot".to_string(),
+            "-e".to_string(),
+            sql.clone(),
+        ];
+
+        match runtime.run_command(container_id, cmd).await {
+            Ok(result) if result.exit_code == 0 => {
+                tracing::info!(
+                    user = %credentials.username,
+                    database = %db_name,
+                    "MySQL/MariaDB user provisioned (or already exists)"
+                );
+                return;
+            }
+            Ok(result) => {
+                tracing::debug!(
+                    attempt,
+                    exit_code = result.exit_code,
+                    stderr = %result.stderr,
+                    "MySQL/MariaDB user provisioning attempt {} failed, retrying",
+                    attempt
+                );
+            }
+            Err(e) => {
+                tracing::debug!(
+                    attempt,
+                    error = %e,
+                    "MySQL/MariaDB user provisioning exec error on attempt {}, retrying",
+                    attempt
+                );
+            }
+        }
+    }
+
+    tracing::warn!(
+        user = %credentials.username,
+        database = %db_name,
+        "Could not provision MySQL/MariaDB user after 30 s — \
+         the app may fail to connect until the database container is restarted"
+    );
 }
 
 /// Build the exec command vector for running a SQL init command inside a database container.

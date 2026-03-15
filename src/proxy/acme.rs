@@ -10,6 +10,7 @@ use dashmap::DashMap;
 use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, KeyPair as RingKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,7 +20,7 @@ use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
-use super::tls::TlsConfig;
+use super::tls::{TlsConfig, TlsReloadHandle};
 
 /// Let's Encrypt ACME directory URLs
 pub const LETS_ENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
@@ -658,6 +659,13 @@ impl AcmeClient {
             .await
             .context("Failed to write private key")?;
 
+        // Save the domain list alongside the cert so the renewal manager knows
+        // exactly which SANs the cert covers (avoids re-parsing the cert DER).
+        let domains_path = cert_dir.join("domains.json");
+        if let Ok(json) = serde_json::to_string(&result.domains) {
+            let _ = fs::write(&domains_path, json).await;
+        }
+
         info!(
             domain = %domain,
             cert_path = %cert_path.display(),
@@ -665,6 +673,14 @@ impl AcmeClient {
         );
 
         Ok(cert_dir)
+    }
+
+    /// Load the list of domains that were included in the cached certificate.
+    /// Returns `None` if the domains file doesn't exist (old cert format).
+    pub async fn load_cert_domains(cert_dir: &Path) -> Option<Vec<String>> {
+        let path = cert_dir.join("domains.json");
+        let json = fs::read_to_string(&path).await.ok()?;
+        serde_json::from_str(&json).ok()
     }
 
     /// Load a saved certificate and create TLS config
@@ -737,8 +753,12 @@ pub struct CertificateResult {
 /// Certificate renewal manager
 pub struct CertificateRenewalManager {
     client: Arc<AcmeClient>,
-    /// Full domain list (including all SANs) to use when renewing
+    /// Full domain list (including all SANs) — updated dynamically as apps are added
     domains: Vec<String>,
+    /// Database pool for discovering new app subdomains at runtime
+    db: Option<crate::DbPool>,
+    /// Hot-reload handle to update the running HTTPS server's TLS cert without restart
+    tls_reload: Option<Arc<TlsReloadHandle>>,
     renewal_check_interval: Duration,
     renewal_before_expiry: Duration,
 }
@@ -749,9 +769,24 @@ impl CertificateRenewalManager {
         Self {
             client,
             domains,
+            db: None,
+            tls_reload: None,
             renewal_check_interval: Duration::from_secs(12 * 60 * 60), // 12 hours
             renewal_before_expiry: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
         }
+    }
+
+    /// Enable dynamic domain discovery: check the DB on each cycle for new app subdomains
+    /// and reissue the cert immediately when new ones are found.
+    /// `tls_reload` is `None` when HTTPS is not yet running (no cert available at startup).
+    pub fn with_db_and_reload(
+        mut self,
+        db: crate::DbPool,
+        tls_reload: Option<Arc<TlsReloadHandle>>,
+    ) -> Self {
+        self.db = Some(db);
+        self.tls_reload = tls_reload;
+        self
     }
 
     /// With custom renewal interval
@@ -761,10 +796,13 @@ impl CertificateRenewalManager {
     }
 
     /// Start the renewal background task
-    pub async fn run(&self) {
+    pub async fn run(mut self) {
         info!("Certificate renewal manager started");
 
         loop {
+            // Check for new app subdomains and reissue cert if any are missing coverage
+            self.check_and_add_new_domains().await;
+
             if let Err(e) = self.check_renewals().await {
                 error!(error = %e, "Error checking certificate renewals");
             }
@@ -773,7 +811,95 @@ impl CertificateRenewalManager {
         }
     }
 
-    /// Check all certificates for renewal
+    /// Query the DB for all current app domains. If any are not in the current SAN list,
+    /// reissue the cert immediately and hot-reload the TLS acceptor.
+    async fn check_and_add_new_domains(&mut self) {
+        let db = match &self.db {
+            Some(db) => db.clone(),
+            None => return,
+        };
+
+        // Collect all currently configured app domains from the DB
+        let rows: Vec<(Option<String>, Option<String>, Option<String>)> = match sqlx::query_as(
+            "SELECT domain, domains, auto_subdomain FROM apps",
+        )
+        .fetch_all(&db)
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "Could not query app domains for cert check");
+                return;
+            }
+        };
+
+        let mut new_domains: Vec<String> = Vec::new();
+        for (legacy_domain, domains_json, auto_subdomain) in rows {
+            if let Some(d) = legacy_domain {
+                if !d.is_empty() && !self.domains.contains(&d) {
+                    new_domains.push(d);
+                }
+            }
+            if let Some(json) = domains_json {
+                if let Ok(list) = serde_json::from_str::<Vec<String>>(&json) {
+                    for d in list {
+                        if !d.is_empty() && !self.domains.contains(&d) {
+                            new_domains.push(d);
+                        }
+                    }
+                }
+            }
+            if let Some(d) = auto_subdomain {
+                if !d.is_empty() && !self.domains.contains(&d) {
+                    new_domains.push(d);
+                }
+            }
+        }
+
+        if new_domains.is_empty() {
+            return;
+        }
+
+        info!(
+            new_domains = ?new_domains,
+            "New app subdomains found — reissuing TLS certificate to add coverage"
+        );
+
+        let mut all_domains = self.domains.clone();
+        for d in &new_domains {
+            if !all_domains.contains(d) && all_domains.len() < 100 {
+                all_domains.push(d.clone());
+            }
+        }
+
+        match self.client.request_certificate(&all_domains).await {
+            Ok(result) => {
+                let _ = self.client.save_certificate(&result).await;
+                if let Some(ref reload) = self.tls_reload {
+                    match TlsConfig::from_pem(
+                        &result.certificate_chain_pem,
+                        &result.private_key_pem,
+                    ) {
+                        Ok(tls) => {
+                            reload.update(tls.acceptor);
+                            self.domains = all_domains;
+                            info!("TLS certificate reissued and hot-reloaded for new subdomains");
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "New cert issued but could not parse PEM for reload");
+                        }
+                    }
+                } else {
+                    self.domains = all_domains;
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, new_domains = ?new_domains, "Failed to reissue cert for new subdomains");
+            }
+        }
+    }
+
+    /// Check all certificates for expiry-based renewal
     async fn check_renewals(&self) -> Result<()> {
         let domains = self.client.cached_domains().await?;
 
@@ -810,19 +936,26 @@ impl CertificateRenewalManager {
                     "Certificate expires soon, renewing"
                 );
 
-                // Renew using the full domain list (not just base domain)
                 let renewal_domains = if self.domains.is_empty() {
                     vec![domain.to_string()]
                 } else {
                     self.domains.clone()
                 };
-                let result = self
-                    .client
-                    .request_certificate(&renewal_domains)
-                    .await?;
-
+                let result = self.client.request_certificate(&renewal_domains).await?;
                 self.client.save_certificate(&result).await?;
-                info!(domain = %domain, "Certificate renewed successfully");
+
+                // Hot-reload the new cert into the running HTTPS server
+                if let Some(ref reload) = self.tls_reload {
+                    if let Ok(tls) = TlsConfig::from_pem(
+                        &result.certificate_chain_pem,
+                        &result.private_key_pem,
+                    ) {
+                        reload.update(tls.acceptor);
+                        info!(domain = %domain, "Certificate renewed and hot-reloaded");
+                    }
+                } else {
+                    info!(domain = %domain, "Certificate renewed successfully");
+                }
             } else {
                 debug!(
                     domain = %domain,
@@ -831,8 +964,7 @@ impl CertificateRenewalManager {
                 );
             }
         } else {
-            // Can't parse expiry (cert may be freshly issued or use unsupported format)
-            // Do NOT renew — just log and skip to avoid overwriting valid multi-domain certs
+            // Can't parse expiry — skip to avoid overwriting valid multi-domain certs
             debug!(domain = %domain, "Could not parse certificate expiry, skipping renewal check");
         }
 

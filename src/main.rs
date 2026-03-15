@@ -349,8 +349,17 @@ async fn main() -> Result<()> {
 
                 // Now request or load the certificate
                 let cert_dir = acme_client.cert_dir(&instance_domain);
+                // `cert_domains` tracks what's *actually in the cert* (not just the DB list).
+                // The renewal manager uses this as its baseline so it can detect new app
+                // subdomains that aren't yet covered and reissue immediately.
+                let mut cert_domains = all_cert_domains.clone();
                 let tls_config_result = if cert_dir.join("fullchain.pem").exists() {
                     tracing::info!(domain = %instance_domain, "Loading cached TLS certificate");
+                    // Restore the saved domain list so the renewal manager knows exactly
+                    // what SANs the cached cert covers.
+                    if let Some(saved) = AcmeClient::load_cert_domains(&cert_dir).await {
+                        cert_domains = saved;
+                    }
                     AcmeClient::load_certificate(&cert_dir).await.ok()
                 } else {
                     tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
@@ -376,8 +385,12 @@ async fn main() -> Result<()> {
                         format!("{}:{}", config.server.host, https_port)
                             .parse()
                             .expect("Invalid HTTPS proxy address");
+
+                    // Wrap the TLS acceptor in a hot-reload handle so cert renewals take
+                    // effect immediately without restarting the HTTPS server.
+                    let tls_reload = std::sync::Arc::new(rivetr::proxy::TlsReloadHandle::new(tls_config.acceptor));
                     let https_server =
-                        HttpsProxyServer::new(https_addr, routes.clone(), tls_config);
+                        HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone());
                     tokio::spawn(async move {
                         if let Err(e) = https_server.run().await {
                             tracing::error!(error = %e, "HTTPS proxy server error");
@@ -385,13 +398,17 @@ async fn main() -> Result<()> {
                     });
                     tracing::info!("HTTPS proxy listening on https://{}", https_addr);
 
-                    // Start certificate renewal manager
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client, all_cert_domains.clone());
+                    // Start certificate renewal manager. `cert_domains` reflects what's
+                    // actually in the cert; the DB is queried each cycle for new subdomains.
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, cert_domains)
+                        .with_db_and_reload(db.clone(), Some(tls_reload));
                     tokio::spawn(async move { renewal_mgr.run().await });
                 } else {
                     tracing::warn!("Running HTTP-only (no TLS certificate available)");
-                    // Start renewal manager anyway — it will retry on next cycle
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client, all_cert_domains.clone());
+                    // Start renewal manager anyway — it will retry on next cycle.
+                    // No tls_reload handle since HTTPS server is not running yet.
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, cert_domains)
+                        .with_db_and_reload(db.clone(), None);
                     tokio::spawn(async move { renewal_mgr.run().await });
                 }
             }
