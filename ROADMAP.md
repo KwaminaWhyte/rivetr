@@ -255,6 +255,13 @@ Features required for enterprise adoption and high availability.
 
 ---
 
+## Recent Bug Fixes (v0.10.7)
+
+- **MySQL/MariaDB user provisioning on reused data directories** ✅ — Rivetr now idempotently creates the app user via Unix socket after every container start, preventing SQLSTATE[1130] when a bind-mount data directory was pre-initialized
+- **New subdomain SSL coverage** ✅ — Hot-reloadable TLS cert (`TlsReloadHandle`) + renewal manager DB queries for new subdomains; cert reissued immediately when new apps are deployed, no restart needed
+- **Orphaned restart containers** ✅ — Startup reconciliation removes all `rivetr-*-restart-*` containers not associated with an active deployment
+- **Swap not configured warning** ✅ — Startup warns if no swap is present; `install.sh` now automatically creates a 2–4 GB swapfile during installation
+
 ## Future Considerations
 
 - **Auto-scaling** ✅ Foundation implemented (rules + background scaler)
