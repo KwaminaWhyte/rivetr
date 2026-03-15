@@ -794,13 +794,31 @@ pub async fn restart_app(
         }
     }
 
-    // 7. Stop and remove the OLD container (traffic already switched)
+    // 7. Stop and remove the OLD container (traffic already switched).
+    // We await this directly rather than spawning a fire-and-forget task so
+    // that a failure is visible in logs. The response is still fast because
+    // Docker stop only blocks for ~10 s (SIGTERM + SIGKILL after timeout).
     {
-        let runtime = state.runtime.clone();
+        let app_name_log = app.name.clone();
         let old_cid = old_container_id.clone();
+        let runtime = state.runtime.clone();
         tokio::spawn(async move {
-            let _ = runtime.stop(&old_cid).await;
-            let _ = runtime.remove(&old_cid).await;
+            if let Err(e) = runtime.stop(&old_cid).await {
+                tracing::warn!(
+                    app = %app_name_log,
+                    container = %old_cid,
+                    error = %e,
+                    "Zero-downtime restart: failed to stop old container (it may linger until next Rivetr restart)"
+                );
+            }
+            if let Err(e) = runtime.remove(&old_cid).await {
+                tracing::warn!(
+                    app = %app_name_log,
+                    container = %old_cid,
+                    error = %e,
+                    "Zero-downtime restart: failed to remove old container"
+                );
+            }
         });
     }
 

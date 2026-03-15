@@ -175,6 +175,8 @@ pub fn spawn_container_monitor_task(
 ///
 /// This function checks all "running" status records in the database
 /// and updates them if the corresponding containers are not actually running.
+/// Also cleans up orphaned `-restart-` containers from failed zero-downtime
+/// restarts — these accumulate when the stop/remove fire-and-forget task fails.
 /// Should be called during server startup.
 pub async fn reconcile_container_status(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) {
     tracing::info!("Reconciling container status on startup...");
@@ -183,12 +185,91 @@ pub async fn reconcile_container_status(db: &DbPool, runtime: &Arc<dyn Container
     let databases_updated = recovery::reconcile_databases(db, runtime).await;
     let services_updated = recovery::reconcile_services(db, runtime).await;
 
+    // Collect all active container IDs so we know what to keep.
+    let active_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        "SELECT container_id FROM deployments WHERE status = 'running' AND container_id IS NOT NULL",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
+
+    let orphans_removed = cleanup_orphan_restart_containers(runtime, &active_ids).await;
+
+    // Warn if the host has no swap — running out of RAM without swap causes
+    // a full system lockup (kswapd0 spins at 100% with nowhere to page).
+    check_swap_warning();
+
     tracing::info!(
         deployments = deployments_updated,
         databases = databases_updated,
         services = services_updated,
+        orphan_containers_removed = orphans_removed,
         "Container status reconciliation completed"
     );
+}
+
+/// Stop and remove any `rivetr-*-restart-*` containers whose ID is not in
+/// `active_ids`. These are left over from zero-downtime restarts where the
+/// cleanup task failed silently, and they consume CPU and RAM for no reason.
+async fn cleanup_orphan_restart_containers(
+    runtime: &Arc<dyn ContainerRuntime>,
+    active_ids: &std::collections::HashSet<String>,
+) -> usize {
+    let containers = match runtime.list_containers("rivetr-").await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "Could not list containers for orphan cleanup");
+            return 0;
+        }
+    };
+
+    let mut removed = 0;
+    for container in containers {
+        // Only target the -restart- naming pattern used by the restart handler.
+        if !container.name.contains("-restart-") {
+            continue;
+        }
+        // Skip if this is the currently active container for a deployment.
+        if active_ids.contains(&container.id) {
+            continue;
+        }
+        tracing::warn!(
+            container = %container.name,
+            id = %container.id,
+            "Removing orphaned restart container"
+        );
+        let _ = runtime.stop(&container.id).await;
+        let _ = runtime.remove(&container.id).await;
+        removed += 1;
+    }
+    removed
+}
+
+/// Log a warning if the host has no swap space configured.
+/// No swap + memory exhaustion = kernel spin loop (kswapd0 at 100% CPU).
+fn check_swap_warning() {
+    // Read /proc/meminfo to check SwapTotal
+    if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+        let swap_total_kb: u64 = meminfo
+            .lines()
+            .find(|l| l.starts_with("SwapTotal:"))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+
+        if swap_total_kb == 0 {
+            tracing::warn!(
+                "No swap space detected on this host. If RAM is exhausted, kswapd0 will spin at \
+                 100% CPU and the system will lock up. Add swap with: \
+                 fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && \
+                 swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab"
+            );
+        } else {
+            tracing::debug!(swap_total_kb, "Swap space available");
+        }
+    }
 }
 
 #[cfg(test)]

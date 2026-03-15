@@ -672,6 +672,52 @@ EOF
 }
 
 # =============================================================================
+# Swap Configuration
+# =============================================================================
+setup_swap() {
+    # Skip if swap already exists
+    local swap_total_kb
+    swap_total_kb=$(grep SwapTotal /proc/meminfo 2>/dev/null | awk '{print $2}')
+    if [ "${swap_total_kb:-0}" -gt 0 ]; then
+        success "Swap already configured ($(( swap_total_kb / 1024 ))MB)"
+        return
+    fi
+
+    info "Configuring swap space..."
+
+    # Size: 2× RAM up to 4GB, minimum 2GB
+    local mem_kb
+    mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    local swap_gb=$(( (mem_kb * 2) / 1024 / 1024 ))
+    [ "$swap_gb" -lt 2 ] && swap_gb=2
+    [ "$swap_gb" -gt 4 ] && swap_gb=4
+
+    local SWAPFILE="/swapfile"
+
+    if [ -f "$SWAPFILE" ]; then
+        # File exists but swap isn't active — just activate it
+        mkswap "$SWAPFILE" >/dev/null 2>&1 || true
+    else
+        fallocate -l "${swap_gb}G" "$SWAPFILE" 2>/dev/null \
+            || dd if=/dev/zero of="$SWAPFILE" bs=1M count=$(( swap_gb * 1024 )) status=none
+        chmod 600 "$SWAPFILE"
+        mkswap "$SWAPFILE" >/dev/null
+    fi
+
+    swapon "$SWAPFILE"
+
+    # Persist across reboots
+    grep -q "$SWAPFILE" /etc/fstab \
+        || echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+
+    # Low swappiness: only use swap under real memory pressure
+    echo "vm.swappiness=10" > /etc/sysctl.d/99-rivetr-swap.conf
+    sysctl -q vm.swappiness=10
+
+    success "Swap configured: ${swap_gb}GB at $SWAPFILE (swappiness=10)"
+}
+
+# =============================================================================
 # Firewall Configuration
 # =============================================================================
 configure_firewall() {
@@ -760,36 +806,40 @@ main() {
 
     # Installation steps
     echo ""
-    info "Step 1/8: Installing Docker..."
+    info "Step 1/9: Installing Docker..."
     install_docker
 
     echo ""
-    info "Step 2/8: Installing build tools (Nixpacks, Railpack, Pack CLI)..."
+    info "Step 2/9: Installing build tools (Nixpacks, Railpack, Pack CLI)..."
     install_build_tools
 
     echo ""
-    info "Step 3/8: Creating service user..."
+    info "Step 3/9: Configuring swap space..."
+    setup_swap
+
+    echo ""
+    info "Step 4/9: Creating service user..."
     create_user
 
     echo ""
-    info "Step 4/8: Creating directories..."
+    info "Step 5/9: Creating directories..."
     create_directories
 
     echo ""
-    info "Step 5/8: Downloading/building Rivetr..."
+    info "Step 6/9: Downloading/building Rivetr..."
     download_binary
 
     echo ""
-    info "Step 6/8: Creating configuration..."
+    info "Step 7/9: Creating configuration..."
     create_config
 
     echo ""
-    info "Step 7/8: Setting up systemd service..."
+    info "Step 8/9: Setting up systemd service..."
     create_systemd_service
     configure_docker_restart
 
     echo ""
-    info "Step 8/8: Configuring firewall..."
+    info "Step 9/9: Configuring firewall..."
     configure_firewall
 
     # Start the service
