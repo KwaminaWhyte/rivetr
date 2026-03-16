@@ -70,17 +70,33 @@ pub async fn log_webhook_event(
     .await;
 }
 
-/// Atomically claim a delivery ID by inserting a placeholder audit row.
+/// Claim a delivery ID and return whether this request should be processed.
 ///
-/// Returns `true` if this call was the first to claim the ID (the INSERT succeeded),
-/// or `false` if the delivery ID already existed (duplicate / concurrent retry).
+/// Returns `false` (skip) only when the delivery_id was already **fully processed**
+/// (status = 'processed' or 'ignored').  A row with status = 'received' means a
+/// prior attempt started but the server restarted before finishing — we allow the
+/// retry through by replacing that placeholder with a fresh one.
 ///
-/// Must be called *before* any deployment work is queued. Because it uses
-/// `INSERT OR IGNORE` against a UNIQUE index on `delivery_id`, only one
-/// concurrent caller can get `true` — the UNIQUE constraint rejects all others.
+/// This prevents double-processing of genuine GitHub retries of the same delivery
+/// while still allowing retries after a server crash/restart.
 pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id: &str) -> bool {
-    sqlx::query(
-        "INSERT OR IGNORE INTO webhook_events \
+    // If a *completed* row exists for this delivery ID, it was already handled.
+    let already_done: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM webhook_events \
+         WHERE delivery_id = ? AND status IN ('processed', 'ignored')",
+    )
+    .bind(delivery_id)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0);
+
+    if already_done > 0 {
+        return false;
+    }
+
+    // Upsert a placeholder row (replaces any stale 'received' row from a prior crash).
+    let _ = sqlx::query(
+        "INSERT OR REPLACE INTO webhook_events \
          (id, provider, event_type, apps_triggered, status, delivery_id) \
          VALUES (?, ?, 'push', 0, 'received', ?)",
     )
@@ -88,9 +104,9 @@ pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id:
     .bind(provider)
     .bind(delivery_id)
     .execute(db)
-    .await
-    .map(|r| r.rows_affected() == 1)
-    .unwrap_or(false)
+    .await;
+
+    true
 }
 
 /// Update the placeholder row created by `record_delivery_id` with full event details.
