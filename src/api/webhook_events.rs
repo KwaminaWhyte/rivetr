@@ -48,11 +48,12 @@ pub async fn log_webhook_event(
     apps_triggered: i64,
     status: &str,
     error: Option<&str>,
+    delivery_id: Option<&str>,
 ) {
     let _ = sqlx::query(
         "INSERT INTO webhook_events \
-         (id, provider, event_type, repository, branch, commit_sha, payload_size, apps_triggered, status, error_message) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         (id, provider, event_type, repository, branch, commit_sha, payload_size, apps_triggered, status, error_message, delivery_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(provider)
@@ -64,8 +65,22 @@ pub async fn log_webhook_event(
     .bind(apps_triggered)
     .bind(status)
     .bind(error)
+    .bind(delivery_id)
     .execute(db)
     .await;
+}
+
+/// Returns true if this delivery_id has already been processed.
+/// Used to deduplicate duplicate webhook deliveries from GitHub Apps.
+pub async fn is_duplicate_delivery(db: &crate::DbPool, delivery_id: &str) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM webhook_events WHERE delivery_id = ?",
+    )
+    .bind(delivery_id)
+    .fetch_one(db)
+    .await
+    .unwrap_or(0)
+        > 0
 }
 
 // ---------------------------------------------------------------------------

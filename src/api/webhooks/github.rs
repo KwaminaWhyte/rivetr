@@ -10,8 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, log_wh_event,
-    should_deploy_for_changed_files, verify_github_signature, ChangedFiles,
+    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, is_duplicate_delivery,
+    log_wh_event, should_deploy_for_changed_files, verify_github_signature, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::{App, PreviewDeployment};
@@ -126,6 +126,20 @@ pub async fn github_webhook(
 ) -> Result<StatusCode, StatusCode> {
     incr_webhooks("github");
 
+    // Extract delivery ID for idempotency — GitHub sends X-GitHub-Delivery with every request.
+    let delivery_id = headers
+        .get("X-GitHub-Delivery")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_owned());
+
+    // Deduplicate: if we've already processed this exact delivery, return 200 immediately.
+    if let Some(ref did) = delivery_id {
+        if is_duplicate_delivery(&state.db, did).await {
+            tracing::info!("GitHub webhook duplicate delivery {} — skipping", did);
+            return Ok(StatusCode::OK);
+        }
+    }
+
     if let Some(ref secret) = state.config.webhooks.github_secret {
         let signature = headers
             .get("X-Hub-Signature-256")
@@ -148,8 +162,8 @@ pub async fn github_webhook(
         .unwrap_or("push");
 
     match event_type {
-        "pull_request" => handle_github_pull_request(state, &body).await,
-        "push" => handle_github_push(state, &body).await,
+        "pull_request" => handle_github_pull_request(state, &body, delivery_id.as_deref()).await,
+        "push" => handle_github_push(state, &body, delivery_id.as_deref()).await,
         "ping" => {
             tracing::info!("GitHub ping received");
             Ok(StatusCode::OK)
@@ -161,7 +175,7 @@ pub async fn github_webhook(
     }
 }
 
-async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCode, StatusCode> {
+async fn handle_github_push(state: Arc<AppState>, body: &[u8], delivery_id: Option<&str>) -> Result<StatusCode, StatusCode> {
     let payload: GitHubPushEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
         StatusCode::BAD_REQUEST
@@ -201,6 +215,7 @@ async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
             0,
             "ignored",
             None,
+            delivery_id,
         )
         .await;
         return Ok(StatusCode::OK);
@@ -260,6 +275,7 @@ async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
         apps_count,
         "processed",
         None,
+        delivery_id,
     )
     .await;
 
@@ -269,6 +285,7 @@ async fn handle_github_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
 async fn handle_github_pull_request(
     state: Arc<AppState>,
     body: &[u8],
+    _delivery_id: Option<&str>,
 ) -> Result<StatusCode, StatusCode> {
     let payload: GitHubPullRequestEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse GitHub PR webhook payload: {}", e);

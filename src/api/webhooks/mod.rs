@@ -16,6 +16,7 @@ pub use github::github_webhook;
 pub use gitlab::gitlab_webhook;
 
 pub(super) use crate::api::metrics::increment_webhooks_received as incr_webhooks;
+pub(super) use crate::api::webhook_events::is_duplicate_delivery;
 pub(super) use crate::api::webhook_events::log_webhook_event as log_wh_event;
 
 use axum::http::StatusCode;

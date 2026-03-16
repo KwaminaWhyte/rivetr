@@ -82,6 +82,7 @@ pub async fn dockerhub_webhook(
             0,
             "ignored",
             None,
+            None,
         )
         .await;
         return Ok(StatusCode::OK);
@@ -129,6 +130,7 @@ pub async fn dockerhub_webhook(
         body.len(),
         apps_count,
         "processed",
+        None,
         None,
     )
     .await;
