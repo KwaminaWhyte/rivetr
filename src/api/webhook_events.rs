@@ -70,26 +70,16 @@ pub async fn log_webhook_event(
     .await;
 }
 
-/// Returns true if this delivery_id has already been processed.
-/// Used to deduplicate duplicate webhook deliveries from GitHub Apps.
-pub async fn is_duplicate_delivery(db: &crate::DbPool, delivery_id: &str) -> bool {
-    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM webhook_events WHERE delivery_id = ?")
-        .bind(delivery_id)
-        .fetch_one(db)
-        .await
-        .unwrap_or(0)
-        > 0
-}
-
-/// Immediately reserve a delivery ID by inserting a placeholder audit row.
+/// Atomically claim a delivery ID by inserting a placeholder audit row.
 ///
-/// This must be called *before* any deployment work is queued so that concurrent
-/// retries from the same GitHub delivery see the row and short-circuit via
-/// `is_duplicate_delivery`. The row may be updated later with full details by
-/// `log_webhook_event`; if the delivery_id already exists the INSERT is silently
-/// ignored (UNIQUE constraint on `delivery_id`).
-pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id: &str) {
-    let _ = sqlx::query(
+/// Returns `true` if this call was the first to claim the ID (the INSERT succeeded),
+/// or `false` if the delivery ID already existed (duplicate / concurrent retry).
+///
+/// Must be called *before* any deployment work is queued. Because it uses
+/// `INSERT OR IGNORE` against a UNIQUE index on `delivery_id`, only one
+/// concurrent caller can get `true` — the UNIQUE constraint rejects all others.
+pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id: &str) -> bool {
+    sqlx::query(
         "INSERT OR IGNORE INTO webhook_events \
          (id, provider, event_type, apps_triggered, status, delivery_id) \
          VALUES (?, ?, 'push', 0, 'received', ?)",
@@ -98,7 +88,65 @@ pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id:
     .bind(provider)
     .bind(delivery_id)
     .execute(db)
-    .await;
+    .await
+    .map(|r| r.rows_affected() == 1)
+    .unwrap_or(false)
+}
+
+/// Update the placeholder row created by `record_delivery_id` with full event details.
+/// Falls back to a plain INSERT when no delivery_id is provided (non-GitHub providers).
+pub async fn update_webhook_event(
+    db: &crate::DbPool,
+    provider: &str,
+    event_type: &str,
+    repo: Option<&str>,
+    branch: Option<&str>,
+    sha: Option<&str>,
+    payload_size: usize,
+    apps_triggered: i64,
+    status: &str,
+    error: Option<&str>,
+    delivery_id: Option<&str>,
+) {
+    if let Some(did) = delivery_id {
+        // Update the placeholder row that record_delivery_id already inserted.
+        let _ = sqlx::query(
+            "UPDATE webhook_events SET \
+             event_type = ?, repository = ?, branch = ?, commit_sha = ?, \
+             payload_size = ?, apps_triggered = ?, status = ?, error_message = ? \
+             WHERE delivery_id = ?",
+        )
+        .bind(event_type)
+        .bind(repo)
+        .bind(branch)
+        .bind(sha)
+        .bind(payload_size as i64)
+        .bind(apps_triggered)
+        .bind(status)
+        .bind(error)
+        .bind(did)
+        .execute(db)
+        .await;
+    } else {
+        // No delivery ID — just insert a fresh row (other providers).
+        let _ = sqlx::query(
+            "INSERT INTO webhook_events \
+             (id, provider, event_type, repository, branch, commit_sha, payload_size, apps_triggered, status, error_message, delivery_id) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(provider)
+        .bind(event_type)
+        .bind(repo)
+        .bind(branch)
+        .bind(sha)
+        .bind(payload_size as i64)
+        .bind(apps_triggered)
+        .bind(status)
+        .bind(error)
+        .execute(db)
+        .await;
+    }
 }
 
 // ---------------------------------------------------------------------------

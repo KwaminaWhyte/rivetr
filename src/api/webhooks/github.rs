@@ -10,9 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, is_duplicate_delivery,
-    log_wh_event, record_delivery_id, should_deploy_for_changed_files, verify_github_signature,
-    ChangedFiles,
+    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, record_delivery_id,
+    should_deploy_for_changed_files, update_wh_event, verify_github_signature, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::{App, PreviewDeployment};
@@ -135,18 +134,16 @@ pub async fn github_webhook(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_owned());
 
-    // Deduplicate: claim the delivery ID *before* any processing. record_delivery_id inserts it
-    // into webhook_events immediately; if the row already exists (duplicate or concurrent retry)
-    // it returns false and we short-circuit. Doing this early (before the per-app deployment
-    // inserts) closes the race window where two concurrent requests both passed the old read-only
-    // is_duplicate_delivery check before either had written its audit row.
+    // Atomic deduplication: INSERT OR IGNORE the delivery ID right away.
+    // record_delivery_id returns true only when rows_affected == 1 (this request won).
+    // Any concurrent or retry request for the same ID gets rows_affected == 0 (UNIQUE
+    // constraint) and returns false — so we bail before doing any deployment work.
+    // This closes the race window that existed in the old read-then-write approach.
     if let Some(ref did) = delivery_id {
-        if is_duplicate_delivery(&state.db, did).await {
+        if !record_delivery_id(&state.db, "github", did).await {
             tracing::info!("GitHub webhook duplicate delivery {} — skipping", did);
             return Ok(StatusCode::OK);
         }
-        // Reserve the delivery ID now so any parallel retry is rejected immediately.
-        record_delivery_id(&state.db, "github", did).await;
     }
 
     if let Some(ref secret) = state.config.webhooks.github_secret {
@@ -234,7 +231,7 @@ async fn handle_github_push(
 
     if apps.is_empty() {
         tracing::warn!("No matching app found for push webhook");
-        log_wh_event(
+        update_wh_event(
             &state.db,
             "github",
             "push",
@@ -320,7 +317,7 @@ async fn handle_github_push(
         tracing::info!("Queued deployment {} for app {}", deployment_id, app.name);
     }
 
-    log_wh_event(
+    update_wh_event(
         &state.db,
         "github",
         "push",
