@@ -254,7 +254,12 @@ export const systemApi = {
 
   /** Get instance settings (domain, name) */
   getInstanceSettings: (token?: string) =>
-    apiRequest<{ instance_domain: string | null; instance_name: string | null }>(
+    apiRequest<{
+      instance_domain: string | null;
+      instance_name: string | null;
+      max_deployments_per_app: number | null;
+      prune_images: boolean | null;
+    }>(
       "/settings/instance",
       {},
       token
@@ -262,10 +267,20 @@ export const systemApi = {
 
   /** Update instance settings */
   updateInstanceSettings: (
-    req: { instance_domain?: string | null; instance_name?: string | null },
+    req: {
+      instance_domain?: string | null;
+      instance_name?: string | null;
+      max_deployments_per_app?: number | null;
+      prune_images?: boolean | null;
+    },
     token?: string
   ) =>
-    apiRequest<{ instance_domain: string | null; instance_name: string | null }>(
+    apiRequest<{
+      instance_domain: string | null;
+      instance_name: string | null;
+      max_deployments_per_app: number | null;
+      prune_images: boolean | null;
+    }>(
       "/settings/instance",
       {
         method: "PUT",

@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import {
   Globe,
@@ -59,12 +60,16 @@ export default function SettingsPage() {
 
   const [instanceDomain, setInstanceDomain] = useState("");
   const [instanceName, setInstanceName] = useState("");
+  const [maxDeployments, setMaxDeployments] = useState(5);
+  const [pruneImages, setPruneImages] = useState(true);
 
   // Sync state when data loads
   useEffect(() => {
     if (instanceSettings) {
       setInstanceDomain(instanceSettings.instance_domain ?? "");
       setInstanceName(instanceSettings.instance_name ?? "");
+      setMaxDeployments(instanceSettings.max_deployments_per_app ?? 5);
+      setPruneImages(instanceSettings.prune_images ?? true);
     }
   }, [instanceSettings]);
 
@@ -82,6 +87,21 @@ export default function SettingsPage() {
       toast.error(
         error instanceof Error ? error.message : "Failed to save instance settings"
       );
+    },
+  });
+
+  const updateCleanupMutation = useMutation({
+    mutationFn: () =>
+      api.updateInstanceSettings({
+        max_deployments_per_app: maxDeployments,
+        prune_images: pruneImages,
+      }),
+    onSuccess: () => {
+      toast.success("Cleanup settings saved");
+      queryClient.invalidateQueries({ queryKey: ["instance-settings"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to save cleanup settings");
     },
   });
 
@@ -332,6 +352,77 @@ acme_email = "you@yourdomain.com"`}
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Deployment Cleanup */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Trash2 className="h-5 w-5" />
+            Deployment Cleanup
+          </CardTitle>
+          <CardDescription>
+            Control how many old deployments are kept per app. Older ones are automatically
+            removed along with their Docker images to preserve disk space.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {instanceLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading…</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="max-deployments">Deployments to keep per app</Label>
+                  <Input
+                    id="max-deployments"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={maxDeployments}
+                    onChange={(e) => setMaxDeployments(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Old stopped deployments beyond this count are deleted along with their images.
+                    Rollback always uses the most recent kept deployment.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <Label>Prune unused images</Label>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      id="prune-images"
+                      checked={pruneImages}
+                      onCheckedChange={setPruneImages}
+                    />
+                    <Label htmlFor="prune-images" className="font-normal text-sm text-muted-foreground">
+                      {pruneImages ? "Enabled — dangling images removed after each cycle" : "Disabled"}
+                    </Label>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => updateCleanupMutation.mutate()}
+                  disabled={updateCleanupMutation.isPending}
+                >
+                  {updateCleanupMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

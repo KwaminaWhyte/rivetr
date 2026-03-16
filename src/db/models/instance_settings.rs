@@ -21,6 +21,10 @@ pub struct InstanceSettings {
     pub instance_domain: Option<String>,
     /// A human-readable name for this instance (e.g. "My Rivetr").
     pub instance_name: Option<String>,
+    /// How many old deployments to keep per app before pruning (default: 5).
+    pub max_deployments_per_app: Option<u32>,
+    /// Whether to prune unused Docker images after each cleanup cycle (default: true).
+    pub prune_images: Option<bool>,
 }
 
 /// Request body for updating instance settings (all fields optional).
@@ -28,6 +32,8 @@ pub struct InstanceSettings {
 pub struct UpdateInstanceSettingsRequest {
     pub instance_domain: Option<String>,
     pub instance_name: Option<String>,
+    pub max_deployments_per_app: Option<u32>,
+    pub prune_images: Option<bool>,
 }
 
 impl InstanceSettings {
@@ -41,12 +47,21 @@ impl InstanceSettings {
         let mut settings = Self {
             instance_domain: None,
             instance_name: None,
+            max_deployments_per_app: None,
+            prune_images: None,
         };
 
         for row in rows {
             match row.key.as_str() {
                 "instance_domain" => settings.instance_domain = row.value,
                 "instance_name" => settings.instance_name = row.value,
+                "max_deployments_per_app" => {
+                    settings.max_deployments_per_app =
+                        row.value.as_deref().and_then(|v| v.parse().ok())
+                }
+                "prune_images" => {
+                    settings.prune_images = row.value.as_deref().map(|v| v != "false" && v != "0")
+                }
                 _ => {}
             }
         }
@@ -84,6 +99,34 @@ impl InstanceSettings {
                 "#,
             )
             .bind(if name.is_empty() { None } else { Some(name.as_str()) })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(max) = req.max_deployments_per_app {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('max_deployments_per_app', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(max.to_string())
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(prune) = req.prune_images {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('prune_images', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(if prune { "true" } else { "false" })
             .bind(&now)
             .execute(db)
             .await?;

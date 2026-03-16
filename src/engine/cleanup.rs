@@ -30,6 +30,36 @@ impl DeploymentCleanup {
         }
     }
 
+    /// Read max_deployments_per_app from DB, falling back to config.
+    async fn effective_max_deployments(&self) -> u32 {
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT value FROM instance_settings WHERE key = 'max_deployments_per_app'")
+                .fetch_optional(&self.db)
+                .await
+                .unwrap_or(None);
+
+        if let Some((Some(val),)) = row {
+            if let Ok(n) = val.parse::<u32>() {
+                return n;
+            }
+        }
+        self.config.max_deployments_per_app
+    }
+
+    /// Read prune_images from DB, falling back to config.
+    async fn effective_prune_images(&self) -> bool {
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT value FROM instance_settings WHERE key = 'prune_images'")
+                .fetch_optional(&self.db)
+                .await
+                .unwrap_or(None);
+
+        if let Some((Some(val),)) = row {
+            return val != "false" && val != "0";
+        }
+        self.config.prune_images
+    }
+
     /// Run a single cleanup cycle
     pub async fn run_cleanup(&self) -> Result<CleanupStats> {
         let mut stats = CleanupStats::default();
@@ -39,7 +69,9 @@ impl DeploymentCleanup {
             return Ok(stats);
         }
 
-        tracing::info!("Starting deployment cleanup cycle");
+        let max_deployments = self.effective_max_deployments().await;
+        let prune_images = self.effective_prune_images().await;
+        tracing::info!(max_deployments, prune_images, "Starting deployment cleanup cycle");
 
         // Get all apps
         let apps: Vec<(String, String)> = sqlx::query_as("SELECT id, name FROM apps")
@@ -47,7 +79,7 @@ impl DeploymentCleanup {
             .await?;
 
         for (app_id, app_name) in apps {
-            match self.cleanup_app_deployments(&app_id, &app_name).await {
+            match self.cleanup_app_deployments(&app_id, &app_name, max_deployments).await {
                 Ok(app_stats) => {
                     stats.deployments_removed += app_stats.deployments_removed;
                     stats.containers_removed += app_stats.containers_removed;
@@ -64,7 +96,7 @@ impl DeploymentCleanup {
         }
 
         // Prune unused images if enabled
-        if self.config.prune_images {
+        if prune_images {
             match self.runtime.prune_images().await {
                 Ok(bytes_reclaimed) => {
                     stats.bytes_reclaimed = bytes_reclaimed;
@@ -94,9 +126,9 @@ impl DeploymentCleanup {
     }
 
     /// Cleanup old deployments for a specific app
-    async fn cleanup_app_deployments(&self, app_id: &str, app_name: &str) -> Result<CleanupStats> {
+    async fn cleanup_app_deployments(&self, app_id: &str, app_name: &str, max_deployments: u32) -> Result<CleanupStats> {
         let mut stats = CleanupStats::default();
-        let max_deployments = self.config.max_deployments_per_app as i64;
+        let max_deployments = max_deployments as i64;
 
         // Get deployments ordered by started_at descending, skip the first N (most recent)
         // We only clean up deployments that are not "running" status
