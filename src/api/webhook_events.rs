@@ -81,6 +81,26 @@ pub async fn is_duplicate_delivery(db: &crate::DbPool, delivery_id: &str) -> boo
         > 0
 }
 
+/// Immediately reserve a delivery ID by inserting a placeholder audit row.
+///
+/// This must be called *before* any deployment work is queued so that concurrent
+/// retries from the same GitHub delivery see the row and short-circuit via
+/// `is_duplicate_delivery`. The row may be updated later with full details by
+/// `log_webhook_event`; if the delivery_id already exists the INSERT is silently
+/// ignored (UNIQUE constraint on `delivery_id`).
+pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id: &str) {
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO webhook_events \
+         (id, provider, event_type, apps_triggered, status, delivery_id) \
+         VALUES (?, ?, 'push', 0, 'received', ?)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(provider)
+    .bind(delivery_id)
+    .execute(db)
+    .await;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/webhook-events
 // ---------------------------------------------------------------------------

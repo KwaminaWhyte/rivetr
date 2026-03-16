@@ -849,6 +849,112 @@ pub async fn get_service_generated_vars(
     Ok(Json(response))
 }
 
+/// Get aggregated container resource stats for a running Docker Compose service.
+///
+/// GET /api/services/:id/stats
+///
+/// Iterates all containers in the compose project and sums CPU, memory, and network
+/// stats. Returns zeroed stats (rather than a 404) when the service is stopped so
+/// that the dashboard can poll without getting console errors.
+pub async fn get_service_stats(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::runtime::ContainerStats>, (StatusCode, Json<serde_json::Value>)> {
+    // Fetch the service
+    let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get service: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get service"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Service not found"})),
+            )
+        })?;
+
+    // Return zeroed stats for non-running services
+    if service.get_status() != ServiceStatus::Running {
+        return Ok(Json(crate::runtime::ContainerStats {
+            cpu_percent: 0.0,
+            memory_usage: 0,
+            memory_limit: 0,
+            network_rx: 0,
+            network_tx: 0,
+        }));
+    }
+
+    let project_name = service.compose_project_name();
+
+    // List all containers for this compose project
+    let containers = state
+        .runtime
+        .list_compose_containers(&project_name)
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                "Failed to list compose containers for service {}: {}",
+                service.name,
+                e
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to list containers: {}", e)})),
+            )
+        })?;
+
+    if containers.is_empty() {
+        return Ok(Json(crate::runtime::ContainerStats {
+            cpu_percent: 0.0,
+            memory_usage: 0,
+            memory_limit: 0,
+            network_rx: 0,
+            network_tx: 0,
+        }));
+    }
+
+    // Aggregate stats across all containers
+    let mut total_cpu: f64 = 0.0;
+    let mut total_memory_usage: u64 = 0;
+    let mut total_memory_limit: u64 = 0;
+    let mut total_network_rx: u64 = 0;
+    let mut total_network_tx: u64 = 0;
+
+    for container in &containers {
+        match state.runtime.stats(&container.id).await {
+            Ok(stats) => {
+                total_cpu += stats.cpu_percent;
+                total_memory_usage += stats.memory_usage;
+                total_memory_limit += stats.memory_limit;
+                total_network_rx += stats.network_rx;
+                total_network_tx += stats.network_tx;
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Could not get stats for container {} in service {}: {}",
+                    container.name,
+                    service.name,
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(Json(crate::runtime::ContainerStats {
+        cpu_percent: total_cpu,
+        memory_usage: total_memory_usage,
+        memory_limit: total_memory_limit,
+        network_rx: total_network_rx,
+        network_tx: total_network_tx,
+    }))
+}
+
 /// Preview the final resolved compose YAML for a service without deploying.
 ///
 /// GET /api/services/:id/preview-compose

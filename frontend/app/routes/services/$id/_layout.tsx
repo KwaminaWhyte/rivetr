@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type { Service, ServiceStatus } from "@/types/api";
-import { Play, Square, Circle, Layers, RotateCw } from "lucide-react";
+import { Play, Square, Circle, Layers, RotateCw, Activity } from "lucide-react";
 
 export function meta() {
   return [
@@ -61,6 +61,7 @@ const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
+  { id: "stats", label: "Stats", path: "/stats" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 

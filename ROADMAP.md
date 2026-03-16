@@ -210,7 +210,7 @@ Features required for enterprise adoption and high availability.
 - [x] Server-level resource monitoring (CPU/memory/disk) ✅
 - [x] Deploy apps to specific servers ✅
 - [x] Remote server terminal access ✅
-- [ ] File system browser for remote servers
+- [x] File system browser for remote servers ✅
 
 ### SSO / SAML / OIDC ✅ PARTIAL
 - [x] OpenID Connect (OIDC) provider integration ✅
@@ -255,8 +255,12 @@ Features required for enterprise adoption and high availability.
 
 ---
 
-## Recent Bug Fixes (v0.10.7)
+## Recent Bug Fixes (Unreleased)
 
+- **Stale `container_id` on destroyed database container** ✅ — Engine now detects when a database's recorded container no longer exists, clears the stale ID, resets status to `stopped`, and provisions a fresh container instead of getting stuck in `starting`
+- **Reconciliation queries break on new migrations** ✅ — `reconcile_databases` / `reconcile_services` now use `SELECT *` to avoid `no column found` errors when new columns are added
+- **5-field cron expressions for scheduled restarts** ✅ — Standard Unix cron strings (5 fields) now normalized to 6-field format required by the cron crate
+- **Deployment cleanup settings configurable from UI** ✅ — `max_deployments_per_app` and `prune_images` settable from Settings page without editing `rivetr.toml`
 - **MySQL/MariaDB user provisioning on reused data directories** ✅ — Rivetr now idempotently creates the app user via Unix socket after every container start, preventing SQLSTATE[1130] when a bind-mount data directory was pre-initialized
 - **New subdomain SSL coverage** ✅ — Hot-reloadable TLS cert (`TlsReloadHandle`) + renewal manager DB queries for new subdomains; cert reissued immediately when new apps are deployed, no restart needed
 - **Orphaned restart containers** ✅ — Startup reconciliation removes all `rivetr-*-restart-*` containers not associated with an active deployment
@@ -272,8 +276,8 @@ Features required for enterprise adoption and high availability.
 - **Terraform Provider** - Infrastructure-as-code integration
 - **SAML 2.0** - Enterprise SSO via SAML assertions
 - **Remote Build Execution** - Full SSH-based remote build pipeline
-- **File System Browser** - Remote server file browsing
-- **Community Templates** ✅ Foundation implemented (suggestions table + approval flow)
+- **File System Browser** ✅ Implemented (browse/read/write/delete files on remote servers over SSH)
+- **Community Templates** ✅ Implemented (submit, review, approve/reject, auto-promote to registry)
 
 ---
 

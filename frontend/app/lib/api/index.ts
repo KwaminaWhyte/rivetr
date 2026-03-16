@@ -258,6 +258,7 @@ export const api = {
   startService: servicesApi.startService,
   stopService: servicesApi.stopService,
   restartService: servicesApi.restartService,
+  getServiceStats: servicesApi.getServiceStats,
   getServiceLogs: servicesApi.getServiceLogs,
   getServiceLogsStreamUrl: servicesApi.getServiceLogsStreamUrl,
 

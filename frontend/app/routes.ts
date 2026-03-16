@@ -72,6 +72,7 @@ export default [
       index("routes/services/$id/_index.tsx"),
       route("network", "routes/services/$id/network.tsx"),
       route("logs", "routes/services/$id/logs.tsx"),
+      route("stats", "routes/services/$id/stats.tsx"),
       route("settings", "routes/services/$id/settings.tsx"),
     ]),
 

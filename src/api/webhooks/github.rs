@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use super::{
     collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, is_duplicate_delivery,
-    log_wh_event, should_deploy_for_changed_files, verify_github_signature, ChangedFiles,
+    log_wh_event, record_delivery_id, should_deploy_for_changed_files, verify_github_signature,
+    ChangedFiles,
 };
 use crate::crypto;
 use crate::db::{App, PreviewDeployment};
@@ -28,8 +29,10 @@ use crate::AppState;
 pub struct GitHubPushEvent {
     #[serde(rename = "ref")]
     pub git_ref: String,
-    #[allow(dead_code)]
     pub after: String,
+    /// True when a branch is deleted (GitHub sets `after` to all zeros).
+    #[serde(default)]
+    pub deleted: bool,
     pub repository: GitHubRepository,
     pub head_commit: Option<GitHubHeadCommit>,
     #[serde(default)]
@@ -132,12 +135,18 @@ pub async fn github_webhook(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_owned());
 
-    // Deduplicate: if we've already processed this exact delivery, return 200 immediately.
+    // Deduplicate: claim the delivery ID *before* any processing. record_delivery_id inserts it
+    // into webhook_events immediately; if the row already exists (duplicate or concurrent retry)
+    // it returns false and we short-circuit. Doing this early (before the per-app deployment
+    // inserts) closes the race window where two concurrent requests both passed the old read-only
+    // is_duplicate_delivery check before either had written its audit row.
     if let Some(ref did) = delivery_id {
         if is_duplicate_delivery(&state.db, did).await {
             tracing::info!("GitHub webhook duplicate delivery {} — skipping", did);
             return Ok(StatusCode::OK);
         }
+        // Reserve the delivery ID now so any parallel retry is rejected immediately.
+        record_delivery_id(&state.db, "github", did).await;
     }
 
     if let Some(ref secret) = state.config.webhooks.github_secret {
@@ -185,10 +194,27 @@ async fn handle_github_push(
         StatusCode::BAD_REQUEST
     })?;
 
-    let branch = payload
-        .git_ref
-        .strip_prefix("refs/heads/")
-        .unwrap_or(&payload.git_ref);
+    // Ignore branch/tag deletion events — `deleted: true` or an all-zeros `after` SHA both
+    // signal that a ref was removed, not that new code was pushed.
+    if payload.deleted || payload.after.chars().all(|c| c == '0') {
+        tracing::debug!(
+            "GitHub push webhook is a deletion event for {} — ignoring",
+            payload.git_ref
+        );
+        return Ok(StatusCode::OK);
+    }
+
+    // Only handle branch pushes — ignore tag refs (refs/tags/...).
+    let branch = match payload.git_ref.strip_prefix("refs/heads/") {
+        Some(b) => b,
+        None => {
+            tracing::debug!(
+                "GitHub push webhook ref '{}' is not a branch — ignoring",
+                payload.git_ref
+            );
+            return Ok(StatusCode::OK);
+        }
+    };
 
     tracing::info!(
         "GitHub push webhook received: {} branch {}",
@@ -237,10 +263,36 @@ async fn handle_github_push(
             continue;
         }
 
-        let deployment_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
         let commit_sha = payload.head_commit.as_ref().map(|c| c.id.clone());
         let commit_message = payload.head_commit.as_ref().map(|c| c.message.clone());
+
+        // Per-app idempotency: skip if an active (pending/running) deployment for this
+        // app+commit already exists. This catches any duplicates that slip past the
+        // delivery-ID guard (e.g. when no delivery ID is present, or GitHub sends a
+        // `push` and a `create` event for the same ref).
+        if let Some(ref sha) = commit_sha {
+            let active: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM deployments \
+                 WHERE app_id = ? AND commit_sha = ? AND status IN ('pending', 'running')",
+            )
+            .bind(&app.id)
+            .bind(sha)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+
+            if active > 0 {
+                tracing::info!(
+                    app = %app.name,
+                    commit_sha = %sha,
+                    "Skipping duplicate deployment — active deployment for same commit already exists"
+                );
+                continue;
+            }
+        }
+
+        let deployment_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
 
         sqlx::query(
             r#"

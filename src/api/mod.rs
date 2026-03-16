@@ -659,6 +659,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/:id/start", post(services::start_service))
         .route("/services/:id/stop", post(services::stop_service))
         .route("/services/:id/restart", post(services::restart_service))
+        .route("/services/:id/stats", get(services::get_service_stats))
         .route("/services/:id/logs", get(services::get_service_logs))
         .route(
             "/services/:id/logs/stream",

@@ -6,6 +6,7 @@
 import { apiRequest, getStoredToken } from "./core";
 import type {
   Service,
+  ContainerStats,
   CreateServiceRequest,
   UpdateServiceRequest,
   ServiceLogEntry,
@@ -102,6 +103,10 @@ export const servicesApi = {
       },
       token
     ),
+
+  /** Get aggregated resource stats (CPU, RAM, network) for a service's containers */
+  getServiceStats: (id: string, token?: string) =>
+    apiRequest<ContainerStats>(`/services/${id}/stats`, {}, token),
 
   /** Get service logs */
   getServiceLogs: (id: string, lines = 100, token?: string) =>

@@ -8,8 +8,8 @@ mod import_db;
 
 // Re-export everything callers need
 pub use control::{
-    get_service_generated_vars, get_service_logs, preview_compose, restart_service, start_service,
-    stop_service, stream_service_logs,
+    get_service_generated_vars, get_service_logs, get_service_stats, preview_compose,
+    restart_service, start_service, stop_service, stream_service_logs,
 };
 pub use crud::{
     check_port, create_service, delete_service, get_service, list_services, update_service,
