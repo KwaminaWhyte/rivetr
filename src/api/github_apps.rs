@@ -696,6 +696,78 @@ pub async fn list_installation_repos(
     Ok(Json(repos))
 }
 
+/// POST /api/github-apps/:id/sync-webhook - Update the GitHub App's webhook URL on GitHub
+///
+/// Useful when the instance domain changes or HTTPS is enabled after app creation.
+/// Uses the app's JWT to call PATCH /app on the GitHub API.
+pub async fn sync_webhook_url(
+    State(state): State<Arc<AppState>>,
+    Path(app_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
+
+    // Build the correct webhook URL using the current external_url
+    let api_host = state.config.server.external_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.config.server.host, state.config.server.api_port
+        )
+    });
+    let new_webhook_url = format!("{}/webhooks/github", api_host);
+
+    // Decrypt the private key
+    let encryption_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|k| crypto::derive_key(k));
+    let private_key = crypto::decrypt_if_encrypted(&app.private_key, encryption_key.as_ref())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Generate an app JWT (not installation token — this is an app-level operation)
+    let jwt = crate::github::token_manager::generate_app_jwt(app.app_id, &private_key)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to generate app JWT: {}", e)))?;
+
+    // Call PATCH /app/hook/config to update the webhook URL
+    // See: https://docs.github.com/en/rest/apps/webhooks#update-a-webhook-configuration-for-a-github-app
+    let client = reqwest::Client::new();
+    let patch_body = serde_json::json!({
+        "url": new_webhook_url,
+        "content_type": "json",
+        "insecure_ssl": "0"
+    });
+    let response = client
+        .patch("https://api.github.com/app/hook/config")
+        .header("Authorization", format!("Bearer {}", jwt))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Rivetr")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to reach GitHub API: {}", e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("GitHub API error: {} - {}", status, body),
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "webhook_url": new_webhook_url,
+        "message": "Webhook URL updated successfully on GitHub"
+    })))
+}
+
 // Helper types
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -356,7 +356,12 @@ export default function AppDetailPage() {
 
       <WatchPathsCard app={app} />
 
-      {runningDeployment && <ResourceMonitor appId={app.id} />}
+      {runningDeployment && (
+        <ResourceMonitor
+          appId={app.id}
+          cpuLimit={app.cpu_limit ? parseFloat(app.cpu_limit) : undefined}
+        />
+      )}
 
       <EnvVarsTab appId={app.id} />
 

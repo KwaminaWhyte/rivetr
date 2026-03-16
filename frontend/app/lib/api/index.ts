@@ -225,6 +225,7 @@ export const api = {
   getGitHubAppRepositories: gitApi.getGitHubAppRepositories,
   getGitHubAppRepoBranches: gitApi.getGitHubAppRepoBranches,
   getGitHubAppInstallUrl: gitApi.getGitHubAppInstallUrl,
+  syncGitHubAppWebhook: gitApi.syncGitHubAppWebhook,
 
   // Databases
   getDatabases: databasesApi.getDatabases,

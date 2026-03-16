@@ -14,6 +14,8 @@ interface ResourceMonitorProps {
   token?: string;
   /** Polling interval in milliseconds (default: 5000) */
   pollInterval?: number;
+  /** CPU limit in cores (e.g. 0.25, 1.0). When provided, CPU% is shown relative to this limit */
+  cpuLimit?: number;
 }
 
 // Format bytes to human-readable string
@@ -149,7 +151,7 @@ const NetworkIcon = () => (
   </svg>
 );
 
-export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 }: ResourceMonitorProps) {
+export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000, cpuLimit }: ResourceMonitorProps) {
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [memoryHistory, setMemoryHistory] = useState<number[]>([]);
 
@@ -173,16 +175,22 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 
     staleTime: pollInterval - 1000,
   });
 
+  // Normalize CPU% against allocated limit when provided.
+  // Docker reports cpu_percent as % of one full core (e.g. using 0.25 cores = 25%).
+  // Dividing by cpu_limit gives % of the allocated quota (0.25-core limit at 25% usage = 100%).
+  const normalizeCpu = (raw: number) =>
+    cpuLimit && cpuLimit > 0 ? Math.min(raw / cpuLimit, 100) : raw;
+
   // Update history when stats change
   useEffect(() => {
     if (stats) {
-      setCpuHistory((prev) => [...prev.slice(-19), stats.cpu_percent]);
+      setCpuHistory((prev) => [...prev.slice(-19), normalizeCpu(stats.cpu_percent)]);
 
       const memoryPercent =
         stats.memory_limit > 0 ? (stats.memory_usage / stats.memory_limit) * 100 : 0;
       setMemoryHistory((prev) => [...prev.slice(-19), memoryPercent]);
     }
-  }, [stats]);
+  }, [stats, cpuLimit]);
 
   if (isLoading && !stats) {
     return (
@@ -221,6 +229,9 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 
   const memoryPercent =
     stats.memory_limit > 0 ? (stats.memory_usage / stats.memory_limit) * 100 : 0;
 
+  const cpuDisplayPct = normalizeCpu(stats.cpu_percent);
+  const cpuLabel = cpuLimit ? `CPU (of ${cpuLimit} core${cpuLimit !== 1 ? "s" : ""} limit)` : "CPU";
+
   return (
     <Card>
       <CardHeader>
@@ -237,15 +248,15 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000 
           <div className="space-y-3">
             <StatDisplay
               label="CPU Usage"
-              value={formatPercent(stats.cpu_percent)}
+              value={formatPercent(cpuDisplayPct)}
               icon={<CpuIcon />}
               history={cpuHistory}
-              historyColor={stats.cpu_percent > 80 ? "#ef4444" : "#3b82f6"}
+              historyColor={cpuDisplayPct > 80 ? "#ef4444" : "#3b82f6"}
             />
             <ProgressBar
-              value={stats.cpu_percent}
+              value={cpuDisplayPct}
               max={100}
-              label="CPU"
+              label={cpuLabel}
               color="bg-blue-500"
             />
           </div>

@@ -165,4 +165,11 @@ export const gitApi = {
       {},
       token
     ),
+
+  syncGitHubAppWebhook: (appId: string, token?: string) =>
+    apiRequest<{ webhook_url: string; message: string }>(
+      `/github-apps/${appId}/sync-webhook`,
+      { method: "POST" },
+      token
+    ),
 };

@@ -134,7 +134,13 @@ export default function AppGeneralTab() {
 
       <ResourceLimitsCard app={app} token={token} />
 
-      {runningDeployment && <ResourceMonitor appId={app.id} token={token} />}
+      {runningDeployment && (
+        <ResourceMonitor
+          appId={app.id}
+          token={token}
+          cpuLimit={app.cpu_limit ? parseFloat(app.cpu_limit) : undefined}
+        />
+      )}
 
       {/* Activity / Restart history */}
       <Card>

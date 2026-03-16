@@ -177,6 +177,15 @@ function GitHubAppsTab() {
     }
   };
 
+  const handleSyncWebhook = async (app: GitHubApp) => {
+    try {
+      const result = await api.syncGitHubAppWebhook(app.id);
+      toast.success(`Webhook URL synced: ${result.webhook_url}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to sync webhook URL");
+    }
+  };
+
   const newlyRegisteredApp = apps.find(app => app.id === appId);
 
   return (
@@ -315,6 +324,12 @@ function GitHubAppsTab() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => { e.stopPropagation(); handleSyncWebhook(app); }}
+                            >
+                              <Webhook className="h-4 w-4 mr-2" />
+                              Sync Webhook URL
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => { e.stopPropagation(); setDeleteId(app.id); }}
                               className="text-destructive"

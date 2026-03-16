@@ -14,8 +14,108 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GitHubSourceCard } from "@/components/github-source-card";
+import { Zap, Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
+
+function getWebhookProvider(gitUrl: string): string {
+  if (gitUrl.includes("github.com")) return "github";
+  if (gitUrl.includes("gitlab.com") || gitUrl.includes("gitlab.")) return "gitlab";
+  if (gitUrl.includes("bitbucket.org")) return "bitbucket";
+  if (gitUrl.includes("gitea.")) return "gitea";
+  return "github";
+}
+
+function WebhookSetupCard({ app }: { app: App }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!app.git_url) return null;
+
+  const provider = getWebhookProvider(app.git_url);
+  const webhookUrl = `${window.location.origin}/api/webhooks/${provider}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const instructions: Record<string, { steps: string[]; label: string }> = {
+    github: {
+      label: "GitHub",
+      steps: [
+        "Go to your repository → Settings → Webhooks → Add webhook",
+        'Set the Payload URL to the value above',
+        'Set Content type to application/json',
+        'Select "Just the push event"',
+        "Click Add webhook",
+      ],
+    },
+    gitlab: {
+      label: "GitLab",
+      steps: [
+        "Go to your repository → Settings → Webhooks",
+        "Paste the URL above as the URL",
+        'Check "Push events"',
+        "Click Add webhook",
+      ],
+    },
+    bitbucket: {
+      label: "Bitbucket",
+      steps: [
+        "Go to your repository → Repository settings → Webhooks → Add webhook",
+        "Paste the URL above",
+        'Check "Repository: Push"',
+        "Click Save",
+      ],
+    },
+    gitea: {
+      label: "Gitea",
+      steps: [
+        "Go to your repository → Settings → Webhooks → Add Webhook → Gitea",
+        "Paste the URL above as the Target URL",
+        'Set Content type to application/json',
+        'Select "Push events"',
+        "Click Add Webhook",
+      ],
+    },
+  };
+
+  const { label, steps } = instructions[provider] ?? instructions.github;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Zap className="h-5 w-5" />
+          Auto-Deploy Setup
+        </CardTitle>
+        <CardDescription>
+          Add this webhook URL to your {label} repository to enable automatic deployments on every push.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label>Webhook URL</Label>
+          <div className="flex gap-2">
+            <Input value={webhookUrl} readOnly className="font-mono text-sm bg-muted" />
+            <Button variant="outline" size="icon" onClick={handleCopy} title="Copy webhook URL">
+              {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+        <div className="rounded-md border bg-muted/40 p-4 text-sm space-y-2">
+          <p className="font-medium">{label} setup:</p>
+          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+            {steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 const ENVIRONMENT_OPTIONS: { value: AppEnvironment; label: string }[] = [
   { value: "development", label: "Development" },
@@ -70,6 +170,7 @@ export default function AppSettingsGeneral() {
   return (
     <div className="space-y-6">
       <GitHubSourceCard app={app} />
+      <WebhookSetupCard app={app} />
       <Card>
         <CardHeader>
           <CardTitle>General Settings</CardTitle>

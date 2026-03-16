@@ -124,11 +124,15 @@ impl ProxyHandler {
             return Ok(response);
         }
 
-        // Redirect HTTP → HTTPS only if configured AND TLS cert is actually available
-        let redirect_active = self.https_redirect_enabled
-            .as_ref()
-            .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false);
+        // Redirect HTTP → HTTPS only if configured AND TLS cert is actually available.
+        // Never redirect webhook paths — webhook providers (GitHub, GitLab, etc.) do NOT
+        // follow HTTP redirects, so the delivery would silently fail.
+        let is_webhook_path = path.starts_with("/webhooks/");
+        let redirect_active = !is_webhook_path
+            && self.https_redirect_enabled
+                .as_ref()
+                .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+                .unwrap_or(false);
         if redirect_active {
         if let Some(https_port) = self.https_redirect_port {
             let host_header = req

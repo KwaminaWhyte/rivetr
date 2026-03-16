@@ -874,6 +874,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/github-apps/:id/installations/:iid/repos",
             get(github_apps::list_installation_repos),
         )
+        .route(
+            "/github-apps/:id/sync-webhook",
+            post(github_apps::sync_webhook_url),
+        )
         // Container Replicas
         .route("/apps/:id/replicas", get(replicas::list_replicas))
         .route("/apps/:id/replicas/count", put(replicas::set_replica_count))
