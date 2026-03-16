@@ -627,7 +627,22 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             .execute(&state.db)
             .await?;
 
-            state.runtime.start(existing_container_id).await?;
+            if let Err(e) = state.runtime.start(existing_container_id).await {
+                tracing::warn!(
+                    "Failed to start existing container {}, will create a new one: {}",
+                    existing_container_id,
+                    e
+                );
+                // Clear the stale container_id so we fall through to create a new container
+                sqlx::query(
+                    "UPDATE databases SET container_id = NULL, status = ?, updated_at = datetime('now') WHERE id = ?",
+                )
+                .bind(DatabaseStatus::Stopped.to_string())
+                .bind(id)
+                .execute(&state.db)
+                .await?;
+                // Fall through to create a new container below
+            } else {
 
             // For MySQL/MariaDB: ensure the app user exists even if the data directory
             // was pre-initialized (Docker only creates MYSQL_USER on first boot).
@@ -672,6 +687,7 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             );
 
             return Ok(());
+            } // end else (start succeeded)
         }
     }
 
