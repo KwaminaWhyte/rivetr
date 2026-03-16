@@ -2,8 +2,6 @@ pub mod api;
 pub mod backup;
 pub mod cli;
 pub mod config;
-#[cfg(feature = "tui")]
-pub mod tui;
 pub mod crypto;
 pub mod db;
 pub mod engine;
@@ -15,6 +13,8 @@ pub mod notifications;
 pub mod proxy;
 pub mod runtime;
 pub mod startup;
+#[cfg(feature = "tui")]
+pub mod tui;
 pub mod ui;
 pub mod utils;
 

@@ -217,7 +217,10 @@ impl DatabaseBackupTask {
                     .await
             }
             "mysql" => self.backup_mysql(container_id, &creds, &backup_path).await,
-            "mariadb" => self.backup_mariadb(container_id, &creds, &backup_path).await,
+            "mariadb" => {
+                self.backup_mariadb(container_id, &creds, &backup_path)
+                    .await
+            }
             "mongodb" => {
                 self.backup_mongodb(container_id, &creds, &backup_path)
                     .await

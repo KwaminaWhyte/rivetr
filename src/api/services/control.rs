@@ -14,7 +14,9 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::db::{actions, resource_types, Service, ServiceGeneratedVar, ServiceResponse, ServiceStatus, User};
+use crate::db::{
+    actions, resource_types, Service, ServiceGeneratedVar, ServiceResponse, ServiceStatus, User,
+};
 use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
@@ -90,7 +92,11 @@ pub async fn start_service(
     {
         Ok(content) => content,
         Err(e) => {
-            tracing::error!("Failed to substitute magic vars in compose for service {}: {}", service.name, e);
+            tracing::error!(
+                "Failed to substitute magic vars in compose for service {}: {}",
+                service.name,
+                e
+            );
             // Update status to failed with error message
             let _ = sqlx::query(
                 "UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
@@ -356,7 +362,11 @@ pub async fn restart_service(
     {
         Ok(content) => content,
         Err(e) => {
-            tracing::error!("Failed to substitute magic vars in compose for service {}: {}", service.name, e);
+            tracing::error!(
+                "Failed to substitute magic vars in compose for service {}: {}",
+                service.name,
+                e
+            );
             let _ = sqlx::query(
                 "UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
             )
@@ -820,18 +830,19 @@ pub async fn get_service_generated_vars(
         ));
     }
 
-    let rows: Vec<ServiceGeneratedVar> =
-        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ? ORDER BY key ASC")
-            .bind(&id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch generated vars: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "Failed to fetch generated vars"})),
-                )
-            })?;
+    let rows: Vec<ServiceGeneratedVar> = sqlx::query_as(
+        "SELECT * FROM service_generated_vars WHERE service_id = ? ORDER BY key ASC",
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch generated vars: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to fetch generated vars"})),
+        )
+    })?;
 
     let response: Vec<crate::db::ServiceGeneratedVarResponse> =
         rows.into_iter().map(Into::into).collect();

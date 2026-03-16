@@ -391,14 +391,16 @@ impl DeploymentEngine {
                                     old_containers = ?auto_rollback.old_container_ids,
                                     "Stopping old containers after auto-rollback proxy route swap (zero-downtime)"
                                 );
-                                if let Ok(Some(rb_deployment)) = sqlx::query_as::<_, crate::db::Deployment>(
-                                    "SELECT * FROM deployments WHERE id = ?",
-                                )
-                                .bind(&auto_rollback.rollback_deployment_id)
-                                .fetch_optional(&db)
-                                .await
+                                if let Ok(Some(rb_deployment)) =
+                                    sqlx::query_as::<_, crate::db::Deployment>(
+                                        "SELECT * FROM deployments WHERE id = ?",
+                                    )
+                                    .bind(&auto_rollback.rollback_deployment_id)
+                                    .fetch_optional(&db)
+                                    .await
                                 {
-                                    let new_container_id = rb_deployment.container_id.unwrap_or_default();
+                                    let new_container_id =
+                                        rb_deployment.container_id.unwrap_or_default();
                                     for old_id in &auto_rollback.old_container_ids {
                                         if old_id == &new_container_id {
                                             continue;
@@ -444,14 +446,13 @@ impl DeploymentEngine {
                         } else {
                             // Regular failure - no auto-rollback
                             // Check if the deployment was cancelled — if so, preserve that status
-                            let current_status: Option<String> = sqlx::query_scalar(
-                                "SELECT status FROM deployments WHERE id = ?",
-                            )
-                            .bind(&deployment_id)
-                            .fetch_optional(&db)
-                            .await
-                            .ok()
-                            .flatten();
+                            let current_status: Option<String> =
+                                sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
+                                    .bind(&deployment_id)
+                                    .fetch_optional(&db)
+                                    .await
+                                    .ok()
+                                    .flatten();
 
                             if current_status.as_deref() == Some("cancelled") {
                                 tracing::info!(
@@ -459,49 +460,51 @@ impl DeploymentEngine {
                                     deployment_id
                                 );
                             } else {
-                            record_deployment_failed();
-                            let duration_secs = deploy_start.elapsed().as_secs_f64();
-                            increment_deployments_total(&app.name, "failed");
-                            observe_deployment_duration(&app.name, duration_secs);
+                                record_deployment_failed();
+                                let duration_secs = deploy_start.elapsed().as_secs_f64();
+                                increment_deployments_total(&app.name, "failed");
+                                observe_deployment_duration(&app.name, duration_secs);
 
-                            tracing::error!("Deployment {} failed: {}", deployment_id, e);
-                            let _ = update_deployment_status(
-                                &db,
-                                &deployment_id,
-                                "failed",
-                                Some(&e.to_string()),
-                            )
-                            .await;
+                                tracing::error!("Deployment {} failed: {}", deployment_id, e);
+                                let _ = update_deployment_status(
+                                    &db,
+                                    &deployment_id,
+                                    "failed",
+                                    Some(&e.to_string()),
+                                )
+                                .await;
 
-                            // If the old container was renamed to "rivetr-<app>-prev" for the
-                            // zero-downtime swap, rename it back now so it remains discoverable
-                            // by its canonical name and restart logic works correctly.
-                            let prev_name = format!("rivetr-{}-prev", app.name);
-                            let canonical_name = format!("rivetr-{}", app.name);
-                            if let Ok(_) = runtime.inspect(&prev_name).await {
-                                if let Err(e) = runtime.rename_container(&prev_name, &canonical_name).await {
-                                    tracing::warn!(
-                                        error = %e,
-                                        "Failed to rename old container back after deployment failure"
-                                    );
+                                // If the old container was renamed to "rivetr-<app>-prev" for the
+                                // zero-downtime swap, rename it back now so it remains discoverable
+                                // by its canonical name and restart logic works correctly.
+                                let prev_name = format!("rivetr-{}-prev", app.name);
+                                let canonical_name = format!("rivetr-{}", app.name);
+                                if runtime.inspect(&prev_name).await.is_ok() {
+                                    if let Err(e) =
+                                        runtime.rename_container(&prev_name, &canonical_name).await
+                                    {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "Failed to rename old container back after deployment failure"
+                                        );
+                                    }
                                 }
-                            }
 
-                            // Send deployment_failed notification
-                            let failed_payload = NotificationPayload::deployment_event(
-                                NotificationEventType::DeploymentFailed,
-                                app.id.clone(),
-                                app.name.clone(),
-                                deployment_id.clone(),
-                                "failed".to_string(),
-                                format!("Deployment failed for {}", app.name),
-                                Some(e.to_string()),
-                            );
-                            if let Err(notify_err) =
-                                notification_service.send(&failed_payload).await
-                            {
-                                tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
-                            }
+                                // Send deployment_failed notification
+                                let failed_payload = NotificationPayload::deployment_event(
+                                    NotificationEventType::DeploymentFailed,
+                                    app.id.clone(),
+                                    app.name.clone(),
+                                    deployment_id.clone(),
+                                    "failed".to_string(),
+                                    format!("Deployment failed for {}", app.name),
+                                    Some(e.to_string()),
+                                );
+                                if let Err(notify_err) =
+                                    notification_service.send(&failed_payload).await
+                                {
+                                    tracing::warn!(error = %notify_err, "Failed to send deployment_failed notification");
+                                }
                             } // end else (not cancelled)
                         }
                     }

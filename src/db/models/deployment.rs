@@ -86,6 +86,9 @@ pub struct Deployment {
     /// Timestamp when the deployment was cancelled (if applicable)
     #[sqlx(default)]
     pub cancelled_at: Option<String>,
+    /// How the deployment was initiated: 'manual', 'webhook', 'rollback', 'restart', 'scheduled'
+    #[sqlx(default)]
+    pub trigger: Option<String>,
 }
 
 impl Deployment {

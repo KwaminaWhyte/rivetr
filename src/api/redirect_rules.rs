@@ -95,12 +95,11 @@ pub async fn create_redirect_rule(
         ApiError::database("Failed to create redirect rule")
     })?;
 
-    let rule = sqlx::query_as::<_, AppRedirectRule>(
-        "SELECT * FROM app_redirect_rules WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await?;
+    let rule =
+        sqlx::query_as::<_, AppRedirectRule>("SELECT * FROM app_redirect_rules WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await?;
 
     // Refresh proxy routes for this app
     refresh_proxy_routes(&state, &app_id).await;
@@ -173,12 +172,11 @@ pub async fn update_redirect_rule(
         ApiError::database("Failed to update redirect rule")
     })?;
 
-    let updated = sqlx::query_as::<_, AppRedirectRule>(
-        "SELECT * FROM app_redirect_rules WHERE id = ?",
-    )
-    .bind(&rule_id)
-    .fetch_one(&state.db)
-    .await?;
+    let updated =
+        sqlx::query_as::<_, AppRedirectRule>("SELECT * FROM app_redirect_rules WHERE id = ?")
+            .bind(&rule_id)
+            .fetch_one(&state.db)
+            .await?;
 
     // Refresh proxy routes for this app
     refresh_proxy_routes(&state, &app_id).await;
@@ -198,13 +196,11 @@ pub async fn delete_redirect_rule(
         return Err(ApiError::validation_field("rule_id", e));
     }
 
-    let result = sqlx::query(
-        "DELETE FROM app_redirect_rules WHERE id = ? AND app_id = ?",
-    )
-    .bind(&rule_id)
-    .bind(&app_id)
-    .execute(&state.db)
-    .await?;
+    let result = sqlx::query("DELETE FROM app_redirect_rules WHERE id = ? AND app_id = ?")
+        .bind(&rule_id)
+        .bind(&app_id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Redirect rule not found"));
@@ -227,10 +223,7 @@ fn validate_regex(pattern: &str) -> Result<(), ApiError> {
         ));
     }
     Regex::new(pattern).map_err(|e| {
-        ApiError::validation_field(
-            "source_pattern",
-            format!("Invalid regex pattern: {}", e),
-        )
+        ApiError::validation_field("source_pattern", format!("Invalid regex pattern: {}", e))
     })?;
     Ok(())
 }
@@ -265,16 +258,14 @@ async fn refresh_proxy_routes(state: &Arc<AppState>, app_id: &str) {
 
     // Fetch the app's domain info to find which routes to update
     let app_info: Option<(
-        Option<String>,  // domain
-        Option<String>,  // domains (JSON)
-        Option<String>,  // auto_subdomain
-    )> = sqlx::query_as(
-        "SELECT domain, domains, auto_subdomain FROM apps WHERE id = ?",
-    )
-    .bind(app_id)
-    .fetch_optional(&state.db)
-    .await
-    .unwrap_or(None);
+        Option<String>, // domain
+        Option<String>, // domains (JSON)
+        Option<String>, // auto_subdomain
+    )> = sqlx::query_as("SELECT domain, domains, auto_subdomain FROM apps WHERE id = ?")
+        .bind(app_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
 
     let (legacy_domain, domains_json, auto_subdomain) = match app_info {
         Some(t) => t,

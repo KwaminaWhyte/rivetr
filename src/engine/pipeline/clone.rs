@@ -133,21 +133,19 @@ pub(super) async fn get_authenticated_url(
 
     // Check for GitHub App installation first (takes precedence over OAuth)
     if let Some(ref installation_id_str) = app.github_app_installation_id {
-        let installation =
-            sqlx::query_as::<_, GitHubAppInstallation>(
-                "SELECT * FROM github_app_installations WHERE id = ?",
-            )
-            .bind(installation_id_str)
-            .fetch_optional(db)
-            .await?;
+        let installation = sqlx::query_as::<_, GitHubAppInstallation>(
+            "SELECT * FROM github_app_installations WHERE id = ?",
+        )
+        .bind(installation_id_str)
+        .fetch_optional(db)
+        .await?;
 
         if let Some(installation) = installation {
-            let github_app = sqlx::query_as::<_, GitHubApp>(
-                "SELECT * FROM github_apps WHERE id = ?",
-            )
-            .bind(&installation.github_app_id)
-            .fetch_optional(db)
-            .await?;
+            let github_app =
+                sqlx::query_as::<_, GitHubApp>("SELECT * FROM github_apps WHERE id = ?")
+                    .bind(&installation.github_app_id)
+                    .fetch_optional(db)
+                    .await?;
 
             if let Some(github_app) = github_app {
                 let private_key =

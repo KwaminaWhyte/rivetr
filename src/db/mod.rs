@@ -752,7 +752,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_team_env_vars_table.is_none() {
-        execute_sql(pool, include_str!("../../migrations/051_shared_env_vars.sql")).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/051_shared_env_vars.sql"),
+        )
+        .await?;
     }
 
     // Migration 052: Add multi-server support (servers and app_server_assignments tables)
@@ -790,7 +794,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .fetch_optional(pool)
             .await?;
     if has_replica_count.is_none() {
-        execute_sql(pool, include_str!("../../migrations/054_container_replicas.sql")).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/054_container_replicas.sql"),
+        )
+        .await?;
     }
 
     // Migration 055: Add backup_schedules table for scheduled backups
@@ -800,7 +808,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_backup_schedules_table.is_none() {
-        execute_sql(pool, include_str!("../../migrations/055_scheduled_backups.sql")).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/055_scheduled_backups.sql"),
+        )
+        .await?;
     }
 
     // Migration 056: Add require_2fa column to teams for 2FA enforcement
@@ -809,7 +821,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             .fetch_optional(pool)
             .await?;
     if has_require_2fa.is_none() {
-        execute_sql(pool, include_str!("../../migrations/056_2fa_enforcement.sql")).await?;
+        execute_sql(
+            pool,
+            include_str!("../../migrations/056_2fa_enforcement.sql"),
+        )
+        .await?;
     }
 
     // Migration 057: Add service_dependencies table for dependency graph visualization
@@ -934,11 +950,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 068: Add domain and port to services
-    let has_service_domain: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('services') WHERE name = 'domain'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_service_domain: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('services') WHERE name = 'domain'")
+            .fetch_optional(pool)
+            .await?;
     if has_service_domain.is_none() {
         execute_sql(
             pool,
@@ -948,11 +963,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 069: Add SSH password to servers and build_servers
-    let has_server_password: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('servers') WHERE name = 'ssh_password'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_server_password: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('servers') WHERE name = 'ssh_password'")
+            .fetch_optional(pool)
+            .await?;
     if has_server_password.is_none() {
         execute_sql(
             pool,
@@ -962,17 +976,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 070: API tokens table
-    let has_api_tokens: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='api_tokens'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_api_tokens: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='api_tokens'")
+            .fetch_optional(pool)
+            .await?;
     if has_api_tokens.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/070_api_tokens.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/070_api_tokens.sql")).await?;
     }
 
     // Migration 071: Instance settings table (key-value store for instance domain/name)
@@ -1027,11 +1036,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     .fetch_optional(pool)
     .await?;
     if has_ssl_enabled.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/074_database_ssl.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/074_database_ssl.sql")).await?;
     }
 
     // Migration 075: Add extra_config column to oauth_providers
@@ -1049,11 +1054,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 076: Add restart_policy column to apps
-    let has_restart_policy: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'restart_policy'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_restart_policy: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'restart_policy'")
+            .fetch_optional(pool)
+            .await?;
     if has_restart_policy.is_none() {
         execute_sql(
             pool,
@@ -1063,11 +1067,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 077: Add custom Docker run options per app
-    let has_privileged: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'privileged'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_privileged: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'privileged'")
+            .fetch_optional(pool)
+            .await?;
     if has_privileged.is_none() {
         execute_sql(
             pool,
@@ -1077,17 +1080,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 078: Add build_secrets column to apps
-    let has_build_secrets: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'build_secrets'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_build_secrets: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'build_secrets'")
+            .fetch_optional(pool)
+            .await?;
     if has_build_secrets.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/078_build_secrets.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/078_build_secrets.sql")).await?;
     }
 
     // Migration 079: Add isolated_network column to services
@@ -1105,11 +1103,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 080: Add build_platforms column to apps
-    let has_build_platforms: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'build_platforms'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_build_platforms: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'build_platforms'")
+            .fetch_optional(pool)
+            .await?;
     if has_build_platforms.is_none() {
         execute_sql(
             pool,
@@ -1119,17 +1116,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 081: App deployment patches (file injection before build)
-    let has_app_patches: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='app_patches'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_app_patches: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='app_patches'")
+            .fetch_optional(pool)
+            .await?;
     if has_app_patches.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/081_app_patches.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/081_app_patches.sql")).await?;
     }
 
     // Migration 082: Add last_crash_notified_at column to apps
@@ -1161,25 +1153,19 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 084: White label configuration
-    let has_white_label: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='white_label'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_white_label: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' AND name='white_label'")
+            .fetch_optional(pool)
+            .await?;
     if has_white_label.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/084_white_label.sql"),
-        )
-        .await?;
+        execute_sql(pool, include_str!("../../migrations/084_white_label.sql")).await?;
     }
 
     // Migration 085: Add extended Docker run options per app (cap_drop, gpus, ulimits, security_opt)
-    let has_docker_cap_drop: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('apps') WHERE name = 'docker_cap_drop'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_docker_cap_drop: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'docker_cap_drop'")
+            .fetch_optional(pool)
+            .await?;
     if has_docker_cap_drop.is_none() {
         execute_sql(
             pool,

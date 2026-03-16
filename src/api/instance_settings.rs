@@ -94,8 +94,8 @@ pub async fn update_instance_settings(
                 );
 
                 // Spawn ACME cert renewal in background if TLS is enabled.
-                let acme_enabled = state.config.proxy.acme_enabled
-                    && state.config.proxy.acme_email.is_some();
+                let acme_enabled =
+                    state.config.proxy.acme_enabled && state.config.proxy.acme_email.is_some();
 
                 if acme_enabled {
                     let acme_cfg = crate::proxy::AcmeConfig {
@@ -115,7 +115,10 @@ pub async fn update_instance_settings(
                                 let cert_dir = acme_client.cert_dir(&domain);
                                 // Only request a new cert if one doesn't already exist for this domain.
                                 if !cert_dir.join("fullchain.pem").exists() {
-                                    match acme_client.request_certificate(&[domain.clone()]).await {
+                                    match acme_client
+                                        .request_certificate(std::slice::from_ref(&domain))
+                                        .await
+                                    {
                                         Ok(result) => {
                                             let _ = acme_client.save_certificate(&result).await;
                                             tracing::info!(

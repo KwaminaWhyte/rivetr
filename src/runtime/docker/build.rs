@@ -194,10 +194,7 @@ async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
     let tag_safe = ctx.tag.replace([':', '/'], "-");
     let mut secret_tmp_paths: Vec<std::path::PathBuf> = vec![];
     for (key, value) in &ctx.build_secrets {
-        let tmp_path = std::path::PathBuf::from(format!(
-            "/tmp/rivetr-secret-{}-{}",
-            tag_safe, key
-        ));
+        let tmp_path = std::path::PathBuf::from(format!("/tmp/rivetr-secret-{}-{}", tag_safe, key));
         let mut f = tokio::fs::File::create(&tmp_path)
             .await
             .context(format!("Failed to create secret tmpfile for '{}'", key))?;

@@ -820,18 +820,17 @@ impl CertificateRenewalManager {
         };
 
         // Collect all currently configured app domains from the DB
-        let rows: Vec<(Option<String>, Option<String>, Option<String>)> = match sqlx::query_as(
-            "SELECT domain, domains, auto_subdomain FROM apps",
-        )
-        .fetch_all(&db)
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(error = %e, "Could not query app domains for cert check");
-                return;
-            }
-        };
+        let rows: Vec<(Option<String>, Option<String>, Option<String>)> =
+            match sqlx::query_as("SELECT domain, domains, auto_subdomain FROM apps")
+                .fetch_all(&db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(error = %e, "Could not query app domains for cert check");
+                    return;
+                }
+            };
 
         let mut new_domains: Vec<String> = Vec::new();
         for (legacy_domain, domains_json, auto_subdomain) in rows {
@@ -946,10 +945,9 @@ impl CertificateRenewalManager {
 
                 // Hot-reload the new cert into the running HTTPS server
                 if let Some(ref reload) = self.tls_reload {
-                    if let Ok(tls) = TlsConfig::from_pem(
-                        &result.certificate_chain_pem,
-                        &result.private_key_pem,
-                    ) {
+                    if let Ok(tls) =
+                        TlsConfig::from_pem(&result.certificate_chain_pem, &result.private_key_pem)
+                    {
                         reload.update(tls.acceptor);
                         info!(domain = %domain, "Certificate renewed and hot-reloaded");
                     }

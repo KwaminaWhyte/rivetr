@@ -22,6 +22,8 @@ export interface Deployment {
   scheduled_at: string | null;
   // Registry push (image tag built and pushed)
   image_tag: string | null;
+  // How the deployment was initiated: 'manual', 'webhook', 'rollback', 'restart', 'scheduled'
+  trigger: string | null;
 }
 
 /** Git commit info from the commits list API */

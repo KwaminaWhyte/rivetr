@@ -74,8 +74,7 @@ pub(super) async fn check_and_restart(
             Ok(info) => {
                 // Even if running, a high Docker-level restart count means a crash loop:
                 // the container keeps crashing and Docker restarts it before our monitor fires.
-                let crash_loop = info.running
-                    && info.restart_count >= config.max_restart_attempts;
+                let crash_loop = info.running && info.restart_count >= config.max_restart_attempts;
 
                 if crash_loop {
                     result.containers_crashed += 1;
@@ -190,12 +189,7 @@ fn handle_running_container(
 }
 
 /// Send a ContainerCrash notification, rate-limited to once per 5 minutes per app.
-async fn send_crash_notification_if_due(
-    db: &DbPool,
-    app_id: &str,
-    app_name: &str,
-    message: &str,
-) {
+async fn send_crash_notification_if_due(db: &DbPool, app_id: &str, app_name: &str, message: &str) {
     // Look up the app to check last_crash_notified_at
     let app: Option<App> = sqlx::query_as("SELECT * FROM apps WHERE id = ?")
         .bind(app_id)
@@ -226,12 +220,11 @@ async fn send_crash_notification_if_due(
     }
 
     // Update last_crash_notified_at before sending
-    if let Err(e) = sqlx::query(
-        "UPDATE apps SET last_crash_notified_at = datetime('now') WHERE id = ?",
-    )
-    .bind(app_id)
-    .execute(db)
-    .await
+    if let Err(e) =
+        sqlx::query("UPDATE apps SET last_crash_notified_at = datetime('now') WHERE id = ?")
+            .bind(app_id)
+            .execute(db)
+            .await
     {
         tracing::warn!(
             app_id = %app_id,

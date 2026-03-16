@@ -175,7 +175,11 @@ pub async fn github_webhook(
     }
 }
 
-async fn handle_github_push(state: Arc<AppState>, body: &[u8], delivery_id: Option<&str>) -> Result<StatusCode, StatusCode> {
+async fn handle_github_push(
+    state: Arc<AppState>,
+    body: &[u8],
+    delivery_id: Option<&str>,
+) -> Result<StatusCode, StatusCode> {
     let payload: GitHubPushEvent = serde_json::from_slice(body).map_err(|e| {
         tracing::error!("Failed to parse GitHub push webhook payload: {}", e);
         StatusCode::BAD_REQUEST

@@ -6,8 +6,8 @@ use bollard::container::{
 };
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
 use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
-use bollard::network::{ConnectNetworkOptions, CreateNetworkOptions};
 use bollard::models::EndpointSettings;
+use bollard::network::{ConnectNetworkOptions, CreateNetworkOptions};
 use bytes::Bytes;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -131,7 +131,10 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         "always" => (bollard::service::RestartPolicyNameEnum::ALWAYS, None),
         "on-failure" => (bollard::service::RestartPolicyNameEnum::ON_FAILURE, Some(5)),
         "never" => (bollard::service::RestartPolicyNameEnum::EMPTY, None),
-        _ => (bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED, None), // default: unless-stopped
+        _ => (
+            bollard::service::RestartPolicyNameEnum::UNLESS_STOPPED,
+            None,
+        ), // default: unless-stopped
     };
     let restart_policy = bollard::service::RestartPolicy {
         name: Some(policy_name),
@@ -197,7 +200,11 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
                 })
             })
             .collect();
-        if parsed.is_empty() { None } else { Some(parsed) }
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
     };
 
     // GPU device requests
@@ -318,10 +325,16 @@ pub async fn ensure_rivetr_network(runtime: &DockerRuntime) {
 
     match result {
         Ok(_) => tracing::info!("Created Docker network '{}'", RIVETR_NETWORK),
-        Err(bollard::errors::Error::DockerResponseServerError { status_code: 409, .. }) => {
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 409, ..
+        }) => {
             // 409 Conflict = network already exists, which is fine.
         }
-        Err(e) => tracing::warn!("Could not create Docker network '{}': {}", RIVETR_NETWORK, e),
+        Err(e) => tracing::warn!(
+            "Could not create Docker network '{}': {}",
+            RIVETR_NETWORK,
+            e
+        ),
     }
 }
 
@@ -369,7 +382,9 @@ pub async fn ensure_named_network(runtime: &DockerRuntime, net_name: &str) {
 
     match result {
         Ok(_) => tracing::info!("Created Docker network '{}'", net_name),
-        Err(bollard::errors::Error::DockerResponseServerError { status_code: 409, .. }) => {
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 409, ..
+        }) => {
             // Network already exists – nothing to do.
         }
         Err(e) => tracing::warn!("Could not create Docker network '{}': {}", net_name, e),
@@ -415,7 +430,10 @@ pub async fn rename_container(
 ) -> Result<()> {
     runtime
         .client
-        .rename_container(container_id, bollard::container::RenameContainerOptions { name: new_name })
+        .rename_container(
+            container_id,
+            bollard::container::RenameContainerOptions { name: new_name },
+        )
         .await
         .context("Failed to rename container")?;
     Ok(())
@@ -977,8 +995,8 @@ pub async fn update_container_limits(
     memory_limit: Option<&str>,
     cpu_limit: Option<&str>,
 ) -> Result<()> {
-    let memory = memory_limit.and_then(|m| parse_memory(m));
-    let nano_cpus = cpu_limit.and_then(|c| parse_cpu(c));
+    let memory = memory_limit.and_then(parse_memory);
+    let nano_cpus = cpu_limit.and_then(parse_cpu);
 
     let options = UpdateContainerOptions::<String> {
         memory,

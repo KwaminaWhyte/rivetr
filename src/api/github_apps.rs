@@ -731,8 +731,13 @@ pub async fn sync_webhook_url(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Generate an app JWT (not installation token — this is an app-level operation)
-    let jwt = crate::github::token_manager::generate_app_jwt(app.app_id, &private_key)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to generate app JWT: {}", e)))?;
+    let jwt =
+        crate::github::token_manager::generate_app_jwt(app.app_id, &private_key).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to generate app JWT: {}", e),
+            )
+        })?;
 
     // Call PATCH /app/hook/config to update the webhook URL
     // See: https://docs.github.com/en/rest/apps/webhooks#update-a-webhook-configuration-for-a-github-app
@@ -751,7 +756,12 @@ pub async fn sync_webhook_url(
         .json(&patch_body)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to reach GitHub API: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to reach GitHub API: {}", e),
+            )
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();

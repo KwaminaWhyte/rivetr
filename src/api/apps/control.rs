@@ -6,7 +6,10 @@ use axum::{
 use std::sync::Arc;
 
 use crate::crypto;
-use crate::db::{actions, list_audit_logs, resource_types, App, AuditLogListResponse, AuditLogQuery, Deployment, User};
+use crate::db::{
+    actions, list_audit_logs, resource_types, App, AuditLogListResponse, AuditLogQuery, Deployment,
+    User,
+};
 use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
 
@@ -30,10 +33,7 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
 
 /// Collect and decrypt all env vars for an app (app + environment + project + team layers).
 /// Mirrors `src/engine/pipeline/start.rs::collect_env_vars`.
-async fn collect_env_vars_for_restart(
-    state: &AppState,
-    app: &App,
-) -> Vec<(String, String)> {
+async fn collect_env_vars_for_restart(state: &AppState, app: &App) -> Vec<(String, String)> {
     let encryption_key = get_encryption_key(state);
     let enc_key_ref: Option<&[u8; KEY_LENGTH]> = encryption_key.as_ref();
 
@@ -48,11 +48,10 @@ async fn collect_env_vars_for_restart(
     let mut env_vars: Vec<(String, String)> = raw_env_vars
         .into_iter()
         .map(|(key, value)| {
-            let decrypted =
-                crypto::decrypt_if_encrypted(&value, enc_key_ref).unwrap_or_else(|e| {
-                    tracing::warn!("Failed to decrypt env var {}: {}", key, e);
-                    value
-                });
+            let decrypted = crypto::decrypt_if_encrypted(&value, enc_key_ref).unwrap_or_else(|e| {
+                tracing::warn!("Failed to decrypt env var {}: {}", key, e);
+                value
+            });
             (key, decrypted)
         })
         .collect();
@@ -87,8 +86,8 @@ async fn collect_env_vars_for_restart(
 
         for (key, value) in env_env_vars {
             if !env_vars.iter().any(|(k, _)| k == &key) {
-                let decrypted = crypto::decrypt_if_encrypted(&value, enc_key_ref)
-                    .unwrap_or_else(|e| {
+                let decrypted =
+                    crypto::decrypt_if_encrypted(&value, enc_key_ref).unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt environment env var {}: {}", key, e);
                         value
                     });
@@ -109,8 +108,8 @@ async fn collect_env_vars_for_restart(
 
         for (key, value) in project_env_vars {
             if !env_vars.iter().any(|(k, _)| k == &key) {
-                let decrypted = crypto::decrypt_if_encrypted(&value, enc_key_ref)
-                    .unwrap_or_else(|e| {
+                let decrypted =
+                    crypto::decrypt_if_encrypted(&value, enc_key_ref).unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt project env var {}: {}", key, e);
                         value
                     });
@@ -131,8 +130,8 @@ async fn collect_env_vars_for_restart(
 
         for (key, value) in team_env_vars {
             if !env_vars.iter().any(|(k, _)| k == &key) {
-                let decrypted = crypto::decrypt_if_encrypted(&value, enc_key_ref)
-                    .unwrap_or_else(|e| {
+                let decrypted =
+                    crypto::decrypt_if_encrypted(&value, enc_key_ref).unwrap_or_else(|e| {
                         tracing::warn!("Failed to decrypt team env var {}: {}", key, e);
                         value
                     });
@@ -439,15 +438,92 @@ pub async fn stop_app(
     }))
 }
 
+/// Create a restart deployment record and return its ID.
+async fn create_restart_deployment(
+    state: &AppState,
+    app: &App,
+    triggered_by: &str,
+) -> Result<String, ApiError> {
+    let restart_deployment_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO deployments \
+         (id, app_id, commit_message, status, started_at, trigger) \
+         VALUES (?, ?, ?, 'pending', ?, 'restart')",
+    )
+    .bind(&restart_deployment_id)
+    .bind(&app.id)
+    .bind(format!("Manual restart triggered by {}", triggered_by))
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        ApiError::internal(format!("Failed to create restart deployment record: {}", e))
+    })?;
+
+    Ok(restart_deployment_id)
+}
+
+/// Add a log line to a deployment record (fire-and-forget — errors are only logged).
+async fn log_restart_step(state: &AppState, deployment_id: &str, level: &str, message: &str) {
+    if let Err(e) =
+        sqlx::query("INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)")
+            .bind(deployment_id)
+            .bind(level)
+            .bind(message)
+            .execute(&state.db)
+            .await
+    {
+        tracing::warn!(
+            deployment_id = %deployment_id,
+            error = %e,
+            "Failed to write restart deployment log"
+        );
+    }
+}
+
+/// Finish a restart deployment record with the given status and optional error.
+async fn finish_restart_deployment(
+    state: &AppState,
+    deployment_id: &str,
+    status: &str,
+    container_id: Option<&str>,
+    image_tag: Option<&str>,
+    error_message: Option<&str>,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        "UPDATE deployments SET status = ?, container_id = ?, image_tag = ?, \
+         error_message = ?, finished_at = ? WHERE id = ?",
+    )
+    .bind(status)
+    .bind(container_id)
+    .bind(image_tag)
+    .bind(error_message)
+    .bind(&now)
+    .bind(deployment_id)
+    .execute(&state.db)
+    .await;
+
+    if let Err(e) = result {
+        tracing::warn!(
+            deployment_id = %deployment_id,
+            error = %e,
+            "Failed to update restart deployment status"
+        );
+    }
+}
+
 /// Restart an app's container with zero downtime using a blue-green swap.
 ///
 /// The algorithm:
 /// 1. Find the current running deployment and its image tag.
-/// 2. Start a NEW container from the same image (with fresh env vars).
-/// 3. Poll the new container's health endpoint for up to 60 seconds.
-/// 4. Atomically update proxy routes to point at the new container.
-/// 5. Stop and remove the OLD container (traffic has already been switched).
-/// 6. Update the deployment record's container_id.
+/// 2. Create a new deployments row with trigger = 'restart'.
+/// 3. Start a NEW container from the same image (with fresh env vars).
+/// 4. Poll the new container's health endpoint for up to 60 seconds.
+/// 5. Atomically update proxy routes to point at the new container.
+/// 6. Stop and remove the OLD container (traffic has already been switched).
+/// 7. Update the restart deployment record to 'running' with the new container ID.
 ///
 /// If the new container fails to start or does not become healthy within the
 /// timeout, the old container is left running so the app remains available.
@@ -497,12 +573,52 @@ pub async fn restart_app(
                     )
                 })?;
 
+            // Create a restart deployment record for the fallback path
+            let triggered_by = user.email.as_str();
+            let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
+            log_restart_step(&state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
+            log_restart_step(
+                &state,
+                &restart_dep_id,
+                "info",
+                &format!(
+                    "Stopping container: {}",
+                    &container_id[..container_id.len().min(12)]
+                ),
+            )
+            .await;
+
             // Best-effort restart of the existing container
             let _ = state.runtime.stop(&container_id).await;
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            state.runtime.start(&container_id).await.map_err(|e| {
-                ApiError::internal(format!("Failed to restart container: {}", e))
-            })?;
+
+            log_restart_step(&state, &restart_dep_id, "info", "Starting container...").await;
+
+            match state.runtime.start(&container_id).await {
+                Ok(()) => {}
+                Err(e) => {
+                    log_restart_step(
+                        &state,
+                        &restart_dep_id,
+                        "error",
+                        &format!("Failed to restart container: {}", e),
+                    )
+                    .await;
+                    finish_restart_deployment(
+                        &state,
+                        &restart_dep_id,
+                        "failed",
+                        Some(&container_id),
+                        None,
+                        Some(&e.to_string()),
+                    )
+                    .await;
+                    return Err(ApiError::internal(format!(
+                        "Failed to restart container: {}",
+                        e
+                    )));
+                }
+            }
 
             let host_port = state
                 .runtime
@@ -524,6 +640,23 @@ pub async fn restart_app(
                 }
             }
 
+            log_restart_step(
+                &state,
+                &restart_dep_id,
+                "info",
+                "Container restarted successfully",
+            )
+            .await;
+            finish_restart_deployment(
+                &state,
+                &restart_dep_id,
+                "running",
+                Some(&container_id),
+                None,
+                None,
+            )
+            .await;
+
             let ip = extract_client_ip(&headers, None);
             audit_log(
                 &state,
@@ -544,7 +677,7 @@ pub async fn restart_app(
                 status: "running".to_string(),
                 host_port,
                 deployment_phase: "stable".to_string(),
-                active_deployment_id: None,
+                active_deployment_id: Some(restart_dep_id),
                 uptime_seconds: None,
             }));
         }
@@ -564,7 +697,29 @@ pub async fn restart_app(
         )
     })?;
 
-    // 2. Build RunConfig for the new (blue) container
+    // 2. Create the restart deployment record (tracks this restart in the Deployments tab)
+    let triggered_by = user.email.as_str();
+    let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
+
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        &format!(
+            "Zero-downtime restart initiated. Current container: {}, image: {}",
+            &old_container_id[..old_container_id.len().min(12)],
+            &image_tag
+        ),
+    )
+    .await;
+
+    // Mark the restart deployment as 'starting' (building step is skipped — reusing existing image)
+    let _ = sqlx::query("UPDATE deployments SET status = 'starting' WHERE id = ?")
+        .bind(&restart_dep_id)
+        .execute(&state.db)
+        .await;
+
+    // 3. Build RunConfig for the new (blue) container
     let new_container_name = format!(
         "rivetr-{}-restart-{}",
         app.name,
@@ -625,7 +780,7 @@ pub async fn restart_app(
         .unwrap_or_default();
 
     let new_run_config = RunConfig {
-        image: image_tag,
+        image: image_tag.clone(),
         name: new_container_name.clone(),
         port: app.port as u16,
         env: env_vars,
@@ -650,15 +805,45 @@ pub async fn restart_app(
         cmd: None,
     };
 
-    // 3. Start the new container (old one is still running — no downtime yet)
-    let new_container_id = state.runtime.run(&new_run_config).await.map_err(|e| {
-        tracing::error!(
-            app = %app.name,
-            error = %e,
-            "Zero-downtime restart: failed to start new container"
-        );
-        ApiError::internal(format!("Failed to start new container for restart: {}", e))
-    })?;
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        &format!("Starting new container from image: {}", &image_tag),
+    )
+    .await;
+
+    // 4. Start the new container (old one is still running — no downtime yet)
+    let new_container_id = match state.runtime.run(&new_run_config).await {
+        Ok(cid) => cid,
+        Err(e) => {
+            tracing::error!(
+                app = %app.name,
+                error = %e,
+                "Zero-downtime restart: failed to start new container"
+            );
+            log_restart_step(
+                &state,
+                &restart_dep_id,
+                "error",
+                &format!("Failed to start new container: {}", e),
+            )
+            .await;
+            finish_restart_deployment(
+                &state,
+                &restart_dep_id,
+                "failed",
+                None,
+                Some(&image_tag),
+                Some(&e.to_string()),
+            )
+            .await;
+            return Err(ApiError::internal(format!(
+                "Failed to start new container for restart: {}",
+                e
+            )));
+        }
+    };
 
     tracing::info!(
         app = %app.name,
@@ -667,7 +852,18 @@ pub async fn restart_app(
         "Zero-downtime restart: new container started, waiting for it to become healthy"
     );
 
-    // 4. Inspect the new container to get its host port.
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        &format!(
+            "New container started: {}. Waiting for health check...",
+            &new_container_id[..new_container_id.len().min(12)]
+        ),
+    )
+    .await;
+
+    // 5. Inspect the new container to get its host port.
     // Docker assigns the ephemeral port synchronously, but occasionally the
     // inspect response is returned before the port binding is populated in the
     // daemon. Retry up to 10 times (5 seconds) before giving up.
@@ -704,20 +900,46 @@ pub async fn restart_app(
                     let _ = runtime.stop(&cid).await;
                     let _ = runtime.remove(&cid).await;
                 });
-                return Err(ApiError::internal(
-                    "New container started but did not expose a host port (may have crashed at startup — check the app logs)",
-                ));
+                let err_msg = "New container started but did not expose a host port (may have crashed at startup — check the app logs)";
+                log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+                finish_restart_deployment(
+                    &state,
+                    &restart_dep_id,
+                    "failed",
+                    Some(&new_container_id),
+                    Some(&image_tag),
+                    Some(err_msg),
+                )
+                .await;
+                return Err(ApiError::internal(err_msg));
             }
         }
     };
 
-    // 5. Poll the new container's health endpoint (up to 60 seconds)
+    // Update status to 'checking' while we poll the health endpoint
+    let _ = sqlx::query("UPDATE deployments SET status = 'checking' WHERE id = ?")
+        .bind(&restart_dep_id)
+        .execute(&state.db)
+        .await;
+
+    // 6. Poll the new container's health endpoint (up to 60 seconds)
     let health_path = app.healthcheck.as_deref().unwrap_or("/");
     let health_url = format!("http://127.0.0.1:{}{}", new_port, health_path);
     let health_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .unwrap_or_default();
+
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        &format!(
+            "Health checking new container at {} (up to 60s)...",
+            health_url
+        ),
+    )
+    .await;
 
     let mut healthy = false;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
@@ -762,9 +984,19 @@ pub async fn restart_app(
             let _ = runtime.remove(&cid).await;
         });
 
-        return Err(ApiError::internal(
-            "New container did not become healthy within 60 seconds. Old container is still running.",
-        ));
+        let err_msg = "New container did not become healthy within 60 seconds. Old container is still running.";
+        log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+        finish_restart_deployment(
+            &state,
+            &restart_dep_id,
+            "failed",
+            Some(&new_container_id),
+            Some(&image_tag),
+            Some(err_msg),
+        )
+        .await;
+
+        return Err(ApiError::internal(err_msg));
     }
 
     tracing::info!(
@@ -774,7 +1006,18 @@ pub async fn restart_app(
         "Zero-downtime restart: new container is healthy, switching proxy routes"
     );
 
-    // 6. Atomically update proxy routes to point at the new container
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        &format!(
+            "New container is healthy on port {}. Switching proxy routes...",
+            new_port
+        ),
+    )
+    .await;
+
+    // 7. Atomically update proxy routes to point at the new container
     {
         let all_domains = app.get_all_domain_names();
         let route_table = state.routes.load();
@@ -794,10 +1037,15 @@ pub async fn restart_app(
         }
     }
 
-    // 7. Stop and remove the OLD container (traffic already switched).
-    // We await this directly rather than spawning a fire-and-forget task so
-    // that a failure is visible in logs. The response is still fast because
-    // Docker stop only blocks for ~10 s (SIGTERM + SIGKILL after timeout).
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        "Proxy routes updated. Stopping old container...",
+    )
+    .await;
+
+    // 8. Stop and remove the OLD container (traffic already switched).
     {
         let app_name_log = app.name.clone();
         let old_cid = old_container_id.clone();
@@ -828,15 +1076,34 @@ pub async fn restart_app(
         "Zero-downtime restart: old container teardown initiated"
     );
 
-    // 8. Update the deployment record with the new container ID.
-    // NOTE: SQLite does not support ORDER BY / LIMIT in UPDATE — use a subquery instead.
+    // 9. Mark the previous 'running' deployment as 'replaced' now that the restart is live.
     let _ = sqlx::query(
-        "UPDATE deployments SET container_id = ? \
-         WHERE id = (SELECT id FROM deployments WHERE app_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1)",
+        "UPDATE deployments SET status = 'replaced', finished_at = ? \
+         WHERE app_id = ? AND status = 'running' AND id != ?",
     )
-    .bind(&new_container_id)
-    .bind(&id)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(&app.id)
+    .bind(&restart_dep_id)
     .execute(&state.db)
+    .await;
+
+    log_restart_step(
+        &state,
+        &restart_dep_id,
+        "info",
+        "Restart complete — container is running.",
+    )
+    .await;
+
+    // 10. Finalize the restart deployment record as 'running'.
+    finish_restart_deployment(
+        &state,
+        &restart_dep_id,
+        "running",
+        Some(&new_container_id),
+        Some(&image_tag),
+        None,
+    )
     .await;
 
     // Log audit event
@@ -860,7 +1127,7 @@ pub async fn restart_app(
         status: "running".to_string(),
         host_port: Some(new_port),
         deployment_phase: "stable".to_string(),
-        active_deployment_id: None,
+        active_deployment_id: Some(restart_dep_id),
         uptime_seconds: None,
     }))
 }
@@ -918,8 +1185,8 @@ pub async fn apply_resource_limits(
     .await?
     .flatten();
 
-    let container_id = container_id
-        .ok_or_else(|| ApiError::bad_request("App has no running container"))?;
+    let container_id =
+        container_id.ok_or_else(|| ApiError::bad_request("App has no running container"))?;
 
     state
         .runtime

@@ -122,7 +122,7 @@ impl NotificationPayload {
             NotificationEventType::DeploymentFailed | NotificationEventType::ContainerCrash => {
                 "#e74c3c"
             } // Red
-            NotificationEventType::AppStopped => "#f39c12", // Orange
+            NotificationEventType::AppStopped => "#f39c12",        // Orange
             NotificationEventType::ContainerRestarted => "#f39c12", // Orange
         }
     }

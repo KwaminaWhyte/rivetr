@@ -57,7 +57,10 @@ impl WhiteLabel {
     }
 
     /// Update the white label configuration.
-    pub async fn update(db: &SqlitePool, req: &UpdateWhiteLabelRequest) -> Result<Self, sqlx::Error> {
+    pub async fn update(
+        db: &SqlitePool,
+        req: &UpdateWhiteLabelRequest,
+    ) -> Result<Self, sqlx::Error> {
         let now = chrono::Utc::now().to_rfc3339();
 
         sqlx::query(

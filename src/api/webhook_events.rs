@@ -73,13 +73,11 @@ pub async fn log_webhook_event(
 /// Returns true if this delivery_id has already been processed.
 /// Used to deduplicate duplicate webhook deliveries from GitHub Apps.
 pub async fn is_duplicate_delivery(db: &crate::DbPool, delivery_id: &str) -> bool {
-    sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM webhook_events WHERE delivery_id = ?",
-    )
-    .bind(delivery_id)
-    .fetch_one(db)
-    .await
-    .unwrap_or(0)
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM webhook_events WHERE delivery_id = ?")
+        .bind(delivery_id)
+        .fetch_one(db)
+        .await
+        .unwrap_or(0)
         > 0
 }
 

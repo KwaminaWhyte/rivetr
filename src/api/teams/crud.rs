@@ -52,10 +52,7 @@ pub async fn list_teams(
     if teams.is_empty() && user.id != "system" {
         let team_id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        let slug = format!(
-            "personal-{}",
-            &user.id.chars().take(8).collect::<String>()
-        );
+        let slug = format!("personal-{}", &user.id.chars().take(8).collect::<String>());
 
         // Use INSERT OR IGNORE to avoid UNIQUE constraint errors if slug already exists
         // (e.g. from a previous partially-failed attempt)

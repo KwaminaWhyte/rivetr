@@ -173,8 +173,7 @@ async fn run_git_deployment(
 
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
-        clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref())
-            .await?;
+        clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
     } else {
         clone::clone_repository(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
     }
@@ -232,7 +231,10 @@ async fn run_git_deployment(
                         db,
                         deployment_id,
                         "warn",
-                        &format!("Could not create parent dir for patch {}: {}", patch.file_path, e),
+                        &format!(
+                            "Could not create parent dir for patch {}: {}",
+                            patch.file_path, e
+                        ),
                     )
                     .await?;
                     continue;
@@ -326,8 +328,16 @@ async fn run_git_deployment(
         work_dir.clone()
     };
 
-    let image_tag =
-        build::build_git_image(db, runtime, deployment_id, app, &build_path, build_limits, encryption_key).await?;
+    let image_tag = build::build_git_image(
+        db,
+        runtime,
+        deployment_id,
+        app,
+        &build_path,
+        build_limits,
+        encryption_key,
+    )
+    .await?;
 
     // Cleanup work directory
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
@@ -420,27 +430,21 @@ pub async fn run_deployment(
         )
         .await?;
         // Optionally push to registry; capture remote tag for image_tag update
-        let remote = match build::push_image_to_registry(
-            db,
-            deployment_id,
-            app,
-            &tag,
-            encryption_key,
-        )
-        .await
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                add_deployment_log(
-                    db,
-                    deployment_id,
-                    "warn",
-                    &format!("Registry push failed (non-fatal): {}", e),
-                )
-                .await?;
-                None
-            }
-        };
+        let remote =
+            match build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Registry push failed (non-fatal): {}", e),
+                    )
+                    .await?;
+                    None
+                }
+            };
         (tag, remote)
     } else {
         // Git-based deployment: clone and build
@@ -454,34 +458,27 @@ pub async fn run_deployment(
         )
         .await?;
         // Optionally push to registry; capture remote tag for image_tag update
-        let remote = match build::push_image_to_registry(
-            db,
-            deployment_id,
-            app,
-            &tag,
-            encryption_key,
-        )
-        .await
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                add_deployment_log(
-                    db,
-                    deployment_id,
-                    "warn",
-                    &format!("Registry push failed (non-fatal): {}", e),
-                )
-                .await?;
-                None
-            }
-        };
+        let remote =
+            match build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Registry push failed (non-fatal): {}", e),
+                    )
+                    .await?;
+                    None
+                }
+            };
         (tag, remote)
     };
 
     // Start container, health check, and finalize
     let result =
-        start::start_container(db, runtime, deployment_id, app, image_tag, encryption_key)
-            .await?;
+        start::start_container(db, runtime, deployment_id, app, image_tag, encryption_key).await?;
 
     // If the image was pushed to a registry, update the deployment's image_tag to the remote
     // reference. start_container stored the local image name, but rollbacks need the registry URL.

@@ -48,9 +48,7 @@ pub async fn import_service_db(
     if service.get_status() != ServiceStatus::Running {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(
-                serde_json::json!({"error": "Service must be running to import a database dump"}),
-            ),
+            Json(serde_json::json!({"error": "Service must be running to import a database dump"})),
         ));
     }
 
@@ -63,9 +61,7 @@ pub async fn import_service_db(
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(
-                serde_json::json!({"error": format!("Failed to read multipart field: {}", e)}),
-            ),
+            Json(serde_json::json!({"error": format!("Failed to read multipart field: {}", e)})),
         )
     })? {
         match field.name() {
@@ -98,17 +94,14 @@ pub async fn import_service_db(
                 );
             }
             Some("database") => {
-                database_name = Some(
-                    field
-                        .text()
-                        .await
-                        .map_err(|e| {
-                            (
-                                StatusCode::BAD_REQUEST,
-                                Json(serde_json::json!({"error": format!("Failed to read database: {}", e)})),
-                            )
-                        })?,
-                );
+                database_name = Some(field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(
+                            serde_json::json!({"error": format!("Failed to read database: {}", e)}),
+                        ),
+                    )
+                })?);
             }
             _ => {}
         }
@@ -215,12 +208,16 @@ pub async fn import_service_db(
     }
 
     // ── 7. Build the restore command ──────────────────────────────────────────
-    let db_name = database_name
-        .as_deref()
-        .unwrap_or("app")
-        .to_string();
+    let db_name = database_name.as_deref().unwrap_or("app").to_string();
 
-    let restore_cmd = build_restore_command(&db_type, &db_name, dest_path, is_gz, &container_id, &service.compose_content)?;
+    let restore_cmd = build_restore_command(
+        &db_type,
+        &db_name,
+        dest_path,
+        is_gz,
+        &container_id,
+        &service.compose_content,
+    )?;
 
     // ── 8. Run the restore ────────────────────────────────────────────────────
     let restore_result = state
@@ -231,9 +228,7 @@ pub async fn import_service_db(
             tracing::error!("Failed to run restore command: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(
-                    serde_json::json!({"error": format!("Failed to run restore command: {}", e)}),
-                ),
+                Json(serde_json::json!({"error": format!("Failed to run restore command: {}", e)})),
             )
         })?;
 
@@ -457,10 +452,7 @@ fn build_restore_command(
             vec![
                 "sh".to_string(),
                 "-c".to_string(),
-                format!(
-                    "mongorestore {} --archive={} --gzip",
-                    auth_part, dump_path
-                ),
+                format!("mongorestore {} --archive={} --gzip", auth_part, dump_path),
             ]
         }
         _ => {

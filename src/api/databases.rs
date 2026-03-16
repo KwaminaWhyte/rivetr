@@ -131,8 +131,7 @@ pub async fn create_database(
         username: username.clone(),
         password: password.clone(),
         database: database_name.clone(),
-        root_password: if req.db_type == DatabaseType::Mysql
-            || req.db_type == DatabaseType::Mariadb
+        root_password: if req.db_type == DatabaseType::Mysql || req.db_type == DatabaseType::Mariadb
         {
             // Use custom root_password if provided, otherwise generate one
             Some(req.root_password.unwrap_or_else(|| generate_password(32)))
@@ -379,7 +378,7 @@ pub async fn start_database(
     // Check if already running
     if database.get_status() == DatabaseStatus::Running {
         let hostname = state.config.public_hostname();
-    let host = Some(hostname.as_str());
+        let host = Some(hostname.as_str());
         return Ok(Json(database.to_response(false, host)));
     }
 
@@ -1009,10 +1008,7 @@ fn build_init_exec_cmd(
             sql.to_string(),
         ],
         DatabaseType::Mysql | DatabaseType::Mariadb => {
-            let db_name = credentials
-                .database
-                .clone()
-                .unwrap_or_default();
+            let db_name = credentials.database.clone().unwrap_or_default();
             vec![
                 "mysql".to_string(),
                 "-u".to_string(),
@@ -1037,10 +1033,7 @@ fn build_init_exec_cmd(
         }
         DatabaseType::Redis | DatabaseType::Dragonfly | DatabaseType::Keydb => {
             // Redis-compatible stores do not support SQL init commands; skip gracefully
-            vec![
-                "redis-cli".to_string(),
-                "ping".to_string(),
-            ]
+            vec!["redis-cli".to_string(), "ping".to_string()]
         }
         DatabaseType::ClickHouse => {
             vec![
@@ -1197,7 +1190,7 @@ pub async fn update_database(
     if updates.is_empty() {
         // No changes
         let hostname = state.config.public_hostname();
-    let host = Some(hostname.as_str());
+        let host = Some(hostname.as_str());
         return Ok(Json(database.to_response(false, host)));
     }
 
@@ -1408,12 +1401,20 @@ pub async fn import_database_dump(
     })? {
         if field.name() == Some("file") {
             file_name = field.file_name().map(|s| s.to_string());
-            file_bytes = Some(field.bytes().await.map_err(|e| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": format!("Failed to read file: {}", e)})),
-                )
-            })?.to_vec());
+            file_bytes = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            Json(
+                                serde_json::json!({"error": format!("Failed to read file: {}", e)}),
+                            ),
+                        )
+                    })?
+                    .to_vec(),
+            );
             break;
         }
     }
@@ -1467,12 +1468,18 @@ pub async fn import_database_dump(
     })?;
 
     let db_type_str = database.db_type.as_str();
-    let is_gz = file_name.as_deref().map(|n| n.ends_with(".gz")).unwrap_or(false);
+    let is_gz = file_name
+        .as_deref()
+        .map(|n| n.ends_with(".gz"))
+        .unwrap_or(false);
 
     // Build the restore command based on DB type
     let restore_cmd: Vec<String> = match db_type_str {
         "postgres" => {
-            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            let db_name = creds
+                .database
+                .clone()
+                .unwrap_or_else(|| creds.username.clone());
             if is_gz {
                 // Custom format via pg_restore
                 vec![
@@ -1495,7 +1502,10 @@ pub async fn import_database_dump(
             }
         }
         "mysql" => {
-            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            let db_name = creds
+                .database
+                .clone()
+                .unwrap_or_else(|| creds.username.clone());
             vec![
                 "sh".to_string(),
                 "-c".to_string(),
@@ -1506,7 +1516,10 @@ pub async fn import_database_dump(
             ]
         }
         "mariadb" => {
-            let db_name = creds.database.clone().unwrap_or_else(|| creds.username.clone());
+            let db_name = creds
+                .database
+                .clone()
+                .unwrap_or_else(|| creds.username.clone());
             vec![
                 "sh".to_string(),
                 "-c".to_string(),
@@ -1560,7 +1573,10 @@ pub async fn import_database_dump(
     // Clean up the temp file
     let _ = state
         .runtime
-        .run_command(container_id, vec!["rm".to_string(), "-f".to_string(), dest_path.to_string()])
+        .run_command(
+            container_id,
+            vec!["rm".to_string(), "-f".to_string(), dest_path.to_string()],
+        )
         .await;
 
     tracing::info!(

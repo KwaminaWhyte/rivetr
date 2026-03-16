@@ -11,8 +11,8 @@ use crate::db::{
     actions, resource_types, App, CreateAppRequest, TeamAuditAction, TeamAuditResourceType,
     UpdateAppRequest, User,
 };
-use axum::http::header;
 use crate::AppState;
+use axum::http::header;
 
 use super::super::audit::{audit_log, extract_client_ip};
 use super::super::auth::verify_password;
@@ -113,10 +113,7 @@ pub async fn create_app(
         .container_labels
         .as_ref()
         .map(|l| serde_json::to_string(l).unwrap_or_default());
-    let nixpacks_config_json = req
-        .nixpacks_config
-        .as_ref()
-        .map(|v| v.to_string());
+    let nixpacks_config_json = req.nixpacks_config.as_ref().map(|v| v.to_string());
 
     // Generate auto_subdomain: sslip (legacy) → base_domain → traefik.me → None
     let auto_subdomain = if state.config.proxy.sslip_enabled {
@@ -851,7 +848,10 @@ jobs:
 
     Ok((
         [
-            (header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()),
+            (
+                header::CONTENT_TYPE,
+                "text/plain; charset=utf-8".to_string(),
+            ),
             (header::CONTENT_DISPOSITION, content_disposition),
         ],
         yaml,

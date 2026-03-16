@@ -17,7 +17,8 @@ use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
 use crate::db::{
-    actions, resource_types, LoginRequest, LoginResponse, Session, TeamInvitation, TeamMemberWithUser, User, UserResponse,
+    actions, resource_types, LoginRequest, LoginResponse, Session, TeamInvitation,
+    TeamMemberWithUser, User, UserResponse,
 };
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -227,11 +228,7 @@ pub async fn logout(
         .and_then(|h| h.to_str().ok());
 
     if let Some(header) = auth_header {
-        let token = if header.starts_with("Bearer ") {
-            &header[7..]
-        } else {
-            header
-        };
+        let token = header.strip_prefix("Bearer ").unwrap_or(header);
 
         // Delete the session from the database
         let token_hash = hash_token(token);
@@ -285,10 +282,7 @@ pub async fn validate(
 }
 
 /// Get current authenticated user details
-pub async fn me(
-    State(state): State<Arc<AppState>>,
-    request: Request<Body>,
-) -> impl IntoResponse {
+pub async fn me(State(state): State<Arc<AppState>>, request: Request<Body>) -> impl IntoResponse {
     let auth_header = request
         .headers()
         .get("Authorization")
@@ -296,7 +290,13 @@ pub async fn me(
 
     let token = match auth_header {
         Some(header) if header.starts_with("Bearer ") => header[7..].to_string(),
-        _ => return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"}))).into_response(),
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "Unauthorized"})),
+            )
+                .into_response()
+        }
     };
 
     match get_current_user(&state.db, &state.config, &token).await {
@@ -664,10 +664,16 @@ pub async fn register_with_invitation(
             .fetch_optional(&state.db)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-            .ok_or((StatusCode::NOT_FOUND, "Invitation not found or already accepted".to_string()))?;
+            .ok_or((
+                StatusCode::NOT_FOUND,
+                "Invitation not found or already accepted".to_string(),
+            ))?;
 
     if invitation.accepted_at.is_some() {
-        return Err((StatusCode::GONE, "This invitation has already been accepted".to_string()));
+        return Err((
+            StatusCode::GONE,
+            "This invitation has already been accepted".to_string(),
+        ));
     }
     if invitation.is_expired() {
         return Err((StatusCode::GONE, "This invitation has expired".to_string()));
@@ -699,8 +705,12 @@ pub async fn register_with_invitation(
 
     // Create the user
     let user_id = uuid::Uuid::new_v4().to_string();
-    let password_hash = hash_password(&req.password)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to hash password: {}", e)))?;
+    let password_hash = hash_password(&req.password).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to hash password: {}", e),
+        )
+    })?;
 
     sqlx::query("INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)")
         .bind(&user_id)
@@ -714,15 +724,17 @@ pub async fn register_with_invitation(
 
     // Add user to the team
     let member_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(&member_id)
-        .bind(&invitation.team_id)
-        .bind(&user_id)
-        .bind(&invitation.role)
-        .bind(&now_str)
-        .execute(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&member_id)
+    .bind(&invitation.team_id)
+    .bind(&user_id)
+    .bind(&invitation.role)
+    .bind(&now_str)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Mark invitation as accepted
     sqlx::query("UPDATE team_invitations SET accepted_at = ? WHERE id = ?")

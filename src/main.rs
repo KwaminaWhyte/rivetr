@@ -9,21 +9,21 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use rivetr::api::rate_limit::spawn_cleanup_task as spawn_rate_limit_cleanup_task;
 use rivetr::cli::{self, Cli};
 use rivetr::config::Config;
+use rivetr::db::AppRedirectRule;
 use rivetr::db::InstanceSettings;
+use rivetr::db::Service;
 use rivetr::engine::{
     reconcile_container_status, spawn_cleanup_task as spawn_deployment_cleanup_task,
     spawn_container_monitor_task, spawn_cost_calculator_task, spawn_disk_monitor_task,
     spawn_resource_metrics_collector_task_with_notifications, spawn_stats_collector_task,
     spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
-use rivetr::db::AppRedirectRule;
 use rivetr::proxy::{
     AcmeClient, AcmeConfig, Backend, BasicAuthConfig, CertificateRenewalManager, HealthChecker,
     HealthCheckerConfig, HttpsProxyServer, ProxyServer, RedirectRule, RouteTable,
 };
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
-use rivetr::db::Service;
 use rivetr::AppState;
 use rivetr::DbPool;
 
@@ -316,12 +316,17 @@ async fn main() -> Result<()> {
                 // IMPORTANT: Start HTTP proxy FIRST so ACME HTTP-01 challenges can be served
                 // The proxy must be listening on port 80 before Let's Encrypt tries to verify.
                 // HTTP→HTTPS redirect starts disabled; enabled only once TLS cert is confirmed.
-                let https_redirect_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let https_redirect_flag =
+                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                 let https_redirect_flag_clone = https_redirect_flag.clone();
                 let http_challenges = acme_challenges.clone();
                 tokio::spawn(async move {
                     if let Err(e) = proxy_server
-                        .run_with_options(Some(http_challenges), Some(https_redirect_flag_clone), https_port)
+                        .run_with_options(
+                            Some(http_challenges),
+                            Some(https_redirect_flag_clone),
+                            https_port,
+                        )
                         .await
                     {
                         tracing::error!(error = %e, "HTTP proxy server error");
@@ -369,7 +374,8 @@ async fn main() -> Result<()> {
                             rivetr::proxy::TlsConfig::from_pem(
                                 &result.certificate_chain_pem,
                                 &result.private_key_pem,
-                            ).ok()
+                            )
+                            .ok()
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "Failed to get Let's Encrypt certificate; running HTTP-only");
@@ -381,14 +387,15 @@ async fn main() -> Result<()> {
                 if let Some(tls_config) = tls_config_result {
                     // TLS cert is available — enable HTTP→HTTPS redirect now
                     https_redirect_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                    let https_addr: SocketAddr =
-                        format!("{}:{}", config.server.host, https_port)
-                            .parse()
-                            .expect("Invalid HTTPS proxy address");
+                    let https_addr: SocketAddr = format!("{}:{}", config.server.host, https_port)
+                        .parse()
+                        .expect("Invalid HTTPS proxy address");
 
                     // Wrap the TLS acceptor in a hot-reload handle so cert renewals take
                     // effect immediately without restarting the HTTPS server.
-                    let tls_reload = std::sync::Arc::new(rivetr::proxy::TlsReloadHandle::new(tls_config.acceptor));
+                    let tls_reload = std::sync::Arc::new(rivetr::proxy::TlsReloadHandle::new(
+                        tls_config.acceptor,
+                    ));
                     let https_server =
                         HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone());
                     tokio::spawn(async move {
@@ -480,11 +487,10 @@ async fn shutdown_signal() {
 
 /// Collect all configured domain names across all apps (for TLS SAN list)
 async fn collect_all_app_domains(db: &DbPool) -> Result<Vec<String>> {
-    let apps: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT domain, domains, auto_subdomain FROM apps",
-    )
-    .fetch_all(db)
-    .await?;
+    let apps: Vec<(Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT domain, domains, auto_subdomain FROM apps")
+            .fetch_all(db)
+            .await?;
 
     let mut result: Vec<String> = Vec::new();
     for (legacy_domain, domains_json, auto_subdomain) in apps {
@@ -508,7 +514,11 @@ async fn collect_all_app_domains(db: &DbPool) -> Result<Vec<String>> {
             }
         }
         if let Some(d) = auto_subdomain {
-            if !d.is_empty() && !result.contains(&d) && !d.ends_with(".traefik.me") && !d.ends_with(".sslip.io") {
+            if !d.is_empty()
+                && !result.contains(&d)
+                && !d.ends_with(".traefik.me")
+                && !d.ends_with(".sslip.io")
+            {
                 result.push(d);
             }
         }
@@ -526,8 +536,8 @@ async fn restore_routes(
     // including basic auth fields so they can be re-applied to the restored routes.
     #[allow(clippy::type_complexity)]
     let apps: Vec<(
-        String,          // id
-        String,          // name
+        String, // id
+        String, // name
         Option<String>,
         Option<String>,
         Option<String>,
@@ -554,10 +564,7 @@ async fn restore_routes(
     // List all running rivetr containers once (avoids repeated calls per app)
     let containers = runtime.list_containers("rivetr-").await?;
 
-    tracing::info!(
-        "Found {} running rivetr containers",
-        containers.len()
-    );
+    tracing::info!("Found {} running rivetr containers", containers.len());
 
     for (
         app_id,
@@ -621,9 +628,7 @@ async fn restore_routes(
                                         } else {
                                             format!("www.{}", d)
                                         };
-                                        if !variant.is_empty()
-                                            && !domain_names.contains(&variant)
-                                        {
+                                        if !variant.is_empty() && !domain_names.contains(&variant) {
                                             domain_names.push(variant);
                                         }
                                     }

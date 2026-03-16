@@ -14,11 +14,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{
-    db::User,
-    AppState,
-};
 use super::error::ApiError;
+use crate::{db::User, AppState};
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +115,10 @@ pub async fn create_token(
 
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(ApiError::validation_field("name", "Token name cannot be empty"));
+        return Err(ApiError::validation_field(
+            "name",
+            "Token name cannot be empty",
+        ));
     }
 
     let plaintext = generate_token();

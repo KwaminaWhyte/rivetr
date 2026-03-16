@@ -120,7 +120,9 @@ pub async fn deploy_template(
     let make_internal_err = || {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": { "code": "internal_error", "message": "An internal error occurred" } })),
+            Json(
+                serde_json::json!({ "error": { "code": "internal_error", "message": "An internal error occurred" } }),
+            ),
         )
     };
 
@@ -146,7 +148,9 @@ pub async fn deploy_template(
         tracing::warn!("Service name is empty");
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": { "code": "bad_request", "message": "Service name is required" } })),
+            Json(
+                serde_json::json!({ "error": { "code": "bad_request", "message": "Service name is required" } }),
+            ),
         ));
     }
 
@@ -158,7 +162,9 @@ pub async fn deploy_template(
         tracing::warn!("Service name contains invalid characters: {}", req.name);
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": { "code": "bad_request", "message": "Service name contains invalid characters" } })),
+            Json(
+                serde_json::json!({ "error": { "code": "bad_request", "message": "Service name contains invalid characters" } }),
+            ),
         ));
     }
 
@@ -166,16 +172,15 @@ pub async fn deploy_template(
     if let Some(port_str) = req.env_vars.get("PORT") {
         if let Ok(port) = port_str.parse::<i64>() {
             // Check if port is already used by another service
-            let existing_service: Option<(String,)> = sqlx::query_as(
-                "SELECT name FROM services WHERE port = ?",
-            )
-            .bind(port)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to check port conflict in services: {}", e);
-                make_internal_err()
-            })?;
+            let existing_service: Option<(String,)> =
+                sqlx::query_as("SELECT name FROM services WHERE port = ?")
+                    .bind(port)
+                    .fetch_optional(&state.db)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to check port conflict in services: {}", e);
+                        make_internal_err()
+                    })?;
 
             if let Some((name,)) = existing_service {
                 return Err((
@@ -222,7 +227,9 @@ pub async fn deploy_template(
             tracing::warn!("Missing required environment variable: {}", entry.name);
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": { "code": "bad_request", "message": format!("Missing required variable: {}", entry.name) } })),
+                Json(
+                    serde_json::json!({ "error": { "code": "bad_request", "message": format!("Missing required variable: {}", entry.name) } }),
+                ),
             ));
         }
     }
@@ -252,13 +259,12 @@ pub async fn deploy_template(
 
     // Auto-generate SERVICE_PASSWORD_*, SERVICE_USER_*, SERVICE_BASE64_* magic variables
     {
-        use rand::Rng;
         use base64::Engine as _;
+        use rand::Rng;
 
-        let magic_var_re = regex::Regex::new(
-            r"\$\{(SERVICE_(?:PASSWORD|USER|BASE64)_([A-Z0-9_]+))(?::-[^}]*)?\}",
-        )
-        .expect("invalid magic var regex");
+        let magic_var_re =
+            regex::Regex::new(r"\$\{(SERVICE_(?:PASSWORD|USER|BASE64)_([A-Z0-9_]+))(?::-[^}]*)?\}")
+                .expect("invalid magic var regex");
 
         let mut generated: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -290,13 +296,10 @@ pub async fn deploy_template(
         // Apply generated variables — replace both ${VAR} and ${VAR:-default} forms
         for (var, value) in &generated {
             // Simple form: ${VAR}
-            compose_content =
-                compose_content.replace(&format!("${{{}}}", var), value);
+            compose_content = compose_content.replace(&format!("${{{}}}", var), value);
             // Default form: ${VAR:-something}
-            let re2 = regex::Regex::new(&format!(
-                r"\$\{{{var}:-[^}}]*\}}"
-            ))
-            .expect("invalid replacement regex");
+            let re2 = regex::Regex::new(&format!(r"\$\{{{var}:-[^}}]*\}}"))
+                .expect("invalid replacement regex");
             compose_content = re2
                 .replace_all(&compose_content, value.as_str())
                 .to_string();

@@ -29,6 +29,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   GitCompare,
+  RefreshCw,
 } from "lucide-react";
 import type { Deployment, DeploymentStatus } from "@/types/api";
 
@@ -213,8 +214,10 @@ function TimelineItem({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const config = statusConfig[deployment.status];
-  const StatusIcon = config.icon;
   const isActive = isActiveStatus(deployment.status);
+  const isRestart = deployment.trigger === "restart";
+  // For restart deployments use a distinctive icon on the timeline dot
+  const StatusIcon = isRestart && !isActive ? RefreshCw : config.icon;
   const duration = calculateDuration(deployment.started_at, deployment.finished_at);
 
   return (
@@ -283,6 +286,16 @@ function TimelineItem({
                   >
                     {config.label}
                   </Badge>
+                  {/* Restart trigger badge */}
+                  {isRestart && (
+                    <Badge
+                      variant="outline"
+                      className="gap-1 text-xs border-violet-400 text-violet-700 dark:text-violet-300"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Restart
+                    </Badge>
+                  )}
                   <span className="text-sm text-muted-foreground">
                     {formatDate(deployment.started_at)}
                   </span>
@@ -334,33 +347,52 @@ function TimelineItem({
                   </span>
                 )}
 
-                {/* Commit info */}
-                {(deployment.commit_sha || deployment.commit_message) && (
+                {/* Restart info or Commit info */}
+                {isRestart ? (
                   <div className="mt-2 space-y-1">
+                    <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+                      Container restarted from existing image
+                      {deployment.image_tag && (
+                        <span className="font-mono text-xs ml-1 truncate max-w-[200px]" title={deployment.image_tag}>
+                          ({deployment.image_tag.split(":").pop()})
+                        </span>
+                      )}
+                    </p>
                     {deployment.commit_message && (
-                      <p className="text-sm font-medium text-foreground line-clamp-2">
+                      <p className="text-xs text-muted-foreground truncate">
                         {deployment.commit_message}
                       </p>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      {deployment.commit_sha && (
-                        <span className="flex items-center gap-1 font-mono">
-                          <GitCommit className="w-3 h-3" />
-                          {deployment.commit_sha.slice(0, 7)}
-                        </span>
-                      )}
-                      {deployment.git_tag && (
-                        <Badge variant="outline" className="text-xs py-0 px-1.5 gap-1 h-5 font-normal">
-                          <Tag className="w-3 h-3" />
-                          {deployment.git_tag}
-                        </Badge>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <GitBranch className="w-3 h-3" />
-                        {branch}
-                      </span>
-                    </div>
                   </div>
+                ) : (
+                  (deployment.commit_sha || deployment.commit_message) && (
+                    <div className="mt-2 space-y-1">
+                      {deployment.commit_message && (
+                        <p className="text-sm font-medium text-foreground line-clamp-2">
+                          {deployment.commit_message}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {deployment.commit_sha && (
+                          <span className="flex items-center gap-1 font-mono">
+                            <GitCommit className="w-3 h-3" />
+                            {deployment.commit_sha.slice(0, 7)}
+                          </span>
+                        )}
+                        {deployment.git_tag && (
+                          <Badge variant="outline" className="text-xs py-0 px-1.5 gap-1 h-5 font-normal">
+                            <Tag className="w-3 h-3" />
+                            {deployment.git_tag}
+                          </Badge>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <GitBranch className="w-3 h-3" />
+                          {branch}
+                        </span>
+                      </div>
+                    </div>
+                  )
                 )}
 
                 {/* Error message - always show full error for failed deployments */}
@@ -468,6 +500,15 @@ function TimelineItem({
                       <span className="text-muted-foreground">Finished</span>
                       <p className="text-xs mt-1">
                         {new Date(deployment.finished_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                  {deployment.trigger && (
+                    <div>
+                      <span className="text-muted-foreground">Trigger</span>
+                      <p className="text-xs mt-1 capitalize flex items-center gap-1">
+                        {isRestart && <RefreshCw className="w-3 h-3 text-violet-500" />}
+                        {deployment.trigger}
                       </p>
                     </div>
                   )}

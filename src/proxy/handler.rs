@@ -57,7 +57,11 @@ impl ProxyHandler {
     }
 
     /// Redirect all HTTP traffic to HTTPS (only when the flag is set to true)
-    pub fn with_https_redirect(mut self, https_port: u16, enabled: Arc<std::sync::atomic::AtomicBool>) -> Self {
+    pub fn with_https_redirect(
+        mut self,
+        https_port: u16,
+        enabled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
         self.https_redirect_port = Some(https_port);
         self.https_redirect_enabled = Some(enabled);
         self
@@ -129,33 +133,34 @@ impl ProxyHandler {
         // follow HTTP redirects, so the delivery would silently fail.
         let is_webhook_path = path.starts_with("/webhooks/");
         let redirect_active = !is_webhook_path
-            && self.https_redirect_enabled
+            && self
+                .https_redirect_enabled
                 .as_ref()
                 .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
                 .unwrap_or(false);
         if redirect_active {
-        if let Some(https_port) = self.https_redirect_port {
-            let host_header = req
-                .headers()
-                .get(hyper::header::HOST)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
-            // Strip existing port from host header, add https port if non-standard
-            let host_without_port = host_header.split(':').next().unwrap_or(host_header);
-            let redirect_host = if https_port == 443 {
-                host_without_port.to_string()
-            } else {
-                format!("{}:{}", host_without_port, https_port)
-            };
-            let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
-            let location = format!("https://{}{}{}", redirect_host, path, query);
-            let response = Response::builder()
-                .status(hyper::StatusCode::MOVED_PERMANENTLY)
-                .header(hyper::header::LOCATION, location)
-                .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                .unwrap();
-            return Ok(response);
-        }
+            if let Some(https_port) = self.https_redirect_port {
+                let host_header = req
+                    .headers()
+                    .get(hyper::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                // Strip existing port from host header, add https port if non-standard
+                let host_without_port = host_header.split(':').next().unwrap_or(host_header);
+                let redirect_host = if https_port == 443 {
+                    host_without_port.to_string()
+                } else {
+                    format!("{}:{}", host_without_port, https_port)
+                };
+                let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+                let location = format!("https://{}{}{}", redirect_host, path, query);
+                let response = Response::builder()
+                    .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                    .header(hyper::header::LOCATION, location)
+                    .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
+                    .unwrap();
+                return Ok(response);
+            }
         } // end redirect_active
 
         let host = self.extract_host(&req);
@@ -465,11 +470,7 @@ impl ProxyHandler {
                     .status(status)
                     .header(hyper::header::LOCATION, &destination)
                     .header("X-Powered-By", "Rivetr")
-                    .body(
-                        Full::new(Bytes::new())
-                            .map_err(|e| match e {})
-                            .boxed(),
-                    )
+                    .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
                     .unwrap();
 
                 return Some(response);

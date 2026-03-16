@@ -127,7 +127,10 @@ impl AppState {
                 }
                 // Sort by started_at descending and keep the most recent 20
                 all_deps.sort_by(|a, b| {
-                    b.started_at.as_deref().unwrap_or("").cmp(a.started_at.as_deref().unwrap_or(""))
+                    b.started_at
+                        .as_deref()
+                        .unwrap_or("")
+                        .cmp(a.started_at.as_deref().unwrap_or(""))
                 });
                 all_deps.truncate(20);
                 if self.deployment_cursor >= all_deps.len() && !all_deps.is_empty() {
@@ -331,9 +334,7 @@ pub fn run_tui(mut state: AppState) -> Result<()> {
         if event::poll(poll_timeout)? {
             if let Event::Key(key) = event::read()? {
                 // Ctrl-C / q always quits
-                if key.code == KeyCode::Char('c')
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                {
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     break;
                 }
 

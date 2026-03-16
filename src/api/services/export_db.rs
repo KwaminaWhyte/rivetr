@@ -60,9 +60,7 @@ pub async fn export_service_db(
     if service.get_status() != ServiceStatus::Running {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(
-                serde_json::json!({"error": "Service must be running to export a database dump"}),
-            ),
+            Json(serde_json::json!({"error": "Service must be running to export a database dump"})),
         ));
     }
 
@@ -101,21 +99,12 @@ pub async fn export_service_db(
     let db_type = detect_db_type_from_compose(&service.compose_content, &container_id);
 
     // ── 4. Determine output format ────────────────────────────────────────────
-    let use_gz = query
-        .format
-        .as_deref()
-        .map(|f| f == "gz")
-        .unwrap_or(false);
+    let use_gz = query.format.as_deref().map(|f| f == "gz").unwrap_or(false);
 
-    let db_name = query
-        .database
-        .as_deref()
-        .unwrap_or("app")
-        .to_string();
+    let db_name = query.database.as_deref().unwrap_or("app").to_string();
 
     // ── 5. Build dump command ─────────────────────────────────────────────────
-    let dump_cmd = build_dump_command(&db_type, &db_name, use_gz, &service.compose_content)
-        .map_err(|e| e)?;
+    let dump_cmd = build_dump_command(&db_type, &db_name, use_gz, &service.compose_content)?;
 
     // ── 6. Run the dump command inside the container ──────────────────────────
     let result = state
@@ -126,9 +115,7 @@ pub async fn export_service_db(
             tracing::error!("Failed to run dump command: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(
-                    serde_json::json!({"error": format!("Failed to run dump command: {}", e)}),
-                ),
+                Json(serde_json::json!({"error": format!("Failed to run dump command: {}", e)})),
             )
         })?;
 
@@ -147,12 +134,24 @@ pub async fn export_service_db(
     let safe_name = service
         .name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
 
     let safe_db = db_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
 
     let ext = if use_gz { ".sql.gz" } else { ".sql" };
@@ -312,10 +311,7 @@ fn build_dump_command(
                 vec![
                     "sh".to_string(),
                     "-c".to_string(),
-                    format!(
-                        "mysqldump -u{} -p'{}' {}",
-                        user, password, effective_db
-                    ),
+                    format!("mysqldump -u{} -p'{}' {}", user, password, effective_db),
                 ]
             }
         }
@@ -350,10 +346,7 @@ fn build_dump_command(
                 vec![
                     "sh".to_string(),
                     "-c".to_string(),
-                    format!(
-                        "mariadb-dump -u{} -p'{}' {}",
-                        user, password, effective_db
-                    ),
+                    format!("mariadb-dump -u{} -p'{}' {}", user, password, effective_db),
                 ]
             }
         }
@@ -381,19 +374,13 @@ fn build_dump_command(
                 vec![
                     "sh".to_string(),
                     "-c".to_string(),
-                    format!(
-                        "mongodump {} --archive --db {} --gzip",
-                        auth_part, db_name
-                    ),
+                    format!("mongodump {} --archive --db {} --gzip", auth_part, db_name),
                 ]
             } else {
                 vec![
                     "sh".to_string(),
                     "-c".to_string(),
-                    format!(
-                        "mongodump {} --archive --db {}",
-                        auth_part, db_name
-                    ),
+                    format!("mongodump {} --archive --db {}", auth_part, db_name),
                 ]
             }
         }

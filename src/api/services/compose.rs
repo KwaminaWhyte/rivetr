@@ -83,7 +83,11 @@ pub fn inject_isolated_network(content: &str, service_id: &str) -> Result<String
         network_name
     );
 
-    Ok(format!("{}{}", content.trim_end_matches('\n'), network_block))
+    Ok(format!(
+        "{}{}",
+        content.trim_end_matches('\n'),
+        network_block
+    ))
 }
 
 /// Inject the shared `rivetr` Docker network into compose YAML.
@@ -311,10 +315,8 @@ pub async fn substitute_magic_vars(
 
         // Substitute required vars that ARE set
         for (key, val) in existing_vars {
-            let re = regex::Regex::new(&format!(
-                r"\$\{{{key}:[?][^}}]*\}}"
-            ))
-            .map_err(|e| format!("regex error: {e}"))?;
+            let re = regex::Regex::new(&format!(r"\$\{{{key}:[?][^}}]*\}}"))
+                .map_err(|e| format!("regex error: {e}"))?;
             content = re.replace_all(&content, val.as_str()).to_string();
         }
     }
@@ -342,9 +344,7 @@ pub async fn substitute_magic_vars(
         content = new_content;
 
         // Replace ${SERVICE_URL_*} and ${SERVICE_URL_*:-default}
-        let new_content = url_re
-            .replace_all(&content, url_value.as_str())
-            .to_string();
+        let new_content = url_re.replace_all(&content, url_value.as_str()).to_string();
         content = new_content;
     }
 

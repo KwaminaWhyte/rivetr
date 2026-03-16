@@ -199,13 +199,12 @@ pub async fn delete_ssh_key(
     headers: HeaderMap,
 ) -> Result<StatusCode, StatusCode> {
     // Fetch key name before deleting so audit log can use it
-    let key_name: Option<String> =
-        sqlx::query_scalar("SELECT name FROM ssh_keys WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
+    let key_name: Option<String> = sqlx::query_scalar("SELECT name FROM ssh_keys WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
 
     let result = sqlx::query("DELETE FROM ssh_keys WHERE id = ?")
         .bind(&id)

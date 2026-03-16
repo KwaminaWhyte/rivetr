@@ -299,11 +299,7 @@ mod tests {
 
         // used + free should approximately equal total (may differ slightly due to reserved blocks)
         let calculated_total = stats.used_bytes + stats.free_bytes;
-        let diff = if calculated_total > stats.total_bytes {
-            calculated_total - stats.total_bytes
-        } else {
-            stats.total_bytes - calculated_total
-        };
+        let diff = calculated_total.abs_diff(stats.total_bytes);
         // Allow 1% margin for reserved blocks
         assert!(
             diff <= stats.total_bytes / 100,

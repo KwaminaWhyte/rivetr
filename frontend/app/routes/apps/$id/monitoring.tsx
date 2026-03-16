@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -489,12 +489,14 @@ function LogRetentionSection({ appId }: { appId: string }) {
     queryFn: () => monitoringApi.getLogRetention(appId),
   });
 
-  // Sync form state when policy loads
-  if (policy && !isLoaded) {
-    setRetentionDays(policy.retention_days);
-    setMaxSizeMb(policy.max_size_mb != null ? policy.max_size_mb.toString() : "");
-    setIsLoaded(true);
-  }
+  // Sync form state when policy loads (use effect to avoid setState-during-render)
+  useEffect(() => {
+    if (policy && !isLoaded) {
+      setRetentionDays(policy.retention_days);
+      setMaxSizeMb(policy.max_size_mb != null ? policy.max_size_mb.toString() : "");
+      setIsLoaded(true);
+    }
+  }, [policy, isLoaded]);
 
   const updateMutation = useMutation({
     mutationFn: () =>

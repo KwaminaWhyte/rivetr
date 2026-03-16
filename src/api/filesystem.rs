@@ -166,15 +166,15 @@ fn parse_ls_output(output: &str, base_path: &str) -> Vec<FileEntry> {
             Some(s) => s.to_string(),
             None => continue,
         };
-        let _links = match tokens.next() {
+        match tokens.next() {
             Some(_) => (),
             None => continue,
         };
-        let _user = match tokens.next() {
+        match tokens.next() {
             Some(_) => (),
             None => continue,
         };
-        let _group = match tokens.next() {
+        match tokens.next() {
             Some(_) => (),
             None => continue,
         };
@@ -272,10 +272,7 @@ pub async fn read_file(
 
     let (_, ctx, key_path) = get_remote_context(&state, &server_id).await?;
 
-    let cmd = format!(
-        "cat \"{}\" 2>&1",
-        query.path.replace('"', "\\\"")
-    );
+    let cmd = format!("cat \"{}\" 2>&1", query.path.replace('"', "\\\""));
 
     let (stdout, stderr) = ctx.run_command(&cmd).await.map_err(|e| {
         tracing::error!("SSH command failed for server {}: {}", server_id, e);
@@ -320,7 +317,9 @@ pub async fn write_file(
     cleanup_key(key_path);
 
     if stdout.contains("exit:0") || stdout.trim().ends_with("exit:0") {
-        Ok(Json(serde_json::json!({ "message": "File written successfully" })))
+        Ok(Json(
+            serde_json::json!({ "message": "File written successfully" }),
+        ))
     } else {
         Err(ApiError::internal(format!(
             "Failed to write file: {}",
@@ -380,8 +379,16 @@ fn base64_encode(input: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let b0 = bytes[i] as u32;
-        let b1 = if i + 1 < bytes.len() { bytes[i + 1] as u32 } else { 0 };
-        let b2 = if i + 2 < bytes.len() { bytes[i + 2] as u32 } else { 0 };
+        let b1 = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
 
         result.push(ALPHABET[((b0 >> 2) & 0x3F) as usize] as char);
         result.push(ALPHABET[(((b0 << 4) | (b1 >> 4)) & 0x3F) as usize] as char);

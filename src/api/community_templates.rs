@@ -11,7 +11,9 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{CommunityTemplateSubmission, ReviewSubmissionRequest, SubmitTemplateRequest, User};
+use crate::db::{
+    CommunityTemplateSubmission, ReviewSubmissionRequest, SubmitTemplateRequest, User,
+};
 use crate::AppState;
 
 use super::error::ApiError;

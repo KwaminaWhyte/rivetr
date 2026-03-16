@@ -437,11 +437,10 @@ pub async fn get_app_stats(
     }
 
     // Check if app exists — return 404 only for truly missing apps
-    let app_exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM apps WHERE id = ?")
-            .bind(&app_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await?;
 
     if app_exists.is_none() {
         return Err(ApiError::not_found("App not found"));

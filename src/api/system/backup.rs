@@ -525,9 +525,7 @@ pub async fn run_backup_schedule(
                     if let Some((s3_client, _)) = get_default_s3_client(&state).await {
                         let s3_key = format!("instance-backups/{}", result.name);
                         if let Ok(backup_data) = std::fs::read(&result.path) {
-                            if let Err(e) =
-                                s3_client.upload_backup(&s3_key, backup_data).await
-                            {
+                            if let Err(e) = s3_client.upload_backup(&s3_key, backup_data).await {
                                 tracing::warn!(error = %e, "S3 upload failed for manual run");
                             }
                         }
@@ -553,18 +551,16 @@ pub async fn run_backup_schedule(
 
     // Update last_run_at and compute next_run_at
     let next_run = compute_next_run(&schedule.cron_expression);
-    sqlx::query(
-        "UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?",
-    )
-    .bind(&now_str)
-    .bind(&next_run)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to update backup schedule after run");
-        ApiError::internal("Failed to update backup schedule")
-    })?;
+    sqlx::query("UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?")
+        .bind(&now_str)
+        .bind(&next_run)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to update backup schedule after run");
+            ApiError::internal("Failed to update backup schedule")
+        })?;
 
     tracing::info!(schedule_id = %id, "Backup schedule manually triggered");
 
@@ -706,12 +702,8 @@ pub async fn create_full_backup(
         let mut builder = TarBuilder::new(&mut raw_tar);
 
         // --- rivetr.db ---
-        add_bytes_to_tar(
-            &mut builder,
-            &format!("{}/rivetr.db", root_dir),
-            &db_bytes,
-        )
-        .map_err(|e| ApiError::internal(format!("Tar error (db): {}", e)))?;
+        add_bytes_to_tar(&mut builder, &format!("{}/rivetr.db", root_dir), &db_bytes)
+            .map_err(|e| ApiError::internal(format!("Tar error (db): {}", e)))?;
 
         // --- metadata.json ---
         let metadata = serde_json::json!({
@@ -743,12 +735,7 @@ pub async fn create_full_backup(
 
             let env_map: serde_json::Map<String, serde_json::Value> = env_vars
                 .iter()
-                .map(|ev| {
-                    (
-                        ev.key.clone(),
-                        serde_json::Value::String(ev.value.clone()),
-                    )
-                })
+                .map(|ev| (ev.key.clone(), serde_json::Value::String(ev.value.clone())))
                 .collect();
 
             // Sanitise app name for use as a directory name.
@@ -815,10 +802,7 @@ pub async fn create_full_backup(
                         Ok(vol_bytes) => {
                             add_bytes_to_tar(
                                 &mut builder,
-                                &format!(
-                                    "{}/databases/{}/data.tar.gz",
-                                    root_dir, safe_name
-                                ),
+                                &format!("{}/databases/{}/data.tar.gz", root_dir, safe_name),
                                 &vol_bytes,
                             )
                             .map_err(|e| {
@@ -843,10 +827,7 @@ pub async fn create_full_backup(
                         Ok(vol_bytes) => {
                             add_bytes_to_tar(
                                 &mut builder,
-                                &format!(
-                                    "{}/databases/{}/data.tar.gz",
-                                    root_dir, safe_name
-                                ),
+                                &format!("{}/databases/{}/data.tar.gz", root_dir, safe_name),
                                 &vol_bytes,
                             )
                             .map_err(|e| {

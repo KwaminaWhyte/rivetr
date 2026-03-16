@@ -92,7 +92,11 @@ pub async fn create_tunnel(
     let id_clone = id.clone();
     tokio::spawn(async move {
         if let Err(e) = start_tunnel_container(&state_clone, &id_clone).await {
-            tracing::error!("Failed to start cloudflared container for tunnel {}: {}", id_clone, e);
+            tracing::error!(
+                "Failed to start cloudflared container for tunnel {}: {}",
+                id_clone,
+                e
+            );
             let _ = sqlx::query(
                 "UPDATE cloudflare_tunnels SET status = 'error', updated_at = datetime('now') WHERE id = ?",
             )
@@ -102,13 +106,12 @@ pub async fn create_tunnel(
         }
     });
 
-    let tunnel = sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tunnel =
+        sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((StatusCode::CREATED, Json(tunnel.to_response(vec![]))))
 }
@@ -123,14 +126,13 @@ pub async fn delete_tunnel(
     _user: User,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let tunnel = sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let tunnel =
+        sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     // Stop and remove container if one exists
     if let Some(ref cid) = tunnel.container_id {
@@ -164,20 +166,22 @@ pub async fn start_tunnel(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Verify tunnel exists
-    sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     let state_clone = state.clone();
     let id_clone = id.clone();
     tokio::spawn(async move {
         if let Err(e) = start_tunnel_container(&state_clone, &id_clone).await {
-            tracing::error!("Failed to start cloudflared container for tunnel {}: {}", id_clone, e);
+            tracing::error!(
+                "Failed to start cloudflared container for tunnel {}: {}",
+                id_clone,
+                e
+            );
             let _ = sqlx::query(
                 "UPDATE cloudflare_tunnels SET status = 'error', updated_at = datetime('now') WHERE id = ?",
             )
@@ -196,14 +200,13 @@ pub async fn stop_tunnel(
     _user: User,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let tunnel = sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let tunnel =
+        sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     if let Some(ref cid) = tunnel.container_id {
         if !cid.is_empty() {
@@ -235,14 +238,12 @@ pub async fn list_tunnel_routes(
     Path(id): Path<String>,
 ) -> Result<Json<Vec<CloudflareTunnelRoute>>, StatusCode> {
     // Verify tunnel exists
-    sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     let routes = sqlx::query_as::<_, CloudflareTunnelRoute>(
         "SELECT * FROM cloudflare_tunnel_routes WHERE tunnel_id = ? ORDER BY created_at ASC",
@@ -266,14 +267,12 @@ pub async fn create_tunnel_route(
     Json(req): Json<CreateTunnelRouteRequest>,
 ) -> Result<(StatusCode, Json<CloudflareTunnelRoute>), StatusCode> {
     // Verify tunnel exists
-    sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     let route_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -312,14 +311,12 @@ pub async fn delete_tunnel_route(
     _user: User,
     Path((tunnel_id, route_id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    let result = sqlx::query(
-        "DELETE FROM cloudflare_tunnel_routes WHERE id = ? AND tunnel_id = ?",
-    )
-    .bind(&route_id)
-    .bind(&tunnel_id)
-    .execute(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let result = sqlx::query("DELETE FROM cloudflare_tunnel_routes WHERE id = ? AND tunnel_id = ?")
+        .bind(&route_id)
+        .bind(&tunnel_id)
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
@@ -333,17 +330,19 @@ pub async fn delete_tunnel_route(
 // ──────────────────────────────────────────────────────────────────────────────
 
 async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Result<()> {
-    let tunnel = sqlx::query_as::<_, CloudflareTunnel>(
-        "SELECT * FROM cloudflare_tunnels WHERE id = ?",
-    )
-    .bind(id)
-    .fetch_one(&state.db)
-    .await?;
+    let tunnel =
+        sqlx::query_as::<_, CloudflareTunnel>("SELECT * FROM cloudflare_tunnels WHERE id = ?")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
 
     // If there's an existing container try to (re)start it
     if let Some(ref existing_cid) = tunnel.container_id {
         if !existing_cid.is_empty() {
-            tracing::info!("Restarting existing cloudflared container: {}", existing_cid);
+            tracing::info!(
+                "Restarting existing cloudflared container: {}",
+                existing_cid
+            );
 
             sqlx::query(
                 "UPDATE cloudflare_tunnels SET status = 'starting', updated_at = datetime('now') WHERE id = ?",
@@ -361,7 +360,11 @@ async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Resu
             .execute(&state.db)
             .await?;
 
-            tracing::info!("Cloudflared tunnel {} is running (restarted container {})", id, existing_cid);
+            tracing::info!(
+                "Cloudflared tunnel {} is running (restarted container {})",
+                id,
+                existing_cid
+            );
             return Ok(());
         }
     }
@@ -411,7 +414,10 @@ async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Resu
     };
 
     tracing::info!("Pulling cloudflare/cloudflared:latest");
-    state.runtime.pull_image("cloudflare/cloudflared:latest", None).await?;
+    state
+        .runtime
+        .pull_image("cloudflare/cloudflared:latest", None)
+        .await?;
 
     tracing::info!("Starting cloudflared container: {}", container_name);
     let container_id = state.runtime.run(&run_config).await?;
@@ -424,6 +430,10 @@ async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Resu
     .execute(&state.db)
     .await?;
 
-    tracing::info!("Cloudflared tunnel {} started (container {})", id, container_id);
+    tracing::info!(
+        "Cloudflared tunnel {} started (container {})",
+        id,
+        container_id
+    );
     Ok(())
 }

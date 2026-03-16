@@ -1,15 +1,14 @@
 mod alerts;
+mod api_tokens;
 mod apps;
 mod audit;
 pub mod auth;
+mod autoscaling;
+mod basic_auth;
+mod build_servers;
+mod bulk;
 mod cloudflare_tunnels;
 mod community_templates;
-mod filesystem;
-mod autoscaling;
-mod bulk;
-mod basic_auth;
-mod api_tokens;
-mod build_servers;
 mod cost_rates;
 mod costs;
 mod database_backups;
@@ -19,6 +18,7 @@ mod deployments;
 mod env_vars;
 pub mod environments;
 pub mod error;
+mod filesystem;
 mod git_providers;
 mod github_apps;
 mod instance_settings;
@@ -36,6 +36,7 @@ mod redirect_rules;
 mod replicas;
 mod routes;
 mod s3;
+mod sdk;
 mod servers;
 mod service_templates;
 mod services;
@@ -51,7 +52,6 @@ mod volumes;
 mod webhook_events;
 mod webhooks;
 mod white_label;
-mod sdk;
 mod ws;
 
 use axum::{
@@ -81,7 +81,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
         .route("/setup", post(auth::setup))
-        .route("/register-with-invitation", post(auth::register_with_invitation))
+        .route(
+            "/register-with-invitation",
+            post(auth::register_with_invitation),
+        )
         // OAuth routes
         .route(
             "/oauth/:provider/authorize",
@@ -599,7 +602,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/stop", post(databases::stop_database))
         .route("/databases/:id/logs", get(databases::get_database_logs))
         .route("/databases/:id/stats", get(databases::get_database_stats))
-        .route("/databases/:id/import", post(databases::import_database_dump))
+        .route(
+            "/databases/:id/import",
+            post(databases::import_database_dump),
+        )
         // Database Extensions (PostgreSQL only)
         .route(
             "/databases/:id/extensions",
@@ -666,14 +672,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/services/:id/generated-vars",
             get(services::get_service_generated_vars),
         )
-        .route(
-            "/services/:id/import-db",
-            post(services::import_service_db),
-        )
-        .route(
-            "/services/:id/export-db",
-            get(services::export_service_db),
-        )
+        .route("/services/:id/import-db", post(services::import_service_db))
+        .route("/services/:id/export-db", get(services::export_service_db))
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
         .route(
@@ -712,8 +712,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/templates/submissions/:id",
-            get(community_templates::get_submission)
-                .delete(community_templates::delete_submission),
+            get(community_templates::get_submission).delete(community_templates::delete_submission),
         )
         .route(
             "/templates/submissions/:id/review",
@@ -938,10 +937,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id/export", get(bulk::export_project))
         .route("/projects/:id/import", post(bulk::import_project))
         // White Label (update — admin only, protected by auth)
-        .route(
-            "/white-label",
-            put(white_label::update_white_label),
-        )
+        .route("/white-label", put(white_label::update_white_label))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

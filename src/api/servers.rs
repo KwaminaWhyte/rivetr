@@ -951,10 +951,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
     // Decrypt SSH password if present and no key available
     let password_content = if private_key_content.is_none() {
         if let Some(ref encrypted_pwd) = server.ssh_password {
-            match crate::crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
-                Ok(p) => Some(p),
-                Err(_) => None,
-            }
+            crate::crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()).ok()
         } else {
             None
         }
@@ -1041,19 +1038,19 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         }
     } else {
         match Command::new("ssh")
-        .args(&ssh_args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            let msg = serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
-            let _ = socket.send(Message::Text(msg.to_string())).await;
-            return;
+            .args(&ssh_args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
+                let _ = socket.send(Message::Text(msg.to_string())).await;
+                return;
+            }
         }
-    }
     };
 
     let connected_msg = serde_json::json!({
@@ -1301,8 +1298,7 @@ async fn run_ssh_patch_check(
     let output = cmd.output().await?;
 
     // yum check-update exits 100 when updates are available — treat as success
-    let success = output.status.success()
-        || output.status.code() == Some(100);
+    let success = output.status.success() || output.status.code() == Some(100);
 
     if !success {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1319,7 +1315,11 @@ async fn run_ssh_patch_check(
     for line in stdout.lines() {
         let line = line.trim();
         if let Some(mgr) = line.strip_prefix("PKG_MANAGER:") {
-            pkg_manager = if mgr == "dnf" || mgr == "yum" { "yum" } else { "apt" };
+            pkg_manager = if mgr == "dnf" || mgr == "yum" {
+                "yum"
+            } else {
+                "apt"
+            };
             continue;
         }
         if line.is_empty() {
@@ -1407,11 +1407,7 @@ pub async fn check_server_security(
         match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
             Ok(key) => Some(key),
             Err(e) => {
-                tracing::warn!(
-                    "Failed to decrypt SSH key for security check {}: {}",
-                    id,
-                    e
-                );
+                tracing::warn!("Failed to decrypt SSH key for security check {}: {}", id, e);
                 None
             }
         }
@@ -1575,9 +1571,7 @@ async fn run_ssh_security_check(
         }
     }
 
-    let get_lines = |key: &str| -> Vec<String> {
-        sections.get(key).cloned().unwrap_or_default()
-    };
+    let get_lines = |key: &str| -> Vec<String> { sections.get(key).cloned().unwrap_or_default() };
 
     let mut items: Vec<SecurityCheckItem> = Vec::new();
 
@@ -1723,9 +1717,7 @@ async fn run_ssh_security_check(
         let has_exposure = !is_not_exposed
             && lines.iter().any(|l| {
                 let lower = l.to_lowercase();
-                lower.contains("2375")
-                    || lower.contains("2376")
-                    || lower.contains("tcp://0.0.0.0")
+                lower.contains("2375") || lower.contains("2376") || lower.contains("tcp://0.0.0.0")
             });
         let (status, details) = if has_exposure {
             (
@@ -1741,9 +1733,8 @@ async fn run_ssh_security_check(
         items.push(SecurityCheckItem {
             id: "docker_exposed".to_string(),
             name: "Docker Daemon Not Exposed on TCP".to_string(),
-            description:
-                "Docker's TCP socket (port 2375/2376) should not be publicly reachable."
-                    .to_string(),
+            description: "Docker's TCP socket (port 2375/2376) should not be publicly reachable."
+                .to_string(),
             status: status.to_string(),
             details,
         });
@@ -1754,10 +1745,7 @@ async fn run_ssh_security_check(
         let lines = get_lines("unattended_upgrades");
         let raw = lines.first().map(|s| s.as_str()).unwrap_or("NOT_INSTALLED");
         let (status, details) = if raw.starts_with("ii") {
-            (
-                "pass",
-                Some("unattended-upgrades is installed".to_string()),
-            )
+            ("pass", Some("unattended-upgrades is installed".to_string()))
         } else {
             (
                 "warn",

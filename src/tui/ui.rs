@@ -68,9 +68,7 @@ fn draw_tabs(f: &mut Frame, state: &AppState, area: Rect) {
                 .border_style(Style::default().fg(ACCENT))
                 .title(Span::styled(
                     " Rivetr TUI ",
-                    Style::default()
-                        .fg(ACCENT)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
                 )),
         )
         .select(state.current_tab.index())
@@ -271,14 +269,16 @@ fn draw_servers(f: &mut Frame, state: &AppState, area: Rect) {
         .collect();
 
     if rows.is_empty() {
-        let p = Paragraph::new("No servers configured (or this Rivetr version has no /api/servers endpoint).")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(DIM))
-                    .title(" Servers "),
-            )
-            .style(Style::default().fg(DIM));
+        let p = Paragraph::new(
+            "No servers configured (or this Rivetr version has no /api/servers endpoint).",
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(DIM))
+                .title(" Servers "),
+        )
+        .style(Style::default().fg(DIM));
         f.render_widget(p, area);
         return;
     }
@@ -410,10 +410,7 @@ fn draw_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
         ),
         Span::raw(format!("  {}", state.base_url)),
         if !status_msg.is_empty() {
-            Span::styled(
-                format!("  ⚡ {}", status_msg),
-                Style::default().fg(WARNING),
-            )
+            Span::styled(format!("  ⚡ {}", status_msg), Style::default().fg(WARNING))
         } else {
             Span::raw("")
         },
@@ -423,7 +420,10 @@ fn draw_status_bar(f: &mut Frame, state: &AppState, area: Rect) {
 
     let bar_area = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(right_text.len() as u16 + 1)])
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(right_text.len() as u16 + 1),
+        ])
         .split(area);
 
     f.render_widget(
@@ -444,9 +444,7 @@ fn draw_help_overlay(f: &mut Frame, area: Rect) {
     let help_text = vec![
         Line::from(Span::styled(
             " Rivetr TUI — Keyboard Shortcuts ",
-            Style::default()
-                .fg(ACCENT)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(vec![
@@ -530,9 +528,7 @@ fn status_style(status: &str) -> Style {
         "running" | "success" | "succeeded" | "healthy" | "connected" | "online" => {
             Style::default().fg(SUCCESS)
         }
-        "failed" | "error" | "crashed" | "offline" | "disconnected" => {
-            Style::default().fg(ERROR)
-        }
+        "failed" | "error" | "crashed" | "offline" | "disconnected" => Style::default().fg(ERROR),
         "building" | "cloning" | "deploying" | "pending" | "starting" | "checking" => {
             Style::default().fg(WARNING)
         }

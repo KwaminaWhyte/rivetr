@@ -546,8 +546,9 @@ pub async fn create_scheduled_restart(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Validate cron expression
-    if cron::Schedule::from_str(&req.cron_expression).is_err() {
+    // Validate cron expression (normalize to 6-field before parsing)
+    let normalized_cron = normalize_cron(&req.cron_expression);
+    if cron::Schedule::from_str(&normalized_cron).is_err() {
         tracing::warn!("Invalid cron expression: {}", req.cron_expression);
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -667,8 +668,9 @@ pub async fn update_scheduled_restart(
         .map(|e| if e { 1 } else { 0 })
         .unwrap_or(existing.enabled);
 
-    // Validate cron if changed
-    if cron::Schedule::from_str(&new_cron).is_err() {
+    // Validate cron if changed (normalize to 6-field before parsing)
+    let normalized_new_cron = normalize_cron(&new_cron);
+    if cron::Schedule::from_str(&normalized_new_cron).is_err() {
         tracing::warn!("Invalid cron expression: {}", new_cron);
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -762,8 +764,25 @@ pub async fn delete_scheduled_restart(
 
 use std::str::FromStr;
 
+/// Normalise a cron expression so it always has exactly 6 fields (seconds
+/// included).  The `cron` crate requires a seconds field as the first field
+/// (`sec min hour day month weekday`), but users and the frontend supply the
+/// conventional 5-field POSIX format (`min hour day month weekday`).
+///
+/// If the expression already has 6 or more whitespace-separated fields it is
+/// returned unchanged; otherwise `"0"` is prepended.
+fn normalize_cron(expr: &str) -> String {
+    let field_count = expr.split_whitespace().count();
+    if field_count >= 6 {
+        expr.to_string()
+    } else {
+        format!("0 {}", expr)
+    }
+}
+
 fn next_run_from_cron(cron_expression: &str) -> Option<String> {
-    let schedule = cron::Schedule::from_str(cron_expression).ok()?;
+    let normalized = normalize_cron(cron_expression);
+    let schedule = cron::Schedule::from_str(&normalized).ok()?;
     let next = schedule.upcoming(chrono::Utc).next()?;
     Some(next.to_rfc3339())
 }

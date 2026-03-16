@@ -194,12 +194,10 @@ pub(super) async fn reconcile_deployments(
 
         if is_running && deployment.status == "starting" {
             // Container is running but DB says starting — fix it
-            if let Err(e) = sqlx::query(
-                "UPDATE deployments SET status = 'running' WHERE id = ?"
-            )
-            .bind(&deployment.id)
-            .execute(db)
-            .await
+            if let Err(e) = sqlx::query("UPDATE deployments SET status = 'running' WHERE id = ?")
+                .bind(&deployment.id)
+                .execute(db)
+                .await
             {
                 tracing::warn!(deployment = %deployment.id, error = %e, "Failed to update deployment status during reconciliation");
             } else {
@@ -236,15 +234,7 @@ pub(super) async fn reconcile_deployments(
 /// Reconcile database container status on startup
 pub(super) async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -> usize {
     let running_databases: Vec<ManagedDatabase> = match sqlx::query_as(
-        r#"
-        SELECT id, name, db_type, version, container_id, container_slug, status, internal_port,
-               external_port, public_access, credentials, volume_name, volume_path,
-               memory_limit, cpu_limit, error_message, project_id, team_id, created_at, updated_at,
-               COALESCE(ssl_enabled, 0) AS ssl_enabled,
-               ssl_mode
-        FROM databases
-        WHERE status IN ('running', 'starting') AND container_id IS NOT NULL
-        "#,
+        "SELECT * FROM databases WHERE status IN ('running', 'starting') AND container_id IS NOT NULL",
     )
     .fetch_all(db)
     .await
@@ -314,11 +304,7 @@ pub(super) async fn reconcile_services(db: &DbPool, runtime: &Arc<dyn ContainerR
     use super::stats::check_compose_running;
 
     let running_services: Vec<Service> = match sqlx::query_as(
-        r#"
-        SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at
-        FROM services
-        WHERE status = 'running'
-        "#,
+        "SELECT * FROM services WHERE status = 'running'",
     )
     .fetch_all(db)
     .await

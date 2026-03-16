@@ -304,7 +304,11 @@ pub async fn check_build_server_health(
         match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
             Ok(pwd) => Some(pwd),
             Err(e) => {
-                tracing::warn!("Failed to decrypt SSH password for build server {}: {}", id, e);
+                tracing::warn!(
+                    "Failed to decrypt SSH password for build server {}: {}",
+                    id,
+                    e
+                );
                 None
             }
         }

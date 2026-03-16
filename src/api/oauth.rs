@@ -1153,9 +1153,7 @@ async fn fetch_github_primary_email(access_token: &str) -> Result<String, (Statu
 }
 
 /// Fetch primary email from Bitbucket (when user profile email is null)
-async fn fetch_bitbucket_primary_email(
-    access_token: &str,
-) -> Result<String, (StatusCode, String)> {
+async fn fetch_bitbucket_primary_email(access_token: &str) -> Result<String, (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]

@@ -713,7 +713,7 @@ pub async fn create_snapshot(
     // Serialise app config (using AppResponse to exclude sensitive fields)
     let app_response: crate::db::AppResponse = app.clone().into();
     let config_json = serde_json::to_string(&app_response)
-        .map_err(|e| ApiError::internal(&format!("Failed to serialise config: {}", e)))?;
+        .map_err(|e| ApiError::internal(format!("Failed to serialise config: {}", e)))?;
 
     // Serialise env vars (mask secrets)
     let env_vars: Vec<EnvVar> = sqlx::query_as("SELECT * FROM env_vars WHERE app_id = ?")
@@ -734,7 +734,7 @@ pub async fn create_snapshot(
         })
         .collect();
     let env_vars_json = serde_json::to_string(&masked)
-        .map_err(|e| ApiError::internal(&format!("Failed to serialise env vars: {}", e)))?;
+        .map_err(|e| ApiError::internal(format!("Failed to serialise env vars: {}", e)))?;
 
     let snapshot_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -753,11 +753,10 @@ pub async fn create_snapshot(
     .execute(&state.db)
     .await?;
 
-    let snapshot: ConfigSnapshot =
-        sqlx::query_as("SELECT * FROM config_snapshots WHERE id = ?")
-            .bind(&snapshot_id)
-            .fetch_one(&state.db)
-            .await?;
+    let snapshot: ConfigSnapshot = sqlx::query_as("SELECT * FROM config_snapshots WHERE id = ?")
+        .bind(&snapshot_id)
+        .fetch_one(&state.db)
+        .await?;
 
     Ok((StatusCode::CREATED, Json(snapshot)))
 }
@@ -774,12 +773,11 @@ pub async fn list_snapshots(
     // Verify app exists
     get_app(&state, &id).await?;
 
-    let snapshots: Vec<ConfigSnapshot> = sqlx::query_as(
-        "SELECT * FROM config_snapshots WHERE app_id = ? ORDER BY created_at DESC",
-    )
-    .bind(&id)
-    .fetch_all(&state.db)
-    .await?;
+    let snapshots: Vec<ConfigSnapshot> =
+        sqlx::query_as("SELECT * FROM config_snapshots WHERE app_id = ? ORDER BY created_at DESC")
+            .bind(&id)
+            .fetch_all(&state.db)
+            .await?;
 
     Ok(Json(snapshots))
 }
@@ -797,18 +795,17 @@ pub async fn restore_snapshot(
         return Err(ApiError::validation_field("snapshot_id", e));
     }
 
-    let snapshot: ConfigSnapshot = sqlx::query_as(
-        "SELECT * FROM config_snapshots WHERE id = ? AND app_id = ?",
-    )
-    .bind(&snapshot_id)
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Snapshot not found"))?;
+    let snapshot: ConfigSnapshot =
+        sqlx::query_as("SELECT * FROM config_snapshots WHERE id = ? AND app_id = ?")
+            .bind(&snapshot_id)
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::not_found("Snapshot not found"))?;
 
     // Parse the stored config
     let stored: crate::db::AppResponse = serde_json::from_str(&snapshot.config_json)
-        .map_err(|e| ApiError::internal(&format!("Failed to parse snapshot config: {}", e)))?;
+        .map_err(|e| ApiError::internal(format!("Failed to parse snapshot config: {}", e)))?;
 
     // Apply the config fields (non-sensitive) back to the app
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -891,12 +888,11 @@ pub async fn delete_snapshot(
         return Err(ApiError::validation_field("snapshot_id", e));
     }
 
-    let result =
-        sqlx::query("DELETE FROM config_snapshots WHERE id = ? AND app_id = ?")
-            .bind(&snapshot_id)
-            .bind(&id)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query("DELETE FROM config_snapshots WHERE id = ? AND app_id = ?")
+        .bind(&snapshot_id)
+        .bind(&id)
+        .execute(&state.db)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Snapshot not found"));
@@ -919,11 +915,10 @@ pub async fn export_project(
     }
 
     // Fetch project name
-    let project_name: Option<(String,)> =
-        sqlx::query_as("SELECT name FROM projects WHERE id = ?")
-            .bind(&project_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let project_name: Option<(String,)> = sqlx::query_as("SELECT name FROM projects WHERE id = ?")
+        .bind(&project_id)
+        .fetch_optional(&state.db)
+        .await?;
 
     let project_name = project_name
         .map(|(n,)| n)
@@ -938,17 +933,15 @@ pub async fn export_project(
     let mut export_apps = Vec::new();
 
     for app in &apps {
-        let env_vars: Vec<EnvVar> =
-            sqlx::query_as("SELECT * FROM env_vars WHERE app_id = ?")
-                .bind(&app.id)
-                .fetch_all(&state.db)
-                .await?;
+        let env_vars: Vec<EnvVar> = sqlx::query_as("SELECT * FROM env_vars WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(&state.db)
+            .await?;
 
-        let volumes: Vec<Volume> =
-            sqlx::query_as("SELECT * FROM volumes WHERE app_id = ?")
-                .bind(&app.id)
-                .fetch_all(&state.db)
-                .await?;
+        let volumes: Vec<Volume> = sqlx::query_as("SELECT * FROM volumes WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(&state.db)
+            .await?;
 
         let export_env_vars: Vec<ExportEnvVar> = env_vars
             .iter()
@@ -1016,11 +1009,10 @@ pub async fn import_project(
     }
 
     // Verify project exists
-    let project_exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM projects WHERE id = ?")
-            .bind(&project_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let project_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM projects WHERE id = ?")
+        .bind(&project_id)
+        .fetch_optional(&state.db)
+        .await?;
 
     if project_exists.is_none() {
         return Err(ApiError::not_found("Project not found"));

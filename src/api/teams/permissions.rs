@@ -89,17 +89,15 @@ pub async fn set_member_permissions(
     }
 
     // Delete existing permissions for this member in this team, then insert fresh
-    sqlx::query(
-        "DELETE FROM team_resource_permissions WHERE team_id = ? AND user_id = ?",
-    )
-    .bind(&team_id)
-    .bind(&user_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to clear member permissions: {}", e);
-        ApiError::database("Failed to update permissions")
-    })?;
+    sqlx::query("DELETE FROM team_resource_permissions WHERE team_id = ? AND user_id = ?")
+        .bind(&team_id)
+        .bind(&user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to clear member permissions: {}", e);
+            ApiError::database("Failed to update permissions")
+        })?;
 
     let now = chrono::Utc::now().to_rfc3339();
 

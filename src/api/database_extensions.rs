@@ -112,7 +112,11 @@ pub async fn list_extensions(
         })?;
 
     if result.exit_code != 0 {
-        tracing::error!("psql exited with code {}: {}", result.exit_code, result.stderr);
+        tracing::error!(
+            "psql exited with code {}: {}",
+            result.exit_code,
+            result.stderr
+        );
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": result.stderr})),
@@ -173,7 +177,10 @@ pub async fn install_extension(
         let apt_cmd = vec![
             "sh".to_string(),
             "-c".to_string(),
-            format!("apt-get update -qq && apt-get install -y --no-install-recommends {}", pkg),
+            format!(
+                "apt-get update -qq && apt-get install -y --no-install-recommends {}",
+                pkg
+            ),
         ];
         let apt_result = state.runtime.run_command(&container_name, apt_cmd).await;
         match apt_result {
@@ -190,11 +197,17 @@ pub async fn install_extension(
                 tracing::error!("Failed to run apt-get for {}: {}", pkg, e);
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": format!("Failed to install OS package: {}", e)})),
+                    Json(
+                        serde_json::json!({"error": format!("Failed to install OS package: {}", e)}),
+                    ),
                 ));
             }
             Ok(_) => {
-                tracing::info!("Installed OS package '{}' for extension '{}'", pkg, req.extension);
+                tracing::info!(
+                    "Installed OS package '{}' for extension '{}'",
+                    pkg,
+                    req.extension
+                );
             }
         }
     }
@@ -212,7 +225,10 @@ pub async fn install_extension(
         ];
         if let Ok(r) = state.runtime.run_command(&container_name, patch_cmd).await {
             if r.exit_code != 0 {
-                tracing::warn!("Failed to patch postgresql.conf for timescaledb: {}", r.stderr);
+                tracing::warn!(
+                    "Failed to patch postgresql.conf for timescaledb: {}",
+                    r.stderr
+                );
             }
         }
 
@@ -227,10 +243,13 @@ pub async fn install_extension(
             let mut ok = false;
             for _ in 0..30 {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                let check = state.runtime.run_command(
-                    &container_name,
-                    vec!["pg_isready".to_string(), "-U".to_string(), username.clone()],
-                ).await;
+                let check = state
+                    .runtime
+                    .run_command(
+                        &container_name,
+                        vec!["pg_isready".to_string(), "-U".to_string(), username.clone()],
+                    )
+                    .await;
                 if check.map(|r| r.exit_code == 0).unwrap_or(false) {
                     ok = true;
                     break;
@@ -249,9 +268,15 @@ pub async fn install_extension(
 
     // TimescaleDB requires CASCADE to install its internal dependencies.
     let sql = if req.extension == "timescaledb" {
-        format!("CREATE EXTENSION IF NOT EXISTS \"{}\" CASCADE;", sql_extension_name(&req.extension))
+        format!(
+            "CREATE EXTENSION IF NOT EXISTS \"{}\" CASCADE;",
+            sql_extension_name(&req.extension)
+        )
     } else {
-        format!("CREATE EXTENSION IF NOT EXISTS \"{}\";", sql_extension_name(&req.extension))
+        format!(
+            "CREATE EXTENSION IF NOT EXISTS \"{}\";",
+            sql_extension_name(&req.extension)
+        )
     };
 
     let cmd = vec![
@@ -327,7 +352,9 @@ async fn get_running_postgres(
     if database.get_db_type() != DatabaseType::Postgres {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Extensions are only supported for PostgreSQL databases"})),
+            Json(
+                serde_json::json!({"error": "Extensions are only supported for PostgreSQL databases"}),
+            ),
         ));
     }
 

@@ -167,8 +167,7 @@ impl ProxyService {
                 };
                 let mut client_io = client_io;
                 let mut backend_io = backend_io;
-                if let Err(e) =
-                    tokio::io::copy_bidirectional(&mut client_io, &mut backend_io).await
+                if let Err(e) = tokio::io::copy_bidirectional(&mut client_io, &mut backend_io).await
                 {
                     debug!("WebSocket tunnel closed: {}", e);
                 }

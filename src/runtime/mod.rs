@@ -1,8 +1,8 @@
 mod docker;
 mod podman;
 
-pub use docker::DockerRuntime;
 pub use docker::parse_shm_size;
+pub use docker::DockerRuntime;
 pub use podman::PodmanRuntime;
 
 use anyhow::Result;

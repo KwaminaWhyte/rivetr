@@ -154,7 +154,11 @@ impl ApiClient {
                 anyhow::bail!("Authentication failed (401) — check your API token");
             }
             if !resp.status().is_success() {
-                anyhow::bail!("GET /api/apps/{}/deployments returned {}", app_id, resp.status());
+                anyhow::bail!(
+                    "GET /api/apps/{}/deployments returned {}",
+                    app_id,
+                    resp.status()
+                );
             }
 
             let text = resp.text().await?;
@@ -281,12 +285,12 @@ impl ApiClient {
     /// Returns true if the server is reachable (uses public /health, no auth required).
     pub fn ping(&self) -> bool {
         self.block(async {
-            let result = self
-                .client
-                .get(self.url("/health"))
-                .send()
-                .await;
-            Ok::<bool, anyhow::Error>(result.map(|r: reqwest::Response| r.status().is_success()).unwrap_or(false))
+            let result = self.client.get(self.url("/health")).send().await;
+            Ok::<bool, anyhow::Error>(
+                result
+                    .map(|r: reqwest::Response| r.status().is_success())
+                    .unwrap_or(false),
+            )
         })
         .unwrap_or(false)
     }

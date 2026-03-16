@@ -48,15 +48,14 @@ pub(super) async fn push_image_to_registry(
     };
 
     // Prefer commit SHA for deterministic rollbacks; fall back to short deployment ID.
-    let commit_sha: Option<String> = sqlx::query_scalar(
-        "SELECT commit_sha FROM deployments WHERE id = ?",
-    )
-    .bind(deployment_id)
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten()
-    .flatten();
+    let commit_sha: Option<String> =
+        sqlx::query_scalar("SELECT commit_sha FROM deployments WHERE id = ?")
+            .bind(deployment_id)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
 
     let version_label = match commit_sha.as_deref().filter(|s| !s.is_empty()) {
         Some(sha) => sha[..sha.len().min(40)].to_string(),
@@ -69,7 +68,11 @@ pub(super) async fn push_image_to_registry(
         }
     };
 
-    let remote_tag = format!("{}/{app_name}:{version_label}", registry_url, app_name = app.name);
+    let remote_tag = format!(
+        "{}/{app_name}:{version_label}",
+        registry_url,
+        app_name = app.name
+    );
     let latest_tag = format!("{}/{app_name}:latest", registry_url, app_name = app.name);
 
     add_deployment_log(
@@ -758,18 +761,13 @@ async fn run_remote_build(
     // ------------------------------------------------------------------
     // 1. Look up build server
     // ------------------------------------------------------------------
-    let server = sqlx::query_as::<_, BuildServer>(
-        "SELECT * FROM build_servers WHERE id = ?",
-    )
-    .bind(build_server_id)
-    .fetch_optional(db)
-    .await?
-    .ok_or_else(|| {
-        anyhow::anyhow!(
-            "Build server '{}' not found in database",
-            build_server_id
-        )
-    })?;
+    let server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
+        .bind(build_server_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!("Build server '{}' not found in database", build_server_id)
+        })?;
 
     add_deployment_log(
         db,
@@ -829,10 +827,7 @@ async fn run_remote_build(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                tmpfile.path(),
-                std::fs::Permissions::from_mode(0o600),
-            )?;
+            std::fs::set_permissions(tmpfile.path(), std::fs::Permissions::from_mode(0o600))?;
         }
 
         Some(tmpfile)
@@ -848,30 +843,29 @@ async fn run_remote_build(
     let use_sshpass = ssh_password_content.is_some() && key_path.is_none();
 
     // Helper closure: build a tokio SSH command (key or sshpass)
-    let make_ssh_cmd =
-        |password: Option<&str>, key: Option<&str>| -> Command {
-            let use_pass = password.is_some() && key.is_none();
-            let mut c = if use_pass {
-                let mut cmd = Command::new("sshpass");
-                cmd.arg("-p").arg(password.unwrap());
-                cmd.arg("ssh");
-                cmd
-            } else {
-                Command::new("ssh")
-            };
-            c.arg("-o")
-                .arg("StrictHostKeyChecking=no")
-                .arg("-o")
-                .arg("ConnectTimeout=15");
-            if !use_pass {
-                c.arg("-o").arg("BatchMode=yes");
-            }
-            c.arg("-p").arg(port.to_string());
-            if let Some(k) = key {
-                c.arg("-i").arg(k);
-            }
-            c
+    let make_ssh_cmd = |password: Option<&str>, key: Option<&str>| -> Command {
+        let use_pass = password.is_some() && key.is_none();
+        let mut c = if use_pass {
+            let mut cmd = Command::new("sshpass");
+            cmd.arg("-p").arg(password.unwrap());
+            cmd.arg("ssh");
+            cmd
+        } else {
+            Command::new("ssh")
         };
+        c.arg("-o")
+            .arg("StrictHostKeyChecking=no")
+            .arg("-o")
+            .arg("ConnectTimeout=15");
+        if !use_pass {
+            c.arg("-o").arg("BatchMode=yes");
+        }
+        c.arg("-p").arg(port.to_string());
+        if let Some(k) = key {
+            c.arg("-i").arg(k);
+        }
+        c
+    };
 
     // ------------------------------------------------------------------
     // 3. Create a temp directory on the remote
@@ -884,10 +878,7 @@ async fn run_remote_build(
     )
     .await?;
 
-    let mut mkdir_cmd = make_ssh_cmd(
-        ssh_password_content.as_deref(),
-        key_path.as_deref(),
-    );
+    let mut mkdir_cmd = make_ssh_cmd(ssh_password_content.as_deref(), key_path.as_deref());
     mkdir_cmd.arg(&target).arg("mktemp -d");
 
     let mkdir_out = mkdir_cmd
@@ -1000,8 +991,7 @@ async fn run_remote_build(
             image_tag, remote_dir, dockerfile, remote_dir
         );
 
-        let mut build_ssh =
-            make_ssh_cmd(ssh_password_content.as_deref(), key_path.as_deref());
+        let mut build_ssh = make_ssh_cmd(ssh_password_content.as_deref(), key_path.as_deref());
         build_ssh.arg(&target).arg(&docker_build_cmd);
 
         let build_out = build_ssh
@@ -1018,10 +1008,7 @@ async fn run_remote_build(
 
         if !build_out.status.success() {
             let stderr = String::from_utf8_lossy(&build_out.stderr);
-            anyhow::bail!(
-                "[Build Server] Remote docker build failed: {}",
-                stderr
-            );
+            anyhow::bail!("[Build Server] Remote docker build failed: {}", stderr);
         }
 
         add_deployment_log(
@@ -1087,9 +1074,7 @@ async fn run_remote_build(
             .wait_with_output()
             .context("Failed to wait for docker load")?;
 
-        let ssh_status = ssh_child
-            .wait()
-            .context("Failed to wait for SSH process")?;
+        let ssh_status = ssh_child.wait().context("Failed to wait for SSH process")?;
 
         if !ssh_status.success() {
             anyhow::bail!(

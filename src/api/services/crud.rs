@@ -286,15 +286,23 @@ pub async fn update_service(
 
         // Write updated compose file to disk, respecting the current raw_compose_mode setting.
         // Use the raw_compose_mode from the request if provided, otherwise use the existing value.
-        let raw_mode = req.raw_compose_mode.unwrap_or(existing.raw_compose_mode != 0);
+        let raw_mode = req
+            .raw_compose_mode
+            .unwrap_or(existing.raw_compose_mode != 0);
         let data_dir = &state.config.server.data_dir;
         let isolated_id = if !raw_mode && existing.isolated_network != 0 {
             Some(existing.id.as_str())
         } else {
             None
         };
-        if let Err(e) =
-            write_compose_file_with_options(data_dir, &existing.name, content, isolated_id, raw_mode).await
+        if let Err(e) = write_compose_file_with_options(
+            data_dir,
+            &existing.name,
+            content,
+            isolated_id,
+            raw_mode,
+        )
+        .await
         {
             tracing::error!("Failed to write compose file: {}", e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -526,16 +534,15 @@ pub async fn check_port(
     }
 
     // Check databases table (public databases only)
-    let existing_db: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM databases WHERE external_port = ? AND public_access = 1",
-    )
-    .bind(port)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to check port in databases: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let existing_db: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM databases WHERE external_port = ? AND public_access = 1")
+            .bind(port)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check port in databases: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     if let Some((name,)) = existing_db {
         return Ok(Json(CheckPortResponse {
