@@ -263,48 +263,72 @@ async fn handle_github_push(
         let commit_sha = payload.head_commit.as_ref().map(|c| c.id.clone());
         let commit_message = payload.head_commit.as_ref().map(|c| c.message.clone());
 
-        // Per-app idempotency: skip if an active (pending/running) deployment for this
-        // app+commit already exists. This catches any duplicates that slip past the
-        // delivery-ID guard (e.g. when no delivery ID is present, or GitHub sends a
-        // `push` and a `create` event for the same ref).
-        if let Some(ref sha) = commit_sha {
-            let active: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM deployments \
-                 WHERE app_id = ? AND commit_sha = ? AND status IN ('pending', 'running')",
-            )
-            .bind(&app.id)
-            .bind(sha)
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(0);
+        // Atomically check for an active deployment and insert a new one if none exists.
+        // Using BEGIN IMMEDIATE acquires SQLite's write lock upfront, so two concurrent
+        // webhook requests for the same push (e.g. repo webhook + GitHub App) can't both
+        // read 0 and both insert — the second waits for the first to commit, then sees 1.
+        let deployment_id = {
+            let mut conn = state
+                .db
+                .acquire()
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            sqlx::query("BEGIN IMMEDIATE")
+                .execute(&mut *conn)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Check for an already-active deployment for this app + commit.
+            let active: i64 = if let Some(ref sha) = commit_sha {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM deployments \
+                     WHERE app_id = ? AND commit_sha = ? AND status IN ('pending', 'running')",
+                )
+                .bind(&app.id)
+                .bind(sha)
+                .fetch_one(&mut *conn)
+                .await
+                .unwrap_or(0)
+            } else {
+                0
+            };
 
             if active > 0 {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
                 tracing::info!(
                     app = %app.name,
-                    commit_sha = %sha,
-                    "Skipping duplicate deployment — active deployment for same commit already exists"
+                    "Skipping duplicate webhook — active deployment for same commit already exists"
                 );
                 continue;
             }
-        }
 
-        let deployment_id = Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
+            let id = Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
 
-        sqlx::query(
-            r#"
-            INSERT INTO deployments (id, app_id, commit_sha, commit_message, status, started_at)
-            VALUES (?, ?, ?, ?, 'pending', ?)
-            "#,
-        )
-        .bind(&deployment_id)
-        .bind(&app.id)
-        .bind(&commit_sha)
-        .bind(&commit_message)
-        .bind(&now)
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            sqlx::query(
+                "INSERT INTO deployments \
+                 (id, app_id, commit_sha, commit_message, status, started_at) \
+                 VALUES (?, ?, ?, ?, 'pending', ?)",
+            )
+            .bind(&id)
+            .bind(&app.id)
+            .bind(&commit_sha)
+            .bind(&commit_message)
+            .bind(&now)
+            .execute(&mut *conn)
+            .await
+            .map_err(|_| {
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            id
+        };
 
         if let Err(e) = state
             .deploy_tx
