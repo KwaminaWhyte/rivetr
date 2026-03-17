@@ -280,10 +280,14 @@ async fn handle_github_push(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             // Check for an already-active deployment for this app + commit.
+            // Use NOT IN terminal statuses so we catch deployments in 'building' and
+            // 'starting' states too — the engine transitions out of 'pending' almost
+            // immediately, so checking only ('pending', 'running') misses the window.
             let active: i64 = if let Some(ref sha) = commit_sha {
                 sqlx::query_scalar(
                     "SELECT COUNT(*) FROM deployments \
-                     WHERE app_id = ? AND commit_sha = ? AND status IN ('pending', 'running')",
+                     WHERE app_id = ? AND commit_sha = ? \
+                     AND status NOT IN ('succeeded', 'failed', 'cancelled', 'replaced')",
                 )
                 .bind(&app.id)
                 .bind(sha)

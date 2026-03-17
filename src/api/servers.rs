@@ -532,6 +532,32 @@ async fn run_ssh_health_check(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // If the key failed to load and a password is available, retry with password only.
+        if key_file.is_some() && password.is_some() {
+            tracing::warn!(
+                "SSH key auth failed ({}), retrying with password",
+                stderr.trim()
+            );
+            let mut fallback = Command::new("sshpass");
+            fallback
+                .arg("-p").arg(password.unwrap())
+                .arg("ssh")
+                .arg("-o").arg("StrictHostKeyChecking=no")
+                .arg("-o").arg("ConnectTimeout=5")
+                .arg("-p").arg(port.to_string())
+                .arg(format!("{}@{}", username, host))
+                .arg(remote_cmd);
+
+            let fallback_output = fallback.output().await?;
+            if !fallback_output.status.success() {
+                let fallback_stderr = String::from_utf8_lossy(&fallback_output.stderr);
+                return Err(anyhow::anyhow!("SSH command failed: {}", fallback_stderr));
+            }
+            let stdout = String::from_utf8_lossy(&fallback_output.stdout);
+            return parse_health_output(&stdout);
+        }
+
         return Err(anyhow::anyhow!("SSH command failed: {}", stderr));
     }
 
@@ -785,6 +811,30 @@ async fn run_ssh_install_docker(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
+        // If the key failed and a password is available, retry with password only.
+        if key_file.is_some() && password.is_some() {
+            tracing::warn!("SSH key auth failed, retrying with password");
+            let mut fallback = Command::new("sshpass");
+            fallback
+                .arg("-p").arg(password.unwrap())
+                .arg("ssh")
+                .arg("-o").arg("StrictHostKeyChecking=no")
+                .arg("-o").arg("ConnectTimeout=30")
+                .arg("-p").arg(port.to_string())
+                .arg(format!("{}@{}", username, host))
+                .arg(remote_cmd);
+            let fallback_output = fallback.output().await?;
+            let fb_stdout = String::from_utf8_lossy(&fallback_output.stdout).to_string();
+            let fb_stderr = String::from_utf8_lossy(&fallback_output.stderr).to_string();
+            if !fallback_output.status.success() {
+                return Err(anyhow::anyhow!(
+                    "Installation failed. stdout: {} stderr: {}",
+                    fb_stdout,
+                    fb_stderr
+                ));
+            }
+            return Ok(fb_stdout);
+        }
         return Err(anyhow::anyhow!(
             "Installation failed. stdout: {} stderr: {}",
             stdout,

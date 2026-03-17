@@ -73,6 +73,14 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import { ContainerTerminal } from "@/components/container-terminal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
 
 export function meta() {
   return [
@@ -867,13 +875,13 @@ export default function ServersPage() {
                           )}
                         </div>
                       )}
-                      <div className="flex items-center gap-1 flex-wrap">
+                      <div className="flex items-center gap-1 justify-end">
+                        {/* Primary: access actions */}
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setTerminalServer(server)}
-                          className="gap-1"
-                          title="Open SSH terminal"
+                          className="gap-1.5"
                         >
                           <Terminal className="h-3 w-3" />
                           Terminal
@@ -882,74 +890,64 @@ export default function ServersPage() {
                           variant="outline"
                           size="sm"
                           asChild
-                          className="gap-1"
-                          title="Browse server files"
+                          className="gap-1.5"
                         >
                           <Link to={`/servers/${server.id}/files`}>
                             <FolderOpen className="h-3 w-3" />
                             Files
                           </Link>
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPatchesServer(server)}
-                          className="gap-1"
-                          title="Check for OS updates"
-                        >
-                          <PackageSearch className="h-3 w-3" />
-                          Updates
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSecurityServer(server)}
-                          className="gap-1"
-                          title="Run security checklist"
-                        >
-                          <ShieldCheck className="h-3 w-3" />
-                          Security
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCheckHealth(server)}
-                          disabled={checkingId === server.id || installingDockerIds.has(server.id)}
-                          className="gap-1"
-                        >
-                          {checkingId === server.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3" />
-                          )}
-                          Check
-                        </Button>
-                        {/* Show Install Docker button when health check ran and docker is not installed */}
-                        {dockerHealth[server.id] && !dockerHealth[server.id].docker_installed && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleInstallDocker(server)}
-                            disabled={installingDockerIds.has(server.id) || checkingId === server.id}
-                            className="gap-1 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
-                            title="Install Docker via get.docker.com"
-                          >
-                            {installingDockerIds.has(server.id) ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Download className="h-3 w-3" />
+                        {/* Secondary: maintenance + danger in dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="px-2">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              onClick={() => handleCheckHealth(server)}
+                              disabled={checkingId === server.id || installingDockerIds.has(server.id)}
+                            >
+                              {checkingId === server.id ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                              )}
+                              Check health
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setPatchesServer(server)}>
+                              <PackageSearch className="h-3.5 w-3.5 mr-2" />
+                              Updates
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setSecurityServer(server)}>
+                              <ShieldCheck className="h-3.5 w-3.5 mr-2" />
+                              Security audit
+                            </DropdownMenuItem>
+                            {dockerHealth[server.id] && !dockerHealth[server.id].docker_installed && (
+                              <DropdownMenuItem
+                                onClick={() => handleInstallDocker(server)}
+                                disabled={installingDockerIds.has(server.id) || checkingId === server.id}
+                                className="text-blue-600 dark:text-blue-400"
+                              >
+                                {installingDockerIds.has(server.id) ? (
+                                  <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                )}
+                                {installingDockerIds.has(server.id) ? "Installing…" : "Install Docker"}
+                              </DropdownMenuItem>
                             )}
-                            {installingDockerIds.has(server.id) ? "Installing…" : "Install Docker"}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteId(server.id)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => setDeleteId(server.id)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Remove server
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
