@@ -26,7 +26,7 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 | Private repo via GitHub App | ✅ | ✅ |
 | Private repo via Deploy Key (SSH) | ✅ | ✅ |
 | Docker Image from registry (no git) | ✅ | ✅ (via services) |
-| Dockerfile without git | ✅ | ❌ (requires git) |
+| Dockerfile without git | ✅ | ✅ (`inline_dockerfile` field, migration 098, textarea in Build Settings) |
 | Docker Compose without git | ✅ | ✅ (raw compose mode) |
 
 ### Build Pack Options
@@ -143,7 +143,7 @@ Both have: PostgreSQL, MySQL, MariaDB, Redis, KeyDB, Dragonfly, MongoDB, ClickHo
 
 ## 5. One-Click Service Templates
 
-Coolify has **300+ templates**. Rivetr has ~**102 templates** (Sprint 3 + Sprint 19/20/21/22/23).
+Coolify has **300+ templates**. Rivetr has ~**113 templates** (Sprint 3 + Sprint 19/20/21/22/23/24).
 
 **Sprint 23 additions (8 new):** Flowise, Langflow, Open WebUI, AnythingLLM (AI/ML); Pocket ID (Auth/SSO); Activepieces, Trigger.dev (Automation); SigNoz (Monitoring).
 
@@ -154,16 +154,16 @@ Coolify has **300+ templates**. Rivetr has ~**102 templates** (Sprint 3 + Sprint
 ### Categories where Coolify has templates Rivetr may still lack:
 
 **AI / LLM:**
-- ~~Argilla~~ ✅, ~~Mage AI~~ ✅, AnythingLLM, Chroma, Flowise (with DBs), Langflow, Langfuse, LiteLLM, LocalAI, MindsDB, Ollama+OpenWebUI, Open WebUI, Rivet Engine, Unstructured, Weaviate
+- ~~Argilla~~ ✅, ~~Mage AI~~ ✅, ~~AnythingLLM~~ ✅, Chroma, ~~Flowise~~ ✅ (with DBs), ~~Langflow~~ ✅, Langfuse, ~~LiteLLM~~ ✅, LocalAI, ~~MindsDB~~ ✅, Ollama+OpenWebUI, ~~Open WebUI~~ ✅, Rivet Engine, Unstructured, Weaviate
 
 **Blockchain / Web3:**
 - Bitcoin Core, Bluesky PDS
 
 **Business / CRM:**
-- Chaskiq, Chatwoot, Twenty (CRM), Dolibarr, EasyAppointments, OrangeHRM, Kimai, Leantime
+- Chaskiq, Chatwoot, Twenty (CRM), Dolibarr, ~~EasyAppointments~~ ✅, OrangeHRM, Kimai, Leantime
 
 **Communication / Chat:**
-- Matrix Synapse (with PostgreSQL or SQLite), Mattermost, Rocket.Chat, Soju (IRC), NodeBB
+- ~~Matrix Synapse~~ ✅ (with PostgreSQL or SQLite), Mattermost, ~~Rocket.Chat~~ ✅, Soju (IRC), ~~NodeBB~~ ✅
 
 **Content / CMS:**
 - Bookstack, Drupal, Joomla, MediaWiki, Wiki.js, VVVeb (2 variants), Affine
@@ -175,35 +175,35 @@ Coolify has **300+ templates**. Rivetr has ~**102 templates** (Sprint 3 + Sprint
 - Actualbudget, Budge, Firefly, Invoice Ninja, Sure
 
 **File Storage / Sharing:**
-- Chibisafe, Cloudreve, Garage, Nextcloud (4 variants), Seafile, Seaweedfs, Zipline
+- Chibisafe, Cloudreve, Garage, Nextcloud (4 variants), Seafile, Seaweedfs, ~~Zipline~~ ✅
 
 **Media:**
 - Audiobookshelf, Calibre Web, Emby, EmbyState, Jellyfin, Navidrome, Plex
 
 **Monitoring / Observability:**
-- ~~Glitchtip~~ ✅, Checkmate, Glances, Signoz, Uptime Kuma (3 variants), Grafana (with PostgreSQL), Goatcounter, Openpanel, Swetrix, Umami
+- ~~Glitchtip~~ ✅, Checkmate, Glances, ~~SigNoz~~ ✅, Uptime Kuma (3 variants), Grafana (with PostgreSQL), Goatcounter, Openpanel, Swetrix, Umami
 
 **Productivity / Notes:**
-- AppFlowy, Joplin Server, Memos, Siyuan, Triliumnext, Notesnook
+- AppFlowy, ~~Joplin Server~~ ✅, Memos, ~~Siyuan~~ ✅, Triliumnext, Notesnook
 
 **Project Management:**
-- Hatchet, Leantime, Plane, Vikunja (2 variants)
+- ~~Hatchet~~ ✅, Leantime, Plane, Vikunja (2 variants)
 
 **Automation / Workflow:**
-- Activepieces, n8n (3 variants), Prefect, Trigger.dev
+- ~~Activepieces~~ ✅, n8n (3 variants), Prefect, ~~Trigger.dev~~ ✅
 
 **Forms / Surveys:**
 - Formbricks, Heyform, LimeSurvey, Opnform
 
 **Auth / SSO:**
-- Authentik, Keycloak (with PostgreSQL), Logto, Pocket ID (2 variants), Supertokens (2 variants)
+- Authentik, Keycloak (with PostgreSQL), Logto, ~~Pocket ID~~ ✅ (2 variants), Supertokens (2 variants)
 
 **Gaming ✅:**
 - ~~Minecraft Java~~ ✅, ~~Palworld~~ ✅, ~~Satisfactory~~ ✅, ~~Terraria~~ ✅
 
 **Misc notable:**
 - Cloudflared (tunnel), GitHub Runner, Netbird, Tailscale Client, Wireguard Easy
-- Cal.com, Documenso, Stirling PDF, Vaultwarden
+- Cal.com, Documenso, Stirling PDF, ~~Vaultwarden~~ ✅
 
 ---
 
@@ -214,7 +214,7 @@ Coolify has **300+ templates**. Rivetr has ~**102 templates** (Sprint 3 + Sprint
 | Manage GitHub App integrations (global) | ✅ `/sources` page | ✅ (per-app setup) |
 | Manage GitLab OAuth apps (global) | ✅ | ✅ |
 | Gitea sources | ✅ | ✅ |
-| Bitbucket sources | ✅ | ❌ |
+| Bitbucket sources | ✅ | ✅ (git provider OAuth + API token, clone via x-token-auth) |
 
 ---
 
@@ -275,7 +275,7 @@ Coolify has **300+ templates**. Rivetr has ~**102 templates** (Sprint 3 + Sprint
 | Google OAuth | ✅ | ✅ |
 | Discord OAuth | ✅ | ✅ |
 | Azure AD OAuth | ✅ | ✅ |
-| Bitbucket OAuth | ✅ | ❌ |
+| Bitbucket OAuth | ✅ | ✅ (OAuth login + git provider — fully implemented) |
 | Authentik OIDC | ✅ | ✅ (generic OIDC) |
 | Clerk | ✅ | ❌ |
 | Zitadel | ✅ | ❌ |
@@ -363,6 +363,9 @@ Coolify has a one-click **GitHub Actions Runner** service template that deploys 
 - ~~Sprint 21 templates~~ ✅ (13 new templates, total ~87)
 - ~~Sprint 22 templates~~ ✅ (7 new templates: Minecraft Java, Palworld, Terraria, Satisfactory, Argilla, Mage AI, Glitchtip — total ~94)
 - ~~Sprint 23 templates~~ ✅ (8 new templates: Flowise, Langflow, Open WebUI, AnythingLLM, Pocket ID, Activepieces, Trigger.dev, SigNoz — total ~102)
+- ~~Sprint 24 templates~~ ✅ (11 new: Vaultwarden, LiteLLM, MindsDB, Matrix Synapse, Rocket.Chat, NodeBB, Zipline, Joplin Server, Siyuan Notes, Hatchet, EasyAppointments — total ~113)
+- ~~Bitbucket OAuth + source~~ ✅ (already fully implemented — OAuth login, git provider OAuth + API token, clone via x-token-auth)
+- ~~Dockerfile without git~~ ✅ (`inline_dockerfile` field migration 098, skip git clone, Build Settings textarea)
 - ~~Resend email notification~~ ✅ (validation fixed — backend + frontend already existed)
 - ~~Version display in nav~~ ✅ (sidebar footer version link to GitHub releases)
 - ~~Feedback button in nav~~ ✅ (sidebar footer Feedback → GitHub Issues link)
@@ -374,30 +377,23 @@ Coolify has a one-click **GitHub Actions Runner** service template that deploys 
 - ~~Links button~~ ✅ (Links dropdown in app layout nav, shows all app URLs)
 
 ### High Priority (remaining):
-1. **Dockerfile without git** — deploy a bare Dockerfile without needing a Git repo
-2. **More service templates** — Sprint 23: more AI (Flowise, Langfuse, Langflow), CMS, monitoring (Glances, Signoz), automation (n8n, Activepieces), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
-3. **Multiple Docker networks** (destinations concept) — let apps join named networks
-4. **Server timezone setting** — per-server timezone config
-5. **Strip Prefixes / network aliases** — proxy strip prefix per-app
+1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Drupal, Wiki.js), monitoring (Glances, Uptime Kuma, Grafana), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
+2. **Multiple Docker networks** (destinations concept) — let apps join named networks
 
 ### Medium Priority:
-8. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
-9. Strip Prefixes / network aliases per-app
-10. Bitbucket source + OAuth
-11. Clerk, Zitadel OAuth providers
-12. Resend email provider
-13. Generate domain button (UX convenience)
-17. More OAuth: Authentik, Zitadel, Clerk
-18. Include source commit in build option
-19. Disable build cache option
-20. Preferences panel (theme / UI settings)
+3. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
+4. Clerk, Zitadel OAuth providers
+5. Preferences panel (theme / UI settings)
+6. www ↔ non-www redirect direction per-app
+7. Network aliases per-app
+8. Container Labels editor (full editable panel)
 
 ### Low Priority / Nice-to-have:
-21. Server timezone setting
-22. CA Certificate management
-23. Terminal Access control (per-server)
-24. Server Patching UI (auto-apply OS patches)
-25. GitHub Actions self-hosted runner template
-26. Fetch Server Details button (show OS/Docker info)
-27. Feedback button in nav
-28. Version display in nav linking to changelog
+9. CA Certificate management
+10. Terminal Access control (per-server)
+11. Server Patching UI (auto-apply OS patches)
+12. GitHub Actions self-hosted runner template
+13. Fetch Server Details button (show OS/Docker info)
+14. Instance timezone setting
+15. Pushover notification channel
+16. Proxy logs page (separate view)

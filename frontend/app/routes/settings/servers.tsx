@@ -44,6 +44,7 @@ import { serversApi } from "@/lib/api/servers";
 import type {
   Server,
   ServerHealthResponse,
+  ServerDetails,
   CreateServerRequest,
   UpdateServerRequest,
   PatchesResponse,
@@ -628,11 +629,15 @@ export default function ServersPage() {
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
   const [patchesServer, setPatchesServer] = useState<Server | null>(null);
   const [securityServer, setSecurityServer] = useState<Server | null>(null);
+  const [detailsServer, setDetailsServer] = useState<Server | null>(null);
+  const [fetchingDetailsIds, setFetchingDetailsIds] = useState<Set<string>>(new Set());
+  const [serverDetails, setServerDetails] = useState<Record<string, ServerDetails>>({});
   const [editServer, setEditServer] = useState<Server | null>(null);
 
   // Edit form state
   const [editTimezone, setEditTimezone] = useState("");
   const [editName, setEditName] = useState("");
+  const [editHourlyRate, setEditHourlyRate] = useState("");
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   // Form state
@@ -723,17 +728,20 @@ export default function ServersPage() {
     setEditServer(server);
     setEditName(server.name);
     setEditTimezone(server.timezone || "UTC");
+    setEditHourlyRate(String(server.hourly_rate ?? 0.036));
   };
 
   const handleSaveServer = async () => {
     if (!editServer) return;
     setIsEditSubmitting(true);
     try {
+      const parsedRate = parseFloat(editHourlyRate);
       await updateMutation.mutateAsync({
         id: editServer.id,
         data: {
           name: editName.trim() || undefined,
           timezone: editTimezone.trim() || "UTC",
+          hourly_rate: isNaN(parsedRate) ? undefined : parsedRate,
         },
       });
     } finally {
@@ -777,6 +785,24 @@ export default function ServersPage() {
       toast.error(error instanceof Error ? error.message : "Failed to install Docker");
     } finally {
       setInstallingDockerIds((prev) => {
+        const next = new Set(prev);
+        next.delete(server.id);
+        return next;
+      });
+    }
+  };
+
+  const handleFetchDetails = async (server: Server) => {
+    setFetchingDetailsIds((prev) => new Set(prev).add(server.id));
+    try {
+      const details = await serversApi.fetchDetails(server.id);
+      setServerDetails((prev) => ({ ...prev, [server.id]: details }));
+      setDetailsServer(server);
+      toast.success(`Details fetched for ${server.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to fetch server details");
+    } finally {
+      setFetchingDetailsIds((prev) => {
         const next = new Set(prev);
         next.delete(server.id);
         return next;
@@ -963,6 +989,17 @@ export default function ServersPage() {
                                 <RefreshCw className="h-3.5 w-3.5 mr-2" />
                               )}
                               Check health
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleFetchDetails(server)}
+                              disabled={fetchingDetailsIds.has(server.id)}
+                            >
+                              {fetchingDetailsIds.has(server.id) ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                              ) : (
+                                <Cpu className="h-3.5 w-3.5 mr-2" />
+                              )}
+                              Refresh details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setPatchesServer(server)}>
                               <PackageSearch className="h-3.5 w-3.5 mr-2" />
@@ -1181,6 +1218,63 @@ export default function ServersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Server Details Dialog */}
+      <Dialog
+        open={!!detailsServer}
+        onOpenChange={(open) => { if (!open) setDetailsServer(null); }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              Server Details — {detailsServer?.name}
+            </DialogTitle>
+            <DialogDescription>
+              System information fetched via SSH from {detailsServer?.host}
+            </DialogDescription>
+          </DialogHeader>
+          {detailsServer && serverDetails[detailsServer.id] && (
+            <div className="grid grid-cols-2 gap-4 py-2">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">OS</p>
+                <p className="text-sm font-medium">{serverDetails[detailsServer.id].os_name}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Docker Version</p>
+                <p className="text-sm font-medium font-mono">{serverDetails[detailsServer.id].docker_version}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Free Disk</p>
+                <p className="text-sm font-medium">{serverDetails[detailsServer.id].disk_free}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">CPU Cores</p>
+                <p className="text-sm font-medium">{serverDetails[detailsServer.id].cpu_cores}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total RAM</p>
+                <p className="text-sm font-medium">{serverDetails[detailsServer.id].total_ram}</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => detailsServer && handleFetchDetails(detailsServer)}
+              disabled={detailsServer ? fetchingDetailsIds.has(detailsServer.id) : false}
+              className="gap-2"
+            >
+              {detailsServer && fetchingDetailsIds.has(detailsServer.id) ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Refresh
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Server Dialog */}
       <Dialog
         open={!!editServer}
@@ -1216,6 +1310,21 @@ export default function ServersPage() {
               />
               <p className="text-xs text-muted-foreground">
                 IANA timezone for scheduled tasks and log timestamps (e.g. America/New_York, Europe/London)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-server-hourly-rate">Hourly Cost (USD/hr)</Label>
+              <Input
+                id="edit-server-hourly-rate"
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="0.036"
+                value={editHourlyRate}
+                onChange={(e) => setEditHourlyRate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your cloud provider's hourly rate for this server (used for cost analysis). DigitalOcean examples: s-1vcpu-1gb = $0.009, s-2vcpu-4gb = $0.036, s-4vcpu-8gb = $0.071.
               </p>
             </div>
           </div>

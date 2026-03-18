@@ -23,6 +23,8 @@ export interface Server {
   team_id?: string;
   /** IANA timezone for scheduled tasks and log timestamps (default: "UTC") */
   timezone: string;
+  /** Hourly cost in USD used for cost analysis (e.g. 0.036 for DO s-2vcpu-4gb at $24/mo) */
+  hourly_rate: number;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +37,8 @@ export interface CreateServerRequest {
   ssh_private_key?: string;
   ssh_password?: string;
   team_id?: string;
+  /** Hourly cost in USD for cost analysis (e.g. 0.036 for DO s-2vcpu-4gb) */
+  hourly_rate?: number;
 }
 
 export interface UpdateServerRequest {
@@ -45,6 +49,8 @@ export interface UpdateServerRequest {
   ssh_private_key?: string;
   /** IANA timezone for scheduled tasks and log timestamps (e.g. "America/New_York") */
   timezone?: string;
+  /** Hourly cost in USD for cost analysis */
+  hourly_rate?: number;
 }
 
 export interface ServerHealthResponse extends Server {
@@ -57,6 +63,14 @@ export interface ServerHealthResponse extends Server {
 export interface InstallDockerResponse {
   success: boolean;
   output: string;
+}
+
+export interface ServerDetails {
+  os_name: string;
+  docker_version: string;
+  disk_free: string;
+  cpu_cores: string;
+  total_ram: string;
 }
 
 export interface PatchesResponse {
@@ -114,6 +128,10 @@ export const serversApi = {
   /** Trigger a health check on a server (includes docker_installed, docker_running, compose_installed) */
   check: (id: string, token?: string) =>
     apiRequest<ServerHealthResponse>(`/servers/${id}/check`, { method: "POST" }, token),
+
+  /** Fetch detailed server info (OS, Docker version, disk, CPU, RAM) via SSH */
+  fetchDetails: (id: string, token?: string) =>
+    apiRequest<ServerDetails>(`/servers/${id}/fetch-details`, { method: "POST" }, token),
 
   /** Install Docker on a remote server via SSH */
   installDocker: (id: string, token?: string) =>

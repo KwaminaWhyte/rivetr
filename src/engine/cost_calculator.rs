@@ -53,8 +53,10 @@ pub struct CostRates {
 impl Default for CostRates {
     fn default() -> Self {
         Self {
-            cpu_per_core_month: 0.02,
-            memory_per_gb_month: 0.05,
+            // DigitalOcean Basic Regular aligned defaults:
+            // 2 vCPU × $10 + 4 GB × $1 = $24/mo (matches s-2vcpu-4gb at $24/mo)
+            cpu_per_core_month: 10.0,
+            memory_per_gb_month: 1.0,
             disk_per_gb_month: 0.10,
         }
     }
@@ -151,7 +153,15 @@ impl CostCalculator {
         result
     }
 
-    /// Calculate cost for a single app on a specific date
+    /// Calculate cost for a single app on a specific date.
+    ///
+    /// Uses server-based pricing when the app is assigned to a server: the app's
+    /// share of the server's hourly rate is proportional to its allocated memory
+    /// (memory_limit_bytes) relative to the server's total memory. This matches
+    /// how cloud providers (DigitalOcean, etc.) actually bill — you pay for reserved
+    /// capacity, not for utilisation.
+    ///
+    /// Falls back to per-resource rate-based pricing when no server assignment exists.
     async fn calculate_app_cost_for_date(
         &self,
         app_id: &str,
@@ -179,7 +189,7 @@ impl CostCalculator {
         let Some((
             avg_cpu_percent,
             avg_memory_bytes,
-            _avg_memory_limit,
+            avg_memory_limit_bytes,
             avg_disk_bytes,
             sample_count,
         )) = metrics
@@ -191,21 +201,76 @@ impl CostCalculator {
             return Ok(());
         }
 
-        // Convert CPU percent to cores (assuming 100% = 1 core)
-        let avg_cpu_cores = avg_cpu_percent / 100.0;
+        // Look up the server this app is assigned to (if any).
+        // hourly_rate is in USD/hr; memory_total is total server RAM in bytes.
+        let server_info: Option<(f64, Option<i64>)> = sqlx::query_as(
+            r#"
+            SELECT s.hourly_rate, s.memory_total
+            FROM app_server_assignments asa
+            JOIN servers s ON s.id = asa.server_id
+            WHERE asa.app_id = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(app_id)
+        .fetch_optional(&self.db)
+        .await
+        .unwrap_or(None);
 
-        // Convert bytes to GB
-        let avg_memory_gb = avg_memory_bytes as f64 / BYTES_PER_GB;
+        let avg_cpu_cores = avg_cpu_percent / 100.0;
         let avg_disk_gb = avg_disk_bytes as f64 / BYTES_PER_GB;
 
-        // Calculate daily costs (monthly rate / days_per_month)
-        let daily_cpu_rate = rates.cpu_per_core_month / DAYS_PER_MONTH;
-        let daily_memory_rate = rates.memory_per_gb_month / DAYS_PER_MONTH;
-        let daily_disk_rate = rates.disk_per_gb_month / DAYS_PER_MONTH;
+        let (cpu_cost, memory_cost, disk_cost, avg_memory_gb) =
+            if let Some((hourly_rate, Some(server_memory_total))) = server_info {
+                // --- Server-based cost model ---
+                // Daily server cost = hourly rate × 24 hours.
+                // App's share = its allocated memory / total server memory.
+                // If no memory limit is set (limit == 0) use actual usage instead.
+                let app_memory_bytes = if avg_memory_limit_bytes > 0 {
+                    avg_memory_limit_bytes
+                } else {
+                    avg_memory_bytes
+                };
+                let app_memory_gb = app_memory_bytes as f64 / BYTES_PER_GB;
+                let server_memory_gb = server_memory_total as f64 / BYTES_PER_GB;
 
-        let cpu_cost = avg_cpu_cores * daily_cpu_rate;
-        let memory_cost = avg_memory_gb * daily_memory_rate;
-        let disk_cost = avg_disk_gb * daily_disk_rate;
+                let memory_share = if server_memory_gb > 0.0 {
+                    (app_memory_gb / server_memory_gb).min(1.0)
+                } else {
+                    0.0
+                };
+
+                let daily_server_cost = hourly_rate * 24.0;
+                let total_daily_cost = daily_server_cost * memory_share;
+
+                // Split server cost: DO Basic Regular is roughly 40% CPU, 60% memory.
+                let cpu = total_daily_cost * 0.4;
+                let mem = total_daily_cost * 0.6;
+                let disk = 0.0; // included in server cost
+
+                (cpu, mem, disk, app_memory_gb)
+            } else {
+                // --- Rate-based fallback (no server assignment) ---
+                // Use memory_limit as the billed quantity (allocated, not used).
+                // If limit is 0 (no limit set), fall back to actual usage.
+                let billed_memory_bytes = if avg_memory_limit_bytes > 0 {
+                    avg_memory_limit_bytes
+                } else {
+                    avg_memory_bytes
+                };
+                let billed_memory_gb = billed_memory_bytes as f64 / BYTES_PER_GB;
+
+                let daily_cpu_rate = rates.cpu_per_core_month / DAYS_PER_MONTH;
+                let daily_memory_rate = rates.memory_per_gb_month / DAYS_PER_MONTH;
+                let daily_disk_rate = rates.disk_per_gb_month / DAYS_PER_MONTH;
+
+                let cpu = avg_cpu_cores * daily_cpu_rate;
+                let mem = billed_memory_gb * daily_memory_rate;
+                let disk = avg_disk_gb * daily_disk_rate;
+
+                (cpu, mem, disk, billed_memory_gb)
+            };
+
         let total_cost = cpu_cost + memory_cost + disk_cost;
 
         // Create cost snapshot
@@ -372,8 +437,9 @@ mod tests {
     #[test]
     fn test_default_cost_rates() {
         let rates = CostRates::default();
-        assert!((rates.cpu_per_core_month - 0.02).abs() < 0.001);
-        assert!((rates.memory_per_gb_month - 0.05).abs() < 0.001);
+        // DigitalOcean Basic Regular aligned: 2 vCPU × $10 + 4 GB × $1 = $24/mo
+        assert!((rates.cpu_per_core_month - 10.0).abs() < 0.001);
+        assert!((rates.memory_per_gb_month - 1.0).abs() < 0.001);
         assert!((rates.disk_per_gb_month - 0.10).abs() < 0.001);
     }
 
@@ -391,10 +457,10 @@ mod tests {
         let daily_cpu_rate = rates.cpu_per_core_month / DAYS_PER_MONTH;
         let daily_memory_rate = rates.memory_per_gb_month / DAYS_PER_MONTH;
 
-        // CPU: $0.02/month / 30 days = $0.000667/day per core
-        assert!((daily_cpu_rate - 0.02 / 30.0).abs() < 0.0001);
-        // Memory: $0.05/month / 30 days = $0.00167/day per GB
-        assert!((daily_memory_rate - 0.05 / 30.0).abs() < 0.0001);
+        // CPU: $10/month / 30 days = $0.333/day per core
+        assert!((daily_cpu_rate - 10.0 / 30.0).abs() < 0.001);
+        // Memory: $1/month / 30 days = $0.0333/day per GB
+        assert!((daily_memory_rate - 1.0 / 30.0).abs() < 0.001);
     }
 
     #[test]

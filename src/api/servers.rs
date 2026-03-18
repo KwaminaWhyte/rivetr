@@ -108,10 +108,12 @@ pub async fn create_server(
         None
     };
 
+    let hourly_rate = req.hourly_rate.unwrap_or(0.036);
+
     sqlx::query(
         r#"
-        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, status, team_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?)
+        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, hourly_rate, status, team_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -121,6 +123,7 @@ pub async fn create_server(
     .bind(&username)
     .bind(&encrypted_key)
     .bind(&encrypted_password)
+    .bind(hourly_rate)
     .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
@@ -221,6 +224,7 @@ pub async fn update_server(
             username = COALESCE(?, username),
             ssh_private_key = COALESCE(?, ssh_private_key),
             ssh_password = COALESCE(?, ssh_password),
+            hourly_rate = COALESCE(?, hourly_rate),
             timezone = ?,
             updated_at = ?
         WHERE id = ?
@@ -232,6 +236,7 @@ pub async fn update_server(
     .bind(&req.username)
     .bind(&encrypted_key)
     .bind(&encrypted_password)
+    .bind(req.hourly_rate)
     .bind(&timezone)
     .bind(&now)
     .bind(&id)
@@ -542,14 +547,15 @@ async fn run_ssh_health_check(
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         // If the key failed to load and a password is available, retry with password only.
-        if key_file.is_some() && password.is_some() {
+        if key_file.is_some() {
+            if let Some(pw) = password {
             tracing::warn!(
                 "SSH key auth failed ({}), retrying with password",
                 stderr.trim()
             );
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(password.unwrap())
+                .arg("-p").arg(pw)
                 .arg("ssh")
                 .arg("-o").arg("StrictHostKeyChecking=no")
                 .arg("-o").arg("ConnectTimeout=5")
@@ -1854,3 +1860,259 @@ async fn run_ssh_security_check(
 
     Ok(SecurityCheckResponse { items, checked_at })
 }
+// ---------------------------------------------------------------------------
+// Fetch Server Details Endpoint
+// ---------------------------------------------------------------------------
+
+/// Human-readable server detail fields returned by POST /api/servers/:id/fetch-details
+#[derive(Debug, Serialize)]
+pub struct ServerDetails {
+    pub os_name: String,
+    pub docker_version: String,
+    pub disk_free: String,
+    pub cpu_cores: String,
+    pub total_ram: String,
+}
+
+/// POST /api/servers/:id/fetch-details
+///
+/// SSHes into the server, fetches OS info, Docker version, disk space, CPU cores,
+/// and total RAM, then stores them on the server record.
+pub async fn fetch_details(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ServerDetails>, (StatusCode, Json<serde_json::Value>)> {
+    let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server for details: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to fetch server"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Server not found"})),
+            )
+        })?;
+
+    let enc_key = get_encryption_key(&state);
+
+    let private_key_content = if let Some(ref encrypted_key) = server.ssh_private_key {
+        match crypto::decrypt_if_encrypted(encrypted_key, enc_key.as_ref()) {
+            Ok(key) => Some(key),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH key for server {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let password_content = if let Some(ref encrypted_pwd) = server.ssh_password {
+        match crypto::decrypt_if_encrypted(encrypted_pwd, enc_key.as_ref()) {
+            Ok(pwd) => Some(pwd),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt SSH password for server {}: {}", id, e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let details = run_fetch_server_details(
+        &server.host,
+        server.port as u16,
+        &server.username,
+        private_key_content.as_deref(),
+        password_content.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!("fetch-details failed for server {}: {}", id, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("SSH command failed: {}", e)})),
+        )
+    })?;
+
+    // Persist the gathered info into the server record
+    let os_info_json = serde_json::json!({
+        "os_name": details.os_name,
+        "docker_version": details.docker_version,
+        "disk_free": details.disk_free,
+        "cpu_cores": details.cpu_cores,
+        "total_ram": details.total_ram,
+    })
+    .to_string();
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "UPDATE servers SET os_info = ?, docker_version = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&os_info_json)
+    .bind(&details.docker_version)
+    .bind(&now)
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update server details: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "Failed to save server details"})),
+        )
+    })?;
+
+    Ok(Json(details))
+}
+
+/// Run SSH commands to gather detailed server info.
+async fn run_fetch_server_details(
+    host: &str,
+    port: u16,
+    username: &str,
+    private_key: Option<&str>,
+    password: Option<&str>,
+) -> anyhow::Result<ServerDetails> {
+    use std::io::Write;
+    use tokio::process::Command;
+
+    let key_file = if let Some(key_content) = private_key {
+        let mut tmpfile = tempfile::Builder::new()
+            .prefix("rivetr-ssh-key-")
+            .suffix(".pem")
+            .tempfile()?;
+        tmpfile.write_all(key_content.as_bytes())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(tmpfile.path(), std::fs::Permissions::from_mode(0o600))?;
+        }
+        Some(tmpfile)
+    } else {
+        None
+    };
+
+    let remote_cmd = r#"
+        echo "OS:$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -s)";
+        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DISK_FREE:$(df -h / 2>/dev/null | tail -1 | awk '{print $4}' || echo 'N/A')";
+        echo "CPU_CORES:$(nproc 2>/dev/null || echo 'N/A')";
+        echo "TOTAL_RAM:$(free -h 2>/dev/null | grep Mem | awk '{print $2}' || echo 'N/A')"
+    "#;
+
+    let use_sshpass = password.is_some() && key_file.is_none();
+
+    let mut cmd = if use_sshpass {
+        let mut c = Command::new("sshpass");
+        c.arg("-p").arg(password.unwrap());
+        c.arg("ssh");
+        c
+    } else {
+        Command::new("ssh")
+    };
+
+    cmd.arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg("ConnectTimeout=10");
+
+    if !use_sshpass {
+        cmd.arg("-o").arg("BatchMode=yes");
+    }
+
+    cmd.arg("-p").arg(port.to_string());
+
+    if let Some(ref kf) = key_file {
+        cmd.arg("-i").arg(kf.path());
+    }
+
+    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+
+    let output = cmd.output().await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if key_file.is_some() && password.is_some() {
+            tracing::warn!(
+                "SSH key auth failed ({}), retrying with password",
+                stderr.trim()
+            );
+            let mut fallback = Command::new("sshpass");
+            fallback
+                .arg("-p").arg(password.unwrap())
+                .arg("ssh")
+                .arg("-o").arg("StrictHostKeyChecking=no")
+                .arg("-o").arg("ConnectTimeout=10")
+                .arg("-p").arg(port.to_string())
+                .arg(format!("{}@{}", username, host))
+                .arg(remote_cmd);
+            let fallback_output = fallback.output().await?;
+            if !fallback_output.status.success() {
+                let fb_err = String::from_utf8_lossy(&fallback_output.stderr);
+                return Err(anyhow::anyhow!("SSH command failed: {}", fb_err));
+            }
+            let stdout = String::from_utf8_lossy(&fallback_output.stdout);
+            return parse_server_details(&stdout);
+        }
+        return Err(anyhow::anyhow!("SSH command failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_server_details(&stdout)
+}
+
+/// Parse the output of `run_fetch_server_details`.
+fn parse_server_details(output: &str) -> anyhow::Result<ServerDetails> {
+    let mut os_name = "Unknown".to_string();
+    let mut docker_version = "not installed".to_string();
+    let mut disk_free = "N/A".to_string();
+    let mut cpu_cores = "N/A".to_string();
+    let mut total_ram = "N/A".to_string();
+
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("OS:") {
+            let v = val.trim();
+            if !v.is_empty() {
+                os_name = v.to_string();
+            }
+        } else if let Some(val) = line.strip_prefix("DOCKER:") {
+            let v = val.trim();
+            if !v.is_empty() {
+                docker_version = v.to_string();
+            }
+        } else if let Some(val) = line.strip_prefix("DISK_FREE:") {
+            let v = val.trim();
+            if !v.is_empty() {
+                disk_free = v.to_string();
+            }
+        } else if let Some(val) = line.strip_prefix("CPU_CORES:") {
+            let v = val.trim();
+            if !v.is_empty() {
+                cpu_cores = v.to_string();
+            }
+        } else if let Some(val) = line.strip_prefix("TOTAL_RAM:") {
+            let v = val.trim();
+            if !v.is_empty() {
+                total_ram = v.to_string();
+            }
+        }
+    }
+
+    Ok(ServerDetails {
+        os_name,
+        docker_version,
+        disk_free,
+        cpu_cores,
+        total_ram,
+    })
+}
+

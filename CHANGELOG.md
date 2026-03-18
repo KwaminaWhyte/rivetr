@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.9] - 2026-03-18
+
+### Fixed
+- **Cost analysis pricing** — Cost estimates were wildly low (showing `$0.01` for a server that actually costs `$4.82`) because the calculator used per-utilisation rates of `$0.02/vCPU/month` and `$0.05/GB/month` — roughly 300–600× below real cloud pricing. Three changes fix this:
+  1. **Server-based cost model** — each server now has a configurable `hourly_rate` (default `$0.036/hr` matching DigitalOcean s-2vcpu-4gb at `$24/mo`). When an app is assigned to a server, its daily cost is `hourly_rate × 24 × (app_memory_limit / server_memory_total)` — mirroring how cloud providers actually bill (reserved capacity, not utilisation).
+  2. **DO-aligned fallback rates** — for apps not assigned to a server the rate-based model now uses `$10/vCPU/month` + `$1/GB/month`, matching DO Basic Regular pricing (2 vCPU × $10 + 4 GB × $1 = $24/mo).
+  3. **Bill allocated memory, not used memory** — the fallback model now charges against `memory_limit_bytes` (what the container is allocated) rather than actual bytes consumed.
+- Migration `098_server_hourly_rate.sql` adds `hourly_rate` to `servers` and updates the `cost_rates` seed defaults.
+
 ### Added
+- **Hourly rate field on servers** — Settings → Servers edit dialog now includes an "Hourly Cost (USD/hr)" input with DigitalOcean size hints, so each server's rate can be corrected to match the actual cloud bill.
+
+---
+
+### Added
+- **Docker Destinations** — Named Docker networks that apps can be assigned to, mirroring Coolify's "destinations" concept. Create destinations (network name → Docker bridge network) in Settings → Destinations; assign an app to a destination via its Network settings page. Containers join the selected network instead of the default `rivetr` bridge. Migration `101_destinations.sql`. API: `GET/POST /api/destinations`, `GET/DELETE /api/destinations/:id`.
+- **WWW redirect mode** — Per-domain `www_redirect_mode` replaces the old boolean `redirect_www` with a 4-option dropdown: No redirect, Serve both, → www (redirect non-www to www), → non-www (redirect www to non-www). Stored in the existing `domains` JSON column, fully backward-compatible. Exposed in the Domain Management card.
+- **Fetch server details** — New `POST /api/servers/:id/fetch-details` endpoint SSHes into a server and collects OS name, Docker version, free disk, CPU cores, and total RAM. Accessible via Refresh details in the server actions dropdown; results shown in a Server Details dialog.
+- **CA Certificate management** — Upload trusted CA certificates (PEM format) for custom TLS trust chains. Certificates stored in new `ca_certificates` table (migration `100`). API: `GET/POST /api/ca-certificates`, `DELETE /api/ca-certificates/:id`. Management UI at Settings → CA Certificates.
+- **Instance timezone** — Global timezone setting for scheduled tasks and log timestamps, configurable from the Settings → General page. Stored in `instance_settings` as key `instance_timezone`.
 - **Git clone options** — Per-app toggles for `git_submodules` (passes `--recurse-submodules`), `git_lfs` (runs `git lfs pull` after clone), and `shallow_clone` (controls `--depth 1`; default on for speed). Migration `094_git_build_options.sql`.
 - **Build cache control** — `disable_build_cache` toggle passes `--no-cache` to Dockerfile/Nixpacks builds (Docker and Podman), forcing a clean layer rebuild on every deploy.
 - **SOURCE_COMMIT build arg** — `include_source_commit` toggle injects the current git SHA as the `SOURCE_COMMIT` Docker build argument so it can be baked into the image.
@@ -16,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Generate domain** — `POST /api/apps/:id/generate-domain` auto-assigns a random subdomain using the server's base domain (falls back to `sslip.io`). Exposed as a Generate (wand) button in the Domain Management card.
 - **Links dropdown** — App layout nav now includes a Links dropdown showing all configured domains as quick-open external links.
 - **Environment Clone** — Clone any project environment to instantly duplicate its apps (with env vars and volumes), databases, and services into a new environment. New environment starts clean: containers not running, domains cleared, deployment state reset. API: `POST /api/projects/:project_id/environments/:env_id/clone`. Frontend: Clone button on each environment tab opens a dialog to name the new environment.
+- **11 new service templates (Sprint 24)** — Vaultwarden (Security); LiteLLM, MindsDB (AI/ML); Matrix Synapse, Rocket.Chat, NodeBB (Communication); Zipline (File Storage); Joplin Server, Siyuan Notes (Productivity); Hatchet (Automation); EasyAppointments (Business). Rivetr now has ~113 one-click service templates.
 - **8 new service templates (Sprint 23)** — Flowise, Langflow, Open WebUI, AnythingLLM (AI/ML); Pocket ID (Auth/SSO); Activepieces, Trigger.dev (Automation); SigNoz (Monitoring). Rivetr now has ~102 one-click service templates.
+- **Inline Dockerfile (no git required)** — Apps can now be deployed from an inline Dockerfile stored in the DB (`inline_dockerfile` field, migration `098`). If set, the build pipeline skips git clone entirely and builds from the pasted Dockerfile content. Accessible via the Build Settings page textarea when build type is "dockerfile".
 - **Server timezone setting** — Per-server `timezone` field (IANA timezone string, default `UTC`). Migration `096_server_timezone.sql`. Exposed in the Edit Server dialog on the Servers settings page.
 - **Strip URL prefix** — Per-app `strip_prefix` field removes a URL prefix before proxying to the container (e.g. `/api`). Migration `097_app_strip_prefix.sql`. Proxy strips the prefix in both HTTP and WebSocket forwarding. UI in app Network settings. Applied to rollback, bulk ops, and route restores on startup.
 - **Resend notification channel** — Fixed validation for `resend`, `mattermost`, `lark`, and `gotify` channel types (they were previously blocked by the `validate_channel_config` fallthrough). All four channel types now accept and validate their required config fields.
