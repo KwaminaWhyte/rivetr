@@ -12,6 +12,7 @@ use crate::runtime::{BuildContext, ContainerRuntime};
 use crate::DbPool;
 
 use super::super::{add_deployment_log, BuildLimits, KEY_LENGTH};
+use super::clone;
 
 /// Push a built image to a Docker registry if the app has registry push enabled.
 /// Uses `docker tag` + `docker login` + `docker push` CLI commands.
@@ -658,6 +659,16 @@ pub(super) async fn build_git_image(
                 .await?;
             }
 
+            // Resolve SOURCE_COMMIT SHA when include_source_commit is enabled.
+            let source_commit: Option<String> = if app.include_source_commit != 0 {
+                match clone::get_git_commit_info(&build_path.to_path_buf()).await {
+                    Ok((sha, _)) => Some(sha),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
             let build_ctx = BuildContext {
                 path: build_path.to_string_lossy().to_string(),
                 dockerfile,
@@ -670,6 +681,8 @@ pub(super) async fn build_git_image(
                 log_tx: Some(log_tx),
                 build_secrets,
                 build_platforms: app.build_platforms.clone(),
+                no_cache: app.disable_build_cache != 0,
+                source_commit,
             };
 
             // Log build resource limits if configured
@@ -1467,6 +1480,8 @@ pub(super) async fn build_upload_image(
                 log_tx: Some(log_tx2),
                 build_secrets: build_secrets2,
                 build_platforms: app.build_platforms.clone(),
+                no_cache: app.disable_build_cache != 0,
+                source_commit: None,
             };
 
             runtime.build(&build_ctx).await.context("Build failed")?;

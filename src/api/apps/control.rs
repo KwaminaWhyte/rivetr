@@ -1205,3 +1205,57 @@ pub async fn apply_resource_limits(
         "container_id": container_id
     })))
 }
+
+/// Generate a random domain for an app.
+/// Returns a subdomain based on the server's wildcard domain, or a sslip.io/traefik.me domain.
+/// POST /api/apps/:id/generate-domain
+pub async fn generate_domain(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    // Verify app exists
+    sqlx::query_scalar::<_, String>("SELECT id FROM apps WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Generate a random 8-char lowercase alphanumeric string
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let random_prefix: String = (0..8)
+        .map(|_| {
+            let chars = b"abcdefghijklmnopqrstuvwxyz0123456789";
+            chars[rng.random_range(0..chars.len())] as char
+        })
+        .collect();
+
+    // Try each domain generation strategy in order of preference
+    let domain = if let Some(ref base_domain) = state.config.proxy.base_domain {
+        // Strategy 1: Use the configured base domain (e.g., "rivetr.example.com")
+        format!("{}.{}", random_prefix, base_domain)
+    } else if state.config.proxy.sslip_enabled {
+        // Strategy 2: sslip.io domain
+        if let Some(ref ip) = state.config.proxy.server_ip {
+            format!("{}.{}.sslip.io", random_prefix, ip)
+        } else {
+            return Err(ApiError::bad_request(
+                "No domain generation strategy configured. Set base_domain or server_ip in proxy config.",
+            ));
+        }
+    } else if let Some(ref ip) = state.config.proxy.server_ip {
+        // Strategy 3: traefik.me style domain
+        let ip_dashes = ip.replace('.', "-");
+        format!("{}-{}.traefik.me", random_prefix, ip_dashes)
+    } else {
+        return Err(ApiError::bad_request(
+            "No domain generation strategy configured. Set base_domain or server_ip in proxy config.",
+        ));
+    };
+
+    Ok(Json(serde_json::json!({ "domain": domain })))
+}

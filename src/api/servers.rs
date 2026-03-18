@@ -173,7 +173,7 @@ pub async fn update_server(
     Json(req): Json<UpdateServerRequest>,
 ) -> Result<Json<Server>, StatusCode> {
     // Verify server exists
-    let _existing = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+    let existing = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
         .await
@@ -206,6 +206,12 @@ pub async fn update_server(
         None
     };
 
+    let timezone = req
+        .timezone
+        .clone()
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| existing.timezone.clone());
+
     sqlx::query(
         r#"
         UPDATE servers SET
@@ -215,6 +221,7 @@ pub async fn update_server(
             username = COALESCE(?, username),
             ssh_private_key = COALESCE(?, ssh_private_key),
             ssh_password = COALESCE(?, ssh_password),
+            timezone = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -225,6 +232,7 @@ pub async fn update_server(
     .bind(&req.username)
     .bind(&encrypted_key)
     .bind(&encrypted_password)
+    .bind(&timezone)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

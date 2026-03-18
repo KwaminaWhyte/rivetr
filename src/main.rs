@@ -545,9 +545,11 @@ async fn restore_routes(
         i32,
         Option<String>,
         Option<String>,
+        Option<String>, // strip_prefix
     )> = sqlx::query_as(
         "SELECT id, name, domain, domains, healthcheck, auto_subdomain, \
-                basic_auth_enabled, basic_auth_username, basic_auth_password_hash \
+                basic_auth_enabled, basic_auth_username, basic_auth_password_hash, \
+                strip_prefix \
          FROM apps \
          WHERE (domain IS NOT NULL AND domain != '') \
             OR (domains IS NOT NULL AND domains != '' AND domains != '[]') \
@@ -576,6 +578,7 @@ async fn restore_routes(
         basic_auth_enabled,
         basic_auth_username,
         basic_auth_password_hash,
+        strip_prefix,
     ) in apps
     {
         let container_name = format!("rivetr-{}", app_name);
@@ -676,7 +679,8 @@ async fn restore_routes(
                 for domain in &domain_names {
                     let mut backend =
                         Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
-                            .with_healthcheck(healthcheck.clone());
+                            .with_healthcheck(healthcheck.clone())
+                            .with_strip_prefix(strip_prefix.clone());
 
                     // Restore HTTP Basic Auth configuration if it was enabled
                     if basic_auth_enabled != 0 {

@@ -20,8 +20,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Globe, Star, ExternalLink, Copy, RefreshCw, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Plus, Trash2, Globe, Star, ExternalLink, Copy, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Wand2 } from "lucide-react";
 import type { Domain, App, UpdateAppRequest } from "@/types/api";
+import { appsApi } from "@/lib/api";
 
 interface DnsCheckResult {
   domain: string;
@@ -105,6 +106,9 @@ export function DomainManagementCard({
 
   // Track if there are unsaved changes
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Generate domain state
+  const [isGeneratingDomain, setIsGeneratingDomain] = useState(false);
 
   // DNS check state: map of domain -> result or null (null = loading)
   const [dnsResults, setDnsResults] = useState<Record<string, DnsCheckResult | null | "loading">>({});
@@ -213,6 +217,24 @@ export function DomainManagementCard({
   const copyDomain = (domain: string) => {
     navigator.clipboard.writeText(domain);
     toast.success("Domain copied to clipboard");
+  };
+
+  // Generate a random domain via the backend
+  const handleGenerateDomain = async () => {
+    setIsGeneratingDomain(true);
+    try {
+      const result = await appsApi.generateDomain(app.id);
+      // Pre-fill the new domain input field (strip protocol if present)
+      const domain = result.domain.replace(/^https?:\/\//, "");
+      setNewDomain({ ...newDomain, domain });
+      toast.success(`Generated domain: ${domain}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to generate domain"
+      );
+    } finally {
+      setIsGeneratingDomain(false);
+    }
   };
 
   // Save handler
@@ -429,6 +451,15 @@ export function DomainManagementCard({
                 </Label>
               </div>
             </div>
+            <Button
+              variant="outline"
+              onClick={handleGenerateDomain}
+              disabled={isGeneratingDomain}
+              title="Generate a random subdomain"
+            >
+              <Wand2 className="h-4 w-4 mr-1" />
+              {isGeneratingDomain ? "Generating..." : "Generate"}
+            </Button>
             <Button
               variant="outline"
               onClick={addDomain}

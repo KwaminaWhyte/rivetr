@@ -36,11 +36,32 @@ pub(super) async fn get_ssh_key_for_app(db: &DbPool, app: &App) -> Result<Option
     Ok(global_key)
 }
 
+/// Options controlling how git clone behaves for a deployment.
+pub(super) struct CloneOptions {
+    /// Use --depth 1 for a shallow clone (faster, default true).
+    pub shallow: bool,
+    /// Pass --recurse-submodules to git clone.
+    pub submodules: bool,
+    /// Run `git lfs pull` after clone (requires git-lfs on PATH).
+    pub lfs: bool,
+}
+
+impl Default for CloneOptions {
+    fn default() -> Self {
+        Self {
+            shallow: true,
+            submodules: false,
+            lfs: false,
+        }
+    }
+}
+
 pub(super) async fn clone_repository(
     url: &str,
     branch: &str,
     dest: &PathBuf,
     ssh_key: Option<&SshKey>,
+    opts: &CloneOptions,
 ) -> Result<()> {
     use std::process::Stdio;
     use tokio::process::Command;
@@ -51,21 +72,28 @@ pub(super) async fn clone_repository(
     // If we have an SSH key and the URL is an SSH URL, set up SSH authentication
     if let Some(key) = ssh_key {
         if is_ssh_url(url) {
-            return clone_with_ssh_key(url, branch, dest, key).await;
+            return clone_with_ssh_key(url, branch, dest, key, opts).await;
         }
     }
 
+    // Build git clone arguments
+    let mut args: Vec<&str> = vec!["clone"];
+
+    if opts.shallow {
+        args.extend_from_slice(&["--depth", "1"]);
+    }
+
+    if opts.submodules {
+        args.push("--recurse-submodules");
+    }
+
+    args.extend_from_slice(&["--branch", branch, url]);
+    let dest_str = dest.to_string_lossy().into_owned();
+    args.push(&dest_str);
+
     // Use git CLI for public repos or HTTPS URLs
     let output = Command::new("git")
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
-            url,
-            &dest.to_string_lossy(),
-        ])
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -75,6 +103,38 @@ pub(super) async fn clone_repository(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Git clone failed: {}", stderr);
+    }
+
+    // Run git lfs pull if requested
+    if opts.lfs {
+        run_git_lfs_pull(dest).await?;
+    }
+
+    Ok(())
+}
+
+/// Run `git lfs pull` inside the cloned repository directory.
+/// Exposed as `pub(super)` so the pipeline orchestrator can call it after a full clone.
+pub(super) async fn run_lfs_pull(dest: &PathBuf) -> Result<()> {
+    run_git_lfs_pull(dest).await
+}
+
+async fn run_git_lfs_pull(dest: &PathBuf) -> Result<()> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    let output = Command::new("git")
+        .args(["lfs", "pull"])
+        .current_dir(dest)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .context("Failed to execute git lfs pull")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git lfs pull failed: {}", stderr);
     }
 
     Ok(())
@@ -219,6 +279,7 @@ pub(super) async fn clone_with_ssh_key(
     branch: &str,
     dest: &Path,
     ssh_key: &SshKey,
+    opts: &CloneOptions,
 ) -> Result<()> {
     use std::process::Stdio;
     use tokio::process::Command;
@@ -245,17 +306,26 @@ pub(super) async fn clone_with_ssh_key(
         key_file.display()
     );
 
+    // Build git clone arguments
+    let mut args: Vec<String> = vec!["clone".to_string()];
+
+    if opts.shallow {
+        args.push("--depth".to_string());
+        args.push("1".to_string());
+    }
+
+    if opts.submodules {
+        args.push("--recurse-submodules".to_string());
+    }
+
+    args.push("--branch".to_string());
+    args.push(branch.to_string());
+    args.push(url.to_string());
+    args.push(dest.to_string_lossy().to_string());
+
     let output = Command::new("git")
         .env("GIT_SSH_COMMAND", &git_ssh_command)
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
-            url,
-            &dest.to_string_lossy(),
-        ])
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -268,6 +338,12 @@ pub(super) async fn clone_with_ssh_key(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Git clone with SSH failed: {}", stderr);
+    }
+
+    // Run git lfs pull if requested
+    if opts.lfs {
+        let dest_buf = dest.to_path_buf();
+        run_git_lfs_pull(&dest_buf).await?;
     }
 
     Ok(())

@@ -422,6 +422,34 @@ pub async fn update_app(
     let shm_size = merge_optional_string(&req.shm_size, &existing.shm_size);
     let init_process = req.init_process.unwrap_or(existing.init_process != 0);
 
+    // Git clone options (migration 094)
+    let git_submodules = req.git_submodules.unwrap_or(existing.git_submodules != 0);
+    let git_lfs = req.git_lfs.unwrap_or(existing.git_lfs != 0);
+    let shallow_clone = req.shallow_clone.unwrap_or(existing.shallow_clone != 0);
+
+    // Build options (migration 094)
+    let disable_build_cache = req
+        .disable_build_cache
+        .unwrap_or(existing.disable_build_cache != 0);
+    let include_source_commit = req
+        .include_source_commit
+        .unwrap_or(existing.include_source_commit != 0);
+
+    // Custom container name (migration 094) — empty string clears it
+    let custom_container_name = match &req.custom_container_name {
+        Some(s) if s.is_empty() => None,
+        Some(s) => Some(s.clone()),
+        None => existing.custom_container_name.clone(),
+    };
+
+    // Static site flag (migration 095)
+    let is_static_site = req
+        .is_static_site
+        .unwrap_or(existing.is_static_site != 0);
+
+    // Strip prefix (migration 097) — empty string clears it
+    let strip_prefix = merge_optional_string(&req.strip_prefix, &existing.strip_prefix);
+
     // Extended Docker run options (migration 085)
     let update_cap_drop = match &req.docker_cap_drop {
         Some(v) if v.is_empty() => None,
@@ -501,6 +529,14 @@ pub async fn update_app(
             docker_gpus = ?,
             docker_ulimits = ?,
             docker_security_opt = ?,
+            git_submodules = ?,
+            git_lfs = ?,
+            shallow_clone = ?,
+            disable_build_cache = ?,
+            include_source_commit = ?,
+            custom_container_name = ?,
+            is_static_site = ?,
+            strip_prefix = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -559,6 +595,14 @@ pub async fn update_app(
     .bind(&update_gpus)
     .bind(&update_ulimits)
     .bind(&update_security_opt)
+    .bind(git_submodules)
+    .bind(git_lfs)
+    .bind(shallow_clone)
+    .bind(disable_build_cache)
+    .bind(include_source_commit)
+    .bind(&custom_container_name)
+    .bind(is_static_site)
+    .bind(&strip_prefix)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

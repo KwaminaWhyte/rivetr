@@ -11,6 +11,8 @@ import type {
   EnvironmentEnvVar,
   CreateEnvironmentEnvVarRequest,
   UpdateEnvironmentEnvVarRequest,
+  CloneEnvironmentRequest,
+  CloneEnvironmentResponse,
 } from "@/types/api";
 
 export const environmentsApi = {
@@ -37,6 +39,20 @@ export const environmentsApi = {
     apiRequest<void>(`/environments/${id}`, {
       method: "DELETE",
     }),
+
+  /** Clone an environment — duplicates all apps, env vars, volumes, databases, and services */
+  cloneEnvironment: (
+    projectId: string,
+    envId: string,
+    data: CloneEnvironmentRequest
+  ) =>
+    apiRequest<CloneEnvironmentResponse>(
+      `/projects/${projectId}/environments/${envId}/clone`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
 
   /** List env vars for an environment */
   getEnvironmentEnvVars: (envId: string, reveal = false) =>

@@ -740,6 +740,16 @@ export const appsApi = {
     }, token),
 
   // -------------------------------------------------------------------------
+  // Domain generation
+  // -------------------------------------------------------------------------
+
+  /** Auto-generate a random subdomain for an app */
+  generateDomain: (appId: string, token?: string) =>
+    apiRequest<{ domain: string }>(`/apps/${appId}/generate-domain`, {
+      method: "POST",
+    }, token),
+
+  // -------------------------------------------------------------------------
   // GitHub Actions Workflow Generator
   // -------------------------------------------------------------------------
 

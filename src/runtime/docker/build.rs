@@ -175,7 +175,7 @@ async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
 
     // Custom options (--no-cache, --add-host, …)
     let extra = parse_custom_build_args(ctx.custom_options.as_deref());
-    if extra.no_cache {
+    if extra.no_cache || ctx.no_cache {
         args.push("--no-cache".to_string());
     }
     if let Some(ref hosts) = extra.extra_hosts {
@@ -188,6 +188,12 @@ async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
     for (key, value) in &ctx.build_args {
         args.push("--build-arg".to_string());
         args.push(format!("{}={}", key, value));
+    }
+
+    // Inject SOURCE_COMMIT build arg if requested
+    if let Some(ref sha) = ctx.source_commit {
+        args.push("--build-arg".to_string());
+        args.push(format!("SOURCE_COMMIT={}", sha));
     }
 
     // Write secrets to tmpfiles
@@ -273,17 +279,29 @@ async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Resul
     let (cpuperiod, cpuquota) = parse_cpu_limits(ctx.cpu_limit.as_deref());
 
     let target = ctx.build_target.as_deref().unwrap_or("");
+
+    // Build args: start with ctx.build_args, then inject SOURCE_COMMIT if requested
+    let mut build_args_map: std::collections::HashMap<&str, &str> = ctx
+        .build_args
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    if let Some(ref sha) = ctx.source_commit {
+        build_args_map.insert("SOURCE_COMMIT", sha.as_str());
+    }
+
     let options = BuildImageOptions {
         dockerfile: ctx.dockerfile.trim_start_matches("./"),
         t: &ctx.tag,
         rm: true,
         target,
         extrahosts: extra_build_args.extra_hosts.as_deref(),
-        nocache: extra_build_args.no_cache,
+        nocache: extra_build_args.no_cache || ctx.no_cache,
         memory: memory.map(|m| m as u64),
         memswap: memory, // Set memswap equal to memory to disable swap
         cpuperiod: cpuperiod.map(|p| p as u64),
         cpuquota: cpuquota.map(|q| q as u64),
+        buildargs: build_args_map,
         ..Default::default()
     };
 

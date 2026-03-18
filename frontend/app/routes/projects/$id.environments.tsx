@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  Copy,
   Plus,
   Trash2,
   Edit2,
@@ -43,6 +44,7 @@ import type {
   ProjectEnvironment,
   EnvironmentEnvVar,
   Project,
+  CloneEnvironmentResponse,
 } from "@/types/api";
 
 export function meta() {
@@ -352,11 +354,13 @@ export default function ProjectEnvironmentsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
   const [selectedEnv, setSelectedEnv] = useState<ProjectEnvironment | null>(null);
   const [newEnvName, setNewEnvName] = useState("");
   const [newEnvDescription, setNewEnvDescription] = useState("");
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [cloneName, setCloneName] = useState("");
 
   const { data: project } = useQuery<Project>({
     queryKey: ["project", id],
@@ -415,6 +419,29 @@ export default function ProjectEnvironmentsPage() {
       setSelectedEnv(null);
       setActiveTab("");
       queryClient.invalidateQueries({ queryKey: ["environments", id] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const cloneMutation = useMutation({
+    mutationFn: () =>
+      api.cloneEnvironment(id!, selectedEnv!.id, {
+        name: cloneName.trim(),
+      }),
+    onSuccess: (result: CloneEnvironmentResponse) => {
+      const parts = [
+        result.cloned_apps > 0 ? `${result.cloned_apps} app${result.cloned_apps !== 1 ? "s" : ""}` : null,
+        result.cloned_databases > 0 ? `${result.cloned_databases} database${result.cloned_databases !== 1 ? "s" : ""}` : null,
+        result.cloned_services > 0 ? `${result.cloned_services} service${result.cloned_services !== 1 ? "s" : ""}` : null,
+      ].filter(Boolean);
+      const summary = parts.length > 0 ? ` (${parts.join(", ")} cloned)` : "";
+      toast.success(`Environment "${result.name}" created${summary}`);
+      setIsCloneDialogOpen(false);
+      setSelectedEnv(null);
+      setCloneName("");
+      queryClient.invalidateQueries({ queryKey: ["environments", id] });
+      // Navigate to the new environment tab
+      setActiveTab(result.id);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -496,6 +523,18 @@ export default function ProjectEnvironmentsPage() {
                     )}
                   </div>
                   <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedEnv(env);
+                        setCloneName(`${env.name}-copy`);
+                        setIsCloneDialogOpen(true);
+                      }}
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      Clone
+                    </Button>
                     {!env.is_default && (
                       <>
                         <Button
@@ -647,6 +686,65 @@ export default function ProjectEnvironmentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Clone Environment Dialog */}
+      <Dialog
+        open={isCloneDialogOpen}
+        onOpenChange={(open) => {
+          setIsCloneDialogOpen(open);
+          if (!open) {
+            setSelectedEnv(null);
+            setCloneName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clone Environment</DialogTitle>
+            <DialogDescription>
+              Create a new environment as a copy of "{selectedEnv?.name}". All
+              apps, environment variables, volumes, databases, and services will
+              be duplicated with fresh IDs. Domains are cleared and containers
+              are not started — the new environment starts clean.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clone-env-name">New environment name</Label>
+              <Input
+                id="clone-env-name"
+                placeholder="e.g., staging, qa, testing"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && cloneName.trim() && !cloneMutation.isPending) {
+                    cloneMutation.mutate();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCloneDialogOpen(false);
+                setSelectedEnv(null);
+                setCloneName("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => cloneMutation.mutate()}
+              disabled={!cloneName.trim() || cloneMutation.isPending}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              {cloneMutation.isPending ? "Cloning..." : "Clone Environment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

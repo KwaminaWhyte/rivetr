@@ -301,6 +301,25 @@ export interface App {
   docker_ulimits: string | null;
   /** Security options (stored as JSON array, e.g. ["seccomp=unconfined"]) */
   docker_security_opt: string | null;
+  // Git clone options
+  /** Pass --recurse-submodules to git clone */
+  git_submodules: boolean;
+  /** Run `git lfs pull` after clone */
+  git_lfs: boolean;
+  /** Use --depth 1 for fast shallow clones (default true) */
+  shallow_clone: boolean;
+  // Build options
+  /** Pass --no-cache to docker build */
+  disable_build_cache: boolean;
+  /** Inject SOURCE_COMMIT build arg with the current git SHA */
+  include_source_commit: boolean;
+  // Container naming
+  /** Override the container name used for the app's container */
+  custom_container_name: string | null;
+  /** Treat this app as a static site (serve files without a runtime container) */
+  is_static_site: boolean;
+  /** URL prefix to strip from incoming requests before forwarding to the container */
+  strip_prefix: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -564,6 +583,25 @@ export interface UpdateAppRequest {
   docker_ulimits?: string[];
   /** Security options (e.g. ["seccomp=unconfined"]) */
   docker_security_opt?: string[];
+  // Git clone options
+  /** Pass --recurse-submodules to git clone */
+  git_submodules?: boolean;
+  /** Run `git lfs pull` after clone */
+  git_lfs?: boolean;
+  /** Use --depth 1 for fast shallow clones */
+  shallow_clone?: boolean;
+  // Build options
+  /** Pass --no-cache to docker build */
+  disable_build_cache?: boolean;
+  /** Inject SOURCE_COMMIT build arg with the current git SHA */
+  include_source_commit?: boolean;
+  // Container naming
+  /** Override the container name (set to empty string to clear) */
+  custom_container_name?: string;
+  /** Treat this app as a static site */
+  is_static_site?: boolean;
+  /** URL prefix to strip from incoming requests before forwarding to the container */
+  strip_prefix?: string;
 }
 
 // -------------------------------------------------------------------------
@@ -1087,4 +1125,21 @@ export interface UpdatePatchRequest {
   content?: string;
   operation?: "create" | "append" | "delete";
   is_enabled?: boolean;
+}
+
+export interface CloneEnvironmentRequest {
+  name: string;
+}
+
+export interface CloneEnvironmentResponse {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  cloned_apps: number;
+  cloned_databases: number;
+  cloned_services: number;
 }

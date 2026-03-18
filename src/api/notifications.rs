@@ -602,6 +602,87 @@ fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Re
                 ));
             }
         }
+        "mattermost" | "lark" => {
+            let webhook_url = config
+                .get("webhook_url")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.webhook_url", "Webhook URL is required")
+                })?;
+
+            if !webhook_url.starts_with("https://") && !webhook_url.starts_with("http://") {
+                return Err(ApiError::validation_field(
+                    "config.webhook_url",
+                    "Webhook URL must use HTTP or HTTPS",
+                ));
+            }
+        }
+        "gotify" => {
+            let server_url = config
+                .get("server_url")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.server_url", "Server URL is required")
+                })?;
+
+            if server_url.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.server_url",
+                    "Server URL cannot be empty",
+                ));
+            }
+
+            let app_token = config
+                .get("app_token")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.app_token", "App token is required")
+                })?;
+
+            if app_token.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.app_token",
+                    "App token cannot be empty",
+                ));
+            }
+        }
+        "resend" => {
+            let api_key = config
+                .get("api_key")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.api_key", "API key is required")
+                })?;
+
+            if api_key.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.api_key",
+                    "API key cannot be empty",
+                ));
+            }
+
+            let from_address = config
+                .get("from_address")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ApiError::validation_field("config.from_address", "From address is required")
+                })?;
+
+            if from_address.is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.from_address",
+                    "From address cannot be empty",
+                ));
+            }
+
+            let to_addresses = config.get("to_addresses").and_then(|v| v.as_array());
+            if to_addresses.is_none() || to_addresses.unwrap().is_empty() {
+                return Err(ApiError::validation_field(
+                    "config.to_addresses",
+                    "At least one recipient address is required",
+                ));
+            }
+        }
         _ => {
             return Err(ApiError::validation_field(
                 "channel_type",

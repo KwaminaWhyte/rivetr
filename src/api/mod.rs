@@ -7,6 +7,7 @@ mod autoscaling;
 mod basic_auth;
 mod build_servers;
 mod bulk;
+mod clone;
 mod cloudflare_tunnels;
 mod community_templates;
 mod cost_rates;
@@ -151,6 +152,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/stop", post(apps::stop_app))
         .route("/apps/:id/restart", post(apps::restart_app))
         .route("/apps/:id/apply-limits", post(apps::apply_resource_limits))
+        .route("/apps/:id/generate-domain", post(apps::generate_domain))
         .route("/apps/:id/activity", get(apps::get_app_activity))
         .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
         .route(
@@ -451,6 +453,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/environments/:id",
             delete(environments::delete_environment),
+        )
+        // Clone environment
+        .route(
+            "/projects/:project_id/environments/:env_id/clone",
+            post(clone::clone_environment),
         )
         // Environment Env Vars
         .route(

@@ -22,8 +22,14 @@ pub struct Server {
     pub os_info: Option<String>,
     pub docker_version: Option<String>,
     pub team_id: Option<String>,
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_timezone() -> String {
+    "UTC".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,4 +51,5 @@ pub struct UpdateServerRequest {
     pub username: Option<String>,
     pub ssh_private_key: Option<String>,
     pub ssh_password: Option<String>,
+    pub timezone: Option<String>,
 }

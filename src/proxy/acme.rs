@@ -676,12 +676,33 @@ impl AcmeClient {
     }
 
     /// Load the list of domains that were included in the cached certificate.
-    /// Returns `None` if the domains file doesn't exist (old cert format).
+    /// Reads `domains.json` if it exists; otherwise falls back to parsing the SANs
+    /// directly from `fullchain.pem` so the renewal manager always has an accurate
+    /// baseline (prevents incorrectly skipping reissue for new subdomains).
     pub async fn load_cert_domains(cert_dir: &Path) -> Option<Vec<String>> {
-        let path = cert_dir.join("domains.json");
-        let json = fs::read_to_string(&path).await.ok()?;
-        serde_json::from_str(&json).ok()
+        let domains_path = cert_dir.join("domains.json");
+        if let Ok(json) = fs::read_to_string(&domains_path).await {
+            if let Ok(domains) = serde_json::from_str::<Vec<String>>(&json) {
+                return Some(domains);
+            }
+        }
+
+        // Fallback: parse SANs from the PEM directly so we never confuse the DB
+        // domain list (which includes new, not-yet-covered apps) with the cert's
+        // actual SANs.
+        let pem_str = fs::read_to_string(&cert_dir.join("fullchain.pem")).await.ok()?;
+        let sans = extract_sans_from_pem(&pem_str);
+        if !sans.is_empty() {
+            // Persist so we don't re-parse on the next startup
+            if let Ok(json) = serde_json::to_string(&sans) {
+                let _ = fs::write(&domains_path, json).await;
+            }
+            Some(sans)
+        } else {
+            None
+        }
     }
+
 
     /// Load a saved certificate and create TLS config
     pub async fn load_certificate(cert_dir: &Path) -> Result<TlsConfig> {
@@ -971,9 +992,37 @@ impl CertificateRenewalManager {
 }
 
 /// Parse certificate PEM to get expiry date
-fn parse_cert_expiry(pem: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+/// Extract DNS SANs from the first certificate in a PEM chain.
+/// Returns an empty vec if parsing fails rather than propagating an error.
+fn extract_sans_from_pem(pem_str: &str) -> Vec<String> {
+    use x509_parser::prelude::*;
+
+    let pem_block: ::pem::Pem = match ::pem::parse(pem_str) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+
+    let (_, cert) = match X509Certificate::from_der(pem_block.contents()) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let mut sans = Vec::new();
+    for ext in cert.extensions() {
+        if let ParsedExtension::SubjectAlternativeName(san) = ext.parsed_extension() {
+            for name in &san.general_names {
+                if let GeneralName::DNSName(dns) = name {
+                    sans.push(dns.to_string());
+                }
+            }
+        }
+    }
+    sans
+}
+
+fn parse_cert_expiry(pem_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     // Extract the first certificate from the chain
-    let pem_block = pem::parse(pem).ok()?;
+    let pem_block: ::pem::Pem = ::pem::parse(pem_str).ok()?;
 
     if pem_block.tag() != "CERTIFICATE" {
         return None;

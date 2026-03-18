@@ -192,7 +192,8 @@ impl DeploymentEngine {
                                     "127.0.0.1".to_string(),
                                     port,
                                 )
-                                .with_healthcheck(app.healthcheck.clone());
+                                .with_healthcheck(app.healthcheck.clone())
+                                .with_strip_prefix(app.strip_prefix.clone());
 
                                 // Configure HTTP Basic Auth if enabled
                                 if app.basic_auth_enabled != 0 {
@@ -351,7 +352,8 @@ impl DeploymentEngine {
                                                     "127.0.0.1".to_string(),
                                                     port,
                                                 )
-                                                .with_healthcheck(app.healthcheck.clone());
+                                                .with_healthcheck(app.healthcheck.clone())
+                                                .with_strip_prefix(app.strip_prefix.clone());
 
                                                 if app.basic_auth_enabled != 0 {
                                                     if let (Some(username), Some(password_hash)) = (

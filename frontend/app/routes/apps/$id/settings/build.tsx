@@ -35,7 +35,18 @@ export default function AppSettingsBuild() {
     build_target: app.build_target || "",
     watch_paths: app.watch_paths || "",
     custom_docker_options: app.custom_docker_options || "",
+    custom_container_name: app.custom_container_name || "",
   });
+
+  // Git clone options
+  const [gitSubmodules, setGitSubmodules] = useState(app.git_submodules || false);
+  const [gitLfs, setGitLfs] = useState(app.git_lfs || false);
+  const [shallowClone, setShallowClone] = useState(app.shallow_clone !== false);
+
+  // Build options
+  const [disableBuildCache, setDisableBuildCache] = useState(app.disable_build_cache || false);
+  const [includeSourceCommit, setIncludeSourceCommit] = useState(app.include_source_commit || false);
+  const [isStaticSite, setIsStaticSite] = useState(app.is_static_site || false);
 
   const [buildType, setBuildType] = useState<BuildType>(app.build_type || "dockerfile");
   const [previewEnabled, setPreviewEnabled] = useState(app.preview_enabled || false);
@@ -114,7 +125,17 @@ export default function AppSettingsBuild() {
     setNixpacksConfig(parseNixpacksConfig(app.nixpacks_config));
     setBuildServerId(app.build_server_id || "");
     setSelectedPlatforms(parsePlatforms(app.build_platforms));
-  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id, app.build_platforms]);
+    setGitSubmodules(app.git_submodules || false);
+    setGitLfs(app.git_lfs || false);
+    setShallowClone(app.shallow_clone !== false);
+    setDisableBuildCache(app.disable_build_cache || false);
+    setIncludeSourceCommit(app.include_source_commit || false);
+    setIsStaticSite(app.is_static_site || false);
+    setBuildForm(prev => ({
+      ...prev,
+      custom_container_name: app.custom_container_name || "",
+    }));
+  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id, app.build_platforms, app.git_submodules, app.git_lfs, app.shallow_clone, app.disable_build_cache, app.include_source_commit, app.custom_container_name, app.is_static_site]);
 
   const handleBuildSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +175,17 @@ export default function AppSettingsBuild() {
         // Empty string clears the build server assignment on the backend
         build_server_id: buildServerId || "",
         build_platforms: buildPlatformsValue || undefined,
+        // Git clone options
+        git_submodules: gitSubmodules,
+        git_lfs: gitLfs,
+        shallow_clone: shallowClone,
+        // Build options
+        disable_build_cache: disableBuildCache,
+        include_source_commit: includeSourceCommit,
+        // Container naming — empty string clears it
+        custom_container_name: buildForm.custom_container_name || "",
+        // Static site flag
+        is_static_site: isStaticSite,
       };
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
@@ -539,6 +571,112 @@ export default function AppSettingsBuild() {
                 checked={previewEnabled}
                 onCheckedChange={setPreviewEnabled}
               />
+            </div>
+
+            {/* Git Clone Options */}
+            <div className="space-y-3">
+              <Label className="text-base">Git Clone Options</Label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="shallow-clone" className="text-base">Shallow Clone</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Use <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">--depth 1</code> for faster clones (default on). Disable for full git history.
+                    </p>
+                  </div>
+                  <Switch
+                    id="shallow-clone"
+                    checked={shallowClone}
+                    onCheckedChange={setShallowClone}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="git-submodules" className="text-base">Git Submodules</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Pass <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">--recurse-submodules</code> to clone all submodules
+                    </p>
+                  </div>
+                  <Switch
+                    id="git-submodules"
+                    checked={gitSubmodules}
+                    onCheckedChange={setGitSubmodules}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="git-lfs" className="text-base">Git LFS</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Run <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">git lfs pull</code> after clone (requires git-lfs installed on the server)
+                    </p>
+                  </div>
+                  <Switch
+                    id="git-lfs"
+                    checked={gitLfs}
+                    onCheckedChange={setGitLfs}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Build Options */}
+            <div className="space-y-3">
+              <Label className="text-base">Build Options</Label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="disable-build-cache" className="text-base">Disable Build Cache</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Pass <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">--no-cache</code> to force a clean build every time
+                    </p>
+                  </div>
+                  <Switch
+                    id="disable-build-cache"
+                    checked={disableBuildCache}
+                    onCheckedChange={setDisableBuildCache}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-source-commit" className="text-base">Inject SOURCE_COMMIT</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Inject the current git SHA as the <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">SOURCE_COMMIT</code> build argument
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-source-commit"
+                    checked={includeSourceCommit}
+                    onCheckedChange={setIncludeSourceCommit}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="is-static-site" className="text-base">Static Site</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Serve built files as a static site. The output directory is served directly without a runtime container.
+                    </p>
+                  </div>
+                  <Switch
+                    id="is-static-site"
+                    checked={isStaticSite}
+                    onCheckedChange={setIsStaticSite}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Container Name */}
+            <div className="space-y-2">
+              <Label htmlFor="custom_container_name">Custom Container Name</Label>
+              <Input
+                id="custom_container_name"
+                placeholder={`rivetr-${app.name} (default)`}
+                value={buildForm.custom_container_name}
+                onChange={(e) => setBuildForm({ ...buildForm, custom_container_name: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Override the Docker container name. Leave blank to use the default <code className="font-mono">rivetr-{app.name}</code> pattern.
+              </p>
             </div>
 
             <Button type="submit" disabled={isSubmitting}>

@@ -155,7 +155,8 @@ pub async fn rollback_deployment(
                                 result.container_id.clone(),
                                 "127.0.0.1".to_string(),
                                 port,
-                            );
+                            )
+                            .with_strip_prefix(app_clone.strip_prefix.clone());
                             route_table.add_route(domain.clone(), backend);
                         }
                         tracing::info!(

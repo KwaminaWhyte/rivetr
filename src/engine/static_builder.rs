@@ -494,6 +494,8 @@ CMD ["nginx", "-g", "daemon off;"]
             log_tx: None,
             build_secrets: vec![],
             build_platforms: None,
+            no_cache: false,
+            source_commit: None,
         };
 
         let result = self

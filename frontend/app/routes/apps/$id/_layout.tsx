@@ -30,6 +30,7 @@ import {
   Tag,
   Copy,
   WrenchIcon,
+  Link2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -517,6 +518,55 @@ export default function AppDetailLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* Links dropdown — shows all app URLs */}
+          {(() => {
+            const parsedDomains: Array<{ domain: string; primary: boolean; redirect_www: boolean }> = (() => {
+              try { return app.domains ? JSON.parse(app.domains) : []; } catch { return []; }
+            })();
+            const allLinks: string[] = [];
+            for (const d of parsedDomains) {
+              allLinks.push(d.domain);
+            }
+            if (app.auto_subdomain && !allLinks.includes(app.auto_subdomain)) {
+              allLinks.push(app.auto_subdomain);
+            }
+            if (app.domain && !allLinks.includes(app.domain)) {
+              allLinks.push(app.domain);
+            }
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Link2 className="h-4 w-4" />
+                    Links
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  {allLinks.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                      <span className="text-muted-foreground">No domains configured</span>
+                    </DropdownMenuItem>
+                  ) : (
+                    allLinks.map((link) => (
+                      <DropdownMenuItem key={link} asChild>
+                        <a
+                          href={`https://${link}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2"
+                        >
+                          <ExternalLink className="h-4 w-4 shrink-0" />
+                          <span className="truncate font-mono text-sm">{link}</span>
+                        </a>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
+
           {/* Open App button - prefer domains JSON > domain > auto_subdomain > host_port */}
           {appStatus?.running && (() => {
             const primaryDomain = getPrimaryDomain(app);

@@ -37,6 +37,11 @@ pub struct BuildContext {
     /// Target Docker build platform(s), e.g. "linux/amd64" or "linux/arm64".
     /// When set, `docker buildx build --platform` is used instead of the default daemon build.
     pub build_platforms: Option<String>,
+    /// Force a clean build by disabling layer cache (`--no-cache`).
+    pub no_cache: bool,
+    /// Inject `SOURCE_COMMIT` build arg with the current git SHA.
+    /// Value is `None` when the feature is disabled or the SHA is unknown.
+    pub source_commit: Option<String>,
 }
 
 impl std::fmt::Debug for BuildContext {
@@ -59,6 +64,8 @@ impl std::fmt::Debug for BuildContext {
                     .collect::<Vec<_>>(),
             )
             .field("build_platforms", &self.build_platforms)
+            .field("no_cache", &self.no_cache)
+            .field("source_commit", &self.source_commit)
             .finish()
     }
 }

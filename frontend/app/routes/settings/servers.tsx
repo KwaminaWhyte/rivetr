@@ -45,6 +45,7 @@ import type {
   Server,
   ServerHealthResponse,
   CreateServerRequest,
+  UpdateServerRequest,
   PatchesResponse,
   SecurityCheckItem,
   SecurityCheckResponse,
@@ -70,6 +71,7 @@ import {
   Container,
   Download,
   FolderOpen,
+  Settings,
 } from "lucide-react";
 import { Link } from "react-router";
 import { ContainerTerminal } from "@/components/container-terminal";
@@ -626,6 +628,12 @@ export default function ServersPage() {
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
   const [patchesServer, setPatchesServer] = useState<Server | null>(null);
   const [securityServer, setSecurityServer] = useState<Server | null>(null);
+  const [editServer, setEditServer] = useState<Server | null>(null);
+
+  // Edit form state
+  const [editTimezone, setEditTimezone] = useState("");
+  const [editName, setEditName] = useState("");
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   // Form state
   const [formName, setFormName] = useState("");
@@ -652,6 +660,19 @@ export default function ServersPage() {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to add server");
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateServerRequest }) =>
+      serversApi.update(id, data),
+    onSuccess: () => {
+      toast.success("Server settings saved");
+      queryClient.invalidateQueries({ queryKey: ["servers"] });
+      setEditServer(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update server");
     },
   });
 
@@ -695,6 +716,28 @@ export default function ServersPage() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openEditServer = (server: Server) => {
+    setEditServer(server);
+    setEditName(server.name);
+    setEditTimezone(server.timezone || "UTC");
+  };
+
+  const handleSaveServer = async () => {
+    if (!editServer) return;
+    setIsEditSubmitting(true);
+    try {
+      await updateMutation.mutateAsync({
+        id: editServer.id,
+        data: {
+          name: editName.trim() || undefined,
+          timezone: editTimezone.trim() || "UTC",
+        },
+      });
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -905,6 +948,11 @@ export default function ServersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => openEditServer(server)}>
+                              <Settings className="h-3.5 w-3.5 mr-2" />
+                              Edit settings
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleCheckHealth(server)}
                               disabled={checkingId === server.id || installingDockerIds.has(server.id)}
@@ -1130,6 +1178,65 @@ export default function ServersPage() {
             </DialogDescription>
           </DialogHeader>
           {securityServer && <SecurityCheckDialogContent serverId={securityServer.id} />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Server Dialog */}
+      <Dialog
+        open={!!editServer}
+        onOpenChange={(open) => { if (!open) setEditServer(null); }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Edit Server — {editServer?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Update configuration settings for this server.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-server-name">Name</Label>
+              <Input
+                id="edit-server-name"
+                placeholder="production-us-east"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-server-timezone">Server Timezone</Label>
+              <Input
+                id="edit-server-timezone"
+                placeholder="UTC"
+                value={editTimezone}
+                onChange={(e) => setEditTimezone(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                IANA timezone for scheduled tasks and log timestamps (e.g. America/New_York, Europe/London)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditServer(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveServer}
+              disabled={isEditSubmitting}
+              className="gap-2"
+            >
+              {isEditSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              Save Changes
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -200,6 +200,9 @@ export const api = {
   updatePatch: appsApi.updatePatch,
   deletePatch: appsApi.deletePatch,
 
+  // Domain generation
+  generateDomain: appsApi.generateDomain,
+
   // GitHub Actions Workflow Generator
   getGithubActionsWorkflow: appsApi.getGithubActionsWorkflow,
 
@@ -428,6 +431,7 @@ export const api = {
   createEnvironment: environmentsApi.createEnvironment,
   updateEnvironment: environmentsApi.updateEnvironment,
   deleteEnvironment: environmentsApi.deleteEnvironment,
+  cloneEnvironment: environmentsApi.cloneEnvironment,
   getEnvironmentEnvVars: environmentsApi.getEnvironmentEnvVars,
   createEnvironmentEnvVar: environmentsApi.createEnvironmentEnvVar,
   updateEnvironmentEnvVar: environmentsApi.updateEnvironmentEnvVar,

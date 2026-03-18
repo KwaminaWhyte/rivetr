@@ -140,6 +140,31 @@ pub struct App {
     pub docker_ulimits: Option<String>,
     /// JSON array of security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<String>,
+    // Git clone options
+    /// Pass --recurse-submodules to git clone
+    #[serde(default)]
+    pub git_submodules: i64,
+    /// Run `git lfs pull` after clone (requires git-lfs installed)
+    #[serde(default)]
+    pub git_lfs: i64,
+    /// Use --depth 1 for fast shallow clones (default true); set to 0 for full clone
+    #[serde(default = "default_shallow_clone")]
+    pub shallow_clone: i64,
+    // Build options
+    /// Pass --no-cache to docker build / nixpacks build
+    #[serde(default)]
+    pub disable_build_cache: i64,
+    /// Inject SOURCE_COMMIT build arg with the current git SHA
+    #[serde(default)]
+    pub include_source_commit: i64,
+    // Container naming
+    /// Override the container name used for the app's container (nullable)
+    pub custom_container_name: Option<String>,
+    /// Treat this app as a static site (serve files without a runtime container)
+    #[serde(default)]
+    pub is_static_site: i64,
+    /// URL prefix to strip from incoming requests before forwarding to the container
+    pub strip_prefix: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -245,6 +270,25 @@ pub struct AppResponse {
     pub docker_ulimits: Option<String>,
     /// JSON array of security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<String>,
+    // Git clone options
+    /// Pass --recurse-submodules to git clone
+    pub git_submodules: bool,
+    /// Run `git lfs pull` after clone
+    pub git_lfs: bool,
+    /// Use --depth 1 for fast shallow clones (default true)
+    pub shallow_clone: bool,
+    // Build options
+    /// Pass --no-cache to docker build
+    pub disable_build_cache: bool,
+    /// Inject SOURCE_COMMIT build arg with the current git SHA
+    pub include_source_commit: bool,
+    // Container naming
+    /// Override the container name (nullable)
+    pub custom_container_name: Option<String>,
+    /// Treat this app as a static site (serve files without a runtime container)
+    pub is_static_site: bool,
+    /// URL prefix to strip from incoming requests before forwarding to the container
+    pub strip_prefix: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -314,6 +358,14 @@ impl From<App> for AppResponse {
             docker_gpus: app.docker_gpus,
             docker_ulimits: app.docker_ulimits,
             docker_security_opt: app.docker_security_opt,
+            git_submodules: app.git_submodules != 0,
+            git_lfs: app.git_lfs != 0,
+            shallow_clone: app.shallow_clone != 0,
+            disable_build_cache: app.disable_build_cache != 0,
+            include_source_commit: app.include_source_commit != 0,
+            custom_container_name: app.custom_container_name,
+            is_static_site: app.is_static_site != 0,
+            strip_prefix: app.strip_prefix,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -634,6 +686,10 @@ fn default_build_type() -> String {
     "dockerfile".to_string()
 }
 
+fn default_shallow_clone() -> i64 {
+    1
+}
+
 fn default_restart_policy() -> String {
     "unless-stopped".to_string()
 }
@@ -762,6 +818,25 @@ pub struct UpdateAppRequest {
     pub docker_ulimits: Option<Vec<String>>,
     /// Security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<Vec<String>>,
+    // Git clone options
+    /// Pass --recurse-submodules to git clone
+    pub git_submodules: Option<bool>,
+    /// Run `git lfs pull` after clone
+    pub git_lfs: Option<bool>,
+    /// Use --depth 1 for fast shallow clones (default true)
+    pub shallow_clone: Option<bool>,
+    // Build options
+    /// Pass --no-cache to docker build
+    pub disable_build_cache: Option<bool>,
+    /// Inject SOURCE_COMMIT build arg with the current git SHA
+    pub include_source_commit: Option<bool>,
+    // Container naming
+    /// Override the container name (set to empty string to clear)
+    pub custom_container_name: Option<String>,
+    /// Treat this app as a static site (serve files without a runtime container)
+    pub is_static_site: Option<bool>,
+    /// URL prefix to strip from incoming requests before forwarding to the container
+    pub strip_prefix: Option<String>,
 }
 
 /// Request specifically for updating domains

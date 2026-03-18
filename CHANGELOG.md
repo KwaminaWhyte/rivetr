@@ -5,6 +5,28 @@ All notable changes to Rivetr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Git clone options** — Per-app toggles for `git_submodules` (passes `--recurse-submodules`), `git_lfs` (runs `git lfs pull` after clone), and `shallow_clone` (controls `--depth 1`; default on for speed). Migration `094_git_build_options.sql`.
+- **Build cache control** — `disable_build_cache` toggle passes `--no-cache` to Dockerfile/Nixpacks builds (Docker and Podman), forcing a clean layer rebuild on every deploy.
+- **SOURCE_COMMIT build arg** — `include_source_commit` toggle injects the current git SHA as the `SOURCE_COMMIT` Docker build argument so it can be baked into the image.
+- **Custom container name** — `custom_container_name` field overrides the auto-generated `rivetr-<app-name>` container name. All options exposed in the app's Build Settings page.
+- **Static site flag** — `is_static_site` boolean marks an app as a static site (migration `095_static_site.sql`). Toggle in Build Settings page under Build Options.
+- **Generate domain** — `POST /api/apps/:id/generate-domain` auto-assigns a random subdomain using the server's base domain (falls back to `sslip.io`). Exposed as a Generate (wand) button in the Domain Management card.
+- **Links dropdown** — App layout nav now includes a Links dropdown showing all configured domains as quick-open external links.
+- **Environment Clone** — Clone any project environment to instantly duplicate its apps (with env vars and volumes), databases, and services into a new environment. New environment starts clean: containers not running, domains cleared, deployment state reset. API: `POST /api/projects/:project_id/environments/:env_id/clone`. Frontend: Clone button on each environment tab opens a dialog to name the new environment.
+- **8 new service templates (Sprint 23)** — Flowise, Langflow, Open WebUI, AnythingLLM (AI/ML); Pocket ID (Auth/SSO); Activepieces, Trigger.dev (Automation); SigNoz (Monitoring). Rivetr now has ~102 one-click service templates.
+- **Server timezone setting** — Per-server `timezone` field (IANA timezone string, default `UTC`). Migration `096_server_timezone.sql`. Exposed in the Edit Server dialog on the Servers settings page.
+- **Strip URL prefix** — Per-app `strip_prefix` field removes a URL prefix before proxying to the container (e.g. `/api`). Migration `097_app_strip_prefix.sql`. Proxy strips the prefix in both HTTP and WebSocket forwarding. UI in app Network settings. Applied to rollback, bulk ops, and route restores on startup.
+- **Resend notification channel** — Fixed validation for `resend`, `mattermost`, `lark`, and `gotify` channel types (they were previously blocked by the `validate_channel_config` fallthrough). All four channel types now accept and validate their required config fields.
+- **Theme toggle in top nav** — The Light/Dark/System theme toggle is now directly accessible from the top navigation header bar (in addition to the sidebar user menu).
+- **Version + feedback in sidebar** — Sidebar footer now shows the current version number (fetched from `/api/system/version`) as a link to GitHub releases, plus a Feedback link to open a GitHub issue.
+- **7 new service templates (Sprint 22)** — Minecraft Java, Palworld, Terraria, Satisfactory (Gaming); Argilla, Mage AI (AI/ML); Glitchtip (Monitoring). Rivetr now has ~94 one-click service templates.
+- **13 new service templates (Sprint 21)** — Beszel Agent, ClassicPress, CloudBeaver, Diun, Homebox, Karakeep, Linkding, PairDrop, Readeck, Ryot, Shlink, Slash, and Wakapi. Rivetr now has ~87 one-click service templates.
+
+---
+
 ## [v0.10.8] - 2026-03-17
 
 ### Fixed

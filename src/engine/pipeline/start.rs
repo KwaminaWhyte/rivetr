@@ -169,7 +169,13 @@ pub(super) async fn start_container(
     // "rivetr-<app>-prev".  The old container continues running under the new name;
     // the proxy still routes to it by container ID until we swap routes after health
     // check.  After the proxy swap the caller stops the renamed old container.
-    let container_name = format!("rivetr-{}", app.name);
+    // Use custom_container_name if set, otherwise fall back to the default "rivetr-<app>" pattern.
+    let container_name = app
+        .custom_container_name
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .unwrap_or_else(|| format!("rivetr-{}", app.name));
     let old_container_prev_name = format!("{}-prev", container_name);
 
     // Collect IDs to stop after proxy swap.

@@ -19,7 +19,7 @@ mod sharing;
 mod upload;
 
 pub use control::{
-    apply_resource_limits, get_app_activity, get_app_status, restart_app, start_app, stop_app,
+    apply_resource_limits, generate_domain, get_app_activity, get_app_status, restart_app, start_app, stop_app,
 };
 pub use crud::{
     create_app, delete_app, get_app, get_github_actions_workflow, list_apps, update_app,

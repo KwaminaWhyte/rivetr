@@ -73,6 +73,8 @@ pub struct Backend {
     pub basic_auth: BasicAuthConfig,
     /// URL redirect rules (evaluated in sort_order before forwarding)
     pub redirect_rules: Vec<RedirectRule>,
+    /// URL prefix to strip from incoming requests before forwarding (e.g. "/api")
+    pub strip_prefix: Option<String>,
 }
 
 impl Backend {
@@ -86,6 +88,7 @@ impl Backend {
             failure_count: 0,
             basic_auth: BasicAuthConfig::disabled(),
             redirect_rules: Vec::new(),
+            strip_prefix: None,
         }
     }
 
@@ -115,6 +118,12 @@ impl Backend {
     /// Set redirect rules (mutable reference version)
     pub fn set_redirect_rules(&mut self, rules: Vec<RedirectRule>) {
         self.redirect_rules = rules;
+    }
+
+    /// Set the URL prefix to strip from incoming requests before forwarding
+    pub fn with_strip_prefix(mut self, prefix: Option<String>) -> Self {
+        self.strip_prefix = prefix;
+        self
     }
 
     /// Get the backend address as a URI authority
@@ -221,6 +230,7 @@ impl RouteTable {
                         replica_backend.healthcheck_path = primary.healthcheck_path.clone();
                         replica_backend.basic_auth = primary.basic_auth.clone();
                         replica_backend.redirect_rules = primary.redirect_rules.clone();
+                        replica_backend.strip_prefix = primary.strip_prefix.clone();
                         return Some(replica_backend);
                     }
                 }

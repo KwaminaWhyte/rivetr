@@ -15,6 +15,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useRequireAuth } from "@/lib/auth";
 import { BreadcrumbProvider, useBreadcrumb, type BreadcrumbItem as BreadcrumbItemType } from "@/lib/breadcrumb-context";
 import { TeamProvider } from "@/lib/team-context";
@@ -279,7 +280,7 @@ function DashboardLayoutInner() {
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex items-center gap-2 px-4 flex-1">
             <SidebarTrigger className="-ml-1" />
             <Separator
               orientation="vertical"
@@ -303,6 +304,9 @@ function DashboardLayoutInner() {
                 ))}
               </BreadcrumbList>
             </Breadcrumb>
+          </div>
+          <div className="flex items-center gap-1 px-4">
+            <ThemeToggle />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">

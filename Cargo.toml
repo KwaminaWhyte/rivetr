@@ -93,6 +93,7 @@ rcgen = { version = "0.13", default-features = false, features = ["ring"] }
 base64 = "0.22"
 ring = "0.17"
 pem = "3"
+x509-parser = "0.16"
 
 # Encryption (AES-256-GCM for env var encryption)
 aes-gcm = "0.10"

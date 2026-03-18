@@ -87,9 +87,23 @@ impl ContainerRuntime for PodmanRuntime {
             parse_podman_custom_options(options, &mut args);
         }
 
+        // Disable build cache if requested
+        if ctx.no_cache {
+            // Only add if not already added by custom options
+            if !args.contains(&"--no-cache".to_string()) {
+                args.push("--no-cache".to_string());
+            }
+        }
+
         for (key, value) in &ctx.build_args {
             args.push("--build-arg".to_string());
             args.push(format!("{}={}", key, value));
+        }
+
+        // Inject SOURCE_COMMIT build arg if requested
+        if let Some(ref sha) = ctx.source_commit {
+            args.push("--build-arg".to_string());
+            args.push(format!("SOURCE_COMMIT={}", sha));
         }
 
         // Write build secrets to tmpfiles and add --secret flags.

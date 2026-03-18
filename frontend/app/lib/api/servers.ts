@@ -21,6 +21,8 @@ export interface Server {
   os_info?: string;
   docker_version?: string;
   team_id?: string;
+  /** IANA timezone for scheduled tasks and log timestamps (default: "UTC") */
+  timezone: string;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +43,8 @@ export interface UpdateServerRequest {
   port?: number;
   username?: string;
   ssh_private_key?: string;
+  /** IANA timezone for scheduled tasks and log timestamps (e.g. "America/New_York") */
+  timezone?: string;
 }
 
 export interface ServerHealthResponse extends Server {

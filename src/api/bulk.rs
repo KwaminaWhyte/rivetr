@@ -170,7 +170,8 @@ async fn start_container(state: &Arc<AppState>, app: &App) -> Result<(), String>
                         "127.0.0.1".to_string(),
                         port,
                     )
-                    .with_healthcheck(app.healthcheck.clone());
+                    .with_healthcheck(app.healthcheck.clone())
+                    .with_strip_prefix(app.strip_prefix.clone());
                     state.routes.load().add_route(domain.clone(), backend);
                 }
             }
@@ -242,7 +243,8 @@ async fn restart_container(state: &Arc<AppState>, app: &App) -> Result<(), Strin
                         "127.0.0.1".to_string(),
                         port,
                     )
-                    .with_healthcheck(app.healthcheck.clone());
+                    .with_healthcheck(app.healthcheck.clone())
+                    .with_strip_prefix(app.strip_prefix.clone());
                     state.routes.load().add_route(domain.clone(), backend);
                 }
             }

@@ -171,11 +171,39 @@ async fn run_git_deployment(
     // Build the effective clone URL (inject OAuth/PAT/GitHub App token for HTTPS repos)
     let clone_url = clone::get_authenticated_url(db, app, encryption_key).await?;
 
+    // Build clone options from app configuration.
+    // When a full clone is needed (for a specific commit/tag), shallow is always false.
+    let clone_opts = clone::CloneOptions {
+        shallow: !needs_full_clone && app.shallow_clone != 0,
+        submodules: app.git_submodules != 0,
+        lfs: app.git_lfs != 0,
+    };
+
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
         clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+        // Run git lfs pull after full clone if enabled
+        if clone_opts.lfs {
+            add_deployment_log(db, deployment_id, "info", "Running git lfs pull...").await?;
+            if let Err(e) = clone::run_lfs_pull(&work_dir).await {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "warn",
+                    &format!("git lfs pull failed (continuing): {}", e),
+                )
+                .await?;
+            }
+        }
     } else {
-        clone::clone_repository(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
+        clone::clone_repository(
+            &clone_url,
+            &app.branch,
+            &work_dir,
+            ssh_key.as_ref(),
+            &clone_opts,
+        )
+        .await?;
     }
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
 

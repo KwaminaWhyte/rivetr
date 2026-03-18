@@ -40,15 +40,37 @@ impl ProxyService {
         mut req: Request<Incoming>,
         backend: &Backend,
     ) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
+        // Compute path, stripping the prefix if configured
+        let original_pq = req
+            .uri()
+            .path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or("/");
+        let forwarded_pq = if let Some(ref prefix) = backend.strip_prefix {
+            let path = req.uri().path();
+            if path.starts_with(prefix.as_str()) {
+                let stripped = &path[prefix.len()..];
+                // Ensure the stripped path starts with '/'
+                let stripped = if stripped.is_empty() || !stripped.starts_with('/') {
+                    format!("/{}", stripped)
+                } else {
+                    stripped.to_string()
+                };
+                // Re-attach query string if present
+                if let Some(query) = req.uri().query() {
+                    format!("{}?{}", stripped, query)
+                } else {
+                    stripped
+                }
+            } else {
+                original_pq.to_string()
+            }
+        } else {
+            original_pq.to_string()
+        };
+
         // Build the backend URI
-        let backend_uri = format!(
-            "http://{}{}",
-            backend.addr(),
-            req.uri()
-                .path_and_query()
-                .map(|pq| pq.as_str())
-                .unwrap_or("/")
-        );
+        let backend_uri = format!("http://{}{}", backend.addr(), forwarded_pq);
 
         debug!(backend_uri = %backend_uri, "Forwarding to backend");
 
@@ -96,12 +118,32 @@ impl ProxyService {
         backend: &Backend,
     ) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
         let backend_addr = backend.addr();
-        let path_and_query = req
+        let original_pq = req
             .uri()
             .path_and_query()
             .map(|pq| pq.as_str())
             .unwrap_or("/")
             .to_string();
+        let path_and_query = if let Some(ref prefix) = backend.strip_prefix {
+            let path = req.uri().path();
+            if path.starts_with(prefix.as_str()) {
+                let stripped = &path[prefix.len()..];
+                let stripped = if stripped.is_empty() || !stripped.starts_with('/') {
+                    format!("/{}", stripped)
+                } else {
+                    stripped.to_string()
+                };
+                if let Some(query) = req.uri().query() {
+                    format!("{}?{}", stripped, query)
+                } else {
+                    stripped
+                }
+            } else {
+                original_pq.clone()
+            }
+        } else {
+            original_pq.clone()
+        };
 
         debug!(backend = %backend_addr, path = %path_and_query, "Forwarding WebSocket upgrade to backend");
 
