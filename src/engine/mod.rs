@@ -182,11 +182,16 @@ impl DeploymentEngine {
 
                         // Update proxy routes on successful deployment for all domains
                         if let Some(port) = container_info.port {
-                            let all_domains = app.get_all_domain_names();
+                            let domain_entries = app.get_all_domains_with_redirects();
+                            let all_domains: Vec<String> = domain_entries
+                                .iter()
+                                .filter(|(_, r)| r.is_none())
+                                .map(|(d, _)| d.clone())
+                                .collect();
                             let route_table = routes.load();
 
                             // Helper to create primary backend with basic auth if configured
-                            let create_backend = || {
+                            let create_backend = |www_redirect_target: Option<String>| {
                                 let mut backend = Backend::new(
                                     container_info.container_id.clone(),
                                     "127.0.0.1".to_string(),
@@ -195,8 +200,12 @@ impl DeploymentEngine {
                                 .with_healthcheck(app.healthcheck.clone())
                                 .with_strip_prefix(app.strip_prefix.clone());
 
-                                // Configure HTTP Basic Auth if enabled
-                                if app.basic_auth_enabled != 0 {
+                                backend.www_redirect_target = www_redirect_target;
+
+                                // Configure HTTP Basic Auth if enabled (skip for redirect backends)
+                                if backend.www_redirect_target.is_none()
+                                    && app.basic_auth_enabled != 0
+                                {
                                     if let (Some(username), Some(password_hash)) =
                                         (&app.basic_auth_username, &app.basic_auth_password_hash)
                                     {
@@ -233,7 +242,7 @@ impl DeploymentEngine {
                                 addrs
                             };
 
-                            if !all_domains.is_empty() {
+                            if !domain_entries.is_empty() {
                                 // Log basic auth status once
                                 if app.basic_auth_enabled != 0 {
                                     if let Some(username) = &app.basic_auth_username {
@@ -245,12 +254,19 @@ impl DeploymentEngine {
                                     }
                                 }
 
-                                for domain in &all_domains {
-                                    route_table.add_backends(
-                                        domain.clone(),
-                                        replica_backends.clone(),
-                                        create_backend(),
-                                    );
+                                for (domain, www_redirect_target) in &domain_entries {
+                                    if www_redirect_target.is_some() {
+                                        route_table.add_route(
+                                            domain.clone(),
+                                            create_backend(www_redirect_target.clone()),
+                                        );
+                                    } else {
+                                        route_table.add_backends(
+                                            domain.clone(),
+                                            replica_backends.clone(),
+                                            create_backend(None),
+                                        );
+                                    }
                                 }
 
                                 tracing::info!(
@@ -278,7 +294,7 @@ impl DeploymentEngine {
                                 route_table.add_backends(
                                     domain.clone(),
                                     replica_backends.clone(),
-                                    create_backend(),
+                                    create_backend(None),
                                 );
                                 tracing::info!(
                                     domain = %domain,
@@ -343,10 +359,16 @@ impl DeploymentEngine {
                                     // Get container port and update routes
                                     if let Ok(info) = runtime.inspect(container_id).await {
                                         if let Some(port) = info.port {
-                                            let all_domains = app.get_all_domain_names();
+                                            let domain_entries =
+                                                app.get_all_domains_with_redirects();
+                                            let all_domains: Vec<String> = domain_entries
+                                                .iter()
+                                                .filter(|(_, r)| r.is_none())
+                                                .map(|(d, _)| d.clone())
+                                                .collect();
                                             let route_table = routes.load();
 
-                                            let create_backend = || {
+                                            for (domain, www_redirect_target) in &domain_entries {
                                                 let mut backend = Backend::new(
                                                     container_id.clone(),
                                                     "127.0.0.1".to_string(),
@@ -355,7 +377,12 @@ impl DeploymentEngine {
                                                 .with_healthcheck(app.healthcheck.clone())
                                                 .with_strip_prefix(app.strip_prefix.clone());
 
-                                                if app.basic_auth_enabled != 0 {
+                                                backend.www_redirect_target =
+                                                    www_redirect_target.clone();
+
+                                                if www_redirect_target.is_none()
+                                                    && app.basic_auth_enabled != 0
+                                                {
                                                     if let (Some(username), Some(password_hash)) = (
                                                         &app.basic_auth_username,
                                                         &app.basic_auth_password_hash,
@@ -368,12 +395,7 @@ impl DeploymentEngine {
                                                         );
                                                     }
                                                 }
-                                                backend
-                                            };
-
-                                            for domain in &all_domains {
-                                                route_table
-                                                    .add_route(domain.clone(), create_backend());
+                                                route_table.add_route(domain.clone(), backend);
                                             }
 
                                             tracing::info!(

@@ -1,0 +1,1 @@
+ALTER TABLE apps ADD COLUMN inline_dockerfile TEXT DEFAULT NULL;

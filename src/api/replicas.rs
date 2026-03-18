@@ -158,6 +158,7 @@ pub async fn set_replica_count(
                         .and_then(|s| serde_json::from_str(s).ok())
                         .unwrap_or_default(),
                     cmd: None,
+                    network: None,
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -178,15 +179,16 @@ pub async fn set_replica_count(
                         // Get the port and add to proxy routes
                         if let Ok(info) = state.runtime.inspect(&container_id).await {
                             if let Some(port) = info.port {
-                                let all_domains = app.get_all_domain_names();
+                                let domain_entries = app.get_all_domains_with_redirects();
                                 let route_table = state.routes.load();
-                                for domain in &all_domains {
-                                    let backend = Backend::new(
+                                for (domain, www_redirect_target) in &domain_entries {
+                                    let mut backend = Backend::new(
                                         container_id.clone(),
                                         "127.0.0.1".to_string(),
                                         port,
                                     )
                                     .with_healthcheck(app.healthcheck.clone());
+                                    backend.www_redirect_target = www_redirect_target.clone();
                                     route_table.add_route(domain.clone(), backend);
                                 }
                             }
@@ -349,6 +351,7 @@ pub async fn restart_replica(
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default(),
         cmd: None,
+        network: None,
     };
 
     // Update status to starting

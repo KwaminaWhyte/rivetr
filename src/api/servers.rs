@@ -547,8 +547,7 @@ async fn run_ssh_health_check(
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         // If the key failed to load and a password is available, retry with password only.
-        if key_file.is_some() {
-            if let Some(pw) = password {
+        if let (Some(_), Some(pw)) = (&key_file, password) {
             tracing::warn!(
                 "SSH key auth failed ({}), retrying with password",
                 stderr.trim()
@@ -826,11 +825,11 @@ async fn run_ssh_install_docker(
 
     if !output.status.success() {
         // If the key failed and a password is available, retry with password only.
-        if key_file.is_some() && password.is_some() {
+        if let (Some(_), Some(pw)) = (&key_file, password) {
             tracing::warn!("SSH key auth failed, retrying with password");
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(password.unwrap())
+                .arg("-p").arg(pw)
                 .arg("ssh")
                 .arg("-o").arg("StrictHostKeyChecking=no")
                 .arg("-o").arg("ConnectTimeout=30")
@@ -2040,14 +2039,14 @@ async fn run_fetch_server_details(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if key_file.is_some() && password.is_some() {
+        if let (Some(_), Some(pw)) = (&key_file, password) {
             tracing::warn!(
                 "SSH key auth failed ({}), retrying with password",
                 stderr.trim()
             );
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(password.unwrap())
+                .arg("-p").arg(pw)
                 .arg("ssh")
                 .arg("-o").arg("StrictHostKeyChecking=no")
                 .arg("-o").arg("ConnectTimeout=10")

@@ -92,3 +92,9 @@ pub use team::*;
 pub use user::*;
 pub use volume::*;
 pub use white_label::*;
+
+pub mod ca_certificate;
+pub use ca_certificate::*;
+
+pub mod destination;
+pub use destination::*;

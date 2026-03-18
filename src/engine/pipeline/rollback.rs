@@ -171,6 +171,7 @@ pub async fn run_rollback(
         ulimits: rollback_ulimits,
         security_opt: rollback_security_opt,
         cmd: None,
+        network: None,
     };
 
     add_deployment_log(

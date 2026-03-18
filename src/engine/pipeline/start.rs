@@ -289,6 +289,17 @@ pub(super) async fn start_container(
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
 
+    // Look up the destination network name if a destination_id is set on the app.
+    let destination_network: Option<String> = if let Some(ref dest_id) = app.destination_id {
+        sqlx::query_scalar::<_, String>("SELECT network_name FROM destinations WHERE id = ?")
+            .bind(dest_id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None)
+    } else {
+        None
+    };
+
     let run_config = RunConfig {
         image: image_tag,
         name: container_name.clone(),
@@ -313,6 +324,7 @@ pub(super) async fn start_container(
         ulimits,
         security_opt,
         cmd: None,
+        network: destination_network,
     };
 
     let container_id = runtime

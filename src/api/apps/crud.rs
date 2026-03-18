@@ -450,6 +450,20 @@ pub async fn update_app(
     // Strip prefix (migration 097) — empty string clears it
     let strip_prefix = merge_optional_string(&req.strip_prefix, &existing.strip_prefix);
 
+    // Inline Dockerfile (migration 098) — empty string clears it
+    let inline_dockerfile = match &req.inline_dockerfile {
+        Some(s) if s.is_empty() => None,
+        Some(s) => Some(s.clone()),
+        None => existing.inline_dockerfile.clone(),
+    };
+
+    // Docker destination (migration 101) — empty string clears it
+    let destination_id = match &req.destination_id {
+        Some(s) if s.is_empty() => None,
+        Some(s) => Some(s.clone()),
+        None => existing.destination_id.clone(),
+    };
+
     // Extended Docker run options (migration 085)
     let update_cap_drop = match &req.docker_cap_drop {
         Some(v) if v.is_empty() => None,
@@ -537,6 +551,8 @@ pub async fn update_app(
             custom_container_name = ?,
             is_static_site = ?,
             strip_prefix = ?,
+            inline_dockerfile = ?,
+            destination_id = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -603,6 +619,8 @@ pub async fn update_app(
     .bind(&custom_container_name)
     .bind(is_static_site)
     .bind(&strip_prefix)
+    .bind(&inline_dockerfile)
+    .bind(&destination_id)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
@@ -635,7 +653,12 @@ pub async fn update_app(
         if let Some((container_id, _)) = running {
             if let Ok(info) = state.runtime.inspect(&container_id).await {
                 if let Some(port) = info.port {
-                    let all_domains = app.get_all_domain_names();
+                    let domain_entries = app.get_all_domains_with_redirects();
+                    let all_domains: Vec<String> = domain_entries
+                        .iter()
+                        .filter(|(_, r)| r.is_none())
+                        .map(|(d, _)| d.clone())
+                        .collect();
 
                     // Load current redirect rules for this app
                     let redirect_rules_db: Vec<crate::db::AppRedirectRule> = sqlx::query_as(
@@ -657,7 +680,7 @@ pub async fn update_app(
                         .collect();
 
                     let route_table = state.routes.load();
-                    for domain in &all_domains {
+                    for (domain, www_redirect_target) in &domain_entries {
                         let mut backend = crate::proxy::Backend::new(
                             container_id.clone(),
                             "127.0.0.1".to_string(),
@@ -665,8 +688,11 @@ pub async fn update_app(
                         )
                         .with_healthcheck(app.healthcheck.clone());
 
-                        // Restore basic auth if enabled
-                        if app.basic_auth_enabled != 0 {
+                        // Set www redirect target
+                        backend.www_redirect_target = www_redirect_target.clone();
+
+                        // Restore basic auth if enabled (skip for redirect backends)
+                        if www_redirect_target.is_none() && app.basic_auth_enabled != 0 {
                             if let (Some(ref username), Some(ref hash)) =
                                 (&app.basic_auth_username, &app.basic_auth_password_hash)
                             {
@@ -677,8 +703,8 @@ pub async fn update_app(
                             }
                         }
 
-                        // Attach redirect rules
-                        if !proxy_redirect_rules.is_empty() {
+                        // Attach redirect rules (skip for www-redirect backends)
+                        if www_redirect_target.is_none() && !proxy_redirect_rules.is_empty() {
                             backend.set_redirect_rules(proxy_redirect_rules.clone());
                         }
 

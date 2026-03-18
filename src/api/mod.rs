@@ -1,5 +1,6 @@
 mod alerts;
 mod api_tokens;
+mod ca_certificates;
 mod apps;
 mod audit;
 pub mod auth;
@@ -16,6 +17,7 @@ mod database_backups;
 mod database_extensions;
 mod databases;
 mod deployments;
+mod destinations;
 mod env_vars;
 pub mod environments;
 pub mod error;
@@ -237,6 +239,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/servers/:id/check", post(servers::check_server_health))
         .route("/servers/:id/install-docker", post(servers::install_docker))
+        .route("/servers/:id/fetch-details", post(servers::fetch_details))
         .route("/servers/:id/patches", get(servers::check_server_patches))
         .route(
             "/servers/:id/security-check",
@@ -565,6 +568,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/tokens", get(api_tokens::list_tokens))
         .route("/tokens", post(api_tokens::create_token))
         .route("/tokens/:id", delete(api_tokens::delete_token))
+        // CA Certificates
+        .route(
+            "/ca-certificates",
+            get(ca_certificates::list_ca_certificates).post(ca_certificates::create_ca_certificate),
+        )
+        .route(
+            "/ca-certificates/:id",
+            delete(ca_certificates::delete_ca_certificate),
+        )
+        // Destinations (Docker named networks)
+        .route(
+            "/destinations",
+            get(destinations::list).post(destinations::create),
+        )
+        .route(
+            "/destinations/:id",
+            get(destinations::get_one).delete(destinations::delete),
+        )
         // Notification Channels (Global)
         .route("/notification-channels", get(notifications::list_channels))
         .route(

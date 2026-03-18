@@ -286,15 +286,16 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         .await
         .map_err(|e| anyhow::anyhow!("Failed to start container: {}", e))?;
 
-    // Connect the container to the shared Rivetr network so containers can
-    // reach each other by name (default bridge does not support DNS).
-    ensure_rivetr_network(runtime).await;
+    // Connect the container to the primary network.
+    // If a destination network is specified in RunConfig, use that instead of the default "rivetr" network.
+    let primary_network = config.network.as_deref().unwrap_or(RIVETR_NETWORK);
+    ensure_named_network(runtime, primary_network).await;
     let aliases = if !config.network_aliases.is_empty() {
         config.network_aliases.clone()
     } else {
         vec![config.name.clone()]
     };
-    connect_to_rivetr_network(runtime, &response.id, aliases.clone()).await;
+    connect_to_named_network(runtime, &response.id, primary_network, aliases.clone()).await;
 
     // Also connect to the per-app isolated network so that containers belonging
     // to the same app (e.g. replicas) can communicate privately while remaining

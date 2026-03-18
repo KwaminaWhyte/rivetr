@@ -111,6 +111,8 @@ export default [
       route("white-label", "routes/settings/white-label.tsx"),
       route("notifications", "routes/settings/notifications.tsx"),
       route("audit", "routes/settings/audit.tsx"),
+      route("ca-certificates", "routes/settings/ca-certificates.tsx"),
+      route("destinations", "routes/settings/destinations.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
       route("auto-update", "routes/settings/auto-update.tsx"),
       route("backup", "routes/settings/backup.tsx"),

@@ -75,6 +75,8 @@ pub struct Backend {
     pub redirect_rules: Vec<RedirectRule>,
     /// URL prefix to strip from incoming requests before forwarding (e.g. "/api")
     pub strip_prefix: Option<String>,
+    /// If set, this backend is a www-redirect proxy: return 301 to this host instead of proxying
+    pub www_redirect_target: Option<String>,
 }
 
 impl Backend {
@@ -89,6 +91,7 @@ impl Backend {
             basic_auth: BasicAuthConfig::disabled(),
             redirect_rules: Vec::new(),
             strip_prefix: None,
+            www_redirect_target: None,
         }
     }
 

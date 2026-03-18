@@ -60,6 +60,7 @@ export default function SettingsPage() {
 
   const [instanceDomain, setInstanceDomain] = useState("");
   const [instanceName, setInstanceName] = useState("");
+  const [instanceTimezone, setInstanceTimezone] = useState("");
   const [maxDeployments, setMaxDeployments] = useState(5);
   const [pruneImages, setPruneImages] = useState(true);
 
@@ -68,6 +69,7 @@ export default function SettingsPage() {
     if (instanceSettings) {
       setInstanceDomain(instanceSettings.instance_domain ?? "");
       setInstanceName(instanceSettings.instance_name ?? "");
+      setInstanceTimezone(instanceSettings.instance_timezone ?? "");
       setMaxDeployments(instanceSettings.max_deployments_per_app ?? 5);
       setPruneImages(instanceSettings.prune_images ?? true);
     }
@@ -78,6 +80,7 @@ export default function SettingsPage() {
       api.updateInstanceSettings({
         instance_domain: instanceDomain.trim() || null,
         instance_name: instanceName.trim() || null,
+        instance_timezone: instanceTimezone.trim() || null,
       }),
     onSuccess: () => {
       toast.success("Settings saved and applied");
@@ -170,6 +173,20 @@ export default function SettingsPage() {
                   />
                   <p className="text-xs text-muted-foreground">
                     A friendly name shown in the dashboard header and notification messages.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="instance-timezone">Timezone</Label>
+                  <Input
+                    id="instance-timezone"
+                    placeholder="UTC"
+                    value={instanceTimezone}
+                    onChange={(e) => setInstanceTimezone(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    IANA timezone for this Rivetr instance (e.g. America/New_York, Europe/London, Asia/Tokyo). Defaults to UTC.
                   </p>
                 </div>
               </div>

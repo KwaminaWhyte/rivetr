@@ -47,6 +47,7 @@ export default function AppSettingsBuild() {
   const [disableBuildCache, setDisableBuildCache] = useState(app.disable_build_cache || false);
   const [includeSourceCommit, setIncludeSourceCommit] = useState(app.include_source_commit || false);
   const [isStaticSite, setIsStaticSite] = useState(app.is_static_site || false);
+  const [inlineDockerfile, setInlineDockerfile] = useState(app.inline_dockerfile || "");
 
   const [buildType, setBuildType] = useState<BuildType>(app.build_type || "dockerfile");
   const [previewEnabled, setPreviewEnabled] = useState(app.preview_enabled || false);
@@ -131,11 +132,12 @@ export default function AppSettingsBuild() {
     setDisableBuildCache(app.disable_build_cache || false);
     setIncludeSourceCommit(app.include_source_commit || false);
     setIsStaticSite(app.is_static_site || false);
+    setInlineDockerfile(app.inline_dockerfile || "");
     setBuildForm(prev => ({
       ...prev,
       custom_container_name: app.custom_container_name || "",
     }));
-  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id, app.build_platforms, app.git_submodules, app.git_lfs, app.shallow_clone, app.disable_build_cache, app.include_source_commit, app.custom_container_name, app.is_static_site]);
+  }, [app.build_type, app.preview_enabled, app.publish_directory, app.nixpacks_config, app.build_server_id, app.build_platforms, app.git_submodules, app.git_lfs, app.shallow_clone, app.disable_build_cache, app.include_source_commit, app.custom_container_name, app.is_static_site, app.inline_dockerfile]);
 
   const handleBuildSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +188,8 @@ export default function AppSettingsBuild() {
         custom_container_name: buildForm.custom_container_name || "",
         // Static site flag
         is_static_site: isStaticSite,
+        // Inline Dockerfile — empty string clears it
+        inline_dockerfile: inlineDockerfile || undefined,
       };
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
@@ -462,6 +466,18 @@ export default function AppSettingsBuild() {
                       Extra Docker build arguments
                     </p>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Inline Dockerfile (optional)</Label>
+                  <Textarea
+                    placeholder={"FROM node:18-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [\"node\", \"server.js\"]"}
+                    value={inlineDockerfile}
+                    onChange={(e) => setInlineDockerfile(e.target.value)}
+                    className="font-mono text-sm min-h-[200px]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If set, this Dockerfile is used directly — no git repository needed. Leave blank to build from your git repo.
+                  </p>
                 </div>
               </>
             )}

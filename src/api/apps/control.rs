@@ -629,13 +629,14 @@ pub async fn restart_app(
 
             if let Some(port) = host_port {
                 let route_table = state.routes.load();
-                for domain in app.get_all_domain_names() {
-                    let backend = crate::proxy::Backend::new(
+                for (domain, www_redirect_target) in app.get_all_domains_with_redirects() {
+                    let mut backend = crate::proxy::Backend::new(
                         container_id.clone(),
                         "127.0.0.1".to_string(),
                         port,
                     )
                     .with_healthcheck(app.healthcheck.clone());
+                    backend.www_redirect_target = www_redirect_target;
                     route_table.add_route(domain, backend);
                 }
             }
@@ -803,6 +804,7 @@ pub async fn restart_app(
         ulimits,
         security_opt,
         cmd: None,
+        network: None,
     };
 
     log_restart_step(
@@ -1019,15 +1021,16 @@ pub async fn restart_app(
 
     // 7. Atomically update proxy routes to point at the new container
     {
-        let all_domains = app.get_all_domain_names();
+        let domain_entries = app.get_all_domains_with_redirects();
         let route_table = state.routes.load();
-        for domain in &all_domains {
-            let backend = crate::proxy::Backend::new(
+        for (domain, www_redirect_target) in &domain_entries {
+            let mut backend = crate::proxy::Backend::new(
                 new_container_id.clone(),
                 "127.0.0.1".to_string(),
                 new_port,
             )
             .with_healthcheck(app.healthcheck.clone());
+            backend.www_redirect_target = www_redirect_target.clone();
             route_table.add_route(domain.clone(), backend);
             tracing::info!(
                 domain = %domain,

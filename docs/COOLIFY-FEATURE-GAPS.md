@@ -40,7 +40,7 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 ### Per-App Configuration
 | Feature | Coolify | Rivetr |
 |---------|---------|--------|
-| www ↔ non-www redirect direction | ✅ (dropdown: allow both / redirect to www / redirect to non-www) | ❌ |
+| www ↔ non-www redirect direction | ✅ (dropdown: allow both / redirect to www / redirect to non-www) | ✅ (`www_redirect_mode` field replaces `redirect_www`, 4-option dropdown in Domain Management card) |
 | Generate domain button (auto-assign sslip.io subdomain) | ✅ | ✅ (`POST /api/apps/:id/generate-domain`, Generate button in domain card) |
 | HTTP Basic Auth toggle per-app | ✅ | ❌ |
 | Custom Docker run options (--cap-add, --device, etc.) | ✅ | ✅ (Docker Options) |
@@ -101,15 +101,15 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 | Multi-server | ✅ | ✅ |
 | Server wildcard domain setting | ✅ | ✅ |
 | Server timezone setting | ✅ | ✅ (`timezone` field, migration 096, Edit Server dialog) |
-| Fetch server details (OS, Docker version, etc.) | ✅ (button to pull live info) | ❌ |
+| Fetch server details (OS, Docker version, etc.) | ✅ (button to pull live info) | ✅ (`POST /api/servers/:id/fetch-details`, "Refresh details" in server actions dropdown, Server Details dialog) |
 
 ### Server Sub-Sections
 | Feature | Coolify | Rivetr |
 |---------|---------|--------|
 | Sentinel (monitoring sidecar agent) | ✅ (lightweight agent, metrics push) | ❌ |
-| CA Certificate management | ✅ | ❌ |
+| CA Certificate management | ✅ | ✅ (migration `100_ca_certs.sql`, `GET/POST /api/ca-certificates`, `DELETE /api/ca-certificates/:id`, Settings → CA Certificates) |
 | Docker Cleanup (scheduled auto-cleanup config) | ✅ | ✅ |
-| Destinations (Docker networks, configurable) | ✅ | ❌ (rivetr network is internal only) |
+| Destinations (Docker networks, configurable) | ✅ | ✅ (migration `101_destinations.sql`, `GET/POST /api/destinations`, assign apps to named Docker networks, Settings → Destinations) |
 | Log Drains configuration | ✅ | ✅ |
 | Server-level Metrics page | ✅ | ✅ |
 | Docker Swarm support | ✅ (experimental) | ✅ |
@@ -222,9 +222,9 @@ Coolify has **300+ templates**. Rivetr has ~**113 templates** (Sprint 3 + Sprint
 
 | Feature | Coolify | Rivetr |
 |---------|---------|--------|
-| Named Docker networks (destinations) | ✅ (manage from `/destinations`) | ❌ (one fixed `rivetr` network) |
-| Assign apps to specific networks | ✅ | ❌ |
-| Multiple networks per server | ✅ | ❌ |
+| Named Docker networks (destinations) | ✅ (manage from `/destinations`) | ✅ (migration `101_destinations.sql`, Settings → Destinations, `GET/POST /api/destinations`) |
+| Assign apps to specific networks | ✅ | ✅ (apps join the selected destination network instead of the default `rivetr` bridge) |
+| Multiple networks per server | ✅ | ✅ |
 
 ---
 
@@ -246,7 +246,7 @@ Coolify has **300+ templates**. Rivetr has ~**113 templates** (Sprint 3 + Sprint
 | Discord | ✅ | ✅ |
 | Telegram | ✅ | ✅ |
 | Slack | ✅ | ✅ |
-| Pushover | ✅ | ❌ |
+| Pushover | ✅ | ✅ (migration 041) |
 | Webhook | ✅ | ✅ |
 | Per-channel event selection | ✅ (per channel: deployments, backups, scheduled tasks, server events) | ✅ |
 | Container status change alerts | ✅ | ✅ |
@@ -289,7 +289,7 @@ Coolify has **300+ templates**. Rivetr has ~**113 templates** (Sprint 3 + Sprint
 |---------|---------|--------|
 | Instance URL setting | ✅ | ✅ |
 | Instance name | ✅ | ✅ |
-| Instance timezone | ✅ | ❌ |
+| Instance timezone | ✅ | ✅ (stored in `instance_settings` as `instance_timezone`, configurable from Settings → General) |
 | Public IPv4 / IPv6 config | ✅ | ❌ |
 | Instance backup to S3 | ✅ | ✅ |
 | Transactional email (SMTP config) | ✅ | ✅ |
@@ -359,41 +359,40 @@ Coolify has a one-click **GitHub Actions Runner** service template that deploys 
 - ~~Include source commit in build~~ ✅ (migration 094)
 - ~~Custom container name~~ ✅ (migration 094)
 - ~~GPU support toggle~~ ✅ (docker_gpus field exists)
-- ~~Pushover notification~~ ✅ (migration 041, implemented)
+- ~~Pushover notification~~ ✅ (migration 041)
 - ~~Sprint 21 templates~~ ✅ (13 new templates, total ~87)
 - ~~Sprint 22 templates~~ ✅ (7 new templates: Minecraft Java, Palworld, Terraria, Satisfactory, Argilla, Mage AI, Glitchtip — total ~94)
 - ~~Sprint 23 templates~~ ✅ (8 new templates: Flowise, Langflow, Open WebUI, AnythingLLM, Pocket ID, Activepieces, Trigger.dev, SigNoz — total ~102)
 - ~~Sprint 24 templates~~ ✅ (11 new: Vaultwarden, LiteLLM, MindsDB, Matrix Synapse, Rocket.Chat, NodeBB, Zipline, Joplin Server, Siyuan Notes, Hatchet, EasyAppointments — total ~113)
-- ~~Bitbucket OAuth + source~~ ✅ (already fully implemented — OAuth login, git provider OAuth + API token, clone via x-token-auth)
+- ~~Bitbucket OAuth + source~~ ✅ (OAuth login, git provider OAuth + API token, clone via x-token-auth)
 - ~~Dockerfile without git~~ ✅ (`inline_dockerfile` field migration 098, skip git clone, Build Settings textarea)
-- ~~Resend email notification~~ ✅ (validation fixed — backend + frontend already existed)
+- ~~Resend email notification~~ ✅ (validation fixed)
 - ~~Version display in nav~~ ✅ (sidebar footer version link to GitHub releases)
 - ~~Feedback button in nav~~ ✅ (sidebar footer Feedback → GitHub Issues link)
 - ~~Theme toggle in top nav~~ ✅ (ThemeToggle added to header bar)
 - ~~Server timezone setting~~ ✅ (`timezone` field migration 096, Edit Server dialog)
-- ~~Strip Prefixes per-app~~ ✅ (`strip_prefix` migration 097, proxy strips prefix in HTTP + WebSocket forwarding, Network settings UI)
+- ~~Strip Prefixes per-app~~ ✅ (`strip_prefix` migration 097, proxy strips prefix in HTTP + WebSocket, Network settings UI)
 - ~~Static site build type~~ ✅ (`is_static_site` flag, migration 095, UI toggle in Build Settings)
 - ~~Generate domain button~~ ✅ (`POST /api/apps/:id/generate-domain`, Generate button in domain card)
 - ~~Links button~~ ✅ (Links dropdown in app layout nav, shows all app URLs)
+- ~~www ↔ non-www redirect direction~~ ✅ (`www_redirect_mode` field, 4-option dropdown in Domain Management card)
+- ~~Fetch server details~~ ✅ (`POST /api/servers/:id/fetch-details`, "Refresh details" in server actions, Server Details dialog)
+- ~~CA Certificate management~~ ✅ (migration 100, `GET/POST /api/ca-certificates`, Settings → CA Certificates)
+- ~~Destinations (Docker networks)~~ ✅ (migration 101, `GET/POST /api/destinations`, assign apps to named Docker networks, Settings → Destinations)
+- ~~Instance timezone setting~~ ✅ (stored in `instance_settings` as `instance_timezone`, Settings → General)
 
 ### High Priority (remaining):
 1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Drupal, Wiki.js), monitoring (Glances, Uptime Kuma, Grafana), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
-2. **Multiple Docker networks** (destinations concept) — let apps join named networks
 
 ### Medium Priority:
-3. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
-4. Clerk, Zitadel OAuth providers
-5. Preferences panel (theme / UI settings)
-6. www ↔ non-www redirect direction per-app
-7. Network aliases per-app
-8. Container Labels editor (full editable panel)
+2. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
+3. Clerk, Zitadel OAuth providers
+4. Preferences panel (theme / UI settings)
+5. Network aliases per-app
+6. Container Labels editor (full editable panel)
 
 ### Low Priority / Nice-to-have:
-9. CA Certificate management
-10. Terminal Access control (per-server)
-11. Server Patching UI (auto-apply OS patches)
-12. GitHub Actions self-hosted runner template
-13. Fetch Server Details button (show OS/Docker info)
-14. Instance timezone setting
-15. Pushover notification channel
-16. Proxy logs page (separate view)
+7. Terminal Access control (per-server)
+8. Server Patching UI (auto-apply OS patches)
+9. GitHub Actions self-hosted runner template
+10. Proxy logs page (separate view)

@@ -165,6 +165,10 @@ pub struct App {
     pub is_static_site: i64,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Inline Dockerfile content — if set, skip git clone and build from this content directly
+    pub inline_dockerfile: Option<String>,
+    /// Docker destination (named network) for this app (nullable)
+    pub destination_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -289,6 +293,10 @@ pub struct AppResponse {
     pub is_static_site: bool,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Inline Dockerfile content (alternative to git-based build)
+    pub inline_dockerfile: Option<String>,
+    /// Docker destination (named network) for this app (nullable)
+    pub destination_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -366,6 +374,8 @@ impl From<App> for AppResponse {
             custom_container_name: app.custom_container_name,
             is_static_site: app.is_static_site != 0,
             strip_prefix: app.strip_prefix,
+            inline_dockerfile: app.inline_dockerfile,
+            destination_id: app.destination_id,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -393,34 +403,111 @@ impl App {
         self.domain.clone()
     }
 
-    /// Get all domain names (including legacy domain and auto_subdomain)
+    /// Get all domain names (including legacy domain and auto_subdomain).
+    /// Delegates to `get_all_domains_with_redirects()`, discarding redirect targets.
     pub fn get_all_domain_names(&self) -> Vec<String> {
-        let mut result = Vec::new();
+        self.get_all_domains_with_redirects()
+            .into_iter()
+            .map(|(d, _)| d)
+            .collect()
+    }
 
-        // Add domains from the domains array
+    /// Get all domain names with optional www redirect targets.
+    /// Returns `Vec<(domain, Option<redirect_target>)>` where `redirect_target` is `Some` if the
+    /// domain should redirect to another domain (for `www_redirect_mode`).
+    pub fn get_all_domains_with_redirects(&self) -> Vec<(String, Option<String>)> {
+        let mut result: Vec<(String, Option<String>)> = Vec::new();
+
+        let contains = |entries: &Vec<(String, Option<String>)>, d: &str| {
+            entries.iter().any(|(name, _)| name == d)
+        };
+
         for d in self.get_domains() {
-            result.push(d.domain.clone());
-            // If redirect_www is enabled, add the www variant too
-            if d.redirect_www {
-                if d.domain.starts_with("www.") {
-                    result.push(d.non_www_domain());
-                } else {
-                    result.push(d.www_domain());
+            let mode = d.effective_www_redirect_mode();
+
+            // Always add the configured domain itself first
+            if !contains(&result, &d.domain) {
+                result.push((d.domain.clone(), None));
+            }
+
+            match mode {
+                "to_www" => {
+                    let www = d.www_domain();
+                    let non_www = d.non_www_domain();
+
+                    // Ensure the www variant is present as canonical (no redirect)
+                    if !contains(&result, &www) {
+                        result.push((www.clone(), None));
+                    } else if let Some(pos) = result.iter().position(|(n, _)| n == &www) {
+                        result[pos].1 = None;
+                    }
+
+                    // non-www → redirect to www
+                    if non_www != d.domain {
+                        if let Some(pos) = result.iter().position(|(n, _)| n == &non_www) {
+                            result[pos].1 = Some(www);
+                        } else {
+                            result.push((non_www, Some(www)));
+                        }
+                    } else {
+                        // d.domain IS the non-www; redirect it to www
+                        if let Some(pos) = result.iter().position(|(n, _)| n == &d.domain) {
+                            result[pos].1 = Some(www);
+                        }
+                    }
+                }
+                "to_non_www" => {
+                    let www = d.www_domain();
+                    let non_www = d.non_www_domain();
+
+                    // Ensure the non-www variant is present as canonical (no redirect)
+                    if !contains(&result, &non_www) {
+                        result.push((non_www.clone(), None));
+                    } else if let Some(pos) = result.iter().position(|(n, _)| n == &non_www) {
+                        result[pos].1 = None;
+                    }
+
+                    // www → redirect to non-www
+                    if www != d.domain {
+                        if let Some(pos) = result.iter().position(|(n, _)| n == &www) {
+                            result[pos].1 = Some(non_www);
+                        } else {
+                            result.push((www, Some(non_www)));
+                        }
+                    } else {
+                        // d.domain IS the www; redirect it to non-www
+                        if let Some(pos) = result.iter().position(|(n, _)| n == &d.domain) {
+                            result[pos].1 = Some(non_www);
+                        }
+                    }
+                }
+                _ => {
+                    // "both" — register both variants without redirect (legacy redirect_www behaviour)
+                    if d.redirect_www {
+                        let variant = if d.domain.starts_with("www.") {
+                            d.non_www_domain()
+                        } else {
+                            d.www_domain()
+                        };
+                        if !contains(&result, &variant) {
+                            result.push((variant, None));
+                        }
+                    }
                 }
             }
         }
 
-        // Add legacy domain if not already included
+        // Add legacy domain field
         if let Some(ref domain) = self.domain {
-            if !result.contains(domain) {
-                result.push(domain.clone());
+            if !domain.is_empty() && !contains(&result, domain) {
+                result.push((domain.clone(), None));
             }
         }
 
-        // Add auto_subdomain if present
+        // Add auto_subdomain
         if let Some(ref subdomain) = self.auto_subdomain {
-            if !result.contains(subdomain) {
-                result.push(subdomain.clone());
+            if !subdomain.is_empty() && !contains(&result, subdomain) {
+                result.push((subdomain.clone(), None));
             }
         }
 
@@ -837,6 +924,10 @@ pub struct UpdateAppRequest {
     pub is_static_site: Option<bool>,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Inline Dockerfile content — set to empty string to clear
+    pub inline_dockerfile: Option<String>,
+    /// Docker destination (named network) — set to empty string to clear
+    pub destination_id: Option<String>,
 }
 
 /// Request specifically for updating domains

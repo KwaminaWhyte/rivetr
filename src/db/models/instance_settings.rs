@@ -25,6 +25,8 @@ pub struct InstanceSettings {
     pub max_deployments_per_app: Option<u32>,
     /// Whether to prune unused Docker images after each cleanup cycle (default: true).
     pub prune_images: Option<bool>,
+    /// IANA timezone for this Rivetr instance (e.g. "UTC", "America/New_York").
+    pub instance_timezone: Option<String>,
 }
 
 /// Request body for updating instance settings (all fields optional).
@@ -34,6 +36,7 @@ pub struct UpdateInstanceSettingsRequest {
     pub instance_name: Option<String>,
     pub max_deployments_per_app: Option<u32>,
     pub prune_images: Option<bool>,
+    pub instance_timezone: Option<String>,
 }
 
 impl InstanceSettings {
@@ -49,6 +52,7 @@ impl InstanceSettings {
             instance_name: None,
             max_deployments_per_app: None,
             prune_images: None,
+            instance_timezone: None,
         };
 
         for row in rows {
@@ -62,6 +66,7 @@ impl InstanceSettings {
                 "prune_images" => {
                     settings.prune_images = row.value.as_deref().map(|v| v != "false" && v != "0")
                 }
+                "instance_timezone" => settings.instance_timezone = row.value,
                 _ => {}
             }
         }
@@ -127,6 +132,20 @@ impl InstanceSettings {
                 "#,
             )
             .bind(if prune { "true" } else { "false" })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(tz) = &req.instance_timezone {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('instance_timezone', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(if tz.is_empty() { None } else { Some(tz.as_str()) })
             .bind(&now)
             .execute(db)
             .await?;

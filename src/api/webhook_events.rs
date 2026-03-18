@@ -111,6 +111,7 @@ pub async fn record_delivery_id(db: &crate::DbPool, provider: &str, delivery_id:
 
 /// Update the placeholder row created by `record_delivery_id` with full event details.
 /// Falls back to a plain INSERT when no delivery_id is provided (non-GitHub providers).
+#[allow(clippy::too_many_arguments)]
 pub async fn update_webhook_event(
     db: &crate::DbPool,
     provider: &str,

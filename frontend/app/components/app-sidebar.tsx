@@ -18,6 +18,7 @@ import {
   LayoutTemplate,
   ExternalLink,
   MessageCircle,
+  ShieldCheck,
 } from "lucide-react";
 
 import { NavMain, type NavMainItem } from "@/components/nav-main";
@@ -79,6 +80,8 @@ const navSettings: NavMainItem[] = [
       { title: "Alert Defaults", url: "/settings/alert-defaults" },
       { title: "Notifications", url: "/settings/notifications" },
       { title: "Audit Log", url: "/settings/audit" },
+      { title: "CA Certificates", url: "/settings/ca-certificates" },
+      { title: "Destinations", url: "/settings/destinations" },
     ],
   },
 ];

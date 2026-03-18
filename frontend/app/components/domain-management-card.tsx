@@ -10,8 +10,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -101,7 +107,7 @@ export function DomainManagementCard({
   const [newDomain, setNewDomain] = useState({
     domain: "",
     primary: false,
-    redirect_www: false,
+    www_redirect_mode: "none" as "none" | "both" | "to_www" | "to_non_www",
   });
 
   // Track if there are unsaved changes
@@ -173,11 +179,12 @@ export function DomainManagementCard({
     const newEntry: Domain = {
       domain: domainName,
       primary: newDomain.primary || domains.length === 0, // First domain is always primary
-      redirect_www: newDomain.redirect_www,
+      redirect_www: false,
+      www_redirect_mode: newDomain.www_redirect_mode === "none" ? undefined : newDomain.www_redirect_mode,
     };
 
     setDomains([...updatedDomains, newEntry]);
-    setNewDomain({ domain: "", primary: false, redirect_www: false });
+    setNewDomain({ domain: "", primary: false, www_redirect_mode: "none" });
     setHasChanges(true);
   };
 
@@ -205,10 +212,10 @@ export function DomainManagementCard({
     setHasChanges(true);
   };
 
-  // Toggle www redirect
-  const toggleWwwRedirect = (index: number) => {
+  // Update www redirect mode for an existing domain
+  const setWwwRedirectMode = (index: number, mode: Domain["www_redirect_mode"]) => {
     const updatedDomains = [...domains];
-    updatedDomains[index].redirect_www = !updatedDomains[index].redirect_www;
+    updatedDomains[index] = { ...updatedDomains[index], www_redirect_mode: mode };
     setDomains(updatedDomains);
     setHasChanges(true);
   };
@@ -330,7 +337,7 @@ export function DomainManagementCard({
                   <TableHead>Domain</TableHead>
                   <TableHead className="w-[110px]">DNS Status</TableHead>
                   <TableHead className="w-[100px] text-center">Primary</TableHead>
-                  <TableHead className="w-[120px] text-center">WWW Redirect</TableHead>
+                  <TableHead className="w-[160px]">WWW Redirect</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -397,11 +404,26 @@ export function DomainManagementCard({
                         {domain.primary ? "Primary" : "Set Primary"}
                       </Button>
                     </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={domain.redirect_www}
-                        onCheckedChange={() => toggleWwwRedirect(index)}
-                      />
+                    <TableCell>
+                      <Select
+                        value={domain.www_redirect_mode ?? "none"}
+                        onValueChange={(value) =>
+                          setWwwRedirectMode(
+                            index,
+                            value === "none" ? undefined : (value as Domain["www_redirect_mode"])
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-7 text-xs w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No redirect</SelectItem>
+                          <SelectItem value="both">Serve both</SelectItem>
+                          <SelectItem value="to_www">→ www</SelectItem>
+                          <SelectItem value="to_non_www">→ non-www</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -437,19 +459,27 @@ export function DomainManagementCard({
                 Enter a domain without the protocol (no http:// or https://)
               </p>
             </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="new-redirect-www"
-                  checked={newDomain.redirect_www}
-                  onCheckedChange={(checked) =>
-                    setNewDomain({ ...newDomain, redirect_www: checked })
-                  }
-                />
-                <Label htmlFor="new-redirect-www" className="text-xs">
-                  Redirect www
-                </Label>
-              </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">WWW Redirect</Label>
+              <Select
+                value={newDomain.www_redirect_mode}
+                onValueChange={(value) =>
+                  setNewDomain({
+                    ...newDomain,
+                    www_redirect_mode: value as typeof newDomain.www_redirect_mode,
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 text-sm w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No redirect</SelectItem>
+                  <SelectItem value="both">Serve both</SelectItem>
+                  <SelectItem value="to_www">→ www</SelectItem>
+                  <SelectItem value="to_non_www">→ non-www</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Button
               variant="outline"

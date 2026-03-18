@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1. **Server-based cost model** — each server now has a configurable `hourly_rate` (default `$0.036/hr` matching DigitalOcean s-2vcpu-4gb at `$24/mo`). When an app is assigned to a server, its daily cost is `hourly_rate × 24 × (app_memory_limit / server_memory_total)` — mirroring how cloud providers actually bill (reserved capacity, not utilisation).
   2. **DO-aligned fallback rates** — for apps not assigned to a server the rate-based model now uses `$10/vCPU/month` + `$1/GB/month`, matching DO Basic Regular pricing (2 vCPU × $10 + 4 GB × $1 = $24/mo).
   3. **Bill allocated memory, not used memory** — the fallback model now charges against `memory_limit_bytes` (what the container is allocated) rather than actual bytes consumed.
-- Migration `098_server_hourly_rate.sql` adds `hourly_rate` to `servers` and updates the `cost_rates` seed defaults.
+- Migration `099_server_hourly_rate.sql` adds `hourly_rate` to `servers` and updates the `cost_rates` seed defaults.
 
 ### Added
 - **Hourly rate field on servers** — Settings → Servers edit dialog now includes an "Hourly Cost (USD/hr)" input with DigitalOcean size hints, so each server's rate can be corrected to match the actual cloud bill.

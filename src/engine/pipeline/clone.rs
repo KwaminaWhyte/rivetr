@@ -115,6 +115,7 @@ pub(super) async fn clone_repository(
 
 /// Run `git lfs pull` inside the cloned repository directory.
 /// Exposed as `pub(super)` so the pipeline orchestrator can call it after a full clone.
+#[allow(dead_code)]
 pub(super) async fn run_lfs_pull(dest: &PathBuf) -> Result<()> {
     run_git_lfs_pull(dest).await
 }

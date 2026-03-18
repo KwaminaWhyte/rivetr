@@ -411,6 +411,7 @@ async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Resu
             "--token".to_string(),
             tunnel.tunnel_token.clone(),
         ]),
+        network: None,
     };
 
     tracing::info!("Pulling cloudflare/cloudflared:latest");

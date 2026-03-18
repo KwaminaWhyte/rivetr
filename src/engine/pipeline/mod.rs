@@ -125,6 +125,55 @@ async fn run_upload_deployment(
     Ok(image_tag)
 }
 
+/// Handle inline Dockerfile deployment (no git clone — Dockerfile content stored in DB)
+async fn run_inline_dockerfile_deployment(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    app: &App,
+    dockerfile_content: &str,
+    build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+) -> Result<String> {
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        "Using inline Dockerfile (no git clone required)",
+    )
+    .await?;
+    update_deployment_status(db, deployment_id, "building", None).await?;
+
+    // Create a temporary directory and write the Dockerfile into it
+    let temp_dir = tempfile::TempDir::new().context("Failed to create temp directory for inline Dockerfile")?;
+    let dockerfile_path = temp_dir.path().join("Dockerfile");
+    tokio::fs::write(&dockerfile_path, dockerfile_content)
+        .await
+        .context("Failed to write inline Dockerfile to temp directory")?;
+
+    add_deployment_log(
+        db,
+        deployment_id,
+        "info",
+        "Inline Dockerfile written to build context",
+    )
+    .await?;
+
+    let image_tag = build::build_git_image(
+        db,
+        runtime,
+        deployment_id,
+        app,
+        temp_dir.path(),
+        build_limits,
+        encryption_key,
+    )
+    .await?;
+
+    // temp_dir is dropped here, cleaning up the temp directory
+    Ok(image_tag)
+}
+
 /// Handle git-based deployment (clone and build)
 async fn run_git_deployment(
     db: &DbPool,
@@ -171,10 +220,8 @@ async fn run_git_deployment(
     // Build the effective clone URL (inject OAuth/PAT/GitHub App token for HTTPS repos)
     let clone_url = clone::get_authenticated_url(db, app, encryption_key).await?;
 
-    // Build clone options from app configuration.
-    // When a full clone is needed (for a specific commit/tag), shallow is always false.
     let clone_opts = clone::CloneOptions {
-        shallow: !needs_full_clone && app.shallow_clone != 0,
+        shallow: app.shallow_clone != 0,
         submodules: app.git_submodules != 0,
         lfs: app.git_lfs != 0,
     };
@@ -182,28 +229,8 @@ async fn run_git_deployment(
     if needs_full_clone {
         // Need full clone for specific commit/tag checkout
         clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
-        // Run git lfs pull after full clone if enabled
-        if clone_opts.lfs {
-            add_deployment_log(db, deployment_id, "info", "Running git lfs pull...").await?;
-            if let Err(e) = clone::run_lfs_pull(&work_dir).await {
-                add_deployment_log(
-                    db,
-                    deployment_id,
-                    "warn",
-                    &format!("git lfs pull failed (continuing): {}", e),
-                )
-                .await?;
-            }
-        }
     } else {
-        clone::clone_repository(
-            &clone_url,
-            &app.branch,
-            &work_dir,
-            ssh_key.as_ref(),
-            &clone_opts,
-        )
-        .await?;
+        clone::clone_repository(&clone_url, &app.branch, &work_dir, ssh_key.as_ref(), &clone_opts).await?;
     }
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
 
@@ -455,6 +482,35 @@ pub async fn run_deployment(
             app,
             &source_path,
             build_limits,
+        )
+        .await?;
+        // Optionally push to registry; capture remote tag for image_tag update
+        let remote =
+            match build::push_image_to_registry(db, deployment_id, app, &tag, encryption_key).await
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    add_deployment_log(
+                        db,
+                        deployment_id,
+                        "warn",
+                        &format!("Registry push failed (non-fatal): {}", e),
+                    )
+                    .await?;
+                    None
+                }
+            };
+        (tag, remote)
+    } else if let Some(ref dockerfile_content) = app.inline_dockerfile.clone().filter(|s| !s.is_empty()) {
+        // Inline Dockerfile deployment: write to temp dir and build (no git clone)
+        let tag = run_inline_dockerfile_deployment(
+            db,
+            runtime.clone(),
+            deployment_id,
+            app,
+            dockerfile_content,
+            build_limits,
+            encryption_key,
         )
         .await?;
         // Optionally push to registry; capture remote tag for image_tag update

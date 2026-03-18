@@ -186,6 +186,24 @@ impl ProxyHandler {
 
         match backend {
             Some(backend) if backend.healthy => {
+                // If this backend is a www-redirect proxy, issue a permanent redirect
+                if let Some(ref target_host) = backend.www_redirect_target {
+                    let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
+                    let location = format!("https://{}{}{}", target_host, path, query);
+                    debug!(
+                        from = ?host,
+                        to = %target_host,
+                        "www redirect"
+                    );
+                    let response = Response::builder()
+                        .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                        .header(hyper::header::LOCATION, location)
+                        .header("X-Powered-By", "Rivetr")
+                        .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
+                        .unwrap();
+                    return Ok(response);
+                }
+
                 // Check HTTP Basic Auth if enabled (but bypass for health check path)
                 if backend.basic_auth.enabled {
                     let is_healthcheck = backend

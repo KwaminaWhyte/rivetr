@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useOutletContext } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DomainManagementCard } from "@/components/domain-management-card";
 import { NetworkConfigCard } from "@/components/network-config-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
 import { api } from "@/lib/api";
+import { destinationsApi } from "@/lib/api/destinations";
 import type { App, UpdateAppRequest } from "@/types/api";
 import {
   Card,
@@ -17,6 +18,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2, Route } from "lucide-react";
 
 export default function AppSettingsNetwork() {
@@ -27,10 +35,18 @@ export default function AppSettingsNetwork() {
   const [isSavingLabels, setIsSavingLabels] = useState(false);
   const [isSavingPrefix, setIsSavingPrefix] = useState(false);
   const [stripPrefix, setStripPrefix] = useState(app.strip_prefix ?? "");
+  const [isSavingDestination, setIsSavingDestination] = useState(false);
+  const [destinationId, setDestinationId] = useState(app.destination_id ?? "");
+
+  const { data: destinations } = useQuery({
+    queryKey: ["destinations"],
+    queryFn: () => destinationsApi.list(),
+  });
 
   useEffect(() => {
     setStripPrefix(app.strip_prefix ?? "");
-  }, [app.strip_prefix]);
+    setDestinationId(app.destination_id ?? "");
+  }, [app.strip_prefix, app.destination_id]);
 
   const handleSaveNetworkConfig = async (updates: UpdateAppRequest) => {
     setIsSavingNetwork(true);
@@ -77,6 +93,19 @@ export default function AppSettingsNetwork() {
     }
   };
 
+  const handleSaveDestination = async () => {
+    setIsSavingDestination(true);
+    try {
+      await api.updateApp(app.id, { destination_id: destinationId || "" });
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      toast.success("Destination updated");
+    } catch (error) {
+      toast.error(`Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsSavingDestination(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <DomainManagementCard app={app} onSave={handleSaveDomainConfig} isSaving={isSavingDomains} />
@@ -120,6 +149,40 @@ export default function AppSettingsNetwork() {
       </Card>
 
       <ContainerLabelsCard app={app} onSave={handleSaveContainerLabels} isSaving={isSavingLabels} />
+
+      {/* Docker Destination */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Docker Destination</CardTitle>
+          <CardDescription>
+            Assign this app to a named Docker network. Leave as default to use the shared <code className="text-xs">rivetr</code> bridge network.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Select value={destinationId} onValueChange={setDestinationId}>
+            <SelectTrigger className="max-w-sm">
+              <SelectValue placeholder="Default (rivetr network)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Default (rivetr network)</SelectItem>
+              {destinations?.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name} ({d.network_name})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={handleSaveDestination}
+            disabled={isSavingDestination}
+            size="sm"
+            className="gap-2"
+          >
+            {isSavingDestination ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Save Destination
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

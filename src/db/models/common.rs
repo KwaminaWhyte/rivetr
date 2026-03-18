@@ -10,9 +10,12 @@ pub struct Domain {
     /// Whether this is the primary domain for the app
     #[serde(default)]
     pub primary: bool,
-    /// Whether to redirect www to non-www (or vice versa)
+    /// Whether to redirect www to non-www (or vice versa) — legacy field, kept for backward compat
     #[serde(default)]
     pub redirect_www: bool,
+    /// WWW redirect mode: "both" (allow both), "to_www" (redirect non-www → www),
+    /// "to_non_www" (redirect www → non-www). Overrides `redirect_www` when set.
+    pub www_redirect_mode: Option<String>,
 }
 
 impl Domain {
@@ -21,6 +24,7 @@ impl Domain {
             domain,
             primary: false,
             redirect_www: false,
+            www_redirect_mode: None,
         }
     }
 
@@ -29,6 +33,29 @@ impl Domain {
             domain,
             primary: true,
             redirect_www: false,
+            www_redirect_mode: None,
+        }
+    }
+
+    /// Get the effective www redirect mode, normalizing legacy `redirect_www` flag.
+    /// Returns "to_www", "to_non_www", or "both" (meaning no redirect — serve both variants).
+    pub fn effective_www_redirect_mode(&self) -> &str {
+        if let Some(ref mode) = self.www_redirect_mode {
+            match mode.as_str() {
+                "to_www" | "to_non_www" | "both" => return mode.as_str(),
+                _ => {}
+            }
+        }
+        // Fall back to legacy redirect_www: treat as "to_www" if non-www domain,
+        // or "to_non_www" if www domain.
+        if self.redirect_www {
+            if self.domain.starts_with("www.") {
+                "to_non_www"
+            } else {
+                "to_www"
+            }
+        } else {
+            "both"
         }
     }
 

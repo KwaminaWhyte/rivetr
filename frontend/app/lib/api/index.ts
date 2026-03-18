@@ -27,7 +27,10 @@ export { s3Api } from "./s3";
 export { monitoringApi } from "./monitoring";
 export { sharedEnvVarsApi } from "./shared-env-vars";
 export { serversApi } from "./servers";
-export type { Server, CreateServerRequest, UpdateServerRequest, ServerHealthResponse, InstallDockerResponse } from "./servers";
+export type { Server, CreateServerRequest, UpdateServerRequest, ServerHealthResponse, InstallDockerResponse, ServerDetails } from "./servers";
+export { caCertificatesApi } from "./ca-certificates";
+export type { CaCertificate, CreateCaCertificateRequest } from "./ca-certificates";
+export { destinationsApi } from "./destinations";
 export { ssoApi } from "./sso";
 export type { OidcProvider, CreateOidcProviderRequest } from "./sso";
 export { autoscalingApi } from "./autoscaling";
@@ -81,6 +84,8 @@ import { whiteLabelApi } from "./white-label";
 import { tunnelsApi } from "./tunnels";
 import { communityTemplatesApi } from "./community-templates";
 import { filesystemApi } from "./filesystem";
+import { caCertificatesApi } from "./ca-certificates";
+import { destinationsApi } from "./destinations";
 
 /**
  * Combined API object for backward compatibility.
@@ -455,9 +460,21 @@ export const api = {
   updateServer: serversApi.update,
   deleteServer: serversApi.delete,
   checkServerHealth: serversApi.check,
+  fetchServerDetails: serversApi.fetchDetails,
   checkServerPatches: serversApi.checkPatches,
   checkServerSecurity: serversApi.checkSecurity,
   installServerDocker: serversApi.installDocker,
+
+  // CA Certificates
+  listCaCertificates: caCertificatesApi.list,
+  createCaCertificate: caCertificatesApi.create,
+  deleteCaCertificate: caCertificatesApi.delete,
+
+  // Destinations (Docker named networks)
+  listDestinations: destinationsApi.list,
+  getDestination: destinationsApi.getOne,
+  createDestination: destinationsApi.create,
+  deleteDestination: destinationsApi.delete,
 
   // Shared Environment Variables
   getTeamEnvVars: sharedEnvVarsApi.getTeamEnvVars,

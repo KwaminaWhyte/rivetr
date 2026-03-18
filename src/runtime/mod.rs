@@ -138,6 +138,9 @@ pub struct RunConfig {
     /// Override the container CMD (command + args after the entrypoint).
     /// When `None` the image's default CMD is used.
     pub cmd: Option<Vec<String>>,
+    /// Override the default "rivetr" network with a named destination network.
+    /// When `None`, the shared "rivetr" bridge network is used.
+    pub network: Option<String>,
 }
 
 #[derive(Debug, Clone)]

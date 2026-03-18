@@ -39,6 +39,14 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "Audit Log" },
   ],
+  "/settings/ca-certificates": [
+    { label: "Settings", href: "/settings" },
+    { label: "CA Certificates" },
+  ],
+  "/settings/destinations": [
+    { label: "Settings", href: "/settings" },
+    { label: "Destinations" },
+  ],
   "/settings/auto-update": [
     { label: "Settings", href: "/settings" },
     { label: "Auto Updates" },

@@ -1258,6 +1258,34 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 100: Add ca_certificates table
+    let has_ca_certificates_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ca_certificates'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_ca_certificates_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/100_ca_certs.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 101: Add destinations table + destination_id on apps
+    let has_destinations_table: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='destinations'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_destinations_table.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/101_destinations.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
