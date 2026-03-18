@@ -31,6 +31,7 @@ mod sprint22;
 mod sprint23;
 mod sprint24;
 mod sprint25;
+mod sprint26;
 
 use anyhow::Result;
 use sqlx::SqlitePool;
@@ -92,6 +93,8 @@ pub async fn seed_service_templates(pool: &SqlitePool) -> Result<()> {
     templates.extend(sprint24::templates());
     // Sprint 25 additions
     templates.extend(sprint25::templates());
+    // Sprint 26 additions
+    templates.extend(sprint26::templates());
 
     let template_count = templates.len();
     for (id, name, description, category, icon, compose, env_schema) in templates {

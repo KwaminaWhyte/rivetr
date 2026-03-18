@@ -80,8 +80,10 @@ const navSettings: NavMainItem[] = [
       { title: "Alert Defaults", url: "/settings/alert-defaults" },
       { title: "Notifications", url: "/settings/notifications" },
       { title: "Audit Log", url: "/settings/audit" },
+      { title: "Proxy Logs", url: "/settings/proxy-logs" },
       { title: "CA Certificates", url: "/settings/ca-certificates" },
       { title: "Destinations", url: "/settings/destinations" },
+      { title: "Preferences", url: "/settings/preferences" },
     ],
   },
 ];

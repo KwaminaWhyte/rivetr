@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.12] - 2026-03-18
+
+### Added
+- **Proxy access logs** — Every HTTP request through the Rivetr reverse proxy is now logged to a `proxy_logs` SQLite table (migration `103_proxy_logs.sql`). Logs capture host, method, path, status code, response time (ms), bytes out, client IP, and user agent. Accessible via `GET /api/proxy/logs` (with `domain`, `status`, `limit`, `offset` query params) and a new **Settings → Proxy Logs** page with filters and auto-refresh toggle.
+- **User Preferences panel** — New **Settings → Preferences** page with instant localStorage-based preferences: theme (Light/Dark/System), date/time display format (relative vs absolute), default log lines (100/500/1000/All), deployment notifications toggle, and compact mode toggle.
+- **11 new service templates (Sprint 26)** — MediaWiki (CMS), SuperTokens (Auth/SSO), Netbird (Networking), AFFiNE (Productivity), HeyForm (Forms), OpnForm (Forms), GitHub Actions Runner (DevTools), Bluesky PDS (Communication), PeerTube (Media), Roundcube (Productivity), Mailserver/docker-mailserver (Infrastructure). Rivetr now has **335+ one-click templates**.
+
+---
+
 ## [v0.10.11] - 2026-03-18
 
 ### Added

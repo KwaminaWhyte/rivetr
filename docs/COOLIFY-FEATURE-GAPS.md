@@ -10,7 +10,7 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 |---------|---------|--------|
 | Multiple proxy choices (Traefik, Caddy) | ✅ Switch via UI | ❌ Built-in proxy only |
 | Dynamic proxy configurations editor | ✅ Full file editor | ❌ |
-| Proxy logs page (separate view) | ✅ | ❌ |
+| Proxy logs page (separate view) | ✅ | ✅ (`proxy_logs` table, migration 103, `GET /api/proxy/logs`, Settings → Proxy Logs page with filters + auto-refresh) |
 | Proxy version upgrade UI | ✅ (shows new version, upgrade button) | ❌ |
 | Proxy restart / stop from UI | ✅ | ✅ |
 | Custom Traefik labels per-app (editable panel) | ✅ Full label editor with Traefik + Caddy labels | ✅ (`custom_labels` key-value editor in Settings → Network, migration 102) |
@@ -143,7 +143,9 @@ Both have: PostgreSQL, MySQL, MariaDB, Redis, KeyDB, Dragonfly, MongoDB, ClickHo
 
 ## 5. One-Click Service Templates
 
-Coolify has **300+ templates**. Rivetr has ~**315 templates** (Sprint 3 + Sprint 19/20/21/22/23/24/25).
+Coolify has **300+ templates**. Rivetr has ~**335 templates** (Sprint 3 + Sprint 19/20/21/22/23/24/25/26).
+
+**Sprint 26 additions (11 new):** MediaWiki (CMS), SuperTokens (Auth/SSO), Netbird (Networking), AFFiNE (Productivity), HeyForm (Forms), OpnForm (Forms), GitHub Actions Runner (DevTools), Bluesky PDS (Communication), PeerTube (Media), Roundcube (Productivity), Mailserver/docker-mailserver (Infrastructure).
 
 **Sprint 25 additions (5 new):** Joomla (CMS), Drupal (CMS), Grafana standalone (Monitoring), Etebase (Auth/SSO), Obsidian Remote (Productivity).
 
@@ -168,7 +170,7 @@ Coolify has **300+ templates**. Rivetr has ~**315 templates** (Sprint 3 + Sprint
 - ~~Matrix Synapse~~ ✅ (with PostgreSQL or SQLite), Mattermost, ~~Rocket.Chat~~ ✅, Soju (IRC), ~~NodeBB~~ ✅
 
 **Content / CMS:**
-- Bookstack, Drupal, Joomla, MediaWiki, Wiki.js, VVVeb (2 variants), Affine
+- Bookstack, ~~Drupal~~ ✅, ~~Joomla~~ ✅, ~~MediaWiki~~ ✅, Wiki.js, VVVeb (2 variants), ~~Affine~~ ✅
 
 **Dev Tools:**
 - Browserless, Code Server, Codimd, Datasette, Elasticsearch+Kibana, Faraday, Gitea (4 variants), Forgejo (4 variants), GitLab, Jenkins, Martin, Nexus (+ ARM), Onedev, Sequin, Trailbase, Windmill
@@ -195,16 +197,16 @@ Coolify has **300+ templates**. Rivetr has ~**315 templates** (Sprint 3 + Sprint
 - ~~Activepieces~~ ✅, n8n (3 variants), Prefect, ~~Trigger.dev~~ ✅
 
 **Forms / Surveys:**
-- Formbricks, Heyform, LimeSurvey, Opnform
+- Formbricks, ~~Heyform~~ ✅, LimeSurvey, ~~Opnform~~ ✅
 
 **Auth / SSO:**
-- Authentik, Keycloak (with PostgreSQL), Logto, ~~Pocket ID~~ ✅ (2 variants), Supertokens (2 variants)
+- Authentik, Keycloak (with PostgreSQL), Logto, ~~Pocket ID~~ ✅ (2 variants), ~~Supertokens~~ ✅
 
 **Gaming ✅:**
 - ~~Minecraft Java~~ ✅, ~~Palworld~~ ✅, ~~Satisfactory~~ ✅, ~~Terraria~~ ✅
 
 **Misc notable:**
-- Cloudflared (tunnel), GitHub Runner, Netbird, Tailscale Client, Wireguard Easy
+- Cloudflared (tunnel), ~~GitHub Runner~~ ✅, ~~Netbird~~ ✅, Tailscale Client, Wireguard Easy
 - Cal.com, Documenso, Stirling PDF, ~~Vaultwarden~~ ✅
 
 ---
@@ -323,7 +325,7 @@ Coolify has **300+ templates**. Rivetr has ~**315 templates** (Sprint 3 + Sprint
 | Environment clone | ✅ (Clone button in environment) | ✅ (Clone button per env tab, POST /api/projects/:id/environments/:env_id/clone) |
 | Multiple environments per project | ✅ (e.g. production + staging) | ✅ |
 | Breadcrumb navigation with dropdowns | ✅ (click any crumb to switch resource) | ✅ |
-| Preferences panel (theme, etc.) | ✅ (top-right button) | ❌ |
+| Preferences panel (theme, etc.) | ✅ (top-right button) | ✅ (Settings → Preferences: theme, date format, log lines, notifications, compact mode — localStorage-based) |
 | "Generate Domain" auto-assign | ✅ | ✅ (Generate button in domain management card) |
 | Feedback / support button in nav | ✅ | ✅ (Feedback link in sidebar footer → GitHub Issues) |
 | Version display in nav | ✅ (links to changelog) | ✅ (version + GitHub releases link in sidebar footer) |
@@ -348,7 +350,7 @@ Coolify's **Sentinel** is a lightweight sidecar agent container deployed on each
 
 Coolify has a one-click **GitHub Actions Runner** service template that deploys a self-hosted runner connected to your GitHub org/repo.
 
-**Rivetr status:** Not implemented.
+**Rivetr status:** ✅ Implemented in Sprint 26 (`tpl-github-runner`, `sprint26.rs`). Uses `myoung34/github-runner` — requires `GITHUB_URL` and `RUNNER_TOKEN`.
 
 ---
 
@@ -384,18 +386,22 @@ Coolify has a one-click **GitHub Actions Runner** service template that deploys 
 - ~~Instance timezone setting~~ ✅ (stored in `instance_settings` as `instance_timezone`, Settings → General)
 - ~~Container Labels editor~~ ✅ (`custom_labels` JSON field, key-value editor in Settings → Network, migration 102)
 - ~~Sprint 25 templates~~ ✅ (5 new: Joomla, Drupal, Grafana standalone, Etebase, Obsidian Remote — total ~315)
+- ~~Sprint 26 templates~~ ✅ (11 new: MediaWiki, SuperTokens, Netbird, AFFiNE, HeyForm, OpnForm, GitHub Actions Runner, Bluesky PDS, PeerTube, Roundcube, Mailserver — total ~335)
+- ~~Proxy logs page~~ ✅ (`proxy_logs` table migration 103, `GET /api/proxy/logs`, Settings → Proxy Logs with domain/status filters + auto-refresh toggle)
+- ~~Preferences panel~~ ✅ (Settings → Preferences: theme, date/time format, default log lines, compact mode — localStorage-based, instant save)
 
 ### High Priority (remaining):
-1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Wiki.js), monitoring (Glances, Uptime Kuma), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
+1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Wiki.js), monitoring (Glances, Uptime Kuma), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome); forms (~~Heyform~~ ✅, ~~Opnform~~ ✅, LimeSurvey, Formbricks)
 
 ### Medium Priority:
-2. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
+2. HTTP Basic Auth per-app toggle — ✅ already implemented (`BasicAuthCard` in app Security settings)
 3. Clerk, Zitadel OAuth providers
-4. Preferences panel (theme / UI settings)
-5. Network aliases per-app
+4. ~~Preferences panel~~ ✅ (Settings → Preferences: theme, date format, log lines, compact mode)
+5. Network aliases per-app — ✅ already implemented (`network_aliases` JSON field)
 
 ### Low Priority / Nice-to-have:
-7. Terminal Access control (per-server)
-8. Server Patching UI (auto-apply OS patches)
-9. GitHub Actions self-hosted runner template
-10. Proxy logs page (separate view)
+6. Terminal Access control (per-server)
+7. Server Patching UI (auto-apply OS patches)
+8. ~~GitHub Actions self-hosted runner template~~ ✅ (`tpl-github-runner`)
+9. ~~Proxy logs page~~ ✅ (`proxy_logs` table migration 103, Settings → Proxy Logs)
+10. SSH key fingerprint display

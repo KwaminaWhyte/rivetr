@@ -33,6 +33,7 @@ mod notifications;
 pub mod oauth;
 mod patches;
 mod previews;
+mod proxy_logs;
 mod projects;
 pub mod rate_limit;
 mod redirect_rules;
@@ -868,6 +869,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/audit/resource-types", get(audit::list_resource_types))
         // Webhook audit events
         .route("/webhook-events", get(webhook_events::list_webhook_events))
+        // Proxy access logs
+        .route("/proxy/logs", get(proxy_logs::list_proxy_logs))
         // GitHub Apps (callbacks are in public auth_routes)
         .route("/github-apps", get(github_apps::list_apps))
         .route("/github-apps", post(github_apps::create_manifest))

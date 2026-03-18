@@ -17,6 +17,7 @@ use hyper_util::rt::TokioIo;
 use regex::Regex;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
 use tracing::{debug, error, info, warn};
@@ -37,6 +38,8 @@ pub struct ProxyHandler {
     https_redirect_port: Option<u16>,
     /// Runtime flag — set to true after TLS cert is confirmed available
     https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Optional database pool for proxy access logging
+    db: Option<sqlx::SqlitePool>,
 }
 
 impl ProxyHandler {
@@ -47,7 +50,14 @@ impl ProxyHandler {
             acme_challenges: None,
             https_redirect_port: None,
             https_redirect_enabled: None,
+            db: None,
         }
+    }
+
+    /// Enable proxy access logging by providing a database pool
+    pub fn with_db(mut self, db: sqlx::SqlitePool) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// Create a new handler with ACME challenge support
@@ -113,15 +123,64 @@ impl ProxyHandler {
         Ok(())
     }
 
+    /// Write a proxy access log entry to the database (fire-and-forget)
+    fn log_request(
+        &self,
+        host: String,
+        method: String,
+        path: String,
+        status: u16,
+        response_ms: u64,
+        client_ip: String,
+        user_agent: String,
+    ) {
+        if let Some(ref db) = self.db {
+            let db = db.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "INSERT INTO proxy_logs (host, method, path, status, response_ms, bytes_out, client_ip, user_agent) \
+                     VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+                )
+                .bind(&host)
+                .bind(&method)
+                .bind(&path)
+                .bind(status as i64)
+                .bind(response_ms as i64)
+                .bind(if client_ip.is_empty() { None } else { Some(client_ip) })
+                .bind(if user_agent.is_empty() { None } else { Some(user_agent) })
+                .execute(&db)
+                .await;
+            });
+        }
+    }
+
     /// Handle a single HTTP request
     async fn handle_request(
         &self,
         req: Request<Incoming>,
         remote_addr: SocketAddr,
     ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
+        let start = Instant::now();
         let method = req.method().clone();
         let uri = req.uri().clone();
         let path = uri.path();
+
+        // Capture logging metadata from request headers before they are consumed
+        let log_method = method.to_string();
+        let log_path = path.to_string();
+        let log_client_ip = req
+            .headers()
+            .get("X-Forwarded-For")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| remote_addr.ip().to_string());
+        let log_user_agent = req
+            .headers()
+            .get(hyper::header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
 
         // Check for ACME HTTP-01 challenge (must happen before HTTPS redirect)
         if let Some(response) = self.handle_acme_challenge(path) {
@@ -165,6 +224,7 @@ impl ProxyHandler {
 
         let host = self.extract_host(&req);
         let is_websocket = self.is_websocket_upgrade(&req);
+        let log_host = host.clone().unwrap_or_else(|| "unknown".to_string());
 
         debug!(
             method = %method,
@@ -184,7 +244,7 @@ impl ProxyHandler {
             None => None,
         };
 
-        match backend {
+        let response = match backend {
             Some(backend) if backend.healthy => {
                 // If this backend is a www-redirect proxy, issue a permanent redirect
                 if let Some(ref target_host) = backend.www_redirect_target {
@@ -201,78 +261,111 @@ impl ProxyHandler {
                         .header("X-Powered-By", "Rivetr")
                         .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
                         .unwrap();
-                    return Ok(response);
-                }
+                    response
+                } else {
+                    // Check HTTP Basic Auth if enabled (but bypass for health check path)
+                    if backend.basic_auth.enabled {
+                        let is_healthcheck = backend
+                            .healthcheck_path
+                            .as_ref()
+                            .map(|p| path == p)
+                            .unwrap_or(false);
 
-                // Check HTTP Basic Auth if enabled (but bypass for health check path)
-                if backend.basic_auth.enabled {
-                    let is_healthcheck = backend
-                        .healthcheck_path
-                        .as_ref()
-                        .map(|p| path == p)
-                        .unwrap_or(false);
-
-                    if !is_healthcheck {
-                        if let Err(response) = self.check_basic_auth(&req, &backend) {
-                            debug!(
-                                host = ?host,
-                                path = %path,
-                                "Basic auth required but not provided or invalid"
-                            );
-                            return Ok(response);
+                        if !is_healthcheck {
+                            if let Err(response) = self.check_basic_auth(&req, &backend) {
+                                debug!(
+                                    host = ?host,
+                                    path = %path,
+                                    "Basic auth required but not provided or invalid"
+                                );
+                                let ms = start.elapsed().as_millis() as u64;
+                                self.log_request(
+                                    log_host,
+                                    log_method,
+                                    log_path,
+                                    response.status().as_u16(),
+                                    ms,
+                                    log_client_ip,
+                                    log_user_agent,
+                                );
+                                return Ok(response);
+                            }
                         }
                     }
-                }
 
-                // Apply redirect rules (evaluated before forwarding)
-                if !backend.redirect_rules.is_empty() {
-                    if let Some(redirect_response) =
-                        self.apply_redirect_rules(path, &backend.redirect_rules)
-                    {
-                        return Ok(redirect_response);
+                    // Apply redirect rules (evaluated before forwarding)
+                    if !backend.redirect_rules.is_empty() {
+                        if let Some(redirect_response) =
+                            self.apply_redirect_rules(path, &backend.redirect_rules)
+                        {
+                            let ms = start.elapsed().as_millis() as u64;
+                            self.log_request(
+                                log_host,
+                                log_method,
+                                log_path,
+                                redirect_response.status().as_u16(),
+                                ms,
+                                log_client_ip,
+                                log_user_agent,
+                            );
+                            return Ok(redirect_response);
+                        }
                     }
-                }
 
-                info!(
-                    method = %method,
-                    uri = %uri,
-                    host = ?host,
-                    backend = %backend.addr(),
-                    websocket = is_websocket,
-                    "Forwarding request"
-                );
+                    info!(
+                        method = %method,
+                        uri = %uri,
+                        host = ?host,
+                        backend = %backend.addr(),
+                        websocket = is_websocket,
+                        "Forwarding request"
+                    );
 
-                // Handle WebSocket upgrades specially
-                if is_websocket {
-                    return self.handle_websocket_upgrade(req, &backend).await;
-                }
+                    // Handle WebSocket upgrades specially (skip logging for WS)
+                    if is_websocket {
+                        return self.handle_websocket_upgrade(req, &backend).await;
+                    }
 
-                match self.proxy_service.forward(req, &backend).await {
-                    Ok(response) => Ok(response),
-                    Err(e) => {
-                        error!(error = %e, backend = %backend.addr(), "Backend request failed");
-                        Ok(self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable"))
+                    match self.proxy_service.forward(req, &backend).await {
+                        Ok(response) => response,
+                        Err(e) => {
+                            error!(error = %e, backend = %backend.addr(), "Backend request failed");
+                            self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable")
+                        }
                     }
                 }
             }
             Some(_) => {
                 warn!(host = ?host, "Backend is unhealthy");
-                Ok(self.error_response(
+                self.error_response(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Service temporarily unavailable",
-                ))
+                )
             }
             None => {
                 warn!(host = ?host, "No backend found for host");
-                Ok(self.error_response(
+                self.error_response(
                     StatusCode::NOT_FOUND,
                     &format!(
                         "No application found for host: {}",
                         host.as_deref().unwrap_or("unknown")
                     ),
-                ))
+                )
             }
-        }
+        };
+
+        let ms = start.elapsed().as_millis() as u64;
+        let status = response.status().as_u16();
+        self.log_request(
+            log_host,
+            log_method,
+            log_path,
+            status,
+            ms,
+            log_client_ip,
+            log_user_agent,
+        );
+        Ok(response)
     }
 
     /// Check if the request is a WebSocket upgrade

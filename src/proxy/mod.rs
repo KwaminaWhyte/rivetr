@@ -321,6 +321,8 @@ impl RouteTable {
 pub struct ProxyServer {
     routes: Arc<ArcSwap<RouteTable>>,
     bind_addr: SocketAddr,
+    /// Optional database pool for proxy access logging
+    db: Option<sqlx::SqlitePool>,
 }
 
 impl ProxyServer {
@@ -328,7 +330,14 @@ impl ProxyServer {
         Self {
             routes: Arc::new(ArcSwap::new(Arc::new(RouteTable::new()))),
             bind_addr,
+            db: None,
         }
+    }
+
+    /// Enable proxy access logging by providing a database pool
+    pub fn with_db(mut self, db: sqlx::SqlitePool) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// Get a reference to the route table for updates
@@ -348,6 +357,9 @@ impl ProxyServer {
         info!("Proxy server listening on http://{}", self.bind_addr);
 
         let mut handler = ProxyHandler::new(self.routes.clone());
+        if let Some(db) = self.db {
+            handler = handler.with_db(db);
+        }
         if let Some(challenges) = acme_challenges {
             handler = handler.with_acme(challenges);
         }
@@ -383,6 +395,8 @@ pub struct HttpsProxyServer {
     routes: Arc<ArcSwap<RouteTable>>,
     bind_addr: SocketAddr,
     tls_reload: Arc<tls::TlsReloadHandle>,
+    /// Optional database pool for proxy access logging
+    db: Option<sqlx::SqlitePool>,
 }
 
 impl HttpsProxyServer {
@@ -395,7 +409,14 @@ impl HttpsProxyServer {
             routes,
             bind_addr,
             tls_reload,
+            db: None,
         }
+    }
+
+    /// Enable proxy access logging by providing a database pool
+    pub fn with_db(mut self, db: sqlx::SqlitePool) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// Start the HTTPS proxy server
@@ -403,7 +424,10 @@ impl HttpsProxyServer {
         let listener = TcpListener::bind(self.bind_addr).await?;
         info!("Proxy server listening on https://{}", self.bind_addr);
 
-        let handler = ProxyHandler::new(self.routes.clone());
+        let mut handler = ProxyHandler::new(self.routes.clone());
+        if let Some(db) = self.db {
+            handler = handler.with_db(db);
+        }
         let tls_reload = self.tls_reload;
 
         loop {

@@ -1425,6 +1425,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 103: Add proxy_logs table
+    let has_proxy_logs: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='proxy_logs'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_proxy_logs {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/103_proxy_logs.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

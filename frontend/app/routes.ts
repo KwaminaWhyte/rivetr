@@ -120,6 +120,8 @@ export default [
       route("security", "routes/settings/security.tsx"),
       route("oauth", "routes/settings/oauth.tsx"),
       route("sso", "routes/settings/sso.tsx"),
+      route("preferences", "routes/settings/preferences.tsx"),
+      route("proxy-logs", "routes/settings/proxy-logs.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

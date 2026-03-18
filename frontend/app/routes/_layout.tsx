@@ -91,9 +91,17 @@ const routeTitles: Record<string, BreadcrumbItemType[]> = {
     { label: "Settings", href: "/settings" },
     { label: "API Tokens" },
   ],
+  "/settings/preferences": [
+    { label: "Settings", href: "/settings" },
+    { label: "Preferences" },
+  ],
   "/settings/webhook-events": [
     { label: "Settings", href: "/settings" },
     { label: "Webhook Events" },
+  ],
+  "/settings/proxy-logs": [
+    { label: "Settings", href: "/settings" },
+    { label: "Proxy Logs" },
   ],
   "/settings/servers": [
     { label: "Settings", href: "/settings" },

@@ -2,7 +2,7 @@
 
 > **IMPORTANT: Read this file before adding new templates** to avoid duplicates.
 > Last updated: 2026-03-18
-> Total: 324 templates across 25 categories
+> Total: 335 templates across 26 categories
 
 ## How to Add Templates
 
@@ -105,6 +105,7 @@
 | `ghost` | Ghost | `cms_communication.rs` |
 | `tpl-joomla` | Joomla | `sprint25.rs` |
 | `tpl-keystonejs` | KeystoneJS | `cms_extra.rs` |
+| `tpl-mediawiki` | MediaWiki | `sprint26.rs` |
 | `payload-cms` | Payload CMS | `cms_communication.rs` |
 | `tpl-pimcore` | Pimcore | `cms_extra.rs` |
 | `strapi` | Strapi | `cms_communication.rs` |
@@ -117,6 +118,7 @@
 | ID | Name | File |
 |----|------|------|
 | `tpl-apprise` | Apprise | `sprint19.rs` |
+| `tpl-bluesky-pds` | Bluesky PDS | `sprint26.rs` |
 | `tpl-chatwoot` | Chatwoot | `communication_extra.rs` |
 | `tpl-discourse` | Discourse | `communication_extra.rs` |
 | `tpl-element-web` | Element Web | `communication_extra.rs` |
@@ -249,6 +251,7 @@
 |----|------|------|
 | `tpl-argocd` | Argo CD | `sprint16.rs` |
 | `tpl-concourse-ci` | Concourse CI | `sprint16.rs` |
+| `tpl-github-runner` | GitHub Actions Runner | `sprint26.rs` |
 | `tpl-gitlab-runner` | GitLab Runner | `sprint16.rs` |
 | `tpl-harbor` | Harbor | `sprint15.rs` |
 | `tpl-artifactory-oss` | JFrog Artifactory OSS | `sprint18.rs` |
@@ -258,6 +261,13 @@
 | `tpl-weave-gitops` | Weave GitOps | `sprint18.rs` |
 | `tpl-woodpecker-agent` | Woodpecker CI Agent | `sprint16.rs` |
 | `tpl-woodpecker-server` | Woodpecker CI Server | `sprint16.rs` |
+
+### Forms & Surveys
+
+| ID | Name | File |
+|----|------|------|
+| `tpl-heyform` | HeyForm | `sprint26.rs` |
+| `tpl-opnform` | OpnForm | `sprint26.rs` |
 
 ### Documentation & Knowledge
 
@@ -282,6 +292,7 @@
 |----|------|------|
 | `tpl-adguard-home` | AdGuard Home | `networking_extra.rs` |
 | `tpl-baserow` | Baserow | `sprint15.rs` |
+| `tpl-docker-mailserver` | Mailserver (docker-mailserver) | `sprint26.rs` |
 | `tpl-cloudflared` | Cloudflare Tunnel | `networking_extra.rs` |
 | `tpl-diun` | Diun | `sprint21.rs` |
 | `tpl-garage` | Garage | `databases_tools.rs` |
@@ -307,6 +318,7 @@
 | `tpl-mediamtx` | MediaMTX | `misc_extras.rs` |
 | `tpl-batch2-navidrome` | Navidrome | `documentation.rs` |
 | `tpl-owncast` | Owncast | `misc_extras.rs` |
+| `tpl-peertube` | PeerTube | `sprint26.rs` |
 | `tpl-photoprism` | PhotoPrism | `misc_extras.rs` |
 | `tpl-batch2-seafile` | Seafile | `documentation.rs` |
 
@@ -348,6 +360,7 @@
 
 | ID | Name | File |
 |----|------|------|
+| `tpl-netbird` | Netbird | `sprint26.rs` |
 | `nginx` | Nginx | `infrastructure.rs` |
 | `traefik` | Traefik | `infrastructure.rs` |
 | `tpl-wireguard-easy` | WireGuard Easy | `media_productivity.rs` |
@@ -356,6 +369,7 @@
 
 | ID | Name | File |
 |----|------|------|
+| `tpl-affine` | AFFiNE | `sprint26.rs` |
 | `tpl-dasherr` | Dasherr | `sprint19.rs` |
 | `tpl-grocy` | Grocy | `sprint19.rs` |
 | `tpl-hedgedoc` | HedgeDoc | `sprint19.rs` |
@@ -372,6 +386,7 @@
 | `tpl-rallly` | Rallly | `sprint18.rs` |
 | `tpl-readeck` | Readeck | `sprint21.rs` |
 | `tpl-redmine` | Redmine | `sprint19.rs` |
+| `tpl-roundcube` | Roundcube | `sprint26.rs` |
 | `tpl-ryot` | Ryot | `sprint21.rs` |
 | `tpl-siyuan` | Siyuan Notes | `sprint24.rs` |
 | `tpl-wekan` | Wekan | `sprint19.rs` |
@@ -406,6 +421,7 @@
 | `tpl-pihole` | Pi-hole | `extra_services.rs` |
 | `tpl-pocket-id` | Pocket ID | `sprint23.rs` |
 | `tpl-step-ca` | Step CA | `sprint19.rs` |
+| `tpl-supertokens` | SuperTokens | `sprint26.rs` |
 | `vaultwarden` | Vaultwarden | `infrastructure.rs` |
 | `tpl-vaultwarden` | Vaultwarden | `sprint24.rs` |
 | `tpl-wazuh` | Wazuh | `sprint16.rs` |

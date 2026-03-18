@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
     let proxy_addr: SocketAddr = format!("{}:{}", config.server.host, config.server.proxy_port)
         .parse()
         .expect("Invalid proxy address");
-    let proxy_server = ProxyServer::new(proxy_addr);
+    let proxy_server = ProxyServer::new(proxy_addr).with_db(db.clone());
     let routes = proxy_server.routes();
 
     // Restore routes from running containers
@@ -397,7 +397,8 @@ async fn main() -> Result<()> {
                         tls_config.acceptor,
                     ));
                     let https_server =
-                        HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone());
+                        HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone())
+                            .with_db(db.clone());
                     tokio::spawn(async move {
                         if let Err(e) = https_server.run().await {
                             tracing::error!(error = %e, "HTTPS proxy server error");
