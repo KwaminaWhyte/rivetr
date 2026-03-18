@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.10] - 2026-03-18
+
+### Added
+- **Docker Destinations** — Named Docker networks that apps can be assigned to, mirroring Coolify's "destinations" concept. Create destinations in Settings → Destinations; assign an app via its Network settings page. Migration `101_destinations.sql`. API: `GET/POST /api/destinations`, `GET/DELETE /api/destinations/:id`.
+- **CA Certificate management** — Upload trusted CA certificates (PEM) for custom TLS trust chains. Migration `100_ca_certs.sql`. API: `GET/POST /api/ca-certificates`, `DELETE /api/ca-certificates/:id`. UI at Settings → CA Certificates.
+- **Inline Dockerfile** — Deploy from a pasted Dockerfile with no git repo. `inline_dockerfile` field (migration `098_inline_dockerfile`), textarea in Build Settings, skips git clone entirely.
+- **Fetch server details** — `POST /api/servers/:id/fetch-details` SSHes in and collects OS name, Docker version, free disk, CPU cores, and total RAM. "Refresh details" in the server actions dropdown + Server Details dialog.
+- **WWW redirect mode** — Per-domain `www_redirect_mode` replaces `redirect_www` with a 4-option dropdown: No redirect / Serve both / → www / → non-www. Backward-compatible; in Domain Management card.
+- **Instance timezone** — Global IANA timezone for scheduled tasks and log timestamps. Stored in `instance_settings`, configurable from Settings → General.
+- **11 new service templates (Sprint 24)** — Vaultwarden, LiteLLM, MindsDB, Matrix Synapse, Rocket.Chat, NodeBB, Zipline, Joplin Server, Siyuan Notes, Hatchet, EasyAppointments. Rivetr now has ~113 one-click templates.
+
+---
+
 ## [v0.10.9] - 2026-03-18
 
 ### Fixed
