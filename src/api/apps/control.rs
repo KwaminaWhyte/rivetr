@@ -805,6 +805,7 @@ pub async fn restart_app(
         security_opt,
         cmd: None,
         network: None,
+        custom_labels: vec![],
     };
 
     log_restart_step(

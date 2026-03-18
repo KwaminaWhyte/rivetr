@@ -769,6 +769,7 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         security_opt: vec![],
         cmd: None,
         network: None,
+        custom_labels: vec![],
     };
 
     // Start the container

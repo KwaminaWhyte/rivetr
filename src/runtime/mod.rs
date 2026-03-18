@@ -141,6 +141,8 @@ pub struct RunConfig {
     /// Override the default "rivetr" network with a named destination network.
     /// When `None`, the shared "rivetr" bridge network is used.
     pub network: Option<String>,
+    /// Custom Docker labels to apply to the container (in addition to `labels`)
+    pub custom_labels: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,1 @@
+ALTER TABLE apps ADD COLUMN custom_labels TEXT DEFAULT NULL;

@@ -300,6 +300,26 @@ pub(super) async fn start_container(
         None
     };
 
+    // Parse custom_labels from JSON array format: [{key, value}, ...]
+    let custom_labels: Vec<(String, String)> = app
+        .custom_labels
+        .as_ref()
+        .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(s).ok())
+        .map(|arr| {
+            arr.into_iter()
+                .filter_map(|v| {
+                    let key = v.get("key")?.as_str()?.to_string();
+                    let value = v.get("value")?.as_str()?.to_string();
+                    if key.is_empty() {
+                        None
+                    } else {
+                        Some((key, value))
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     let run_config = RunConfig {
         image: image_tag,
         name: container_name.clone(),
@@ -325,6 +345,7 @@ pub(super) async fn start_container(
         security_opt,
         cmd: None,
         network: destination_network,
+        custom_labels,
     };
 
     let container_id = runtime

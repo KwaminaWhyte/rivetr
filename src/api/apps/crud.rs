@@ -464,6 +464,13 @@ pub async fn update_app(
         None => existing.destination_id.clone(),
     };
 
+    // Custom labels (migration 102) — empty string clears it
+    let custom_labels = match &req.custom_labels {
+        Some(s) if s.is_empty() => None,
+        Some(s) => Some(s.clone()),
+        None => existing.custom_labels.clone(),
+    };
+
     // Extended Docker run options (migration 085)
     let update_cap_drop = match &req.docker_cap_drop {
         Some(v) if v.is_empty() => None,
@@ -553,6 +560,7 @@ pub async fn update_app(
             strip_prefix = ?,
             inline_dockerfile = ?,
             destination_id = ?,
+            custom_labels = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -621,6 +629,7 @@ pub async fn update_app(
     .bind(&strip_prefix)
     .bind(&inline_dockerfile)
     .bind(&destination_id)
+    .bind(&custom_labels)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.11] - 2026-03-18
+
+### Added
+- **Custom container labels** — Apps now support arbitrary Docker container labels via a key-value editor in Settings → Network. Labels are stored as JSON in `custom_labels` (migration `102_custom_labels.sql`) and applied to containers at launch time alongside built-in Rivetr labels.
+- **Proxy-level www redirect** — The `www_redirect_mode` feature now issues HTTP 301 redirects at the proxy layer. Redirect-only domains are registered as dedicated proxy backends; the proxy handler fires the redirect before any upstream connection is made, so no container traffic is involved.
+- **5 new service templates (Sprint 25)** — Joomla (CMS), Drupal (CMS), Grafana standalone (Monitoring), Etebase (Auth/SSO), Obsidian Remote (Productivity). Rivetr now has 315+ one-click templates.
+
+### Fixed
+- **Missing migrations 092–099** — The migration runner in `src/db/mod.rs` was missing all migrations between 091 and 100, causing 500 errors on all app and server API endpoints when those columns were referenced by model structs.
+- **Migration 101 column check** — The `destinations` migration guard only checked for table existence, not for the `destination_id` column on `apps`. `DELETE /api/destinations/:id` returned 500 on fresh deployments; fixed by checking column presence.
+
+---
+
 ## [v0.10.10] - 2026-03-18
 
 ### Added
@@ -14,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CA Certificate management** — Upload trusted CA certificates (PEM) for custom TLS trust chains. Migration `100_ca_certs.sql`. API: `GET/POST /api/ca-certificates`, `DELETE /api/ca-certificates/:id`. UI at Settings → CA Certificates.
 - **Inline Dockerfile** — Deploy from a pasted Dockerfile with no git repo. `inline_dockerfile` field (migration `098_inline_dockerfile`), textarea in Build Settings, skips git clone entirely.
 - **Fetch server details** — `POST /api/servers/:id/fetch-details` SSHes in and collects OS name, Docker version, free disk, CPU cores, and total RAM. "Refresh details" in the server actions dropdown + Server Details dialog.
-- **WWW redirect mode** — Per-domain `www_redirect_mode` replaces `redirect_www` with a 4-option dropdown: No redirect / Serve both / → www / → non-www. Backward-compatible; in Domain Management card.
+- **WWW redirect mode** — Per-domain `www_redirect_mode` replaces `redirect_www` with a 4-option dropdown: No redirect / Serve both / → www / → non-www. Proxy issues HTTP 301 redirects for the redirect variants; canonical domain proxies normally. Backward-compatible; in Domain Management card.
 - **Instance timezone** — Global IANA timezone for scheduled tasks and log timestamps. Stored in `instance_settings`, configurable from Settings → General.
 - **11 new service templates (Sprint 24)** — Vaultwarden, LiteLLM, MindsDB, Matrix Synapse, Rocket.Chat, NodeBB, Zipline, Joplin Server, Siyuan Notes, Hatchet, EasyAppointments. Rivetr now has ~113 one-click templates.
 

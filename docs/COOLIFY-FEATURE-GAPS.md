@@ -13,7 +13,7 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 | Proxy logs page (separate view) | ✅ | ❌ |
 | Proxy version upgrade UI | ✅ (shows new version, upgrade button) | ❌ |
 | Proxy restart / stop from UI | ✅ | ✅ |
-| Custom Traefik labels per-app (editable panel) | ✅ Full label editor with Traefik + Caddy labels | ❌ (no label editor) |
+| Custom Traefik labels per-app (editable panel) | ✅ Full label editor with Traefik + Caddy labels | ✅ (`custom_labels` key-value editor in Settings → Network, migration 102) |
 
 ---
 
@@ -42,14 +42,14 @@ Observed from a live Coolify v4.0.0-beta.468 instance. Goal: achieve full parity
 |---------|---------|--------|
 | www ↔ non-www redirect direction | ✅ (dropdown: allow both / redirect to www / redirect to non-www) | ✅ (`www_redirect_mode` field replaces `redirect_www`, 4-option dropdown in Domain Management card) |
 | Generate domain button (auto-assign sslip.io subdomain) | ✅ | ✅ (`POST /api/apps/:id/generate-domain`, Generate button in domain card) |
-| HTTP Basic Auth toggle per-app | ✅ | ❌ |
+| HTTP Basic Auth toggle per-app | ✅ | ✅ (`basic_auth_enabled` field, username/password hash, bypass on healthcheck path) |
 | Custom Docker run options (--cap-add, --device, etc.) | ✅ | ✅ (Docker Options) |
-| Network aliases per-app | ✅ | ❌ |
+| Network aliases per-app | ✅ | ✅ (`network_aliases` JSON field, passed to container runtime) |
 | Watch paths (rebuild only when paths change) | ✅ | ✅ |
 | Use a Build Server | ✅ | ✅ |
 | Docker Registry push (image name + tag) | ✅ | ✅ |
 | Pre/Post deployment commands | ✅ | ✅ |
-| Container Labels editor (full editable panel) | ✅ (shows live Traefik/Caddy labels, editable) | ❌ |
+| Container Labels editor (full editable panel) | ✅ (shows live Traefik/Caddy labels, editable) | ✅ (`custom_labels` JSON field, key-value editor in Settings → Network, migration `102_custom_labels.sql`) |
 | Readonly labels / escape special chars options | ✅ | ❌ |
 
 ### Advanced App Options
@@ -143,7 +143,9 @@ Both have: PostgreSQL, MySQL, MariaDB, Redis, KeyDB, Dragonfly, MongoDB, ClickHo
 
 ## 5. One-Click Service Templates
 
-Coolify has **300+ templates**. Rivetr has ~**113 templates** (Sprint 3 + Sprint 19/20/21/22/23/24).
+Coolify has **300+ templates**. Rivetr has ~**315 templates** (Sprint 3 + Sprint 19/20/21/22/23/24/25).
+
+**Sprint 25 additions (5 new):** Joomla (CMS), Drupal (CMS), Grafana standalone (Monitoring), Etebase (Auth/SSO), Obsidian Remote (Productivity).
 
 **Sprint 23 additions (8 new):** Flowise, Langflow, Open WebUI, AnythingLLM (AI/ML); Pocket ID (Auth/SSO); Activepieces, Trigger.dev (Automation); SigNoz (Monitoring).
 
@@ -380,16 +382,17 @@ Coolify has a one-click **GitHub Actions Runner** service template that deploys 
 - ~~CA Certificate management~~ ✅ (migration 100, `GET/POST /api/ca-certificates`, Settings → CA Certificates)
 - ~~Destinations (Docker networks)~~ ✅ (migration 101, `GET/POST /api/destinations`, assign apps to named Docker networks, Settings → Destinations)
 - ~~Instance timezone setting~~ ✅ (stored in `instance_settings` as `instance_timezone`, Settings → General)
+- ~~Container Labels editor~~ ✅ (`custom_labels` JSON field, key-value editor in Settings → Network, migration 102)
+- ~~Sprint 25 templates~~ ✅ (5 new: Joomla, Drupal, Grafana standalone, Etebase, Obsidian Remote — total ~315)
 
 ### High Priority (remaining):
-1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Drupal, Wiki.js), monitoring (Glances, Uptime Kuma, Grafana), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
+1. **More service templates** — AI (Langfuse, LocalAI, Chroma, Weaviate), CMS (Bookstack, Wiki.js), monitoring (Glances, Uptime Kuma), automation (n8n), auth (Authentik, Keycloak), media (Jellyfin, Navidrome)
 
 ### Medium Priority:
 2. HTTP Basic Auth per-app toggle (DB exists, check if UI exists)
 3. Clerk, Zitadel OAuth providers
 4. Preferences panel (theme / UI settings)
 5. Network aliases per-app
-6. Container Labels editor (full editable panel)
 
 ### Low Priority / Nice-to-have:
 7. Terminal Access control (per-server)

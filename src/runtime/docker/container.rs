@@ -252,11 +252,15 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
 
     let final_env = env;
 
-    // Set up container labels
-    let labels: Option<HashMap<String, String>> = if config.labels.is_empty() {
+    // Set up container labels: merge existing labels with custom_labels
+    let mut merged_labels = config.labels.clone();
+    for (k, v) in &config.custom_labels {
+        merged_labels.insert(k.clone(), v.clone());
+    }
+    let labels: Option<HashMap<String, String>> = if merged_labels.is_empty() {
         None
     } else {
-        Some(config.labels.clone())
+        Some(merged_labels)
     };
 
     let container_config = Config {

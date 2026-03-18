@@ -169,6 +169,8 @@ pub struct App {
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) for this app (nullable)
     pub destination_id: Option<String>,
+    /// Custom container labels (JSON array: [{key, value}]) applied at deployment time
+    pub custom_labels: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -297,6 +299,8 @@ pub struct AppResponse {
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) for this app (nullable)
     pub destination_id: Option<String>,
+    /// Custom container labels (JSON array: [{key, value}]) applied at deployment time
+    pub custom_labels: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -376,6 +380,7 @@ impl From<App> for AppResponse {
             strip_prefix: app.strip_prefix,
             inline_dockerfile: app.inline_dockerfile,
             destination_id: app.destination_id,
+            custom_labels: app.custom_labels,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -928,6 +933,8 @@ pub struct UpdateAppRequest {
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) — set to empty string to clear
     pub destination_id: Option<String>,
+    /// Custom container labels (JSON string: [{key, value}]) — set to empty string to clear
+    pub custom_labels: Option<String>,
 }
 
 /// Request specifically for updating domains

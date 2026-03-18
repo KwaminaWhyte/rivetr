@@ -172,6 +172,7 @@ pub async fn run_rollback(
         security_opt: rollback_security_opt,
         cmd: None,
         network: None,
+        custom_labels: vec![],
     };
 
     add_deployment_log(

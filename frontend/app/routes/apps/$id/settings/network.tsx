@@ -5,6 +5,10 @@ import { toast } from "sonner";
 import { DomainManagementCard } from "@/components/domain-management-card";
 import { NetworkConfigCard } from "@/components/network-config-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
+import {
+  ContainerLabelsEditor,
+  type LabelEntry,
+} from "@/components/container-labels-editor";
 import { api } from "@/lib/api";
 import { destinationsApi } from "@/lib/api/destinations";
 import type { App, UpdateAppRequest } from "@/types/api";
@@ -25,7 +29,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Route } from "lucide-react";
+import { Loader2, Route, Tag } from "lucide-react";
+
+/** Parse custom_labels JSON string into an array of LabelEntry objects */
+function parseCustomLabels(json: string | null | undefined): LabelEntry[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (e) => e && typeof e.key === "string" && typeof e.value === "string"
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
 
 export default function AppSettingsNetwork() {
   const { app } = useOutletContext<{ app: App }>();
@@ -33,10 +53,14 @@ export default function AppSettingsNetwork() {
   const [isSavingNetwork, setIsSavingNetwork] = useState(false);
   const [isSavingDomains, setIsSavingDomains] = useState(false);
   const [isSavingLabels, setIsSavingLabels] = useState(false);
+  const [isSavingCustomLabels, setIsSavingCustomLabels] = useState(false);
   const [isSavingPrefix, setIsSavingPrefix] = useState(false);
   const [stripPrefix, setStripPrefix] = useState(app.strip_prefix ?? "");
   const [isSavingDestination, setIsSavingDestination] = useState(false);
   const [destinationId, setDestinationId] = useState(app.destination_id ?? "");
+  const [customLabels, setCustomLabels] = useState<LabelEntry[]>(
+    parseCustomLabels(app.custom_labels)
+  );
 
   const { data: destinations } = useQuery({
     queryKey: ["destinations"],
@@ -46,7 +70,8 @@ export default function AppSettingsNetwork() {
   useEffect(() => {
     setStripPrefix(app.strip_prefix ?? "");
     setDestinationId(app.destination_id ?? "");
-  }, [app.strip_prefix, app.destination_id]);
+    setCustomLabels(parseCustomLabels(app.custom_labels));
+  }, [app.strip_prefix, app.destination_id, app.custom_labels]);
 
   const handleSaveNetworkConfig = async (updates: UpdateAppRequest) => {
     setIsSavingNetwork(true);
@@ -75,6 +100,26 @@ export default function AppSettingsNetwork() {
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } finally {
       setIsSavingLabels(false);
+    }
+  };
+
+  const handleSaveCustomLabels = async () => {
+    setIsSavingCustomLabels(true);
+    try {
+      // Filter out rows with empty keys before saving
+      const filtered = customLabels.filter((l) => l.key.trim().length > 0);
+      await api.updateApp(app.id, {
+        custom_labels:
+          filtered.length > 0 ? JSON.stringify(filtered) : "",
+      });
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      toast.success("Custom labels saved");
+    } catch (error) {
+      toast.error(
+        `Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    } finally {
+      setIsSavingCustomLabels(false);
     }
   };
 
@@ -149,6 +194,38 @@ export default function AppSettingsNetwork() {
       </Card>
 
       <ContainerLabelsCard app={app} onSave={handleSaveContainerLabels} isSaving={isSavingLabels} />
+
+      {/* Custom Container Labels (array format, separate from container_labels) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Tag className="h-5 w-5" />
+            Custom Labels
+          </CardTitle>
+          <CardDescription>
+            Add additional custom Docker labels applied to the container at deployment time.
+            Labels are key-value pairs useful for tooling integration, CI metadata, or documentation.
+            Changes take effect on the next deployment.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ContainerLabelsEditor
+            labels={customLabels}
+            onChange={setCustomLabels}
+          />
+          <Button
+            onClick={handleSaveCustomLabels}
+            disabled={isSavingCustomLabels}
+            size="sm"
+            className="gap-2"
+          >
+            {isSavingCustomLabels ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            Save Labels
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Docker Destination */}
       <Card>

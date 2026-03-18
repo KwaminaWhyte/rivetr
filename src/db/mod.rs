@@ -1258,6 +1258,118 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 092: Add delivery_id to webhook_events for deduplication
+    let has_delivery_id: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('webhook_events') WHERE name = 'delivery_id'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_delivery_id.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/092_webhook_delivery_dedup.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 093: Add trigger column to deployments
+    let has_trigger: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'trigger'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_trigger.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/093_deployment_trigger.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 094: Add git clone options and build options to apps
+    let has_git_submodules: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'git_submodules'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_git_submodules.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/094_git_build_options.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 095: Add is_static_site flag to apps
+    let has_is_static_site: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'is_static_site'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_is_static_site.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/095_static_site.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 096: Add timezone column to servers
+    let has_server_timezone: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('servers') WHERE name = 'timezone'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_server_timezone.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/096_server_timezone.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 097: Add strip_prefix column to apps
+    let has_strip_prefix: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'strip_prefix'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_strip_prefix.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/097_app_strip_prefix.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 098: Add inline_dockerfile column to apps
+    let has_inline_dockerfile: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'inline_dockerfile'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_inline_dockerfile.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/098_inline_dockerfile.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 099: Add hourly_rate to servers and update cost rate defaults
+    let has_hourly_rate: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('servers') WHERE name = 'hourly_rate'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_hourly_rate.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/099_server_hourly_rate.sql"),
+        )
+        .await?;
+    }
+
     // Migration 100: Add ca_certificates table
     let has_ca_certificates_table: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='ca_certificates'",
@@ -1273,6 +1385,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     // Migration 101: Add destinations table + destination_id on apps
+    // Check/create the destinations table separately from the apps column so a partially
+    // applied migration (table created but column not added) can be recovered.
     let has_destinations_table: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='destinations'",
     )
@@ -1282,6 +1396,31 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(
             pool,
             include_str!("../../migrations/101_destinations.sql"),
+        )
+        .await?;
+    } else {
+        // Table already exists — ensure the destination_id column on apps was also added
+        let has_destination_id: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM pragma_table_info('apps') WHERE name = 'destination_id'",
+        )
+        .fetch_optional(pool)
+        .await?;
+        if has_destination_id.is_none() {
+            execute_sql(pool, "ALTER TABLE apps ADD COLUMN destination_id TEXT DEFAULT NULL;")
+                .await?;
+        }
+    }
+
+    // Migration 102: Add custom_labels column to apps
+    let has_custom_labels: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'custom_labels'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_custom_labels.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/102_custom_labels.sql"),
         )
         .await?;
     }

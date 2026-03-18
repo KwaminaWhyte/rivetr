@@ -330,6 +330,8 @@ export interface App {
   inline_dockerfile: string | null;
   /** Docker destination (named network) for this app */
   destination_id: string | null;
+  /** Custom container labels (JSON array: [{key, value}]) applied at deployment time */
+  custom_labels: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -616,6 +618,8 @@ export interface UpdateAppRequest {
   inline_dockerfile?: string;
   /** Docker destination (named network) — set to empty string to clear */
   destination_id?: string;
+  /** Custom container labels (JSON string: [{key, value}]) — set to empty string to clear */
+  custom_labels?: string;
 }
 
 // -------------------------------------------------------------------------

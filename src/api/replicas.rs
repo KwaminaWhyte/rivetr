@@ -159,6 +159,7 @@ pub async fn set_replica_count(
                         .unwrap_or_default(),
                     cmd: None,
                     network: None,
+                    custom_labels: vec![],
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -352,6 +353,7 @@ pub async fn restart_replica(
             .unwrap_or_default(),
         cmd: None,
         network: None,
+        custom_labels: vec![],
     };
 
     // Update status to starting

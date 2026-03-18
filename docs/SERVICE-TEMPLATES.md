@@ -1,8 +1,8 @@
 # Rivetr Service Templates
 
 > **IMPORTANT: Read this file before adding new templates** to avoid duplicates.
-> Last updated: 2026-03-14
-> Total: 273 templates across 24 categories
+> Last updated: 2026-03-18
+> Total: 324 templates across 25 categories
 
 ## How to Add Templates
 
@@ -33,15 +33,18 @@
 | `open-webui` | Open WebUI | `ai_ml.rs` |
 | `tpl-perplexica` | Perplexica | `ai_extras.rs` |
 
-### AI / ML (Specialized)
+### AI / ML
 
 | ID | Name | File |
 |----|------|------|
-| `tpl-comfyui` | ComfyUI | `sprint19.rs` |
-| `tpl-milvus` | Milvus | `sprint18.rs` |
-| `tpl-openedai-speech` | OpenedAI Speech | `sprint19.rs` |
-| `tpl-stable-diffusion-webui` | Stable Diffusion WebUI | `sprint19.rs` |
-| `tpl-tabbyml` | Tabby | `sprint19.rs` |
+| `tpl-anythingllm` | AnythingLLM | `sprint23.rs` |
+| `tpl-argilla` | Argilla | `sprint22.rs` |
+| `tpl-flowise` | Flowise | `sprint23.rs` |
+| `tpl-langflow` | Langflow | `sprint23.rs` |
+| `tpl-litellm` | LiteLLM | `sprint24.rs` |
+| `tpl-mage-ai` | Mage AI | `sprint22.rs` |
+| `tpl-mindsdb` | MindsDB | `sprint24.rs` |
+| `tpl-open-webui` | Open WebUI | `sprint23.rs` |
 
 ### Analytics & Finance
 
@@ -63,10 +66,14 @@
 | ID | Name | File |
 |----|------|------|
 | `activepieces` | Activepieces | `analytics_automation.rs` |
-| `n8n` | Fair-code workflow automation platform. Connect anything to everything with 400+ integrations and a visual editor. | `sprint18.rs` |
+| `tpl-activepieces` | Activepieces | `sprint23.rs` |
+| `tpl-hatchet` | Hatchet | `sprint24.rs` |
+| `n8n` | n8n | `infrastructure.rs` |
+| `tpl-n8n` | n8n | `sprint18.rs` |
+| `tpl-n8n-ai` | n8n (AI-ready) | `ai_extras.rs` |
 | `trigger-dev` | Trigger.dev | `analytics_automation.rs` |
+| `tpl-trigger-dev` | Trigger.dev | `sprint23.rs` |
 | `windmill` | Windmill | `analytics_automation.rs` |
-| `n8n` | Workflow automation tool that connects apps and services. Self-hosted alternative to Zapier. | `infrastructure.rs` |
 
 ### Business & CRM
 
@@ -75,6 +82,7 @@
 | `tpl-crater` | Crater | `sprint19.rs` |
 | `tpl-dolibarr` | Dolibarr | `sprint16.rs` |
 | `tpl-dolibarr-erp` | Dolibarr ERP/CRM | `sprint18.rs` |
+| `tpl-easyappointments` | EasyAppointments | `sprint24.rs` |
 | `tpl-erpnext` | ERPNext | `sprint18.rs` |
 | `tpl-formbricks` | Formbricks | `sprint15.rs` |
 | `tpl-invoice-ninja-v5` | Invoice Ninja v5 | `sprint18.rs` |
@@ -89,9 +97,13 @@
 
 | ID | Name | File |
 |----|------|------|
+| `tpl-classicpress` | ClassicPress | `sprint21.rs` |
 | `tpl-cockpit-cms` | Cockpit CMS | `cms_extra.rs` |
 | `directus` | Directus | `cms_communication.rs` |
+| `tpl-dotcms` | dotCMS | `cms_extra.rs` |
+| `tpl-drupal` | Drupal | `sprint25.rs` |
 | `ghost` | Ghost | `cms_communication.rs` |
+| `tpl-joomla` | Joomla | `sprint25.rs` |
 | `tpl-keystonejs` | KeystoneJS | `cms_extra.rs` |
 | `payload-cms` | Payload CMS | `cms_communication.rs` |
 | `tpl-pimcore` | Pimcore | `cms_extra.rs` |
@@ -115,9 +127,12 @@
 | `tpl-listmonk-standalone` | Listmonk Standalone | `sprint18.rs` |
 | `tpl-mastodon` | Mastodon | `communication_extra.rs` |
 | `matrix-synapse` | Matrix Synapse | `cms_communication.rs` |
+| `tpl-matrix-synapse` | Matrix Synapse | `sprint24.rs` |
 | `mattermost` | Mattermost | `cms_communication.rs` |
+| `tpl-nodebb` | NodeBB | `sprint24.rs` |
 | `tpl-revolt` | Revolt | `sprint16.rs` |
 | `rocketchat` | Rocket.Chat | `cms_communication.rs` |
+| `tpl-rocketchat` | Rocket.Chat | `sprint24.rs` |
 | `tpl-zulip` | Zulip | `communication_extra.rs` |
 
 ### Community
@@ -132,7 +147,9 @@
 |----|------|------|
 | `adminer` | Adminer | `infrastructure.rs` |
 | `tpl-kafka` | Apache Kafka | `databases_tools.rs` |
+| `tpl-cloudbeaver` | CloudBeaver | `sprint21.rs` |
 | `tpl-nats` | NATS | `databases_tools.rs` |
+| `pgadmin` | pgAdmin | `infrastructure.rs` |
 | `tpl-qdrant` | Qdrant | `databases_tools.rs` |
 | `tpl-questdb` | QuestDB | `sprint16.rs` |
 | `rabbitmq` | RabbitMQ | `infrastructure.rs` |
@@ -150,7 +167,6 @@
 | `tpl-clickhouse` | ClickHouse | `sprint16.rs` |
 | `tpl-cockroachdb` | CockroachDB | `sprint16.rs` |
 | `tpl-couchbase` | Couchbase Server | `sprint18.rs` |
-| `rqlite` | Distributed relational database built on SQLite. Lightweight, highly-available, and easy to operate cluster of SQLite nodes. | `sprint18.rs` |
 | `tpl-dragonflydb` | DragonflyDB | `sprint16.rs` |
 | `tpl-edgedb` | EdgeDB | `sprint19.rs` |
 | `tpl-eventstoredb` | EventStoreDB | `sprint18.rs` |
@@ -161,6 +177,7 @@
 | `tpl-mariadb` | MariaDB | `sprint15.rs` |
 | `tpl-neo4j` | Neo4j | `sprint16.rs` |
 | `tpl-rethinkdb` | RethinkDB | `sprint18.rs` |
+| `tpl-rqlite` | rqlite | `sprint18.rs` |
 | `tpl-surrealdb` | SurrealDB | `sprint16.rs` |
 | `tpl-tigerbeetle` | TigerBeetle | `sprint18.rs` |
 | `tpl-timescaledb` | TimescaleDB | `sprint16.rs` |
@@ -222,6 +239,8 @@
 | `tpl-code-server` | Code-Server | `sprint19.rs` |
 | `tpl-gitpod` | Gitpod Self-Hosted | `sprint19.rs` |
 | `tpl-nginx-ui` | Nginx UI | `sprint19.rs` |
+| `tpl-pgadmin` | pgAdmin | `sprint19.rs` |
+| `tpl-phpmyadmin` | phpMyAdmin | `sprint19.rs` |
 | `tpl-sentry` | Sentry | `sprint19.rs` |
 
 ### CI/CD & DevTools
@@ -248,6 +267,15 @@
 | `tpl-batch2-docmost` | Docmost | `documentation.rs` |
 | `tpl-batch2-wikijs` | Wiki.js | `documentation.rs` |
 
+### Gaming
+
+| ID | Name | File |
+|----|------|------|
+| `tpl-minecraft-java` | Minecraft Java | `sprint22.rs` |
+| `tpl-palworld` | Palworld | `sprint22.rs` |
+| `tpl-satisfactory` | Satisfactory | `sprint22.rs` |
+| `tpl-terraria` | Terraria | `sprint22.rs` |
+
 ### Infrastructure & Backend
 
 | ID | Name | File |
@@ -255,6 +283,7 @@
 | `tpl-adguard-home` | AdGuard Home | `networking_extra.rs` |
 | `tpl-baserow` | Baserow | `sprint15.rs` |
 | `tpl-cloudflared` | Cloudflare Tunnel | `networking_extra.rs` |
+| `tpl-diun` | Diun | `sprint21.rs` |
 | `tpl-garage` | Garage | `databases_tools.rs` |
 | `tpl-haproxy` | HAProxy | `networking_extra.rs` |
 | `tpl-consul` | HashiCorp Consul | `sprint18.rs` |
@@ -287,11 +316,14 @@
 |----|------|------|
 | `tpl-alertmanager` | Alertmanager | `monitoring_extra.rs` |
 | `tpl-batch2-beszel` | Beszel | `media_monitoring.rs` |
+| `tpl-beszel-agent` | Beszel Agent | `sprint21.rs` |
 | `tpl-changedetection` | Changedetection.io | `media_productivity.rs` |
 | `tpl-batch2-checkmate` | Checkmate | `media_monitoring.rs` |
 | `tpl-checkmk` | Checkmk | `sprint15.rs` |
 | `dozzle` | Dozzle | `infrastructure.rs` |
 | `tpl-glances` | Glances | `media_productivity.rs` |
+| `tpl-glitchtip` | Glitchtip | `sprint22.rs` |
+| `tpl-grafana` | Grafana | `sprint25.rs` |
 | `grafana-prometheus` | Grafana + Prometheus | `infrastructure.rs` |
 | `tpl-loki` | Grafana Loki | `monitoring_extra.rs` |
 | `tpl-tempo` | Grafana Tempo | `sprint18.rs` |
@@ -304,6 +336,7 @@
 | `tpl-pyroscope` | Pyroscope | `sprint18.rs` |
 | `tpl-scrutiny` | Scrutiny | `sprint19.rs` |
 | `tpl-batch2-signoz` | SigNoz | `media_monitoring.rs` |
+| `tpl-signoz` | SigNoz | `sprint23.rs` |
 | `tpl-speedtest-tracker` | Speedtest Tracker | `sprint19.rs` |
 | `tpl-statping-ng` | Statping-NG | `monitoring_extra.rs` |
 | `tpl-thanos` | Thanos | `sprint19.rs` |
@@ -319,15 +352,6 @@
 | `traefik` | Traefik | `infrastructure.rs` |
 | `tpl-wireguard-easy` | WireGuard Easy | `media_productivity.rs` |
 
-### Other / Utility
-
-| ID | Name | File |
-|----|------|------|
-| `tpl-batch2-linkwarden` | Linkwarden | `project_mgmt.rs` |
-| `tpl-batch2-stirling-pdf` | Stirling-PDF | `project_mgmt.rs` |
-| `tpl-batch2-tandoor` | Tandoor Recipes | `project_mgmt.rs` |
-| `tpl-batch2-trilium` | Trilium | `project_mgmt.rs` |
-
 ### Productivity
 
 | ID | Name | File |
@@ -335,27 +359,22 @@
 | `tpl-dasherr` | Dasherr | `sprint19.rs` |
 | `tpl-grocy` | Grocy | `sprint19.rs` |
 | `tpl-hedgedoc` | HedgeDoc | `sprint19.rs` |
+| `tpl-homebox` | Homebox | `sprint21.rs` |
+| `tpl-joplin-server` | Joplin Server | `sprint24.rs` |
 | `tpl-kanboard` | Kanboard | `sprint19.rs` |
+| `tpl-karakeep` | Karakeep | `sprint21.rs` |
+| `tpl-linkding` | Linkding | `sprint21.rs` |
 | `tpl-mealie` | Mealie | `sprint19.rs` |
+| `tpl-obsidian-remote` | Obsidian Remote (obsidian-remote) | `sprint25.rs` |
 | `tpl-onlyoffice` | OnlyOffice Document Server | `sprint19.rs` |
 | `tpl-openproject` | OpenProject | `sprint19.rs` |
+| `tpl-pairdrop` | PairDrop | `sprint21.rs` |
 | `tpl-rallly` | Rallly | `sprint18.rs` |
+| `tpl-readeck` | Readeck | `sprint21.rs` |
 | `tpl-redmine` | Redmine | `sprint19.rs` |
+| `tpl-ryot` | Ryot | `sprint21.rs` |
+| `tpl-siyuan` | Siyuan Notes | `sprint24.rs` |
 | `tpl-wekan` | Wekan | `sprint19.rs` |
-
-### Project Management
-
-| ID | Name | File |
-|----|------|------|
-| `tpl-batch2-calcom` | Cal.com | `project_mgmt.rs` |
-| `tpl-focalboard` | Focalboard | `business.rs` |
-| `tpl-kimai` | Kimai | `business.rs` |
-| `tpl-batch2-leantime` | Leantime | `project_mgmt.rs` |
-| `tpl-monica` | Monica | `business.rs` |
-| `tpl-obsidian-livesync` | Obsidian LiveSync | `misc_extras.rs` |
-| `tpl-batch2-plane` | Plane | `project_mgmt.rs` |
-| `tpl-silverbullet` | SilverBullet | `misc_extras.rs` |
-| `tpl-batch2-vikunja` | Vikunja | `project_mgmt.rs` |
 
 ### Search
 
@@ -377,6 +396,7 @@
 | `tpl-casdoor` | Casdoor | `auth_identity.rs` |
 | `tpl-crowdsec` | CrowdSec | `sprint15.rs` |
 | `tpl-crowdsec-dashboard` | CrowdSec Dashboard | `sprint16.rs` |
+| `tpl-etebase` | Etebase | `sprint25.rs` |
 | `tpl-vault` | HashiCorp Vault | `sprint18.rs` |
 | `tpl-batch2-infisical` | Infisical | `security_search.rs` |
 | `tpl-batch2-keycloak` | Keycloak | `security_search.rs` |
@@ -384,8 +404,10 @@
 | `tpl-ory-kratos` | Ory Kratos | `auth_identity.rs` |
 | `tpl-passbolt` | Passbolt | `sprint16.rs` |
 | `tpl-pihole` | Pi-hole | `extra_services.rs` |
+| `tpl-pocket-id` | Pocket ID | `sprint23.rs` |
 | `tpl-step-ca` | Step CA | `sprint19.rs` |
 | `vaultwarden` | Vaultwarden | `infrastructure.rs` |
+| `tpl-vaultwarden` | Vaultwarden | `sprint24.rs` |
 | `tpl-wazuh` | Wazuh | `sprint16.rs` |
 | `tpl-wazuh-manager` | Wazuh Manager | `sprint19.rs` |
 | `tpl-zitadel` | ZITADEL | `auth_identity.rs` |
@@ -401,11 +423,45 @@
 | `minio` | MinIO | `infrastructure.rs` |
 | `nextcloud` | Nextcloud | `infrastructure.rs` |
 | `tpl-plex` | Plex Media Server | `extra_services.rs` |
+| `tpl-qbittorrent` | qBittorrent | `extra_services.rs` |
 | `tpl-radarr` | Radarr | `extra_services.rs` |
 | `tpl-sftpgo` | SFTPGo | `sprint19.rs` |
 | `tpl-sonarr` | Sonarr | `extra_services.rs` |
 | `tpl-storj-gateway` | Storj Gateway MT | `sprint18.rs` |
 | `tpl-syncthing` | Syncthing | `media_productivity.rs` |
+| `tpl-zipline` | Zipline | `sprint24.rs` |
+
+### Other / Utility
+
+| ID | Name | File |
+|----|------|------|
+| `tpl-batch2-calcom` | Cal.com | `project_mgmt.rs` |
+| `tpl-comfyui` | ComfyUI | `sprint19.rs` |
+| `tpl-focalboard` | Focalboard | `business.rs` |
+| `tpl-kimai` | Kimai | `business.rs` |
+| `tpl-batch2-leantime` | Leantime | `project_mgmt.rs` |
+| `tpl-batch2-linkwarden` | Linkwarden | `project_mgmt.rs` |
+| `tpl-llama-cpp-server` | llama.cpp Server | `sprint18.rs` |
+| `tpl-milvus` | Milvus | `sprint18.rs` |
+| `tpl-monica` | Monica | `business.rs` |
+| `tpl-obsidian-livesync` | Obsidian LiveSync | `misc_extras.rs` |
+| `tpl-openedai-speech` | OpenedAI Speech | `sprint19.rs` |
+| `tpl-batch2-plane` | Plane | `project_mgmt.rs` |
+| `tpl-silverbullet` | SilverBullet | `misc_extras.rs` |
+| `tpl-stable-diffusion-webui` | Stable Diffusion WebUI | `sprint19.rs` |
+| `tpl-batch2-stirling-pdf` | Stirling-PDF | `project_mgmt.rs` |
+| `tpl-tabbyml` | Tabby | `sprint19.rs` |
+| `tpl-batch2-tandoor` | Tandoor Recipes | `project_mgmt.rs` |
+| `tpl-batch2-trilium` | Trilium | `project_mgmt.rs` |
+| `tpl-batch2-vikunja` | Vikunja | `project_mgmt.rs` |
+
+### Uncategorized
+
+| ID | Name | File |
+|----|------|------|
+| `tpl-shlink` | Shlink (`Development`) | `sprint21.rs` |
+| `tpl-slash` | Slash (`Development`) | `sprint21.rs` |
+| `tpl-wakapi` | Wakapi (`Development`) | `sprint21.rs` |
 
 ---
 
