@@ -57,7 +57,7 @@ export default function AppSettingsNetwork() {
   const [isSavingPrefix, setIsSavingPrefix] = useState(false);
   const [stripPrefix, setStripPrefix] = useState(app.strip_prefix ?? "");
   const [isSavingDestination, setIsSavingDestination] = useState(false);
-  const [destinationId, setDestinationId] = useState(app.destination_id ?? "");
+  const [destinationId, setDestinationId] = useState(app.destination_id || "__none__");
   const [customLabels, setCustomLabels] = useState<LabelEntry[]>(
     parseCustomLabels(app.custom_labels)
   );
@@ -141,7 +141,7 @@ export default function AppSettingsNetwork() {
   const handleSaveDestination = async () => {
     setIsSavingDestination(true);
     try {
-      await api.updateApp(app.id, { destination_id: destinationId || "" });
+      await api.updateApp(app.id, { destination_id: destinationId === "__none__" ? "" : destinationId });
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
       toast.success("Destination updated");
     } catch (error) {
@@ -241,7 +241,7 @@ export default function AppSettingsNetwork() {
               <SelectValue placeholder="Default (rivetr network)" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Default (rivetr network)</SelectItem>
+              <SelectItem value="__none__">Default (rivetr network)</SelectItem>
               {destinations?.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name} ({d.network_name})
