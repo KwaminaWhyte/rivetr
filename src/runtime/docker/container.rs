@@ -730,6 +730,25 @@ pub async fn remove_image(runtime: &DockerRuntime, image: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn prune_build_cache(_runtime: &DockerRuntime) -> Result<u64> {
+    let output = tokio::process::Command::new("docker")
+        .args(["builder", "prune", "-f"])
+        .output()
+        .await
+        .context("Failed to run docker builder prune")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::warn!("docker builder prune failed: {}", stderr);
+        return Ok(0);
+    }
+
+    // Parse "Total: X.XXgB" from stdout
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    tracing::debug!("docker builder prune output: {}", stdout.trim());
+    Ok(0) // Docker CLI doesn't give us a machine-readable byte count easily
+}
+
 pub async fn prune_images(runtime: &DockerRuntime) -> Result<u64> {
     let options = PruneImagesOptions::<String> {
         filters: HashMap::new(),

@@ -436,7 +436,7 @@ fn default_cleanup_enabled() -> bool {
 }
 
 fn default_max_deployments_per_app() -> u32 {
-    10
+    3
 }
 
 fn default_cleanup_interval_seconds() -> u64 {

@@ -280,6 +280,10 @@ pub trait ContainerRuntime: Send + Sync {
     async fn remove_image(&self, image: &str) -> Result<()>;
     /// Prune unused/dangling images, returns bytes reclaimed
     async fn prune_images(&self) -> Result<u64>;
+    /// Prune Docker build cache, returns bytes reclaimed
+    async fn prune_build_cache(&self) -> Result<u64> {
+        Ok(0)
+    }
     /// Execute a command in a running container with bidirectional I/O
     async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle>;
     /// Run a command in a container and wait for completion, returning the output

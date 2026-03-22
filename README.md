@@ -451,3 +451,9 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+
+----
+spin up subagents to work on the remaining items. whiles at it , spin up another agent to test already exsiting features to make sure there are no issues, way to improve
+things, performance improvements, ui improvements,  etc...
+coolify has this thing where when deploying a service/database , it opens a side pannel to load logs of the image pulling and starting

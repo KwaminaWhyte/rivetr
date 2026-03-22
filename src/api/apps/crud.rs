@@ -8,8 +8,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    actions, resource_types, App, CreateAppRequest, TeamAuditAction, TeamAuditResourceType,
-    UpdateAppRequest, User,
+    actions, resource_types, App, AppResponse, CreateAppRequest, TeamAuditAction,
+    TeamAuditResourceType, UpdateAppRequest, User,
 };
 use crate::AppState;
 use axum::http::header;
@@ -27,7 +27,7 @@ use super::{
 pub async fn list_apps(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListAppsQuery>,
-) -> Result<Json<Vec<App>>, ApiError> {
+) -> Result<Json<Vec<AppResponse>>, ApiError> {
     let apps = if let Some(team_id) = &query.team_id {
         if team_id.is_empty() {
             sqlx::query_as::<_, App>(
@@ -51,13 +51,13 @@ pub async fn list_apps(
             .await?
     };
 
-    Ok(Json(apps))
+    Ok(Json(apps.into_iter().map(AppResponse::from).collect()))
 }
 
 pub async fn get_app(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<App>, ApiError> {
+) -> Result<Json<AppResponse>, ApiError> {
     // Validate ID format
     if let Err(e) = validate_uuid(&id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
@@ -69,7 +69,7 @@ pub async fn get_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    Ok(Json(app))
+    Ok(Json(AppResponse::from(app)))
 }
 
 pub async fn create_app(
@@ -77,7 +77,7 @@ pub async fn create_app(
     user: User,
     headers: HeaderMap,
     Json(req): Json<CreateAppRequest>,
-) -> Result<(StatusCode, Json<App>), ApiError> {
+) -> Result<(StatusCode, Json<AppResponse>), ApiError> {
     // Validate request
     validate_create_request(&req)?;
 
@@ -251,7 +251,7 @@ pub async fn create_app(
         }
     }
 
-    Ok((StatusCode::CREATED, Json(app)))
+    Ok((StatusCode::CREATED, Json(AppResponse::from(app))))
 }
 
 pub async fn update_app(
@@ -260,7 +260,7 @@ pub async fn update_app(
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
-) -> Result<Json<App>, ApiError> {
+) -> Result<Json<AppResponse>, ApiError> {
     // Validate ID format
     if let Err(e) = validate_uuid(&id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
@@ -760,7 +760,7 @@ pub async fn update_app(
         }
     }
 
-    Ok(Json(app))
+    Ok(Json(AppResponse::from(app)))
 }
 
 pub async fn delete_app(

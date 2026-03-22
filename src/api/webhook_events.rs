@@ -174,60 +174,86 @@ pub async fn update_webhook_event(
 pub struct WebhookEventsQuery {
     pub provider: Option<String>,
     pub status: Option<String>,
+    /// Deprecated — use `per_page` instead. Still accepted for backwards compat.
     pub limit: Option<i64>,
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "default_page")]
+    pub page: i64,
+    /// Items per page (default: 50, max: 200)
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
+}
+
+fn default_page() -> i64 {
+    1
+}
+
+fn default_per_page() -> i64 {
+    50
+}
+
+/// Paginated response for webhook events list
+#[derive(Debug, Serialize)]
+pub struct WebhookEventListResponse {
+    pub items: Vec<WebhookEvent>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+    pub total_pages: i64,
 }
 
 pub async fn list_webhook_events(
     State(state): State<Arc<AppState>>,
     Query(query): Query<WebhookEventsQuery>,
-) -> Result<Json<Vec<WebhookEvent>>, StatusCode> {
-    let limit = query.limit.unwrap_or(100).min(500);
+) -> Result<Json<WebhookEventListResponse>, StatusCode> {
+    // If the legacy `limit` param is provided, treat it as per_page (capped at 200).
+    let per_page = query.limit.unwrap_or(query.per_page).min(200).max(1);
+    let page = query.page.max(1);
+    let offset = (page - 1) * per_page;
 
-    let events = match (&query.provider, &query.status) {
-        (Some(provider), Some(status)) => {
-            sqlx::query_as::<_, WebhookEvent>(
-                "SELECT * FROM webhook_events WHERE provider = ? AND status = ? \
-                 ORDER BY received_at DESC LIMIT ?",
-            )
-            .bind(provider)
-            .bind(status)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-        (Some(provider), None) => {
-            sqlx::query_as::<_, WebhookEvent>(
-                "SELECT * FROM webhook_events WHERE provider = ? \
-                 ORDER BY received_at DESC LIMIT ?",
-            )
-            .bind(provider)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-        (None, Some(status)) => {
-            sqlx::query_as::<_, WebhookEvent>(
-                "SELECT * FROM webhook_events WHERE status = ? \
-                 ORDER BY received_at DESC LIMIT ?",
-            )
-            .bind(status)
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-        (None, None) => {
-            sqlx::query_as::<_, WebhookEvent>(
-                "SELECT * FROM webhook_events ORDER BY received_at DESC LIMIT ?",
-            )
-            .bind(limit)
-            .fetch_all(&state.db)
-            .await
-        }
-    }
-    .map_err(|e| {
-        tracing::error!("Failed to fetch webhook events: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    // Build WHERE clause conditions
+    let (where_clause, has_provider, has_status) = match (&query.provider, &query.status) {
+        (Some(_), Some(_)) => (" WHERE provider = ? AND status = ?", true, true),
+        (Some(_), None) => (" WHERE provider = ?", true, false),
+        (None, Some(_)) => (" WHERE status = ?", false, true),
+        (None, None) => ("", false, false),
+    };
 
-    Ok(Json(events))
+    // Count total matching rows
+    let count_sql = format!("SELECT COUNT(*) FROM webhook_events{}", where_clause);
+    let total: i64 = {
+        let q = sqlx::query_scalar(&count_sql);
+        let q = if has_provider { q.bind(query.provider.as_deref().unwrap()) } else { q };
+        let q = if has_status { q.bind(query.status.as_deref().unwrap()) } else { q };
+        q.fetch_one(&state.db).await.map_err(|e| {
+            tracing::error!("Failed to count webhook events: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };
+
+    // Fetch the page of rows
+    let items_sql = format!(
+        "SELECT * FROM webhook_events{} ORDER BY received_at DESC LIMIT ? OFFSET ?",
+        where_clause
+    );
+    let events: Vec<WebhookEvent> = {
+        let q = sqlx::query_as::<_, WebhookEvent>(&items_sql);
+        let q = if has_provider { q.bind(query.provider.as_deref().unwrap()) } else { q };
+        let q = if has_status { q.bind(query.status.as_deref().unwrap()) } else { q };
+        let q = q.bind(per_page).bind(offset);
+        q.fetch_all(&state.db).await.map_err(|e| {
+            tracing::error!("Failed to fetch webhook events: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    };
+
+    let total_pages = (total + per_page - 1) / per_page;
+
+    Ok(Json(WebhookEventListResponse {
+        items: events,
+        total,
+        page,
+        per_page,
+        total_pages,
+    }))
 }

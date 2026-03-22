@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.13] - 2026-03-22
+
+### Fixed
+- **App API boolean types** — All app endpoints (`list_apps`, `get_app`, `create_app`, `update_app`, `assign_app_project`, `list_server_apps`) were returning raw SQLite `App` models which store booleans as `i32`. Changed all endpoints to return `AppResponse`, which properly maps integer columns to JSON booleans, fixing `"invalid type: integer 1, expected a boolean"` deserialization errors on the frontend.
+- **Frontend error handling for non-JSON responses** — The `apiRequest` helper in `core.ts` rethrew `SyntaxError` from `JSON.parse` in a confusing way, surfacing messages like `"Unexpected token 'F', 'Failed to'... is not valid JSON"`. Fixed by catching `instanceof SyntaxError` and raising the raw text body as the error message instead.
+- **Docker image prune filter** — `docker system prune --filter dangling=true` is invalid; system prune does not accept a `dangling` filter. Fixed the manual cleanup endpoint to use `docker image prune -f` instead.
+- **Full system backup failure** — `ManagedDatabase` SELECT queries listed explicit columns that were missing newer schema fields (e.g. `ssl_enabled`, `ssl_mode`, `custom_image`, `init_commands`), causing backups to fail with column-not-found errors. Fixed by using `SELECT *`.
+- **Firewall security check false positive** — `"Status: inactive".contains("active")` evaluated to `true`, incorrectly marking inactive firewalls as green. Fixed the check to require `active` without `inactive` (e.g. `ufw status` → `Status: active`) or the word `running` (for firewalld).
+
+### Added
+- **Webhook events pagination** — `GET /api/webhook-events` now accepts `page` and `per_page` (default 50, max 200) query parameters and returns a `WebhookEventListResponse` envelope with `items`, `total`, `page`, `per_page`, and `total_pages`. The Settings → Webhook Events page stores pagination state in URL search params so it survives navigation.
+- **Disk pressure auto-cleanup** — The deployment cleanup engine now checks disk usage via `statvfs` before each cycle. When the root filesystem exceeds 85% full it automatically switches to aggressive mode: keeps only the single most-recent deployment per app, prunes all unused images, and purges the Docker build cache — preventing disk exhaustion without manual intervention.
+- **Docker build cache pruning** — Every cleanup cycle now runs `docker builder prune -f` after image pruning. Build cache can grow to tens of GBs and was previously never cleared; this reclaims that space automatically.
+- **Reduced default deployment retention** — `max_deployments_per_app` default lowered from 10 to 3, reducing idle disk consumption for deployments with large images.
+
+---
+
 ## [v0.10.12] - 2026-03-18
 
 ### Added

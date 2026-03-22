@@ -20,6 +20,7 @@ import type {
   BackupInfo,
   RestoreResult,
   WebhookEvent,
+  WebhookEventListResponse,
 } from "@/types/api";
 
 /** A backup schedule record */
@@ -231,17 +232,23 @@ export const systemApi = {
   // Webhook Events
   // -------------------------------------------------------------------------
 
-  /** List recent webhook audit events */
+  /** List webhook audit events with pagination */
   listWebhookEvents: (
-    params: { provider?: string; status?: string; limit?: number } = {},
+    params: {
+      provider?: string;
+      status?: string;
+      page?: number;
+      per_page?: number;
+    } = {},
     token?: string
   ) => {
     const query = new URLSearchParams();
     if (params.provider) query.append("provider", params.provider);
     if (params.status) query.append("status", params.status);
-    if (params.limit) query.append("limit", params.limit.toString());
+    if (params.page) query.append("page", params.page.toString());
+    if (params.per_page) query.append("per_page", params.per_page.toString());
     const qs = query.toString();
-    return apiRequest<WebhookEvent[]>(
+    return apiRequest<WebhookEventListResponse>(
       `/webhook-events${qs ? `?${qs}` : ""}`,
       {},
       token

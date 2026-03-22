@@ -287,6 +287,15 @@ export interface WebhookEvent {
   received_at: string;
 }
 
+/** Paginated response for webhook events */
+export interface WebhookEventListResponse {
+  items: WebhookEvent[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
 // -------------------------------------------------------------------------
 // Advanced Monitoring types
 // -------------------------------------------------------------------------

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
-use crate::db::{App, CreateServerRequest, Server, UpdateServerRequest};
+use crate::db::{App, AppResponse, CreateServerRequest, Server, UpdateServerRequest};
 use crate::AppState;
 
 /// Key length for AES-256 encryption
@@ -866,7 +866,7 @@ async fn run_ssh_install_docker(
 pub async fn list_server_apps(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<App>>, StatusCode> {
+) -> Result<Json<Vec<AppResponse>>, StatusCode> {
     // Verify server exists
     let _server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
         .bind(&id)
@@ -888,7 +888,7 @@ pub async fn list_server_apps(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-    Ok(Json(apps))
+    Ok(Json(apps.into_iter().map(AppResponse::from).collect()))
 }
 
 /// Assign an app to a server by setting `apps.server_id`.
@@ -1702,10 +1702,10 @@ async fn run_ssh_security_check(
                 "warn",
                 Some("No recognised firewall (ufw/firewalld) found".to_string()),
             )
-        } else if val.contains("active") || val.contains("running") {
+        } else if (val.contains("active") && !val.contains("inactive")) || val.contains("running") {
             ("pass", Some(format!("Firewall is active: {}", raw)))
         } else {
-            ("fail", Some(format!("Firewall appears inactive: {}", raw)))
+            ("fail", Some(format!("Firewall is not active: {}", raw)))
         };
         items.push(SecurityCheckItem {
             id: "firewall".to_string(),

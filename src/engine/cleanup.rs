@@ -14,6 +14,25 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
+/// Returns current disk usage percent for the given path (0.0–100.0).
+fn disk_usage_percent(path: &str) -> Option<f64> {
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+    let c_path = CString::new(path).ok()?;
+    let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
+    let ret = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
+    if ret != 0 {
+        return None;
+    }
+    let stat = unsafe { stat.assume_init() };
+    let total = stat.f_blocks as u64 * stat.f_frsize as u64;
+    let free = stat.f_bfree as u64 * stat.f_frsize as u64;
+    if total == 0 {
+        return None;
+    }
+    Some((total - free) as f64 / total as f64 * 100.0)
+}
+
 /// Handles cleanup of old deployments
 pub struct DeploymentCleanup {
     db: DbPool,
@@ -62,6 +81,12 @@ impl DeploymentCleanup {
 
     /// Run a single cleanup cycle
     pub async fn run_cleanup(&self) -> Result<CleanupStats> {
+        self.run_cleanup_with_pressure(false).await
+    }
+
+    /// Run cleanup; if `aggressive` is true, keep only 1 deployment per app and
+    /// prune build cache regardless of the prune_images setting.
+    pub async fn run_cleanup_with_pressure(&self, aggressive: bool) -> Result<CleanupStats> {
         let mut stats = CleanupStats::default();
 
         if !self.config.enabled {
@@ -69,9 +94,20 @@ impl DeploymentCleanup {
             return Ok(stats);
         }
 
-        let max_deployments = self.effective_max_deployments().await;
-        let prune_images = self.effective_prune_images().await;
-        tracing::info!(max_deployments, prune_images, "Starting deployment cleanup cycle");
+        // Check disk pressure — if >85% full, switch to aggressive mode automatically
+        let disk_pct = disk_usage_percent("/").unwrap_or(0.0);
+        let aggressive = aggressive || disk_pct > 85.0;
+        if aggressive {
+            tracing::warn!(disk_pct, "Disk pressure detected — running aggressive cleanup");
+        }
+
+        let max_deployments = if aggressive {
+            1
+        } else {
+            self.effective_max_deployments().await
+        };
+        let prune_images = aggressive || self.effective_prune_images().await;
+        tracing::info!(max_deployments, prune_images, aggressive, "Starting deployment cleanup cycle");
 
         // Get all apps
         let apps: Vec<(String, String)> = sqlx::query_as("SELECT id, name FROM apps")
@@ -99,17 +135,34 @@ impl DeploymentCleanup {
         if prune_images {
             match self.runtime.prune_images().await {
                 Ok(bytes_reclaimed) => {
-                    stats.bytes_reclaimed = bytes_reclaimed;
+                    stats.bytes_reclaimed += bytes_reclaimed;
                     if bytes_reclaimed > 0 {
                         tracing::info!(
                             bytes = bytes_reclaimed,
-                            "Pruned unused images, reclaimed {} bytes",
+                            "Pruned unused images, reclaimed {}",
                             format_bytes(bytes_reclaimed)
                         );
                     }
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "Failed to prune images");
+                }
+            }
+
+            // Always prune build cache — it can grow to tens of GBs and is safe to clear
+            match self.runtime.prune_build_cache().await {
+                Ok(bytes_reclaimed) => {
+                    stats.bytes_reclaimed += bytes_reclaimed;
+                    if bytes_reclaimed > 0 {
+                        tracing::info!(
+                            bytes = bytes_reclaimed,
+                            "Pruned build cache, reclaimed {}",
+                            format_bytes(bytes_reclaimed)
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to prune build cache");
                 }
             }
         }

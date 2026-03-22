@@ -63,11 +63,11 @@ export async function apiRequest<T>(
         json?.error?.message || json?.message || text || `API error: ${response.status}`;
       throw new Error(message);
     } catch (parseErr) {
-      // If it's not JSON (or we just threw above), use text as-is
-      if (parseErr instanceof Error && parseErr.message !== text) {
-        throw parseErr;
+      // If JSON.parse threw a SyntaxError, the body isn't JSON — use text as-is
+      if (parseErr instanceof SyntaxError) {
+        throw new Error(text || `API error: ${response.status}`);
       }
-      throw new Error(text || `API error: ${response.status}`);
+      throw parseErr;
     }
   }
 
@@ -109,10 +109,10 @@ export async function apiRawRequest(
         json?.error?.message || json?.message || text || `API error: ${response.status}`;
       throw new Error(message);
     } catch (parseErr) {
-      if (parseErr instanceof Error && parseErr.message !== text) {
-        throw parseErr;
+      if (parseErr instanceof SyntaxError) {
+        throw new Error(text || `API error: ${response.status}`);
       }
-      throw new Error(text || `API error: ${response.status}`);
+      throw parseErr;
     }
   }
 

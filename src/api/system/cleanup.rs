@@ -18,14 +18,15 @@ pub struct DockerCleanupResponse {
 /// Run Docker resource cleanup (remove dangling images)
 /// POST /api/system/docker-cleanup
 ///
-/// Runs `docker system prune --filter "dangling=true" -f` to remove only dangling
-/// (untagged) images, freeing disk space without affecting running containers or
-/// named images.
+/// Runs `docker image prune -f` to remove only dangling (untagged) images,
+/// freeing disk space without affecting running containers or named images.
+/// Note: `docker system prune --filter dangling=true` is not a valid filter for
+/// system prune; use `docker image prune` instead.
 pub async fn run_docker_cleanup(
     State(_state): State<Arc<AppState>>,
 ) -> Result<Json<DockerCleanupResponse>, ApiError> {
     let output = tokio::process::Command::new("docker")
-        .args(["system", "prune", "--filter", "dangling=true", "-f"])
+        .args(["image", "prune", "-f"])
         .output()
         .await
         .map_err(|e| ApiError::internal(format!("Failed to run docker cleanup: {}", e)))?;

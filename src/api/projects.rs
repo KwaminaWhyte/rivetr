@@ -10,9 +10,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    actions, resource_types, App, AssignAppProjectRequest, CreateProjectRequest, ManagedDatabase,
-    Project, ProjectWithAppCount, ProjectWithApps, Service, TeamAuditAction, TeamAuditResourceType,
-    UpdateProjectRequest, User,
+    actions, resource_types, App, AppResponse, AssignAppProjectRequest, CreateProjectRequest,
+    ManagedDatabase, Project, ProjectWithAppCount, ProjectWithApps, Service, TeamAuditAction,
+    TeamAuditResourceType, UpdateProjectRequest, User,
 };
 use crate::AppState;
 
@@ -485,7 +485,7 @@ pub async fn assign_app_project(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
     Json(req): Json<AssignAppProjectRequest>,
-) -> Result<Json<App>, ApiError> {
+) -> Result<Json<AppResponse>, ApiError> {
     // Validate app ID format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
@@ -539,7 +539,7 @@ pub async fn assign_app_project(
         .fetch_one(&state.db)
         .await?;
 
-    Ok(Json(app))
+    Ok(Json(AppResponse::from(app)))
 }
 
 /// GET /api/projects/:id/dependency-graph
