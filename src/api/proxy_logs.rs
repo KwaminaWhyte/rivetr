@@ -37,26 +37,37 @@ pub struct ListProxyLogsParams {
     pub domain: Option<String>,
     /// Filter by HTTP status code class: "2xx", "3xx", "4xx", "5xx"
     pub status: Option<String>,
-    /// Max rows to return (default 100, max 1000)
-    pub limit: Option<i64>,
-    /// Row offset for pagination (default 0)
-    pub offset: Option<i64>,
+    /// Page number (1-based, default 1)
+    pub page: Option<i64>,
+    /// Rows per page (default 100, max 1000)
+    pub per_page: Option<i64>,
+}
+
+// ── Response ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct ProxyLogListResponse {
+    pub items: Vec<ProxyLog>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+    pub total_pages: i64,
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 /// List proxy access logs.
 ///
-/// GET /api/proxy/logs?domain=&status=2xx&limit=100&offset=0
+/// GET /api/proxy/logs?domain=&status=2xx&page=1&per_page=100
 pub async fn list_proxy_logs(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListProxyLogsParams>,
-) -> Result<Json<Vec<ProxyLog>>, ApiError> {
-    let limit = params.limit.unwrap_or(100).min(1000).max(1);
-    let offset = params.offset.unwrap_or(0).max(0);
+) -> Result<Json<ProxyLogListResponse>, ApiError> {
+    let per_page = params.per_page.unwrap_or(100).min(1000).max(1);
+    let page = params.page.unwrap_or(1).max(1);
+    let offset = (page - 1) * per_page;
 
-    // Build a dynamic query.  SQLx doesn't support fully dynamic WHERE clauses,
-    // so we build the SQL string and bind parameters manually.
+    // Build dynamic WHERE clause
     let mut conditions: Vec<String> = Vec::new();
     let mut bind_domain: Option<String> = None;
     let mut bind_status_min: Option<i64> = None;
@@ -90,6 +101,21 @@ pub async fn list_proxy_logs(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
+    // COUNT query
+    let count_sql = format!("SELECT COUNT(*) FROM proxy_logs {}", where_clause);
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    if let Some(ref domain) = bind_domain {
+        count_query = count_query.bind(domain);
+    }
+    if let Some(min) = bind_status_min {
+        count_query = count_query.bind(min);
+    }
+    if let Some(max) = bind_status_max {
+        count_query = count_query.bind(max);
+    }
+    let total: i64 = count_query.fetch_one(&state.db).await?;
+
+    // Data query
     let sql = format!(
         "SELECT id, ts, host, method, path, status, response_ms, bytes_out, client_ip, user_agent \
          FROM proxy_logs {} ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -97,7 +123,6 @@ pub async fn list_proxy_logs(
     );
 
     let mut query = sqlx::query_as::<_, ProxyLog>(&sql);
-
     if let Some(ref domain) = bind_domain {
         query = query.bind(domain);
     }
@@ -107,9 +132,16 @@ pub async fn list_proxy_logs(
     if let Some(max) = bind_status_max {
         query = query.bind(max);
     }
-    query = query.bind(limit).bind(offset);
+    query = query.bind(per_page).bind(offset);
 
-    let logs = query.fetch_all(&state.db).await?;
+    let items = query.fetch_all(&state.db).await?;
+    let total_pages = (total + per_page - 1) / per_page;
 
-    Ok(Json(logs))
+    Ok(Json(ProxyLogListResponse {
+        items,
+        total,
+        page,
+        per_page,
+        total_pages,
+    }))
 }

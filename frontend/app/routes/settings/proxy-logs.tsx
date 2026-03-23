@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import {
@@ -28,6 +29,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiRequest } from "@/lib/api";
+import { PaginationControls } from "@/components/pagination-controls";
+import type { PaginatedResponse } from "@/types";
 
 export function meta() {
   return [
@@ -49,14 +52,7 @@ interface ProxyLog {
   user_agent: string | null;
 }
 
-function statusBadgeVariant(
-  status: number
-): "default" | "secondary" | "destructive" | "outline" {
-  if (status >= 500) return "destructive";
-  if (status >= 400) return "destructive";
-  if (status >= 300) return "secondary";
-  return "default";
-}
+type ProxyLogListResponse = PaginatedResponse<ProxyLog>;
 
 function statusBadgeClass(status: number): string {
   if (status >= 500) return "bg-red-500/15 text-red-600 border-red-500/30";
@@ -74,34 +70,57 @@ function formatTimestamp(iso: string): string {
 }
 
 export default function ProxyLogsPage() {
-  const [domain, setDomain] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [limit, setLimit] = useState("100");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [domain, setDomain] = useState(searchParams.get("domain") ?? "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "all");
+  const [perPage, setPerPage] = useState(searchParams.get("per_page") ?? "100");
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [appliedDomain, setAppliedDomain] = useState("");
-  const [appliedStatus, setAppliedStatus] = useState("all");
 
-  const buildQueryString = () => {
-    const params = new URLSearchParams();
-    if (appliedDomain) params.set("domain", appliedDomain);
-    if (appliedStatus !== "all") params.set("status", appliedStatus);
-    params.set("limit", limit);
-    return params.toString();
-  };
+  const page = parseInt(searchParams.get("page") ?? "1", 10);
+  const appliedDomain = searchParams.get("domain") ?? "";
+  const appliedStatus = searchParams.get("status") ?? "all";
 
-  const { data: logs = [], isLoading, isFetching, refetch } = useQuery<ProxyLog[]>({
-    queryKey: ["proxy-logs", appliedDomain, appliedStatus, limit],
+  const { data, isLoading, isFetching, refetch } = useQuery<ProxyLogListResponse>({
+    queryKey: ["proxy-logs", appliedDomain, appliedStatus, perPage, page],
     queryFn: () => {
-      const qs = buildQueryString();
-      return apiRequest<ProxyLog[]>(`/proxy/logs${qs ? `?${qs}` : ""}`);
+      const params = new URLSearchParams();
+      if (appliedDomain) params.set("domain", appliedDomain);
+      if (appliedStatus !== "all") params.set("status", appliedStatus);
+      params.set("per_page", perPage);
+      params.set("page", String(page));
+      return apiRequest<ProxyLogListResponse>(`/proxy/logs?${params.toString()}`);
     },
     refetchInterval: autoRefresh ? 5000 : false,
   });
 
+  const logs = data?.items ?? [];
+  const totalPages = data?.total_pages ?? 1;
+  const total = data?.total ?? 0;
+
   const handleApplyFilters = (e: React.FormEvent) => {
     e.preventDefault();
-    setAppliedDomain(domain);
-    setAppliedStatus(statusFilter);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (domain) next.set("domain", domain); else next.delete("domain");
+      if (statusFilter !== "all") next.set("status", statusFilter); else next.delete("status");
+      next.set("per_page", perPage);
+      next.set("page", "1");
+      return next;
+    });
+  };
+
+  const handleClear = () => {
+    setDomain("");
+    setStatusFilter("all");
+    setSearchParams({});
+  };
+
+  const goToPage = (p: number) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("page", String(p));
+      return next;
+    });
   };
 
   return (
@@ -168,30 +187,22 @@ export default function ProxyLogsPage() {
             </div>
 
             <div className="space-y-1 min-w-[120px]">
-              <Label htmlFor="limit-select">Rows</Label>
-              <Select value={limit} onValueChange={setLimit}>
-                <SelectTrigger id="limit-select">
+              <Label htmlFor="per-page-select">Rows per page</Label>
+              <Select value={perPage} onValueChange={setPerPage}>
+                <SelectTrigger id="per-page-select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="50">50</SelectItem>
                   <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="250">250</SelectItem>
                   <SelectItem value="500">500</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <Button type="submit">Apply</Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDomain("");
-                setStatusFilter("all");
-                setAppliedDomain("");
-                setAppliedStatus("all");
-              }}
-            >
+            <Button type="button" variant="outline" onClick={handleClear}>
               Clear
             </Button>
           </form>
@@ -203,9 +214,9 @@ export default function ProxyLogsPage() {
         <CardHeader>
           <CardTitle>
             Access Logs
-            {logs.length > 0 && (
+            {total > 0 && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                ({logs.length} entries)
+                ({total.toLocaleString()} total)
               </span>
             )}
           </CardTitle>
@@ -222,55 +233,65 @@ export default function ProxyLogsPage() {
               forwarded through the proxy.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap">Timestamp</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Path</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="whitespace-nowrap">Time (ms)</TableHead>
-                    <TableHead className="whitespace-nowrap">Client IP</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap font-mono">
-                        {formatTimestamp(log.ts)}
-                      </TableCell>
-                      <TableCell className="text-sm font-medium max-w-[180px] truncate">
-                        {log.host}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-xs font-semibold uppercase">
-                          {log.method}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-xs font-mono max-w-[240px] truncate">
-                        {log.path}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={`text-xs font-mono ${statusBadgeClass(log.status)}`}
-                        >
-                          {log.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums">
-                        {log.response_ms}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">
-                        {log.client_ip ?? "—"}
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Timestamp</TableHead>
+                      <TableHead>Host</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Path</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="whitespace-nowrap">Time (ms)</TableHead>
+                      <TableHead className="whitespace-nowrap">Client IP</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap font-mono">
+                          {formatTimestamp(log.ts)}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium max-w-[180px] truncate">
+                          {log.host}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-xs font-semibold uppercase">
+                            {log.method}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs font-mono max-w-[240px] truncate">
+                          {log.path}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs font-mono ${statusBadgeClass(log.status)}`}
+                          >
+                            {log.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums">
+                          {log.response_ms}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-mono">
+                          {log.client_ip ?? "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                perPage={parseInt(perPage, 10)}
+                onPageChange={goToPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>

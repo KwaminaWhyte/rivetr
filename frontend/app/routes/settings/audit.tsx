@@ -38,12 +38,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { AuditLogListResponse, AuditLogQuery } from "@/types/api";
 import {
-  ChevronLeft,
-  ChevronRight,
   History,
   Filter,
   RefreshCw,
 } from "lucide-react";
+import { PaginationControls } from "@/components/pagination-controls";
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -333,33 +332,13 @@ export default function SettingsAuditPage() {
               </Table>
 
               {/* Pagination */}
-              {logs.total_pages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    Page {logs.page} of {logs.total_pages}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(logs.page - 1)}
-                      disabled={logs.page <= 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(logs.page + 1)}
-                      disabled={logs.page >= logs.total_pages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <PaginationControls
+                page={logs.page}
+                totalPages={logs.total_pages}
+                total={logs.total}
+                perPage={logs.per_page}
+                onPageChange={goToPage}
+              />
             </>
           )}
         </CardContent>

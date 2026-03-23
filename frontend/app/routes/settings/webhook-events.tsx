@@ -35,7 +35,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { systemApi } from "@/lib/api/system";
 import type { WebhookEvent, WebhookEventListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight, RefreshCw, Webhook } from "lucide-react";
+import { RefreshCw, Webhook } from "lucide-react";
+import { PaginationControls } from "@/components/pagination-controls";
 
 const PROVIDERS = ["github", "gitlab", "gitea", "bitbucket", "dockerhub"] as const;
 const STATUSES = ["processed", "ignored", "error"] as const;
@@ -279,33 +280,13 @@ export default function SettingsWebhookEventsPage() {
               </Table>
 
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage <= 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage >= totalPages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <PaginationControls
+                page={currentPage}
+                totalPages={totalPages}
+                total={total}
+                perPage={PER_PAGE}
+                onPageChange={goToPage}
+              />
             </>
           )}
         </CardContent>

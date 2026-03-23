@@ -27,7 +27,8 @@ import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
-import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare, Ban } from "lucide-react";
+import { CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare, Ban } from "lucide-react";
+import { PaginationControls } from "@/components/pagination-controls";
 
 interface DeploymentDiff {
   deployment_id: string;
@@ -427,33 +428,13 @@ export default function AppDeploymentsTab() {
               />
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-6 pt-4 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage <= 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage >= totalPages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <PaginationControls
+                page={currentPage}
+                totalPages={totalPages}
+                total={total}
+                perPage={perPage}
+                onPageChange={goToPage}
+              />
             </>
           )}
         </CardContent>
