@@ -579,4 +579,101 @@ mod tests {
         let backends = table.all_backends();
         assert_eq!(backends.len(), 2);
     }
+
+    #[test]
+    fn test_round_robin_backend_cycles() {
+        let rr = RoundRobinBackend::new(vec![
+            "127.0.0.1:3000".into(),
+            "127.0.0.1:3001".into(),
+            "127.0.0.1:3002".into(),
+        ]);
+
+        assert_eq!(rr.next(), Some("127.0.0.1:3000"));
+        assert_eq!(rr.next(), Some("127.0.0.1:3001"));
+        assert_eq!(rr.next(), Some("127.0.0.1:3002"));
+        // wraps back to start
+        assert_eq!(rr.next(), Some("127.0.0.1:3000"));
+    }
+
+    #[test]
+    fn test_round_robin_backend_empty() {
+        let rr = RoundRobinBackend::new(vec![]);
+        assert_eq!(rr.next(), None);
+    }
+
+    #[test]
+    fn test_route_table_add_backends_round_robin() {
+        let table = RouteTable::new();
+        let primary = Backend::new("container-1".into(), "127.0.0.1".into(), 3000)
+            .with_healthcheck(Some("/health".into()));
+        let backends = vec![
+            "127.0.0.1:3000".into(),
+            "127.0.0.1:3001".into(),
+            "127.0.0.1:3002".into(),
+        ];
+
+        table.add_backends("app.example.com".into(), backends, primary);
+
+        // Each successive call should cycle through the three replicas
+        let ports: Vec<u16> = (0..6)
+            .map(|_| table.get_backend("app.example.com").unwrap().port)
+            .collect();
+
+        assert_eq!(ports, vec![3000, 3001, 3002, 3000, 3001, 3002]);
+    }
+
+    #[test]
+    fn test_route_table_add_backends_single_falls_back() {
+        let table = RouteTable::new();
+        let primary = Backend::new("container-1".into(), "127.0.0.1".into(), 3000);
+
+        // Only one backend: should use the normal single-backend path, not round-robin
+        table.add_backends(
+            "app.example.com".into(),
+            vec!["127.0.0.1:3000".into()],
+            primary,
+        );
+
+        // multi_routes should be empty; every call returns the same backend
+        for _ in 0..3 {
+            assert_eq!(
+                table.get_backend("app.example.com").unwrap().port,
+                3000
+            );
+        }
+    }
+
+    #[test]
+    fn test_route_table_add_backends_inherits_primary_metadata() {
+        let table = RouteTable::new();
+        let primary = Backend::new("container-1".into(), "127.0.0.1".into(), 3000)
+            .with_healthcheck(Some("/health".into()))
+            .with_basic_auth("user".into(), "hash".into());
+
+        table.add_backends(
+            "app.example.com".into(),
+            vec!["127.0.0.1:3000".into(), "127.0.0.1:3001".into()],
+            primary,
+        );
+
+        // Replica backends should carry the primary's healthcheck and auth config
+        let b = table.get_backend("app.example.com").unwrap();
+        assert_eq!(b.healthcheck_path, Some("/health".into()));
+        assert!(b.basic_auth.enabled);
+    }
+
+    #[test]
+    fn test_route_table_remove_clears_multi_routes() {
+        let table = RouteTable::new();
+        let primary = Backend::new("container-1".into(), "127.0.0.1".into(), 3000);
+        table.add_backends(
+            "app.example.com".into(),
+            vec!["127.0.0.1:3000".into(), "127.0.0.1:3001".into()],
+            primary,
+        );
+
+        table.remove_route("app.example.com");
+
+        assert!(table.get_backend("app.example.com").is_none());
+    }
 }

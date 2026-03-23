@@ -126,6 +126,15 @@ pub fn get_system_memory() -> u64 {
 }
 
 /// Format bytes to human-readable string
+/// Read system uptime in seconds from `/proc/uptime` (Linux).
+/// Returns `None` on non-Linux platforms or if the file cannot be read.
+fn read_system_uptime_seconds() -> Option<u64> {
+    let contents = std::fs::read_to_string("/proc/uptime").ok()?;
+    let secs_str = contents.split_whitespace().next()?;
+    let secs_f: f64 = secs_str.parse().ok()?;
+    Some(secs_f as u64)
+}
+
 pub fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -351,12 +360,16 @@ pub async fn get_system_stats(
     // are not the server's total RAM.
     let memory_total_bytes = get_system_memory();
 
-    // Calculate server uptime using std::time
-    // For now, use a static uptime value based on process start
-    // In a production system, this would be tracked from server boot time
-    static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    let start = START_TIME.get_or_init(std::time::Instant::now);
-    let uptime_seconds = start.elapsed().as_secs();
+    // Read system uptime from /proc/uptime (Linux) so the value reflects how
+    // long the host has been running, not just how long this process has been
+    // running.  Falls back to process uptime on non-Linux platforms (e.g. macOS
+    // dev machines).
+    let uptime_seconds = read_system_uptime_seconds().unwrap_or_else(|| {
+        static START_TIME: std::sync::OnceLock<std::time::Instant> =
+            std::sync::OnceLock::new();
+        let start = START_TIME.get_or_init(std::time::Instant::now);
+        start.elapsed().as_secs()
+    });
 
     // Uptime percentage - in a real system, track health check success rate
     // For now, return a high value as placeholder

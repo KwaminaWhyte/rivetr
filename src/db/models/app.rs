@@ -772,6 +772,9 @@ pub struct CreateAppRequest {
     /// Run tini as PID 1 (init process)
     #[serde(default)]
     pub init_process: bool,
+    /// Number of container replicas to run (for load balancing, default: 1)
+    #[serde(default = "default_replica_count")]
+    pub replica_count: i64,
 }
 
 fn default_build_type() -> String {
