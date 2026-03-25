@@ -182,6 +182,26 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Build optional AI client from config
+    let ai_client = config.ai.api_key.as_ref()
+        .filter(|k| !k.is_empty())
+        .map(|key| {
+            let provider = config.ai.provider.as_deref()
+                .unwrap_or("claude")
+                .parse::<rivetr::ai::AiProvider>()
+                .unwrap_or_default();
+            std::sync::Arc::new(rivetr::ai::AiClient::new(
+                provider,
+                key.clone(),
+                config.ai.model.clone(),
+                config.ai.max_tokens,
+            ))
+        });
+
+    if ai_client.is_some() {
+        tracing::info!("AI client initialized (provider: {})", config.ai.provider.as_deref().unwrap_or("claude"));
+    }
+
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(
         AppState::new(
@@ -192,7 +212,8 @@ async fn main() -> Result<()> {
             routes.clone(),
             update_checker,
         )
-        .with_metrics(metrics_handle),
+        .with_metrics(metrics_handle)
+        .with_ai_client(ai_client),
     );
 
     // Start rate limiter cleanup task

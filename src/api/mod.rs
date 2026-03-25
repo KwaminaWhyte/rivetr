@@ -1,3 +1,4 @@
+mod ai_features;
 mod alerts;
 mod api_tokens;
 mod ca_certificates;
@@ -970,6 +971,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/:id/import", post(bulk::import_project))
         // White Label (update — admin only, protected by auth)
         .route("/white-label", put(white_label::update_white_label))
+        // AI Features
+        .route(
+            "/apps/:app_id/deployments/:deployment_id/diagnose",
+            post(ai_features::diagnose_deployment),
+        )
+        .route(
+            "/apps/:app_id/insights",
+            get(ai_features::get_deployment_insights),
+        )
+        .route(
+            "/apps/:app_id/cost-suggestions",
+            get(ai_features::get_cost_suggestions),
+        )
+        .route(
+            "/apps/:app_id/suggest-dockerfile",
+            post(ai_features::suggest_dockerfile),
+        )
+        .route(
+            "/apps/:app_id/security-scan",
+            get(ai_features::scan_app_security),
+        )
+        .route("/security/scan", get(ai_features::scan_all_security))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),

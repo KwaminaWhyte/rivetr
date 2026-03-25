@@ -53,6 +53,7 @@ export default [
       route("log-drains", "routes/apps/$id/log-drains.tsx"),
       route("monitoring", "routes/apps/$id/monitoring.tsx"),
       route("terminal", "routes/apps/$id/terminal.tsx"),
+      route("security", "routes/apps/$id/security.tsx"),
     ]),
 
     // Databases (nested layout with tabs)

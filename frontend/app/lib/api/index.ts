@@ -59,6 +59,7 @@ export type {
 } from "./community-templates";
 export { filesystemApi } from "./filesystem";
 export type { FileEntry } from "./filesystem";
+export { aiApi } from "./ai";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
@@ -86,6 +87,7 @@ import { communityTemplatesApi } from "./community-templates";
 import { filesystemApi } from "./filesystem";
 import { caCertificatesApi } from "./ca-certificates";
 import { destinationsApi } from "./destinations";
+import { aiApi } from "./ai";
 
 /**
  * Combined API object for backward compatibility.
@@ -514,6 +516,14 @@ export const api = {
   getTunnelRoutes: tunnelsApi.listRoutes,
   createTunnelRoute: tunnelsApi.createRoute,
   deleteTunnelRoute: tunnelsApi.deleteRoute,
+
+  // AI Features
+  aiDiagnoseDeployment: aiApi.diagnoseDeployment,
+  aiGetInsights: aiApi.getInsights,
+  aiGetCostSuggestions: aiApi.getCostSuggestions,
+  aiSuggestDockerfile: aiApi.suggestDockerfile,
+  aiScanAppSecurity: aiApi.scanAppSecurity,
+  aiScanAllSecurity: aiApi.scanAllSecurity,
 };
 
 export default api;

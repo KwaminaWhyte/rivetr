@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { aiApi } from "@/lib/api/ai";
 
 export function meta() {
   return [
@@ -65,6 +66,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Sparkles,
+  DollarSign,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -813,6 +816,108 @@ function ScheduledRestartsSection({ appId }: { appId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Cost Optimization Section
+// ---------------------------------------------------------------------------
+
+function CostOptimizationSection({ appId }: { appId: string }) {
+  const [hasFetched, setHasFetched] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ title: string; description: string; action: string }>>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleFetch = async () => {
+    setIsLoading(true);
+    setUnavailable(false);
+    try {
+      const data = await aiApi.getCostSuggestions(appId);
+      setSuggestions(data.suggestions);
+      setHasFetched(true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (msg.includes("503") || msg.toLowerCase().includes("not configured") || msg.toLowerCase().includes("unavailable")) {
+        setUnavailable(true);
+        setHasFetched(true);
+      } else {
+        toast.error(msg || "Failed to load cost suggestions");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              <DollarSign className="h-5 w-5 text-green-600" />
+              Cost Optimization
+            </CardTitle>
+            <CardDescription>
+              AI-powered suggestions to reduce resource costs for this app.
+            </CardDescription>
+          </div>
+          {!hasFetched && (
+            <Button onClick={handleFetch} disabled={isLoading} className="gap-2" variant="outline">
+              <Sparkles className="h-4 w-4" />
+              {isLoading ? "Analyzing..." : "Get AI Suggestions"}
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!hasFetched && !isLoading && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Click "Get AI Suggestions" to analyze your app's resource usage and receive cost optimization tips.
+          </p>
+        )}
+        {isLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            Analyzing resource usage...
+          </div>
+        )}
+        {hasFetched && unavailable && (
+          <p className="text-sm text-muted-foreground py-2">
+            AI not configured. Enable an AI provider in instance settings to use cost optimization.
+          </p>
+        )}
+        {hasFetched && !unavailable && suggestions.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No cost optimization suggestions at this time. Your app looks well-configured.
+          </p>
+        )}
+        {hasFetched && !unavailable && suggestions.length > 0 && (
+          <div className="space-y-3">
+            {suggestions.map((s, i) => (
+              <div key={i} className="rounded-lg border p-4 space-y-1.5">
+                <p className="font-medium text-sm">{s.title}</p>
+                <p className="text-sm text-muted-foreground">{s.description}</p>
+                {s.action && (
+                  <p className="text-xs font-mono bg-muted px-2 py-1 rounded mt-2">{s.action}</p>
+                )}
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 mt-2"
+              onClick={handleFetch}
+              disabled={isLoading}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Monitoring Page
 // ---------------------------------------------------------------------------
 
@@ -834,6 +939,7 @@ export default function MonitoringPage() {
       <UptimeSection appId={appId} />
       <LogRetentionSection appId={appId} />
       <ScheduledRestartsSection appId={appId} />
+      <CostOptimizationSection appId={appId} />
     </div>
   );
 }

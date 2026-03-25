@@ -36,6 +36,8 @@ pub struct Config {
     pub email: EmailConfig,
     #[serde(default)]
     pub auto_update: AutoUpdateConfig,
+    #[serde(default)]
+    pub ai: AiConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -719,6 +721,19 @@ impl EmailConfig {
     }
 }
 
+/// AI provider configuration for AI-powered features (deployment diagnosis, insights, etc.)
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AiConfig {
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot" (default: "claude")
+    pub provider: Option<String>,
+    /// API key for the selected provider
+    pub api_key: Option<String>,
+    /// Model override (defaults per provider if not set)
+    pub model: Option<String>,
+    /// Max output tokens (default: 2048)
+    pub max_tokens: Option<u32>,
+}
+
 /// Auto-update configuration
 #[derive(Debug, Clone, Deserialize)]
 pub struct AutoUpdateConfig {
@@ -821,6 +836,7 @@ impl Config {
             stats_retention: StatsRetentionConfig::default(),
             email: EmailConfig::default(),
             auto_update: AutoUpdateConfig::default(),
+            ai: AiConfig::default(),
         }
     }
 }

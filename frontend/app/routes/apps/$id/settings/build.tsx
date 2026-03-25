@@ -15,11 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github, Cpu } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github, Cpu, Wand2, Copy, RefreshCw } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { aiApi } from "@/lib/api/ai";
 import { buildServersApi, type BuildServer } from "@/lib/api/build-servers";
 import type { App, BuildType, BuildSecret, NixpacksConfig, UpdateAppRequest } from "@/types/api";
 
@@ -101,6 +102,11 @@ export default function AppSettingsBuild() {
   // GitHub Actions workflow state
   const [workflowYaml, setWorkflowYaml] = useState<string | null>(null);
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(false);
+
+  // AI Dockerfile Optimizer state
+  const [dockerfileOptResult, setDockerfileOptResult] = useState<{ original: string; suggested: string; improvements: string[] } | null>(null);
+  const [dockerfileOptLoading, setDockerfileOptLoading] = useState(false);
+  const [dockerfileOptUnavailable, setDockerfileOptUnavailable] = useState(false);
 
   useEffect(() => {
     setBuildSecrets(parseBuildSecrets(app.build_secrets));
@@ -235,6 +241,29 @@ export default function AppSettingsBuild() {
     a.download = `deploy-${app.name}.yml`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleOptimizeDockerfile = async () => {
+    setDockerfileOptLoading(true);
+    setDockerfileOptResult(null);
+    setDockerfileOptUnavailable(false);
+    try {
+      const result = await aiApi.suggestDockerfile(app.id);
+      setDockerfileOptResult(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (
+        msg.includes("503") ||
+        msg.toLowerCase().includes("not configured") ||
+        msg.toLowerCase().includes("unavailable")
+      ) {
+        setDockerfileOptUnavailable(true);
+      } else {
+        toast.error(msg || "Failed to optimize Dockerfile");
+      }
+    } finally {
+      setDockerfileOptLoading(false);
+    }
   };
 
   return (
@@ -835,6 +864,105 @@ export default function AppSettingsBuild() {
             <pre className="rounded-md border bg-muted p-4 text-xs font-mono overflow-x-auto whitespace-pre">
               {workflowYaml}
             </pre>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* AI Dockerfile Optimizer */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Wand2 className="h-5 w-5 text-purple-500" />
+                AI Dockerfile Optimizer
+              </CardTitle>
+              <CardDescription>
+                Get AI-powered suggestions to improve your Dockerfile for smaller images, faster builds, and better security.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleOptimizeDockerfile}
+              disabled={dockerfileOptLoading}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {dockerfileOptLoading ? "Optimizing..." : "Optimize Dockerfile"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {dockerfileOptLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Analyzing your Dockerfile...
+            </div>
+          )}
+          {dockerfileOptUnavailable && (
+            <p className="text-sm text-muted-foreground">
+              Configure AI provider in instance settings to use this feature.
+            </p>
+          )}
+          {dockerfileOptResult && !dockerfileOptLoading && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current</p>
+                  <pre className="rounded-md border bg-muted p-4 text-xs font-mono overflow-x-auto whitespace-pre max-h-80">
+                    {dockerfileOptResult.original}
+                  </pre>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Suggested</p>
+                  <pre className="rounded-md border border-purple-200 bg-purple-50/40 dark:bg-purple-950/10 p-4 text-xs font-mono overflow-x-auto whitespace-pre max-h-80">
+                    {dockerfileOptResult.suggested}
+                  </pre>
+                </div>
+              </div>
+
+              {dockerfileOptResult.improvements.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Improvements</p>
+                  <ul className="space-y-1.5">
+                    {dockerfileOptResult.improvements.map((imp, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <span className="text-purple-500 mt-0.5 shrink-0">•</span>
+                        <span>{imp}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(dockerfileOptResult.suggested);
+                    toast.success("Suggested Dockerfile copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy Suggested
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleOptimizeDockerfile}
+                  disabled={dockerfileOptLoading}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Re-analyze
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod api;
 pub mod backup;
 pub mod cli;
@@ -43,6 +44,8 @@ pub struct AppState {
     pub update_checker: Arc<UpdateChecker>,
     /// Cancellation tokens for in-progress deployments. Keyed by deployment ID.
     pub deployment_cancel_tokens: dashmap::DashMap<String, tokio_util::sync::CancellationToken>,
+    /// Optional AI client — only present when an API key is configured in [ai] section.
+    pub ai_client: Option<Arc<crate::ai::AiClient>>,
 }
 
 impl AppState {
@@ -65,7 +68,14 @@ impl AppState {
             metrics_handle: None,
             update_checker,
             deployment_cancel_tokens: dashmap::DashMap::new(),
+            ai_client: None,
         }
+    }
+
+    /// Attach an AI client to the application state.
+    pub fn with_ai_client(mut self, client: Option<Arc<crate::ai::AiClient>>) -> Self {
+        self.ai_client = client;
+        self
     }
 
     /// Set the Prometheus metrics handle

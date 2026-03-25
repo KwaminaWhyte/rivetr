@@ -116,6 +116,7 @@ const TAB_DEFS = [
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "log-drains", label: "Log Drains", path: "/log-drains" },
   { id: "monitoring", label: "Monitoring", path: "/monitoring" },
+  { id: "security", label: "Security", path: "/security" },
   { id: "terminal", label: "Terminal", path: "/terminal" },
 ];
 

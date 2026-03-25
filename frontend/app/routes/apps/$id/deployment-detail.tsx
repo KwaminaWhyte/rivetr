@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
+import { aiApi } from "@/lib/api/ai";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -26,6 +28,7 @@ import {
   RotateCcw,
   Package,
   Copy,
+  Sparkles,
 } from "lucide-react";
 import type { Deployment } from "@/types/api";
 
@@ -108,6 +111,11 @@ export default function DeploymentDetailPage() {
   const { id: appId, deploymentId } = useParams<{ id: string; deploymentId: string }>();
   const queryClient = useQueryClient();
 
+  // AI Diagnosis state
+  const [diagnosisResult, setDiagnosisResult] = useState<{ diagnosis: string; suggestions: string[] } | null>(null);
+  const [diagnosisLoading, setDiagnosisLoading] = useState(false);
+  const [diagnosisUnavailable, setDiagnosisUnavailable] = useState(false);
+
   const { data: deployment, isLoading } = useQuery<Deployment>({
     queryKey: ["deployment", deploymentId],
     queryFn: () => api.getDeployment(deploymentId!),
@@ -136,6 +144,26 @@ export default function DeploymentDetailPage() {
     },
     onError: (e: Error) => toast.error(e.message || "Rollback failed"),
   });
+
+  const handleDiagnose = async () => {
+    if (!appId || !deploymentId) return;
+    setDiagnosisLoading(true);
+    setDiagnosisResult(null);
+    setDiagnosisUnavailable(false);
+    try {
+      const result = await aiApi.diagnoseDeployment(appId, deploymentId);
+      setDiagnosisResult(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (msg.includes("503") || msg.toLowerCase().includes("not configured") || msg.toLowerCase().includes("unavailable")) {
+        setDiagnosisUnavailable(true);
+      } else {
+        toast.error(msg || "Failed to diagnose deployment");
+      }
+    } finally {
+      setDiagnosisLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 p-6">
@@ -194,6 +222,18 @@ export default function DeploymentDetailPage() {
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
                       {rollbackMutation.isPending ? "Rolling back..." : "Rollback to this"}
+                    </Button>
+                  )}
+                  {deployment.status === "failed" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-purple-600 border-purple-300 hover:bg-purple-50"
+                      disabled={diagnosisLoading}
+                      onClick={handleDiagnose}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {diagnosisLoading ? "Analyzing..." : "Diagnose with AI"}
                     </Button>
                   )}
                 </div>
@@ -295,6 +335,44 @@ export default function DeploymentDetailPage() {
 
             <DeploymentLogs deploymentId={deployment.id} isActive={isActive} />
           </div>
+
+          {/* AI Diagnosis Result */}
+          {diagnosisUnavailable && (
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  AI not configured. Enable an AI provider in instance settings to use diagnosis.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {diagnosisResult && (
+            <Card className="border-purple-200 bg-purple-50/40 dark:bg-purple-950/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-400 text-base">
+                  <Sparkles className="h-4 w-4" />
+                  AI Diagnosis
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm">{diagnosisResult.diagnosis}</p>
+                {diagnosisResult.suggestions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Suggestions</p>
+                    <ul className="space-y-1.5">
+                      {diagnosisResult.suggestions.map((s, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <span className="text-purple-500 mt-0.5 shrink-0">•</span>
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (
         <div className="text-center py-16 text-muted-foreground">

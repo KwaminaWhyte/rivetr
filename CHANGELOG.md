@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.16] - 2026-03-25
+
+### Added
+- **AI-powered features** — Phase 1 AI integration across the platform. All features require an `[ai]` section with a provider API key in `rivetr.toml`.
+  - **Multi-provider AI client** (`src/ai.rs`) — supports Claude (Anthropic), OpenAI, Gemini, and Moonshot (OpenAI-compatible) with automatic fallback summaries when no key is configured.
+  - **Deployment error diagnosis** — `POST /api/apps/:id/deployments/:did/diagnose` sends the last 80 log lines to the AI and returns a structured diagnosis with up to 4 actionable suggestions. Accessible via the deployment detail page.
+  - **Deployment insights** — `GET /api/apps/:id/insights` computes success rate, average build time, and trend over 30 days, optionally enriched with a one-sentence AI summary on the app overview page.
+  - **Cost optimisation suggestions** — `GET /api/apps/:id/cost-suggestions` returns AI-generated resource tuning recommendations visible on the Monitoring tab.
+  - **Dockerfile Optimizer** (`#6`) — `POST /api/apps/:id/suggest-dockerfile` asks the AI to analyse the stored Dockerfile and return an optimised version with a list of improvements. Surfaced in Settings → Build.
+  - **Security & Compliance Advisor** (`#11`) — `GET /api/apps/:id/security-scan` runs five rule-based checks (untagged images, missing healthcheck, no domain, empty secret env vars, credential patterns in logs) and optionally requests an AI executive summary. New **Security** tab added to every app.
+  - **Global security scan** — `GET /api/security/scan` runs all checks across every app and returns an aggregated report.
+  - `docs/AI_OPPORTUNITIES.md` documents all 12 AI opportunities across three phases.
+
 ## [v0.10.15] - 2026-03-25
 
 ### Fixed

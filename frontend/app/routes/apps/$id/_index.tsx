@@ -3,10 +3,13 @@ import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getPrimaryDomain } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { ResourceMonitor } from "@/components/resource-monitor";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
+import { aiApi } from "@/lib/api/ai";
 import type { App, AuditLog, AuditLogListResponse, Deployment } from "@/types/api";
 import {
   RotateCw,
@@ -16,6 +19,10 @@ import {
   Pencil,
   Trash2,
   Activity,
+  Sparkles,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
 
 export function meta() {
@@ -60,6 +67,24 @@ function activityLabel(action: string): string {
   return labels[action] ?? action;
 }
 
+function TrendIcon({ trend }: { trend: "improving" | "degrading" | "stable" }) {
+  if (trend === "improving") return <TrendingUp className="h-4 w-4 text-green-500" />;
+  if (trend === "degrading") return <TrendingDown className="h-4 w-4 text-red-500" />;
+  return <Minus className="h-4 w-4 text-muted-foreground" />;
+}
+
+function trendLabel(trend: "improving" | "degrading" | "stable"): string {
+  if (trend === "improving") return "Improving";
+  if (trend === "degrading") return "Degrading";
+  return "Stable";
+}
+
+function trendColorClass(trend: "improving" | "degrading" | "stable"): string {
+  if (trend === "improving") return "text-green-600";
+  if (trend === "degrading") return "text-red-600";
+  return "text-muted-foreground";
+}
+
 export default function AppGeneralTab() {
   const { app, deployments, token } = useOutletContext<OutletContext>();
   const { id } = useParams();
@@ -70,6 +95,17 @@ export default function AppGeneralTab() {
     queryFn: () => api.getAppActivity(id!),
     enabled: !!id,
     refetchInterval: 30000,
+  });
+
+  const {
+    data: insightsData,
+    isLoading: insightsLoading,
+    error: insightsError,
+  } = useQuery({
+    queryKey: ["ai-insights", id],
+    queryFn: () => aiApi.getInsights(id!),
+    enabled: !!id,
+    retry: false,
   });
 
   return (
@@ -179,6 +215,55 @@ export default function AppGeneralTab() {
                 </li>
               ))}
             </ol>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* AI Insights Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            AI Insights
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {insightsLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <div className="flex gap-3 mt-4">
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+            </div>
+          ) : insightsError || !insightsData ? (
+            <p className="text-sm text-muted-foreground py-2">
+              AI not configured. Enable an AI provider in instance settings to see deployment insights.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">{insightsData.summary}</p>
+              <div className="flex flex-wrap gap-3">
+                <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
+                  <span className="text-muted-foreground">Success rate</span>
+                  <span className="font-semibold">{insightsData.success_rate_percent.toFixed(1)}%</span>
+                </Badge>
+                <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
+                  <span className="text-muted-foreground">Avg build</span>
+                  <span className="font-semibold">{insightsData.avg_build_minutes.toFixed(1)}m</span>
+                </Badge>
+                <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-sm">
+                  <span className="text-muted-foreground">Total deploys</span>
+                  <span className="font-semibold">{insightsData.total_deployments}</span>
+                </Badge>
+                <Badge variant="outline" className={`gap-1.5 px-3 py-1.5 text-sm ${trendColorClass(insightsData.trend)}`}>
+                  <TrendIcon trend={insightsData.trend} />
+                  {trendLabel(insightsData.trend)}
+                </Badge>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
