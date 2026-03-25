@@ -5,6 +5,7 @@
 //! - Configuration file (rivetr.toml)
 //! - SSL/ACME certificates
 //! - S3 remote backup integration
+//! - Service container database dumps (postgres, mysql, redis, mongo)
 
 pub mod s3;
 
@@ -19,6 +20,7 @@ use std::fs;
 use std::io::{Read as IoRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
 use tar::{Archive, Builder};
+use tokio::process::Command as TokioCommand;
 use tracing::{info, warn};
 
 /// Information about a backup file
@@ -63,7 +65,8 @@ pub struct RestoreResult {
 /// 2. Copy the database file
 /// 3. Copy the config file
 /// 4. Copy SSL/ACME certificates (if they exist)
-/// 5. Bundle everything into a .tar.gz archive
+/// 5. Dump database containers from running Docker Compose services
+/// 6. Bundle everything into a .tar.gz archive
 pub async fn create_backup(
     db: &SqlitePool,
     data_dir: &Path,
@@ -123,6 +126,10 @@ pub async fn create_backup(
         add_directory_to_archive(&mut archive, acme_cache_dir, Path::new("acme"))
             .context("Failed to add ACME certificates to backup")?;
     }
+
+    // 5. Dump database containers from running Docker Compose services
+    info!("Backing up service container databases...");
+    backup_service_databases(db, data_dir, &mut archive).await;
 
     // Finish the archive
     let encoder = archive
@@ -310,6 +317,382 @@ pub async fn restore_from_backup(
 
     info!("Restore completed successfully");
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Service container database backup helpers
+// ---------------------------------------------------------------------------
+
+/// A discovered container belonging to a Docker Compose service.
+struct ServiceContainer {
+    /// The full container name (e.g. `rivetr-svc-myservice-postgres-1`)
+    name: String,
+    /// The image name in lowercase (used to detect DB type)
+    image: String,
+}
+
+/// Classify a container by image name and return the DB engine, or `None` if
+/// the image does not look like a known database.
+fn detect_db_engine(image: &str) -> Option<&'static str> {
+    let img = image.to_lowercase();
+    if img.contains("postgres") || img.contains("postgresql") {
+        Some("postgres")
+    } else if img.contains("mariadb") {
+        // Check mariadb before mysql so mariadb images aren't misidentified
+        Some("mariadb")
+    } else if img.contains("mysql") {
+        Some("mysql")
+    } else if img.contains("redis") || img.contains("keydb") || img.contains("dragonfly") {
+        Some("redis")
+    } else if img.contains("mongo") {
+        Some("mongo")
+    } else {
+        None
+    }
+}
+
+/// Use `docker compose ps` to list containers for a service's compose project.
+///
+/// Returns a list of running containers (name + image).
+async fn list_service_containers(compose_file: &Path, project_name: &str) -> Vec<ServiceContainer> {
+    // docker compose -f <file> -p <project> ps --format "{{.Name}}\t{{.Image}}\t{{.State}}"
+    let output = TokioCommand::new("docker")
+        .args([
+            "compose",
+            "-f",
+            compose_file.to_str().unwrap_or(""),
+            "-p",
+            project_name,
+            "ps",
+            "--format",
+            "{{.Name}}\t{{.Image}}\t{{.State}}",
+        ])
+        .output()
+        .await;
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            warn!(compose_file=%compose_file.display(), error=%e, "Failed to run docker compose ps");
+            return Vec::new();
+        }
+    };
+
+    if !output.status.success() {
+        warn!(
+            compose_file = %compose_file.display(),
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "docker compose ps returned non-zero exit code"
+        );
+        return Vec::new();
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut containers = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(3, '\t').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let container_name = parts[0].trim();
+        let image = parts[1].trim();
+        let state = parts[2].trim();
+
+        if state != "running" {
+            continue;
+        }
+
+        containers.push(ServiceContainer {
+            name: container_name.to_string(),
+            image: image.to_string(),
+        });
+    }
+
+    containers
+}
+
+/// Run `pg_dumpall -U postgres` inside a container and return the SQL bytes.
+async fn dump_postgres(container: &str) -> Result<Vec<u8>> {
+    let out = TokioCommand::new("docker")
+        .args(["exec", container, "pg_dumpall", "-U", "postgres"])
+        .output()
+        .await
+        .context("Failed to exec pg_dumpall")?;
+
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        anyhow::bail!(
+            "pg_dumpall failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    }
+}
+
+/// Run `mysqldump --all-databases` inside a container.
+///
+/// Tries without a password first (empty root password), then falls back to
+/// reading `MYSQL_ROOT_PASSWORD` from the container environment.
+async fn dump_mysql(container: &str) -> Result<Vec<u8>> {
+    // First attempt: no password (works when MYSQL_ALLOW_EMPTY_PASSWORD is set)
+    let out = TokioCommand::new("docker")
+        .args([
+            "exec",
+            container,
+            "mysqldump",
+            "--all-databases",
+            "-u",
+            "root",
+            "--password=",
+        ])
+        .output()
+        .await
+        .context("Failed to exec mysqldump")?;
+
+    if out.status.success() && !out.stdout.is_empty() {
+        return Ok(out.stdout);
+    }
+
+    // Second attempt: read MYSQL_ROOT_PASSWORD from container env
+    let env_out = TokioCommand::new("docker")
+        .args(["exec", container, "printenv", "MYSQL_ROOT_PASSWORD"])
+        .output()
+        .await;
+
+    if let Ok(env_result) = env_out {
+        if env_result.status.success() {
+            let password = String::from_utf8_lossy(&env_result.stdout)
+                .trim()
+                .to_string();
+            if !password.is_empty() {
+                let pass_flag = format!("--password={}", password);
+                let dump = TokioCommand::new("docker")
+                    .args([
+                        "exec",
+                        container,
+                        "mysqldump",
+                        "--all-databases",
+                        "-u",
+                        "root",
+                        &pass_flag,
+                    ])
+                    .output()
+                    .await
+                    .context("Failed to exec mysqldump with password")?;
+
+                if dump.status.success() {
+                    return Ok(dump.stdout);
+                }
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "mysqldump failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    )
+}
+
+/// Trigger a Redis `BGSAVE` then read the dump file from the container.
+async fn dump_redis(container: &str) -> Result<Vec<u8>> {
+    // Trigger background save
+    let _ = TokioCommand::new("docker")
+        .args(["exec", container, "redis-cli", "BGSAVE"])
+        .output()
+        .await;
+
+    // Give Redis a moment to finish writing the RDB
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Try the default dump location; some images use /data/dump.rdb
+    for path in &["/data/dump.rdb", "/var/lib/redis/dump.rdb"] {
+        let out = TokioCommand::new("docker")
+            .args(["exec", container, "cat", path])
+            .output()
+            .await;
+
+        if let Ok(result) = out {
+            if result.status.success() && !result.stdout.is_empty() {
+                return Ok(result.stdout);
+            }
+        }
+    }
+
+    anyhow::bail!("redis dump.rdb not found in container {}", container)
+}
+
+/// Run `mongodump --archive` inside a container and return the BSON archive bytes.
+async fn dump_mongo(container: &str) -> Result<Vec<u8>> {
+    let out = TokioCommand::new("docker")
+        .args(["exec", container, "mongodump", "--archive"])
+        .output()
+        .await
+        .context("Failed to exec mongodump")?;
+
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        anyhow::bail!(
+            "mongodump failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    }
+}
+
+/// Query all running services from the database and, for each one, attempt to
+/// dump any database containers belonging to its Docker Compose stack.
+///
+/// All failures are non-fatal: a warning is logged and the backup continues.
+/// The compose file for each service is also added to the archive.
+async fn backup_service_databases<W: IoWrite>(
+    db: &SqlitePool,
+    data_dir: &Path,
+    archive: &mut Builder<W>,
+) {
+    // Load all services from the database.  A query failure means we simply skip.
+    let services: Vec<(String, String, String)> = match sqlx::query_as(
+        "SELECT id, name, status FROM services ORDER BY name",
+    )
+    .fetch_all(db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            warn!(error=%e, "Failed to query services for backup — skipping service database dumps");
+            return;
+        }
+    };
+
+    if services.is_empty() {
+        info!("No services found — skipping service database dumps");
+        return;
+    }
+
+    for (service_id, service_name, service_status) in &services {
+        // Compose project name mirrors Service::compose_project_name()
+        let project_name = format!("rivetr-svc-{}", service_name);
+
+        // The compose file lives at data_dir/services/{name}/docker-compose.yml
+        let compose_dir = data_dir.join("services").join(service_name);
+        let compose_file = compose_dir.join("docker-compose.yml");
+
+        // --- Always include the compose file itself (if it exists) ---
+        if compose_file.exists() {
+            let archive_path = format!("services/{}/docker-compose.yml", service_name);
+            match archive.append_path_with_name(&compose_file, &archive_path) {
+                Ok(()) => {
+                    info!(service=%service_name, "Added compose file to backup");
+                }
+                Err(e) => {
+                    warn!(service=%service_name, error=%e, "Failed to add compose file to backup");
+                }
+            }
+        } else {
+            info!(
+                service = %service_name,
+                "No compose file found on disk — skipping compose file for this service"
+            );
+        }
+
+        // --- Only dump running services ---
+        if service_status != "running" {
+            info!(service=%service_name, status=%service_status, "Service not running — skipping DB dump");
+            continue;
+        }
+
+        if !compose_file.exists() {
+            // Nothing to enumerate containers from
+            continue;
+        }
+
+        info!(service=%service_name, "Discovering database containers...");
+        let containers = list_service_containers(&compose_file, &project_name).await;
+
+        if containers.is_empty() {
+            info!(service=%service_name, "No running containers found for service");
+            continue;
+        }
+
+        for container in &containers {
+            let engine = match detect_db_engine(&container.image) {
+                Some(e) => e,
+                None => {
+                    // Not a recognised database image — skip silently
+                    continue;
+                }
+            };
+
+            info!(
+                service = %service_name,
+                container = %container.name,
+                engine = %engine,
+                "Dumping database container"
+            );
+
+            let dump_result = match engine {
+                "postgres" => dump_postgres(&container.name).await,
+                "mysql" | "mariadb" => dump_mysql(&container.name).await,
+                "redis" => dump_redis(&container.name).await,
+                "mongo" => dump_mongo(&container.name).await,
+                _ => continue,
+            };
+
+            match dump_result {
+                Ok(dump_data) => {
+                    let ext = match engine {
+                        "redis" => "rdb",
+                        _ => "sql",
+                    };
+                    // Use the full container name (may contain slashes on some Docker
+                    // versions) — strip any leading slash for safety.
+                    let safe_container = container.name.trim_start_matches('/');
+                    let archive_path =
+                        format!("services/{}/{}/dump.{}", service_name, safe_container, ext);
+
+                    // Build a tar header for the in-memory bytes
+                    let mut header = tar::Header::new_gnu();
+                    header.set_size(dump_data.len() as u64);
+                    header.set_mode(0o644);
+                    header.set_cksum();
+
+                    match archive.append_data(
+                        &mut header,
+                        &archive_path,
+                        dump_data.as_slice(),
+                    ) {
+                        Ok(()) => {
+                            info!(
+                                service = %service_name,
+                                container = %container.name,
+                                size = dump_data.len(),
+                                "DB dump added to backup archive"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                service = %service_name,
+                                container = %container.name,
+                                error = %e,
+                                "Failed to add DB dump to archive"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        service = %service_name,
+                        container = %container.name,
+                        engine = %engine,
+                        error = %e,
+                        "Service DB dump failed — skipping (backup will continue)"
+                    );
+                }
+            }
+        }
+
+        let _ = service_id; // suppress unused-variable warning
+    }
 }
 
 /// Recursively add a directory to a tar archive

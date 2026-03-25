@@ -158,6 +158,53 @@ pub fn inject_rivetr_network(content: &str) -> Result<String, String> {
     serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
 }
 
+/// Inject a host port binding into the first service definition in a compose YAML.
+///
+/// Adds `"external_port:container_port"` to the `ports:` list of the **first** service
+/// in the `services:` map.  If the entry is already present it is not duplicated.
+///
+/// Returns the original content unchanged if YAML parsing fails (non-fatal).
+pub fn inject_public_ports(
+    content: &str,
+    external_port: i32,
+    container_port: i32,
+) -> Result<String, String> {
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+
+    let port_entry = format!("{}:{}", external_port, container_port);
+    let port_val = serde_yaml::Value::String(port_entry.clone());
+
+    let mapping = match yaml.as_mapping_mut() {
+        Some(m) => m,
+        None => return Ok(content.to_string()),
+    };
+
+    let services_key = serde_yaml::Value::String("services".to_string());
+    if let Some(services_val) = mapping.get_mut(&services_key) {
+        if let Some(services_map) = services_val.as_mapping_mut() {
+            // Inject into the first service definition only
+            if let Some((_svc_key, svc_val)) = services_map.iter_mut().next() {
+                if let Some(svc_map) = svc_val.as_mapping_mut() {
+                    let ports_key = serde_yaml::Value::String("ports".to_string());
+                    let ports = svc_map
+                        .entry(ports_key)
+                        .or_insert_with(|| serde_yaml::Value::Sequence(vec![]));
+
+                    if let Some(seq) = ports.as_sequence_mut() {
+                        if !seq.contains(&port_val) {
+                            seq.push(port_val);
+                        }
+                    }
+                    // If ports is a mapping (unusual), leave it untouched.
+                }
+            }
+        }
+    }
+
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
+}
+
 /// Namespace container names in compose content to prevent global conflicts
 /// Prefixes all container_name values with "rivetr-{service_name}-"
 pub fn namespace_container_names(content: &str, service_name: &str) -> Result<String, String> {

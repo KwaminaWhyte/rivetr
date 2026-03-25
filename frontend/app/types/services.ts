@@ -20,6 +20,12 @@ export interface Service {
   isolated_network: boolean;
   /** When true, the compose file is deployed verbatim without Rivetr network/label injections. */
   raw_compose_mode: boolean;
+  /** When true, the service exposes a port directly on the host. */
+  public_access: boolean;
+  /** Host port bound when public_access is true (e.g. 6380). */
+  external_port: number;
+  /** Container port exposed when public_access is true (e.g. 6379). */
+  expose_container_port: number;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +50,12 @@ export interface UpdateServiceRequest {
   isolated_network?: boolean;
   /** Toggle raw compose mode for this service */
   raw_compose_mode?: boolean;
+  /** Enable/disable exposing the service port on the host */
+  public_access?: boolean;
+  /** Host port to bind when public_access is enabled */
+  external_port?: number;
+  /** Container port to expose when public_access is enabled */
+  expose_container_port?: number;
 }
 
 /** Service log entry */

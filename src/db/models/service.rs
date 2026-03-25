@@ -64,6 +64,15 @@ pub struct Service {
     /// network overrides, container name namespacing, or label modifications.
     #[serde(default)]
     pub raw_compose_mode: i32,
+    /// When 1, the service exposes `expose_container_port` on `external_port` of the host.
+    #[serde(default)]
+    pub public_access: i32,
+    /// Host port to bind when public_access is enabled (e.g. 6380).
+    #[serde(default)]
+    pub external_port: i32,
+    /// Container port to expose when public_access is enabled (e.g. 6379).
+    #[serde(default)]
+    pub expose_container_port: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -110,6 +119,12 @@ pub struct ServiceResponse {
     pub isolated_network: bool,
     /// When true, the compose file is deployed verbatim without any Rivetr network/label injections.
     pub raw_compose_mode: bool,
+    /// Whether the service port is exposed on the host.
+    pub public_access: bool,
+    /// Host port to bind when public_access is enabled.
+    pub external_port: i32,
+    /// Container port to expose when public_access is enabled.
+    pub expose_container_port: i32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -128,6 +143,9 @@ impl From<Service> for ServiceResponse {
             error_message: service.error_message,
             isolated_network: service.isolated_network != 0,
             raw_compose_mode: service.raw_compose_mode != 0,
+            public_access: service.public_access != 0,
+            external_port: service.external_port,
+            expose_container_port: service.expose_container_port,
             created_at: service.created_at,
             updated_at: service.updated_at,
         }
@@ -165,4 +183,10 @@ pub struct UpdateServiceRequest {
     pub isolated_network: Option<bool>,
     /// Toggle raw compose mode for this service
     pub raw_compose_mode: Option<bool>,
+    /// Enable/disable exposing the service port on the host
+    pub public_access: Option<bool>,
+    /// Host port to bind when public_access is enabled
+    pub external_port: Option<i32>,
+    /// Container port to expose when public_access is enabled
+    pub expose_container_port: Option<i32>,
 }

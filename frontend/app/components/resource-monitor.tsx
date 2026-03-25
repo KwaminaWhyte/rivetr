@@ -10,6 +10,8 @@ interface ResourceMonitorProps {
   appId?: string;
   /** Database ID (for database stats) */
   databaseId?: string;
+  /** Service ID (for Docker Compose service stats) */
+  serviceId?: string;
   /** Auth token for API calls (optional - uses cookies if not provided) */
   token?: string;
   /** Polling interval in milliseconds (default: 5000) */
@@ -151,12 +153,12 @@ const NetworkIcon = () => (
   </svg>
 );
 
-export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000, cpuLimit }: ResourceMonitorProps) {
+export function ResourceMonitor({ appId, databaseId, serviceId, token, pollInterval = 5000, cpuLimit }: ResourceMonitorProps) {
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [memoryHistory, setMemoryHistory] = useState<number[]>([]);
 
-  const resourceId = appId || databaseId;
-  const resourceType = appId ? "app" : "database";
+  const resourceId = appId || databaseId || serviceId;
+  const resourceType = appId ? "app" : serviceId ? "service" : "database";
 
   const {
     data: stats,
@@ -165,9 +167,11 @@ export function ResourceMonitor({ appId, databaseId, token, pollInterval = 5000,
     isError,
   } = useQuery<ContainerStats>({
     queryKey: [`${resourceType}-stats`, resourceId],
-    queryFn: () => appId
-      ? api.getAppStats(appId, token)
-      : api.getDatabaseStats(databaseId!, token),
+    queryFn: () => {
+      if (appId) return api.getAppStats(appId, token);
+      if (serviceId) return api.getServiceStats(serviceId);
+      return api.getDatabaseStats(databaseId!, token);
+    },
     enabled: !!resourceId,
     refetchInterval: pollInterval,
     refetchIntervalInBackground: false,

@@ -21,6 +21,7 @@ use super::compose::{
     get_compose_dir, run_compose_command, validate_compose_content, write_compose_file,
     write_compose_file_with_options,
 };
+use super::control::restart_service_internal;
 
 /// Query parameters for listing services
 #[derive(Debug, serde::Deserialize, Default)]
@@ -377,6 +378,105 @@ pub async fn update_service(
                 tracing::error!("Failed to update service raw_compose_mode: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
+    }
+
+    // Handle public access / external port changes
+    let public_access_changed = req.public_access.is_some()
+        || req.external_port.is_some()
+        || req.expose_container_port.is_some();
+
+    if public_access_changed {
+        let new_public_access = req.public_access.unwrap_or(existing.public_access != 0);
+        let new_external_port = req.external_port.unwrap_or(existing.external_port);
+        let new_expose_port = req
+            .expose_container_port
+            .unwrap_or(existing.expose_container_port);
+
+        // Port conflict check when enabling public access with a valid external port
+        if new_public_access && new_external_port != 0 {
+            // Check other services with the same external_port
+            let conflict_svc: Option<(String,)> = sqlx::query_as(
+                "SELECT name FROM services WHERE external_port = ? AND public_access = 1 AND id != ?",
+            )
+            .bind(new_external_port)
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check external port conflict in services: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            if let Some((name,)) = conflict_svc {
+                tracing::warn!(
+                    "External port {} already used by service '{}'",
+                    new_external_port,
+                    name
+                );
+                return Err(StatusCode::CONFLICT);
+            }
+
+            // Check public databases with the same external_port
+            let conflict_db: Option<(String,)> = sqlx::query_as(
+                "SELECT name FROM databases WHERE external_port = ? AND public_access = 1",
+            )
+            .bind(new_external_port)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to check external port conflict in databases: {}",
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            if let Some((name,)) = conflict_db {
+                tracing::warn!(
+                    "External port {} already used by database '{}'",
+                    new_external_port,
+                    name
+                );
+                return Err(StatusCode::CONFLICT);
+            }
+        }
+
+        sqlx::query(
+            "UPDATE services SET public_access = ?, external_port = ?, expose_container_port = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(new_public_access as i32)
+        .bind(new_external_port)
+        .bind(new_expose_port)
+        .bind(&now)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update service public access fields: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        // If public_access changed and service is running, restart it so port binding takes effect.
+        let was_public = existing.public_access != 0;
+        if new_public_access != was_public && existing.status == ServiceStatus::Running.to_string()
+        {
+            tracing::info!(
+                "public_access changed for running service '{}', triggering restart",
+                existing.name
+            );
+            // Restart in background — don't block the API response
+            let state_clone = state.clone();
+            let id_clone = id.clone();
+            tokio::spawn(async move {
+                if let Err(e) = restart_service_internal(&state_clone, &id_clone).await {
+                    tracing::error!(
+                        "Failed to restart service {} after public_access change: {}",
+                        id_clone,
+                        e
+                    );
+                }
+            });
+        }
     }
 
     // Fetch and return the updated service

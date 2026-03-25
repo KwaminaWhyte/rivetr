@@ -21,8 +21,8 @@ use crate::AppState;
 
 use super::super::audit::{audit_log, extract_client_ip};
 use super::compose::{
-    get_compose_dir, get_service_compose_dir, run_compose_command, substitute_magic_vars,
-    write_compose_file_with_options,
+    get_compose_dir, get_service_compose_dir, inject_public_ports, run_compose_command,
+    substitute_magic_vars, write_compose_file_with_options,
 };
 
 /// Service log entry
@@ -118,10 +118,37 @@ pub async fn start_service(
     } else {
         None
     };
+
+    // If public_access is enabled (and not in raw mode), inject the host port binding before
+    // writing the compose file to disk so Docker picks it up on the next `up`.
+    let compose_to_write = if !raw_mode
+        && service.public_access != 0
+        && service.external_port != 0
+        && service.expose_container_port != 0
+    {
+        match inject_public_ports(
+            &substituted_compose,
+            service.external_port,
+            service.expose_container_port,
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject public ports for service {}: {}. Using compose without port injection.",
+                    service.name,
+                    e
+                );
+                substituted_compose
+            }
+        }
+    } else {
+        substituted_compose
+    };
+
     if let Err(e) = write_compose_file_with_options(
         data_dir,
         &service.name,
-        &substituted_compose,
+        &compose_to_write,
         isolated_id,
         raw_mode,
     )
@@ -387,10 +414,36 @@ pub async fn restart_service(
     } else {
         None
     };
+
+    // Inject public port binding if enabled (and not raw mode)
+    let compose_to_write = if !raw_mode
+        && service.public_access != 0
+        && service.external_port != 0
+        && service.expose_container_port != 0
+    {
+        match inject_public_ports(
+            &substituted_compose,
+            service.external_port,
+            service.expose_container_port,
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject public ports for service {}: {}. Using compose without port injection.",
+                    service.name,
+                    e
+                );
+                substituted_compose
+            }
+        }
+    } else {
+        substituted_compose
+    };
+
     if let Err(e) = write_compose_file_with_options(
         data_dir,
         &service.name,
-        &substituted_compose,
+        &compose_to_write,
         isolated_id,
         raw_mode,
     )
@@ -483,6 +536,128 @@ pub async fn restart_service(
     .await;
 
     Ok(Json(service.into()))
+}
+
+/// Internal helper: perform a full stop → start cycle for a running service.
+///
+/// Used by the update handler when `public_access` changes on a running service
+/// so that Docker picks up the new port binding without requiring manual restart.
+pub async fn restart_service_internal(
+    state: &Arc<AppState>,
+    id: &str,
+) -> Result<(), String> {
+    let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| format!("DB error: {}", e))?
+        .ok_or_else(|| format!("Service {} not found", id))?;
+
+    let data_dir = &state.config.server.data_dir;
+    let compose_dir = get_compose_dir(data_dir, &service.name);
+    let project_name = service.compose_project_name();
+
+    // Fetch generated vars
+    let gen_vars_rows: Vec<ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
+            .bind(&service.id)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default();
+    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+
+    // Substitute magic vars
+    let substituted = substitute_magic_vars(
+        &service.compose_content,
+        &service.id,
+        service.domain.as_deref(),
+        &existing_vars,
+        &state.db,
+        false,
+    )
+    .await
+    .map_err(|e| format!("Magic var substitution failed: {}", e))?;
+
+    let raw_mode = service.raw_compose_mode != 0;
+    let isolated_id = if !raw_mode && service.isolated_network != 0 {
+        Some(service.id.as_str())
+    } else {
+        None
+    };
+
+    // Inject public ports if needed
+    let compose_to_write = if !raw_mode
+        && service.public_access != 0
+        && service.external_port != 0
+        && service.expose_container_port != 0
+    {
+        match inject_public_ports(
+            &substituted,
+            service.external_port,
+            service.expose_container_port,
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject public ports for service {} during internal restart: {}",
+                    service.name,
+                    e
+                );
+                substituted
+            }
+        }
+    } else {
+        substituted
+    };
+
+    write_compose_file_with_options(
+        data_dir,
+        &service.name,
+        &compose_to_write,
+        isolated_id,
+        raw_mode,
+    )
+    .await
+    .map_err(|e| format!("Failed to write compose file: {}", e))?;
+
+    // Stop (ignore errors — containers may already be down)
+    let _ =
+        run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await;
+
+    // Start
+    run_compose_command(&compose_dir, &project_name, &["up", "-d"])
+        .await
+        .map_err(|e| format!("docker compose up failed: {}", e))?;
+
+    sqlx::query(
+        "UPDATE services SET status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(ServiceStatus::Running.to_string())
+    .bind(id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| format!("Failed to update service status: {}", e))?;
+
+    // Re-register proxy route
+    if let Some(ref domain) = service.domain {
+        if !domain.is_empty() {
+            let backend = crate::proxy::Backend::new(
+                format!("rivetr-svc-{}", service.name),
+                "127.0.0.1".to_string(),
+                service.port as u16,
+            );
+            state.routes.load().add_route(domain.clone(), backend);
+        }
+    }
+
+    tracing::info!(
+        "restart_service_internal: service '{}' restarted successfully",
+        service.name
+    );
+    Ok(())
 }
 
 /// Parse docker compose logs output into structured entries

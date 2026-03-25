@@ -12,6 +12,9 @@ import {
   Save,
   FileCode,
   FileText,
+  Network,
+  Copy,
+  Check,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
@@ -20,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ServiceLogs } from "@/components/service-logs";
+import { ResourceMonitor } from "@/components/resource-monitor";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { Service, ServiceStatus, Project } from "@/types/api";
 
@@ -99,11 +104,28 @@ export default function ServiceDetailPage() {
   const [editName, setEditName] = useState("");
   const [editCompose, setEditCompose] = useState("");
 
+  // Public access form state
+  const [publicAccess, setPublicAccess] = useState(false);
+  const [externalPort, setExternalPort] = useState("");
+  const [containerPort, setContainerPort] = useState("");
+  const [copiedConn, setCopiedConn] = useState(false);
+
   const { data: service, isLoading, error } = useQuery<Service>({
     queryKey: ["service", serviceId],
     queryFn: () => api.getService(serviceId),
     refetchInterval: 5000, // Poll for status updates
   });
+
+  // Sync public access form state when service data loads/changes
+  useEffect(() => {
+    if (service) {
+      setPublicAccess(service.public_access);
+      setExternalPort(service.external_port > 0 ? String(service.external_port) : "");
+      setContainerPort(
+        service.expose_container_port > 0 ? String(service.expose_container_port) : ""
+      );
+    }
+  }, [service]);
 
   // Fetch project for breadcrumb
   const { data: project } = useQuery<Project>({
@@ -139,6 +161,26 @@ export default function ServiceDetailPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update service");
+    },
+  });
+
+  const publicAccessMutation = useMutation({
+    mutationFn: (data: {
+      public_access: boolean;
+      external_port: number;
+      expose_container_port: number;
+    }) => api.updateService(serviceId, data),
+    onSuccess: () => {
+      toast.success("Public access settings saved");
+      queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Failed to save public access settings";
+      if (msg.includes("409") || msg.toLowerCase().includes("conflict")) {
+        toast.error("Port conflict — that port is already in use by another service or database.");
+      } else {
+        toast.error(msg);
+      }
     },
   });
 
@@ -208,8 +250,43 @@ export default function ServiceDetailPage() {
     });
   };
 
+  const handlePublicAccessSave = () => {
+    const extPort = externalPort ? parseInt(externalPort, 10) : 0;
+    const ctrPort = containerPort ? parseInt(containerPort, 10) : 0;
+
+    if (publicAccess) {
+      if (!extPort || extPort < 1 || extPort > 65535) {
+        toast.error("Please enter a valid host port (1–65535)");
+        return;
+      }
+      if (!ctrPort || ctrPort < 1 || ctrPort > 65535) {
+        toast.error("Please enter a valid container port (1–65535)");
+        return;
+      }
+    }
+
+    publicAccessMutation.mutate({
+      public_access: publicAccess,
+      external_port: extPort,
+      expose_container_port: ctrPort,
+    });
+  };
+
   const handleDelete = () => {
     deleteMutation.mutate();
+  };
+
+  const connectionString =
+    service && service.public_access && service.external_port > 0
+      ? `${window.location.hostname}:${service.external_port}`
+      : null;
+
+  const copyConnectionString = () => {
+    if (!connectionString) return;
+    navigator.clipboard.writeText(connectionString).then(() => {
+      setCopiedConn(true);
+      setTimeout(() => setCopiedConn(false), 2000);
+    });
   };
 
   if (isLoading) {
@@ -328,12 +405,16 @@ export default function ServiceDetailPage() {
         </Card>
       )}
 
-      {/* Tabs for Configuration and Logs */}
+      {/* Tabs for Configuration, Network, and Logs */}
       <Tabs defaultValue="config" className="space-y-4">
         <TabsList>
           <TabsTrigger value="config" className="flex items-center gap-2">
             <FileCode className="h-4 w-4" />
             Configuration
+          </TabsTrigger>
+          <TabsTrigger value="network" className="flex items-center gap-2">
+            <Network className="h-4 w-4" />
+            Network
           </TabsTrigger>
           <TabsTrigger value="logs" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
@@ -357,6 +438,109 @@ export default function ServiceDetailPage() {
               <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm font-mono whitespace-pre-wrap">
                 {service.compose_content}
               </pre>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="network" className="space-y-4">
+          {/* Public Access Card */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Network className="h-5 w-5" />
+                <CardTitle>Public Access</CardTitle>
+              </div>
+              <CardDescription>
+                Expose a container port directly on the host so external clients (e.g. database
+                tools) can connect to this service without going through the proxy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-sm">Enable Public Access</p>
+                  <p className="text-muted-foreground text-xs">
+                    Binds the container port on the host. The service will be restarted if it is
+                    currently running.
+                  </p>
+                </div>
+                <Switch
+                  checked={publicAccess}
+                  onCheckedChange={setPublicAccess}
+                />
+              </div>
+
+              {/* Port inputs */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="external-port">Host Port</Label>
+                  <Input
+                    id="external-port"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    placeholder="e.g. 6380"
+                    value={externalPort}
+                    onChange={(e) => setExternalPort(e.target.value)}
+                    disabled={!publicAccess}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Port on the host machine to listen on
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="container-port">Container Port</Label>
+                  <Input
+                    id="container-port"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    placeholder="e.g. 6379"
+                    value={containerPort}
+                    onChange={(e) => setContainerPort(e.target.value)}
+                    disabled={!publicAccess}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Port the service listens on inside the container
+                  </p>
+                </div>
+              </div>
+
+              {/* Connection string (shown when public_access is saved) */}
+              {connectionString && (
+                <div className="space-y-2">
+                  <Label>Connection Address</Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-muted px-3 py-2 rounded text-sm font-mono truncate">
+                      {connectionString}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={copyConnectionString}
+                      title="Copy connection address"
+                    >
+                      {copiedConn ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Connect to this service from outside using the address above.
+                  </p>
+                </div>
+              )}
+
+              <Button
+                onClick={handlePublicAccessSave}
+                disabled={publicAccessMutation.isPending}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {publicAccessMutation.isPending ? "Saving..." : "Save Network Settings"}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
