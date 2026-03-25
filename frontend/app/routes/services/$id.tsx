@@ -423,6 +423,11 @@ export default function ServiceDetailPage() {
         </TabsList>
 
         <TabsContent value="config" className="space-y-4">
+          {/* Resource Usage */}
+          {service.status === "running" && (
+            <ResourceMonitor serviceId={service.id} />
+          )}
+
           {/* Docker Compose Content */}
           <Card>
             <CardHeader>
