@@ -353,7 +353,19 @@ impl ProxyServer {
         redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
         https_port: u16,
     ) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(self.bind_addr).await?;
+        // Try to inherit a socket from systemd socket activation (fd index 0 = HTTP).
+        // This keeps the kernel-level socket open during binary restarts so that
+        // in-flight connections queue rather than receiving ECONNREFUSED.
+        // Falls back to a fresh bind when not running under systemd.
+        let listener = {
+            let mut listenfd = listenfd::ListenFd::from_env();
+            if let Ok(Some(std_listener)) = listenfd.take_tcp_listener(0) {
+                std_listener.set_nonblocking(true)?;
+                TcpListener::from_std(std_listener)?
+            } else {
+                TcpListener::bind(self.bind_addr).await?
+            }
+        };
         info!("Proxy server listening on http://{}", self.bind_addr);
 
         let mut handler = ProxyHandler::new(self.routes.clone());
@@ -421,7 +433,17 @@ impl HttpsProxyServer {
 
     /// Start the HTTPS proxy server
     pub async fn run(self) -> anyhow::Result<()> {
-        let listener = TcpListener::bind(self.bind_addr).await?;
+        // Try to inherit a socket from systemd socket activation (fd index 1 = HTTPS).
+        // Falls back to a fresh bind when not running under systemd.
+        let listener = {
+            let mut listenfd = listenfd::ListenFd::from_env();
+            if let Ok(Some(std_listener)) = listenfd.take_tcp_listener(1) {
+                std_listener.set_nonblocking(true)?;
+                TcpListener::from_std(std_listener)?
+            } else {
+                TcpListener::bind(self.bind_addr).await?
+            }
+        };
         info!("Proxy server listening on https://{}", self.bind_addr);
 
         let mut handler = ProxyHandler::new(self.routes.clone());

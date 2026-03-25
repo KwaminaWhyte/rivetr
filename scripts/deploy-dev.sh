@@ -31,14 +31,30 @@ if [ "$FRONTEND_ONLY" = false ]; then
 fi
 
 echo "→ Deploying to $SERVER..."
-ssh "$SERVER" "systemctl stop rivetr"
 
 if [ "$FRONTEND_ONLY" = false ]; then
-  scp "target/$TARGET/release/rivetr" "$SERVER:$REMOTE_BIN"
+  # Upload the new binary to a temporary path while the proxy is still running.
+  # This avoids ~30 seconds of downtime caused by uploading over a stopped service.
+  echo "  → Uploading binary (proxy remains live during transfer)..."
+  scp "target/$TARGET/release/rivetr" "$SERVER:/opt/rivetr/rivetr.new"
 fi
+
+# Ensure the systemd socket unit is installed (idempotent — safe to run every deploy).
+# The socket unit keeps ports 80 and 443 open in the kernel during service restarts,
+# so connections queue instead of getting ECONNREFUSED.
+echo "  → Installing systemd socket unit (zero-downtime socket activation)..."
+scp "deploy/rivetr-proxy.socket" "$SERVER:/etc/systemd/system/rivetr-proxy.socket"
+ssh "$SERVER" "systemctl daemon-reload && systemctl enable rivetr-proxy.socket && systemctl start rivetr-proxy.socket 2>/dev/null || true"
 
 # Frontend is embedded in the binary (rust_embed) - but if we want to swap just frontend,
 # we'd need a separate assets dir. For now, always sync via binary.
 
-ssh "$SERVER" "systemctl start rivetr && sleep 2 && systemctl is-active rivetr"
+if [ "$FRONTEND_ONLY" = false ]; then
+  # Atomic swap + restart: stop → mv (instant) → start.
+  # Total downtime is now ~2s (service restart) rather than ~30s (binary transfer time).
+  # With the socket unit active, kernel-queued connections survive even the 2s gap.
+  ssh "$SERVER" "mv /opt/rivetr/rivetr.new /opt/rivetr/rivetr && systemctl restart rivetr && sleep 2 && systemctl is-active rivetr"
+else
+  ssh "$SERVER" "systemctl restart rivetr && sleep 2 && systemctl is-active rivetr"
+fi
 echo "✓ Deployed and running!"

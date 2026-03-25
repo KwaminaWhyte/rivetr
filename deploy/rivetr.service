@@ -1,0 +1,28 @@
+[Unit]
+Description=Rivetr Deployment Engine
+Documentation=https://github.com/KwaminaWhyte/rivetr
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service rivetr-proxy.socket
+
+[Service]
+Type=simple
+User=rivetr
+Group=rivetr
+WorkingDirectory=/opt/rivetr
+ExecStart=/opt/rivetr/rivetr --config /opt/rivetr/rivetr.toml
+Restart=always
+RestartSec=5
+
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/rivetr /home/rivetr
+PrivateTmp=true
+
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
