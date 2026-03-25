@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type { Service, ServiceStatus } from "@/types/api";
-import { Play, Square, Circle, Layers, RotateCw, Activity } from "lucide-react";
+import { Play, Square, Circle, Layers, RotateCw, Activity, ExternalLink } from "lucide-react";
 
 export function meta() {
   return [
@@ -203,6 +203,20 @@ export default function ServiceDetailLayout() {
           )}
         </div>
         <div className="flex gap-2">
+          {/* Open button — shown when running and domain or port is configured */}
+          {service.status === "running" && (service.domain || service.port > 0) && (() => {
+            const url = service.domain
+              ? `https://${service.domain}`
+              : `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${service.port}`;
+            return (
+              <Button variant="outline" asChild className="gap-2">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </a>
+              </Button>
+            );
+          })()}
           {/* Start/Stop/Restart buttons */}
           {service.status === "running" ? (
             <>

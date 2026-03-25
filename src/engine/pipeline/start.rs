@@ -186,21 +186,60 @@ pub(super) async fn start_container(
     match runtime.inspect(&container_name).await {
         Ok(_) => {
             // A container with the canonical name exists — rename it to free up the name.
-            if let Err(e) = runtime
+            // First attempt the rename directly.
+            let rename_result = runtime
                 .rename_container(&container_name, &old_container_prev_name)
-                .await
-            {
-                // If rename fails (e.g., container already renamed from a previous partial run),
-                // fall back to stopping it immediately so the new container can start.
-                tracing::warn!(
-                    error = %e,
-                    container = %container_name,
-                    "Could not rename old container for zero-downtime swap; stopping it now"
-                );
-                let _ = runtime.stop(&container_name).await;
-                let _ = runtime.remove(&container_name).await;
-            } else {
-                // Renamed successfully — schedule for cleanup after proxy swap.
+                .await;
+
+            let rename_succeeded = match rename_result {
+                Ok(()) => true,
+                Err(e) => {
+                    // Rename failed — most likely a stale "-prev" container from a previous
+                    // partial deploy is occupying the target name.  Remove it and retry once
+                    // so we can keep the old container alive during the build (zero-downtime).
+                    tracing::warn!(
+                        error = %e,
+                        container = %container_name,
+                        "Initial rename failed; attempting to remove stale -prev container and retry"
+                    );
+
+                    // Remove the stale -prev container (if it exists) then retry.
+                    let _ = runtime.stop(&old_container_prev_name).await;
+                    let _ = runtime.remove(&old_container_prev_name).await;
+
+                    match runtime
+                        .rename_container(&container_name, &old_container_prev_name)
+                        .await
+                    {
+                        Ok(()) => {
+                            tracing::info!(
+                                container = %container_name,
+                                "Rename succeeded after removing stale -prev container"
+                            );
+                            true
+                        }
+                        Err(e2) => {
+                            // Both attempts failed — we must stop the old container immediately
+                            // so Docker will accept the new one with the canonical name.
+                            // This is the only remaining path that causes a brief downtime window
+                            // for the affected app (other apps are unaffected).
+                            tracing::warn!(
+                                error = %e2,
+                                container = %container_name,
+                                "Could not rename old container after retry; stopping it now \
+                                 (brief downtime for this app only)"
+                            );
+                            let _ = runtime.stop(&container_name).await;
+                            let _ = runtime.remove(&container_name).await;
+                            false
+                        }
+                    }
+                }
+            };
+
+            if rename_succeeded {
+                // Renamed successfully — old container is still running under -prev name.
+                // Schedule it for cleanup AFTER proxy routes are updated (zero-downtime).
                 old_container_ids.push(old_container_prev_name.clone());
             }
         }

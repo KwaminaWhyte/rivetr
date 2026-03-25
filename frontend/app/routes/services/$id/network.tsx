@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
 import { useOutletContext } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 export function meta() {
   return [
@@ -14,7 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { Service } from "@/types/api";
-import { Copy, Check, Network, Server, ExternalLink, Globe, Container } from "lucide-react";
+import { api } from "@/lib/api";
+import { Copy, Check, Network, Server, ExternalLink, Globe, Container, Save } from "lucide-react";
 
 interface OutletContext {
   service: Service;
@@ -130,7 +133,55 @@ function parseComposeContent(content: string): ParsedService[] {
 
 export default function ServiceNetworkTab() {
   const { service } = useOutletContext<OutletContext>();
+  const queryClient = useQueryClient();
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Public access form state — seeded from current service values
+  const [publicAccess, setPublicAccess] = useState(() => service.public_access ?? false);
+  const [externalPort, setExternalPort] = useState(() =>
+    service.external_port > 0 ? String(service.external_port) : ""
+  );
+  const [containerPort, setContainerPort] = useState(() =>
+    service.expose_container_port > 0 ? String(service.expose_container_port) : ""
+  );
+
+  const publicAccessMutation = useMutation({
+    mutationFn: (data: { public_access: boolean; external_port: number; expose_container_port: number }) =>
+      api.updateService(service.id, data),
+    onSuccess: () => {
+      toast.success("Public access settings saved");
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Failed to save";
+      if (msg.includes("409") || msg.toLowerCase().includes("conflict")) {
+        toast.error("Port conflict — that port is already in use by another service or database.");
+      } else {
+        toast.error(msg);
+      }
+    },
+  });
+
+  const handlePublicAccessSave = () => {
+    const extPort = externalPort ? parseInt(externalPort, 10) : 0;
+    const ctrPort = containerPort ? parseInt(containerPort, 10) : 0;
+    if (publicAccess) {
+      if (!extPort || extPort < 1 || extPort > 65535) {
+        toast.error("Enter a valid host port (1–65535)");
+        return;
+      }
+      if (!ctrPort || ctrPort < 1 || ctrPort > 65535) {
+        toast.error("Enter a valid container port (1–65535)");
+        return;
+      }
+    }
+    publicAccessMutation.mutate({ public_access: publicAccess, external_port: extPort, expose_container_port: ctrPort });
+  };
+
+  const connectionString =
+    service.public_access && service.external_port > 0
+      ? `${typeof window !== "undefined" ? window.location.hostname : ""}:${service.external_port}`
+      : null;
 
   const parsedServices = useMemo(
     () => parseComposeContent(service.compose_content),
@@ -381,6 +432,80 @@ export default function ServiceNetworkTab() {
             Use the service name as the hostname when connecting from other containers
             within the same Docker Compose project or connected networks.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Public Access Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Network className="h-5 w-5" />
+            Public Access
+          </CardTitle>
+          <CardDescription>
+            Expose a container port directly on the host so external clients (e.g. database
+            tools) can connect without going through the proxy. The service will restart if
+            it is currently running.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Enable Public Access</p>
+              <p className="text-xs text-muted-foreground">
+                Binds the container port on the host machine
+              </p>
+            </div>
+            <Switch checked={publicAccess} onCheckedChange={setPublicAccess} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="ext-port">Host Port</Label>
+              <Input
+                id="ext-port"
+                type="number"
+                min={1}
+                max={65535}
+                placeholder="e.g. 6380"
+                value={externalPort}
+                onChange={(e) => setExternalPort(e.target.value)}
+                disabled={!publicAccess}
+              />
+              <p className="text-xs text-muted-foreground">Port on the host to listen on</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ctr-port">Container Port</Label>
+              <Input
+                id="ctr-port"
+                type="number"
+                min={1}
+                max={65535}
+                placeholder="e.g. 6379"
+                value={containerPort}
+                onChange={(e) => setContainerPort(e.target.value)}
+                disabled={!publicAccess}
+              />
+              <p className="text-xs text-muted-foreground">Port the service listens on inside the container</p>
+            </div>
+          </div>
+
+          {connectionString && (
+            <div className="space-y-2">
+              <Label>Connection Address</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 bg-muted px-3 py-2 rounded text-sm font-mono truncate">
+                  {connectionString}
+                </code>
+                <CopyButton text={connectionString} field="connection-string" />
+              </div>
+            </div>
+          )}
+
+          <Button onClick={handlePublicAccessSave} disabled={publicAccessMutation.isPending}>
+            <Save className="mr-2 h-4 w-4" />
+            {publicAccessMutation.isPending ? "Saving…" : "Save Network Settings"}
+          </Button>
         </CardContent>
       </Card>
     </div>
