@@ -342,10 +342,11 @@ pub async fn trigger_log_cleanup(
 
 /// Get uptime summary for an app
 ///
-/// GET /api/apps/:id/uptime
+/// GET /api/apps/:id/uptime?period=24h|7d|30d
 pub async fn get_uptime(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
+    Query(query): Query<UptimeHistoryQuery>,
 ) -> Result<Json<UptimeSummary>, StatusCode> {
     // Verify app exists
     let app_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps WHERE id = ?")
@@ -361,8 +362,12 @@ pub async fn get_uptime(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Get summary stats for last 30 days
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+    let hours = match query.period.as_deref() {
+        Some("24h") => 24,
+        Some("7d") => 7 * 24,
+        _ => 30 * 24,
+    };
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(hours);
     let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let total_checks: i64 = sqlx::query_scalar(
@@ -446,7 +451,7 @@ pub async fn get_uptime(
     let availability_percent = if total_checks > 0 {
         (up_checks as f64 / total_checks as f64) * 100.0
     } else {
-        100.0
+        0.0
     };
 
     Ok(Json(UptimeSummary {

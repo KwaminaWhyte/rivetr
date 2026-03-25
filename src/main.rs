@@ -370,7 +370,7 @@ async fn main() -> Result<()> {
                     tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
                     match acme_client.request_certificate(&all_cert_domains).await {
                         Ok(result) => {
-                            let _ = acme_client.save_certificate(&result).await;
+                            let _ = acme_client.save_certificate(&result, &instance_domain).await;
                             rivetr::proxy::TlsConfig::from_pem(
                                 &result.certificate_chain_pem,
                                 &result.private_key_pem,
@@ -408,14 +408,14 @@ async fn main() -> Result<()> {
 
                     // Start certificate renewal manager. `cert_domains` reflects what's
                     // actually in the cert; the DB is queried each cycle for new subdomains.
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client, cert_domains)
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, instance_domain.clone(), cert_domains)
                         .with_db_and_reload(db.clone(), Some(tls_reload));
                     tokio::spawn(async move { renewal_mgr.run().await });
                 } else {
                     tracing::warn!("Running HTTP-only (no TLS certificate available)");
                     // Start renewal manager anyway — it will retry on next cycle.
                     // No tls_reload handle since HTTPS server is not running yet.
-                    let renewal_mgr = CertificateRenewalManager::new(acme_client, cert_domains)
+                    let renewal_mgr = CertificateRenewalManager::new(acme_client, instance_domain.clone(), cert_domains)
                         .with_db_and_reload(db.clone(), None);
                     tokio::spawn(async move { renewal_mgr.run().await });
                 }

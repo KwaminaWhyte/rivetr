@@ -305,8 +305,8 @@ function UptimeSection({ appId }: { appId: string }) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
 
   const { data: uptimeSummary, isLoading: summaryLoading } = useQuery<UptimeSummary>({
-    queryKey: ["uptime", appId],
-    queryFn: () => monitoringApi.getUptime(appId),
+    queryKey: ["uptime", appId, period],
+    queryFn: () => monitoringApi.getUptime(appId, period),
     refetchInterval: 60000,
   });
 
@@ -351,7 +351,11 @@ function UptimeSection({ appId }: { appId: string }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center">
             <p className="text-sm text-muted-foreground mb-1">Availability</p>
-            <AvailabilityBadge percent={uptimeSummary?.availability_percent ?? 100} />
+            {uptimeSummary && uptimeSummary.total_checks > 0 ? (
+              <AvailabilityBadge percent={uptimeSummary.availability_percent} />
+            ) : (
+              <p className="text-2xl font-bold text-muted-foreground">-</p>
+            )}
           </div>
           <div className="text-center">
             <p className="text-sm text-muted-foreground mb-1">Total Checks</p>

@@ -70,25 +70,33 @@ async fn uptime_cycle(db: &DbPool, client: &reqwest::Client) {
             if healthcheck_url.starts_with("http://") || healthcheck_url.starts_with("https://") {
                 healthcheck_url.clone()
             } else {
-                // Try to build URL from domain or just skip if healthcheck is a path
-                // Look up the app domain first
-                let domain: Option<(Option<String>,)> =
-                    sqlx::query_as("SELECT domain FROM apps WHERE id = ?")
+                // Build URL from custom domain, falling back to auto_subdomain (e.g. app.rivetr.site)
+                let domain_row: Option<(Option<String>, Option<String>)> =
+                    sqlx::query_as("SELECT domain, auto_subdomain FROM apps WHERE id = ?")
                         .bind(&app_id)
                         .fetch_optional(db)
                         .await
                         .unwrap_or(None);
 
-                match domain {
-                    Some((Some(d),)) if !d.is_empty() => {
+                let resolved_domain = domain_row.and_then(|(domain, auto_subdomain)| {
+                    if let Some(d) = domain {
+                        if !d.is_empty() {
+                            return Some(d);
+                        }
+                    }
+                    auto_subdomain.filter(|d| !d.is_empty())
+                });
+
+                match resolved_domain {
+                    Some(d) => {
                         let path = if healthcheck_url.starts_with('/') {
                             healthcheck_url.clone()
                         } else {
                             format!("/{}", healthcheck_url)
                         };
-                        format!("http://{}{}", d, path)
+                        format!("https://{}{}", d, path)
                     }
-                    _ => {
+                    None => {
                         // Can't construct a URL without a domain; skip this app
                         continue;
                     }

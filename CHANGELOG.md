@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.15] - 2026-03-25
+
+### Fixed
+- **ACME cert saved under wrong directory on renewal** — `save_certificate` now takes an explicit `instance_domain` parameter instead of deriving the path from the cert's CN. Certificates written during renewal now land in the correct directory and survive restarts.
+- **Uptime checker skipped apps with no custom domain** — The uptime poller now falls back to `auto_subdomain` when an app has no custom domain configured. Health-check requests to `*.rivetr.site` subdomains are now issued over HTTPS.
+- **Monitoring page showed "100% availability" with 0 checks** — The availability percentage now renders `"-"` instead of `"100%"` when `total_checks` is zero, avoiding a misleading stat on freshly-added monitors.
+- **Uptime summary stats ignored period selector** — The period dropdown on the Monitoring page now threads the selected value through to `GET /api/uptime?period=` on the backend and re-fetches summary stats when the period changes.
+- **Health check path for expediting app** — The expediting app's health-check path is now set to `/up` to match the actual health endpoint.
+- **Westel Dockerfiles** — Removed BuildKit cache mounts (`--mount=type=cache`) that are unsupported by the legacy Docker API builder, upgraded PHP 8.3 → 8.4, and preserved layer-ordering optimisations.
+
+---
+
 ## [v0.10.13] - 2026-03-22
 
 ### Fixed

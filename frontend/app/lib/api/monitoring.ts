@@ -61,8 +61,10 @@ export const monitoringApi = {
   // -- Uptime --
 
   /** Get uptime summary for an app */
-  getUptime: (appId: string, token?: string) =>
-    apiRequest<UptimeSummary>(`/apps/${appId}/uptime`, {}, token),
+  getUptime: (appId: string, period?: "24h" | "7d" | "30d", token?: string) => {
+    const query = period ? `?period=${period}` : "";
+    return apiRequest<UptimeSummary>(`/apps/${appId}/uptime${query}`, {}, token);
+  },
 
   /** Get uptime history for an app */
   getUptimeHistory: (appId: string, period?: "24h" | "7d" | "30d", token?: string) => {

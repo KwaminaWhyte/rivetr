@@ -639,10 +639,15 @@ impl AcmeClient {
         Ok((private_key_pem, csr.der().to_vec()))
     }
 
-    /// Save certificate to cache and return path
-    pub async fn save_certificate(&self, result: &CertificateResult) -> Result<PathBuf> {
-        let domain = result.domains.first().context("No domains in result")?;
-        let cert_dir = self.config.cache_dir.join("certs").join(domain);
+    /// Save certificate to cache and return path.
+    /// `save_domain` is the directory key used to store the cert — always pass the
+    /// instance domain so the startup loader (which keys on instance domain) finds it.
+    pub async fn save_certificate(
+        &self,
+        result: &CertificateResult,
+        save_domain: &str,
+    ) -> Result<PathBuf> {
+        let cert_dir = self.config.cache_dir.join("certs").join(save_domain);
 
         fs::create_dir_all(&cert_dir)
             .await
@@ -667,7 +672,7 @@ impl AcmeClient {
         }
 
         info!(
-            domain = %domain,
+            domain = %save_domain,
             cert_path = %cert_path.display(),
             "Certificate saved"
         );
@@ -774,6 +779,8 @@ pub struct CertificateResult {
 /// Certificate renewal manager
 pub struct CertificateRenewalManager {
     client: Arc<AcmeClient>,
+    /// The primary domain used as the on-disk directory key (always the instance domain)
+    instance_domain: String,
     /// Full domain list (including all SANs) — updated dynamically as apps are added
     domains: Vec<String>,
     /// Database pool for discovering new app subdomains at runtime
@@ -785,10 +792,12 @@ pub struct CertificateRenewalManager {
 }
 
 impl CertificateRenewalManager {
-    /// Create a new renewal manager with the full list of covered domains
-    pub fn new(client: Arc<AcmeClient>, domains: Vec<String>) -> Self {
+    /// Create a new renewal manager.
+    /// `instance_domain` is the primary domain (used as the on-disk cert directory key).
+    pub fn new(client: Arc<AcmeClient>, instance_domain: String, domains: Vec<String>) -> Self {
         Self {
             client,
+            instance_domain,
             domains,
             db: None,
             tls_reload: None,
@@ -894,7 +903,7 @@ impl CertificateRenewalManager {
 
         match self.client.request_certificate(&all_domains).await {
             Ok(result) => {
-                let _ = self.client.save_certificate(&result).await;
+                let _ = self.client.save_certificate(&result, &self.instance_domain).await;
                 if let Some(ref reload) = self.tls_reload {
                     match TlsConfig::from_pem(
                         &result.certificate_chain_pem,
@@ -962,7 +971,7 @@ impl CertificateRenewalManager {
                     self.domains.clone()
                 };
                 let result = self.client.request_certificate(&renewal_domains).await?;
-                self.client.save_certificate(&result).await?;
+                self.client.save_certificate(&result, &self.instance_domain).await?;
 
                 // Hot-reload the new cert into the running HTTPS server
                 if let Some(ref reload) = self.tls_reload {
