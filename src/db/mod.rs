@@ -1440,6 +1440,36 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 104: Add AI provider settings to instance_settings
+    let has_ai_provider: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM instance_settings WHERE key = 'ai_provider'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_ai_provider {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/104_ai_settings.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 105: Add public access fields to services
+    let has_service_public_access: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('services') WHERE name = 'public_access'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_service_public_access {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/105_service_public_access.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

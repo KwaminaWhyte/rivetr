@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.18] - 2026-03-25
+
+### Added
+- **Service resource monitor** — The service detail page now shows live CPU, memory, and network stats (same `ResourceMonitor` component used by apps and databases). Stats are only shown when the service is running.
+- **Service public port exposure** — Services can now expose a container port directly on the host, identical to the managed database "Make Public" feature. Configure via the new **Network** tab on the service detail page: set a host port, container port, and toggle public access. Port conflicts are checked against other services and public databases. Changing the setting auto-restarts a running service to apply the new binding. (Migration `105_service_public_access.sql`)
+- **Full backup includes service data** — The full system backup now includes:
+  - Compose files for all services (`services/{name}/docker-compose.yml` in the archive)
+  - Database dumps for running service containers: `pg_dumpall` for PostgreSQL, `mysqldump --all-databases` for MySQL/MariaDB, `BGSAVE` + dump.rdb for Redis/KeyDB/Dragonfly, `mongodump --archive` for MongoDB. All dump failures are non-fatal (logged as warnings).
+
+### Fixed
+- **Migrations 104 and 105 not auto-applied** — Both new migrations were included in the binary but not registered in the migration runner. Added idempotent guards so they are applied automatically on the next startup.
+
 ## [v0.10.17] - 2026-03-25
 
 ### Changed
