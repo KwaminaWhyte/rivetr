@@ -16,13 +16,13 @@ Rivetr is a single-binary PaaS written in Rust that deploys applications from Gi
 
 ## Phase 1 — Quick Wins
 
-### 1. Deployment Error Diagnosis
+### 1. Deployment Error Diagnosis ✅ Implemented
 
 **Description**
 When a deployment fails, the raw build log is often hundreds of lines long and difficult to parse at a glance. This feature sends the tail of the failure log to an AI model, asks it to identify the root cause, and streams a human-readable diagnosis along with a prioritized list of suggested fixes directly on the deployment detail page.
 
 **Codebase Location**
-- Backend: `src/api/ai_features/diagnosis.rs`
+- Backend: `src/api/ai_features.rs` → `diagnose_deployment()`
 - Frontend: `frontend/app/routes/apps/$id/deployment-detail.tsx`
 
 **Data Sources**
@@ -42,13 +42,13 @@ Low — the data is already fetched for the deployment detail page. The backend 
 
 ---
 
-### 2. Deployment Insights & Patterns
+### 2. Deployment Insights & Patterns ✅ Implemented
 
 **Description**
 Aggregate a project's deployment history and surface meaningful trends: average build duration over time, failure rate by day of week, most common error categories, and which commit authors tend to introduce failures. The AI narrates these findings in a short paragraph rather than leaving the user to interpret raw charts.
 
 **Codebase Location**
-- Backend: `src/api/ai_features/insights.rs`
+- Backend: `src/api/ai_features.rs` → `get_deployment_insights()`
 - Frontend: app overview page (alongside the existing deployment list)
 
 **Data Sources**
@@ -68,13 +68,13 @@ Low — all required data is already present. The main work is writing the aggre
 
 ---
 
-### 3. Cost Optimization Advisor
+### 3. Cost Optimization Advisor ✅ Implemented
 
 **Description**
 Compare actual peak resource usage against the configured memory and CPU limits for each app. Identify apps that are significantly over-provisioned and calculate estimated monthly savings from right-sizing. Surface these recommendations as actionable cards on the costs page.
 
 **Codebase Location**
-- Backend: `src/api/ai_features/cost.rs`
+- Backend: `src/api/ai_features.rs` → `get_cost_suggestions()`
 - Frontend: costs page (existing, add an "AI Recommendations" section)
 
 **Data Sources**
@@ -152,13 +152,13 @@ Medium — the heuristic scoring can be entirely rule-based (no AI required for 
 
 ---
 
-### 6. Dockerfile Optimizer
+### 6. Dockerfile Optimizer ✅ Implemented
 
 **Description**
 Analyze an app's Dockerfile and build log durations and suggest concrete improvements: layer ordering for better cache hit rates, removal of unnecessary packages, multi-stage build opportunities, and base image alternatives with smaller attack surfaces.
 
 **Codebase Location**
-- Backend: `src/api/ai_features/dockerfile.rs`
+- Backend: `src/api/ai_features.rs` → `suggest_dockerfile()`
 - Frontend: app settings page → Build section
 
 **Data Sources**
@@ -289,13 +289,13 @@ High — generating valid structured configuration from free text is prone to ha
 
 ---
 
-### 11. Security & Compliance Advisor
+### 11. Security & Compliance Advisor ✅ Implemented
 
 **Description**
 Scan for common security misconfigurations: exposed secrets in environment variable names or build logs, outdated base images with known CVEs, missing HTTPS enforcement, containers running as root, and open ports that are not expected by the app type.
 
 **Codebase Location**
-- Backend: `src/api/ai_features/security.rs`
+- Backend: `src/api/ai_features.rs` → `scan_app_security()` (per-app), `scan_all_security()` (platform-wide)
 - Frontend: new "Security" tab on the app detail page and a platform-wide security overview page
 
 **Data Sources**
@@ -363,19 +363,23 @@ Supported providers:
 
 Because Moonshot uses the OpenAI-compatible chat completions format, it shares the same request/response serialization path as the OpenAI provider — only the base URL and API key header differ.
 
-### Configuration (`rivetr.toml`)
+### Configuration (Dashboard — no restart required)
 
-AI features are configured under an `[ai]` section in `rivetr.toml`:
+AI features are configured from the **Settings → AI Provider** panel in the Rivetr dashboard. The provider, API key, model override, and max-token cap are stored in the `instance_settings` table (keys: `ai_provider`, `ai_api_key`, `ai_model`, `ai_max_tokens`) and applied immediately without a server restart.
+
+The `PUT /api/settings/instance` endpoint accepts the new values and hot-reloads the in-memory `AiClient` stored in `AppState.ai_client` (a `parking_lot::RwLock<Option<Arc<AiClient>>>`). The API response includes `ai_configured: bool` but never returns the raw API key.
+
+For backwards compatibility, the `[ai]` section in `rivetr.toml` is still read on startup as a fallback when no key is set in the database:
 
 ```toml
 [ai]
-provider  = "claude"           # "claude" | "openai" | "gemini" | "moonshot"
-api_key   = "sk-..."           # provider API key
-model     = "claude-opus-4-5"  # model ID (provider-specific)
+provider   = "claude"          # "claude" | "openai" | "gemini" | "moonshot"
+api_key    = "sk-..."          # provider API key (fallback; prefer dashboard config)
+model      = "claude-opus-4-6" # model ID (provider-specific)
 max_tokens = 2048              # maximum tokens per response
 ```
 
-All fields are optional. If the `[ai]` section is absent or `api_key` is empty, the `AiClient` is initialized in a disabled state and all AI feature endpoints return a `503 AI not configured` response with a clear error message.
+If neither the database nor `rivetr.toml` supplies an API key, the `AiClient` is initialized in a disabled state and all AI feature endpoints return `503 AI not configured`.
 
 ### Graceful Degradation
 
@@ -394,4 +398,4 @@ Rivetr is designed for self-hosted use cases where users may be deploying sensit
 - **Never log prompt content.** The AI client logs only metadata (provider, model, token counts, latency) — never the prompt text or the response.
 - **Anonymize before sending.** Query templates have parameter values replaced. Log lines have secret-like patterns redacted before inclusion in any prompt.
 - **Respect self-hosted deployments.** Users running Rivetr on an air-gapped network or with strict data residency requirements can configure a locally-hosted model endpoint by pointing `api_key` and the provider URL at a compatible local server (e.g., Ollama with an OpenAI-compatible API).
-- **User control.** Each AI feature can be individually disabled via the `[ai]` config without affecting other features. Future versions may support per-feature opt-in toggles in the admin settings UI.
+- **User control.** AI can be disabled at any time by clearing the API key in **Settings → AI Provider**. No restart is required. Future versions may add per-feature opt-in toggles.

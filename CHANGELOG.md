@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.17] - 2026-03-25
+
+### Changed
+- **AI provider config moved to dashboard** — The AI provider, API key, model, and max-token cap are now configured from **Settings → AI Provider** in the Rivetr dashboard and stored in the `instance_settings` database table. No server restart is required; changes are hot-applied immediately.
+  - Migration `104_ai_settings.sql` adds `ai_provider`, `ai_api_key`, `ai_model`, and `ai_max_tokens` rows to `instance_settings`.
+  - `GET /api/settings/instance` response now includes `ai_provider`, `ai_configured` (boolean), `ai_model`, and `ai_max_tokens`. The raw API key is never returned.
+  - `PUT /api/settings/instance` accepts the new AI fields and hot-reloads the in-memory `AiClient` (`parking_lot::RwLock<Option<Arc<AiClient>>>`) without a restart.
+  - The `[ai]` section in `rivetr.toml` is still supported as a startup fallback when no key exists in the database.
+
+### Added
+- **Settings → AI Provider card** — New UI card on the Settings page to configure the AI provider (Claude, OpenAI, Gemini, Moonshot), API key (masked input with show/hide toggle), model override, and max-tokens cap. Shows a "Configured" badge when a key is already set.
+
 ## [v0.10.16] - 2026-03-25
 
 ### Added

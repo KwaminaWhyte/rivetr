@@ -37,8 +37,9 @@ pub async fn diagnose_deployment(
     State(state): State<Arc<AppState>>,
     Path((app_id, deployment_id)): Path<(String, String)>,
 ) -> Result<Json<DiagnosisResponse>, (StatusCode, Json<AiUnavailable>)> {
-    let Some(ref ai) = state.ai_client else {
-        return Err(ai_unavailable());
+    let ai = match state.ai_client.read().clone() {
+        Some(c) => c,
+        None => return Err(ai_unavailable()),
     };
 
     // Fetch the last 80 log lines for this deployment
@@ -127,8 +128,9 @@ pub async fn get_deployment_insights(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
 ) -> Result<Json<DeploymentInsights>, (StatusCode, Json<AiUnavailable>)> {
-    let Some(ref ai) = state.ai_client else {
-        return Err(ai_unavailable());
+    let ai = match state.ai_client.read().clone() {
+        Some(c) => c,
+        None => return Err(ai_unavailable()),
     };
 
     // Aggregate stats for last 30 days
@@ -211,8 +213,9 @@ pub async fn get_cost_suggestions(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
 ) -> Result<Json<CostSuggestionsResponse>, (StatusCode, Json<AiUnavailable>)> {
-    let Some(ref ai) = state.ai_client else {
-        return Err(ai_unavailable());
+    let ai = match state.ai_client.read().clone() {
+        Some(c) => c,
+        None => return Err(ai_unavailable()),
     };
 
     let info: Option<(String, Option<String>, Option<String>, i64)> = sqlx::query_as(
@@ -256,8 +259,9 @@ pub async fn suggest_dockerfile(
     State(state): State<Arc<AppState>>,
     Path(app_id): Path<String>,
 ) -> Result<Json<DockerfileOptimization>, (StatusCode, Json<AiUnavailable>)> {
-    let Some(ref ai) = state.ai_client else {
-        return Err(ai_unavailable());
+    let ai = match state.ai_client.read().clone() {
+        Some(c) => c,
+        None => return Err(ai_unavailable()),
     };
 
     let info: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
@@ -475,8 +479,9 @@ pub async fn scan_app_security(
         }
     }
 
-    // AI summary (optional)
-    let ai_summary = if let Some(ref ai) = state.ai_client {
+    // AI summary (optional) — clone out of the lock before any await
+    let maybe_ai = state.ai_client.read().clone();
+    let ai_summary = if let Some(ai) = maybe_ai {
         let finding_list = findings
             .iter()
             .map(|f| format!("[{:?}] {} - {}", f.severity, f.title, f.recommendation))

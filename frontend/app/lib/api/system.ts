@@ -259,7 +259,7 @@ export const systemApi = {
   // Instance Settings
   // -------------------------------------------------------------------------
 
-  /** Get instance settings (domain, name, timezone) */
+  /** Get instance settings (domain, name, timezone, AI provider) */
   getInstanceSettings: (token?: string) =>
     apiRequest<{
       instance_domain: string | null;
@@ -267,6 +267,10 @@ export const systemApi = {
       max_deployments_per_app: number | null;
       prune_images: boolean | null;
       instance_timezone: string | null;
+      ai_provider: string | null;
+      ai_configured: boolean;
+      ai_model: string | null;
+      ai_max_tokens: number | null;
     }>(
       "/settings/instance",
       {},
@@ -281,6 +285,10 @@ export const systemApi = {
       max_deployments_per_app?: number | null;
       prune_images?: boolean | null;
       instance_timezone?: string | null;
+      ai_provider?: string | null;
+      ai_api_key?: string | null;
+      ai_model?: string | null;
+      ai_max_tokens?: number | null;
     },
     token?: string
   ) =>
@@ -290,6 +298,10 @@ export const systemApi = {
       max_deployments_per_app: number | null;
       prune_images: boolean | null;
       instance_timezone: string | null;
+      ai_provider: string | null;
+      ai_configured: boolean;
+      ai_model: string | null;
+      ai_max_tokens: number | null;
     }>(
       "/settings/instance",
       {

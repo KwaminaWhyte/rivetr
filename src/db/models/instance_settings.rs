@@ -27,6 +27,18 @@ pub struct InstanceSettings {
     pub prune_images: Option<bool>,
     /// IANA timezone for this Rivetr instance (e.g. "UTC", "America/New_York").
     pub instance_timezone: Option<String>,
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot"
+    pub ai_provider: Option<String>,
+    /// API key for the selected AI provider (stored in DB, set from dashboard).
+    /// Returned as null in GET responses to avoid leaking the key.
+    #[serde(skip_serializing)]
+    pub ai_api_key: Option<String>,
+    /// Whether an AI API key is currently configured (safe to expose).
+    pub ai_configured: bool,
+    /// Optional model override (defaults per provider if not set).
+    pub ai_model: Option<String>,
+    /// Max output tokens for AI requests (default: 2048).
+    pub ai_max_tokens: Option<u32>,
 }
 
 /// Request body for updating instance settings (all fields optional).
@@ -37,6 +49,12 @@ pub struct UpdateInstanceSettingsRequest {
     pub max_deployments_per_app: Option<u32>,
     pub prune_images: Option<bool>,
     pub instance_timezone: Option<String>,
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot"
+    pub ai_provider: Option<String>,
+    /// Set to Some("") to clear the key, Some("sk-...") to set it.
+    pub ai_api_key: Option<String>,
+    pub ai_model: Option<String>,
+    pub ai_max_tokens: Option<u32>,
 }
 
 impl InstanceSettings {
@@ -53,6 +71,11 @@ impl InstanceSettings {
             max_deployments_per_app: None,
             prune_images: None,
             instance_timezone: None,
+            ai_provider: None,
+            ai_api_key: None,
+            ai_configured: false,
+            ai_model: None,
+            ai_max_tokens: None,
         };
 
         for row in rows {
@@ -67,6 +90,16 @@ impl InstanceSettings {
                     settings.prune_images = row.value.as_deref().map(|v| v != "false" && v != "0")
                 }
                 "instance_timezone" => settings.instance_timezone = row.value,
+                "ai_provider" => settings.ai_provider = row.value,
+                "ai_api_key" => {
+                    settings.ai_configured =
+                        row.value.as_deref().map(|v| !v.is_empty()).unwrap_or(false);
+                    settings.ai_api_key = row.value;
+                }
+                "ai_model" => settings.ai_model = row.value,
+                "ai_max_tokens" => {
+                    settings.ai_max_tokens = row.value.as_deref().and_then(|v| v.parse().ok())
+                }
                 _ => {}
             }
         }
@@ -146,6 +179,62 @@ impl InstanceSettings {
                 "#,
             )
             .bind(if tz.is_empty() { None } else { Some(tz.as_str()) })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(provider) = &req.ai_provider {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('ai_provider', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(if provider.is_empty() { None } else { Some(provider.as_str()) })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(key) = &req.ai_api_key {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('ai_api_key', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(if key.is_empty() { None } else { Some(key.as_str()) })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(model) = &req.ai_model {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('ai_model', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(if model.is_empty() { None } else { Some(model.as_str()) })
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(max_tokens) = req.ai_max_tokens {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('ai_max_tokens', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(max_tokens.to_string())
             .bind(&now)
             .execute(db)
             .await?;

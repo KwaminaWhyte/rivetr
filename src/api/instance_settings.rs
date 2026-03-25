@@ -11,6 +11,26 @@ use crate::db::{InstanceSettings, UpdateInstanceSettingsRequest};
 use crate::proxy::Backend;
 use crate::AppState;
 
+/// Build an AI client from saved instance settings (may return None if no key set).
+fn build_ai_client_from_settings(settings: &InstanceSettings) -> Option<Arc<crate::ai::AiClient>> {
+    let api_key = settings.ai_api_key.as_deref()?.to_string();
+    if api_key.is_empty() {
+        return None;
+    }
+    let provider = settings
+        .ai_provider
+        .as_deref()
+        .unwrap_or("claude")
+        .parse::<crate::ai::AiProvider>()
+        .unwrap_or_default();
+    Some(Arc::new(crate::ai::AiClient::new(
+        provider,
+        api_key,
+        settings.ai_model.clone(),
+        settings.ai_max_tokens,
+    )))
+}
+
 /// Response for updating instance settings — includes a flag indicating whether
 /// the change took effect immediately (no restart required).
 #[derive(Debug, Serialize)]
@@ -152,6 +172,18 @@ pub async fn update_instance_settings(
                 }
             }
         }
+    }
+
+    // Hot-reload AI client if the key, provider, or model changed.
+    let ai_fields_changed = req.ai_api_key.is_some()
+        || req.ai_provider.is_some()
+        || req.ai_model.is_some()
+        || req.ai_max_tokens.is_some();
+    if ai_fields_changed {
+        let new_client = build_ai_client_from_settings(&settings);
+        let configured = new_client.is_some();
+        *state.ai_client.write() = new_client;
+        tracing::info!(configured, "AI client reloaded from instance settings");
     }
 
     Ok(Json(UpdateInstanceSettingsResponse {

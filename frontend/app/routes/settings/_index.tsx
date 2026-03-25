@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Globe,
   Info,
   Server,
@@ -19,6 +26,9 @@ import {
   Container,
   Loader2,
   Trash2,
+  Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { SystemHealthStatus, UpdateStatus } from "@/types/api";
 
@@ -64,6 +74,13 @@ export default function SettingsPage() {
   const [maxDeployments, setMaxDeployments] = useState(5);
   const [pruneImages, setPruneImages] = useState(true);
 
+  // AI provider state
+  const [aiProvider, setAiProvider] = useState("claude");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiMaxTokens, setAiMaxTokens] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+
   // Sync state when data loads
   useEffect(() => {
     if (instanceSettings) {
@@ -72,6 +89,10 @@ export default function SettingsPage() {
       setInstanceTimezone(instanceSettings.instance_timezone ?? "");
       setMaxDeployments(instanceSettings.max_deployments_per_app ?? 5);
       setPruneImages(instanceSettings.prune_images ?? true);
+      setAiProvider(instanceSettings.ai_provider ?? "claude");
+      setAiModel(instanceSettings.ai_model ?? "");
+      setAiMaxTokens(instanceSettings.ai_max_tokens ? String(instanceSettings.ai_max_tokens) : "");
+      // Never pre-fill the key; user must re-enter to change it
     }
   }, [instanceSettings]);
 
@@ -105,6 +126,24 @@ export default function SettingsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to save cleanup settings");
+    },
+  });
+
+  const updateAiMutation = useMutation({
+    mutationFn: () =>
+      api.updateInstanceSettings({
+        ai_provider: aiProvider || null,
+        ai_api_key: aiApiKey.trim() || null,
+        ai_model: aiModel.trim() || null,
+        ai_max_tokens: aiMaxTokens ? parseInt(aiMaxTokens) || null : null,
+      }),
+    onSuccess: () => {
+      toast.success("AI provider settings saved");
+      setAiApiKey("");
+      queryClient.invalidateQueries({ queryKey: ["instance-settings"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to save AI settings");
     },
   });
 
@@ -435,6 +474,125 @@ acme_email = "you@yourdomain.com"`}
                     </>
                   ) : (
                     "Save"
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* AI Provider */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            AI Provider
+          </CardTitle>
+          <CardDescription>
+            Configure the AI provider used for security scans, log analysis, and deployment suggestions.
+            The API key is stored securely in the database and never exposed via the API.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {instanceLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading…</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ai-provider">Provider</Label>
+                  <Select value={aiProvider} onValueChange={setAiProvider}>
+                    <SelectTrigger id="ai-provider">
+                      <SelectValue placeholder="Select provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="claude">Anthropic Claude</SelectItem>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="gemini">Google Gemini</SelectItem>
+                      <SelectItem value="moonshot">Moonshot</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ai-api-key">
+                    API Key
+                    {instanceSettings?.ai_configured && (
+                      <Badge variant="outline" className="ml-2 text-xs text-green-600 border-green-500">
+                        Configured
+                      </Badge>
+                    )}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="ai-api-key"
+                      type={showApiKey ? "text" : "password"}
+                      placeholder={instanceSettings?.ai_configured ? "Leave blank to keep current key" : "sk-…"}
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      tabIndex={-1}
+                    >
+                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ai-model">Model Override <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input
+                    id="ai-model"
+                    placeholder={
+                      aiProvider === "claude"
+                        ? "e.g. claude-opus-4-6"
+                        : aiProvider === "openai"
+                        ? "e.g. gpt-4o"
+                        : aiProvider === "gemini"
+                        ? "e.g. gemini-1.5-pro"
+                        : "model name"
+                    }
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank to use the provider's default model.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ai-max-tokens">Max Tokens <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input
+                    id="ai-max-tokens"
+                    type="number"
+                    min={256}
+                    max={128000}
+                    placeholder="e.g. 4096"
+                    value={aiMaxTokens}
+                    onChange={(e) => setAiMaxTokens(e.target.value)}
+                    className="w-40"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => updateAiMutation.mutate()}
+                  disabled={updateAiMutation.isPending}
+                >
+                  {updateAiMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    "Save AI Settings"
                   )}
                 </Button>
               </div>

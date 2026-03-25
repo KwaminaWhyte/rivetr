@@ -182,25 +182,53 @@ async fn main() -> Result<()> {
         );
     }
 
-    // Build optional AI client from config
-    let ai_client = config.ai.api_key.as_ref()
-        .filter(|k| !k.is_empty())
-        .map(|key| {
+    // Build optional AI client — DB settings (set from dashboard) take priority over rivetr.toml.
+    let ai_client = {
+        let db_settings = rivetr::db::InstanceSettings::load(&db).await.ok();
+        let db_key = db_settings
+            .as_ref()
+            .and_then(|s| s.ai_api_key.as_deref())
+            .filter(|k| !k.is_empty());
+
+        if let Some(key) = db_key {
+            // DB has an API key — use it
+            let settings = db_settings.as_ref().unwrap();
+            let provider = settings
+                .ai_provider
+                .as_deref()
+                .unwrap_or("claude")
+                .parse::<rivetr::ai::AiProvider>()
+                .unwrap_or_default();
+            tracing::info!(
+                provider = settings.ai_provider.as_deref().unwrap_or("claude"),
+                "AI client initialized from instance settings (dashboard)"
+            );
+            Some(std::sync::Arc::new(rivetr::ai::AiClient::new(
+                provider,
+                key.to_string(),
+                settings.ai_model.clone(),
+                settings.ai_max_tokens,
+            )))
+        } else if let Some(key) = config.ai.api_key.as_ref().filter(|k| !k.is_empty()) {
+            // Fall back to rivetr.toml [ai] section
             let provider = config.ai.provider.as_deref()
                 .unwrap_or("claude")
                 .parse::<rivetr::ai::AiProvider>()
                 .unwrap_or_default();
-            std::sync::Arc::new(rivetr::ai::AiClient::new(
+            tracing::info!(
+                provider = config.ai.provider.as_deref().unwrap_or("claude"),
+                "AI client initialized from rivetr.toml [ai] section"
+            );
+            Some(std::sync::Arc::new(rivetr::ai::AiClient::new(
                 provider,
                 key.clone(),
                 config.ai.model.clone(),
                 config.ai.max_tokens,
-            ))
-        });
-
-    if ai_client.is_some() {
-        tracing::info!("AI client initialized (provider: {})", config.ai.provider.as_deref().unwrap_or("claude"));
-    }
+            )))
+        } else {
+            None
+        }
+    };
 
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(

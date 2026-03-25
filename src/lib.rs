@@ -44,8 +44,9 @@ pub struct AppState {
     pub update_checker: Arc<UpdateChecker>,
     /// Cancellation tokens for in-progress deployments. Keyed by deployment ID.
     pub deployment_cancel_tokens: dashmap::DashMap<String, tokio_util::sync::CancellationToken>,
-    /// Optional AI client — only present when an API key is configured in [ai] section.
-    pub ai_client: Option<Arc<crate::ai::AiClient>>,
+    /// Optional AI client — configured from instance settings (dashboard) or [ai] in rivetr.toml.
+    /// Wrapped in RwLock so it can be hot-swapped when the API key changes at runtime.
+    pub ai_client: parking_lot::RwLock<Option<Arc<crate::ai::AiClient>>>,
 }
 
 impl AppState {
@@ -68,13 +69,13 @@ impl AppState {
             metrics_handle: None,
             update_checker,
             deployment_cancel_tokens: dashmap::DashMap::new(),
-            ai_client: None,
+            ai_client: parking_lot::RwLock::new(None),
         }
     }
 
-    /// Attach an AI client to the application state.
-    pub fn with_ai_client(mut self, client: Option<Arc<crate::ai::AiClient>>) -> Self {
-        self.ai_client = client;
+    /// Set the initial AI client (called once at startup).
+    pub fn with_ai_client(self, client: Option<Arc<crate::ai::AiClient>>) -> Self {
+        *self.ai_client.write() = client;
         self
     }
 
