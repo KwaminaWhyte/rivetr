@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.19] - 2026-03-25
+
+### Fixed
+- **Zero-downtime HTTPS during instance restarts** — Proxy listeners are now pre-bound once in `main.rs` using a single `ListenFd::from_env()` call and passed to the HTTP and HTTPS servers. Previously, each server created its own `ListenFd` instance; the `listenfd` crate clears `LISTEN_FDS` after the first call, so the HTTPS server never inherited its systemd socket and fell back to a fresh `TcpListener::bind(443)` that failed with "Address already in use" while the socket unit still held the port. With this fix, both sockets are inherited correctly and connections queue at the kernel level during restarts instead of receiving ECONNREFUSED.
+
 ## [v0.10.18] - 2026-03-25
 
 ### Added

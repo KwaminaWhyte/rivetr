@@ -344,6 +344,28 @@ async fn main() -> Result<()> {
 
     // Start HTTP proxy server and optionally HTTPS with ACME
     let https_port = config.server.proxy_https_port;
+
+    // Pre-bind proxy listeners using systemd socket activation (fd 0 = HTTP, fd 1 = HTTPS).
+    // We MUST call ListenFd::from_env() exactly once — the crate clears LISTEN_FDS after the
+    // first call, so any subsequent from_env() would see zero fds and fall back to a fresh bind
+    // that fails with "Address already in use" when the socket unit still holds the port.
+    let (http_proxy_listener, https_proxy_listener) = {
+        let mut listenfd = listenfd::ListenFd::from_env();
+        let http_l = if let Ok(Some(std_l)) = listenfd.take_tcp_listener(0) {
+            std_l.set_nonblocking(true).ok();
+            tokio::net::TcpListener::from_std(std_l).ok()
+        } else {
+            None
+        };
+        let https_l = if let Ok(Some(std_l)) = listenfd.take_tcp_listener(1) {
+            std_l.set_nonblocking(true).ok();
+            tokio::net::TcpListener::from_std(std_l).ok()
+        } else {
+            None
+        };
+        (http_l, https_l)
+    };
+
     let acme_enabled = config.proxy.acme_enabled
         && config.proxy.acme_email.is_some()
         && config.proxy.instance_domain.is_some();
@@ -372,6 +394,7 @@ async fn main() -> Result<()> {
                 tokio::spawn(async move {
                     if let Err(e) = proxy_server
                         .run_with_options(
+                            http_proxy_listener,
                             Some(http_challenges),
                             Some(https_redirect_flag_clone),
                             https_port,
@@ -449,7 +472,7 @@ async fn main() -> Result<()> {
                         HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone())
                             .with_db(db.clone());
                     tokio::spawn(async move {
-                        if let Err(e) = https_server.run().await {
+                        if let Err(e) = https_server.run(https_proxy_listener).await {
                             tracing::error!(error = %e, "HTTPS proxy server error");
                         }
                     });
@@ -472,7 +495,10 @@ async fn main() -> Result<()> {
             Err(e) => {
                 tracing::error!(error = %e, "ACME client init failed, starting HTTP-only proxy");
                 tokio::spawn(async move {
-                    if let Err(e) = proxy_server.run().await {
+                    if let Err(e) = proxy_server
+                        .run_with_options(http_proxy_listener, None, None, 443)
+                        .await
+                    {
                         tracing::error!(error = %e, "Proxy server error");
                     }
                 });
@@ -480,7 +506,10 @@ async fn main() -> Result<()> {
         }
     } else {
         tokio::spawn(async move {
-            if let Err(e) = proxy_server.run().await {
+            if let Err(e) = proxy_server
+                .run_with_options(http_proxy_listener, None, None, 443)
+                .await
+            {
                 tracing::error!(error = %e, "Proxy server error");
             }
         });

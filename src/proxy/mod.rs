@@ -347,24 +347,17 @@ impl ProxyServer {
 
     /// Start the proxy server (HTTP), with optional HTTPS redirect.
     /// `redirect_enabled` is an Arc<AtomicBool> — set it to true once TLS cert is confirmed.
+    /// `listener` is an already-bound TcpListener; if None a fresh bind is performed.
     pub async fn run_with_options(
         self,
+        listener: Option<TcpListener>,
         acme_challenges: Option<AcmeChallenges>,
         redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
         https_port: u16,
     ) -> anyhow::Result<()> {
-        // Try to inherit a socket from systemd socket activation (fd index 0 = HTTP).
-        // This keeps the kernel-level socket open during binary restarts so that
-        // in-flight connections queue rather than receiving ECONNREFUSED.
-        // Falls back to a fresh bind when not running under systemd.
-        let listener = {
-            let mut listenfd = listenfd::ListenFd::from_env();
-            if let Ok(Some(std_listener)) = listenfd.take_tcp_listener(0) {
-                std_listener.set_nonblocking(true)?;
-                TcpListener::from_std(std_listener)?
-            } else {
-                TcpListener::bind(self.bind_addr).await?
-            }
+        let listener = match listener {
+            Some(l) => l,
+            None => TcpListener::bind(self.bind_addr).await?,
         };
         info!("Proxy server listening on http://{}", self.bind_addr);
 
@@ -398,7 +391,7 @@ impl ProxyServer {
 
     /// Start the proxy server (HTTP)
     pub async fn run(self) -> anyhow::Result<()> {
-        self.run_with_options(None, None, 443).await
+        self.run_with_options(None, None, None, 443).await
     }
 }
 
@@ -431,18 +424,12 @@ impl HttpsProxyServer {
         self
     }
 
-    /// Start the HTTPS proxy server
-    pub async fn run(self) -> anyhow::Result<()> {
-        // Try to inherit a socket from systemd socket activation (fd index 1 = HTTPS).
-        // Falls back to a fresh bind when not running under systemd.
-        let listener = {
-            let mut listenfd = listenfd::ListenFd::from_env();
-            if let Ok(Some(std_listener)) = listenfd.take_tcp_listener(1) {
-                std_listener.set_nonblocking(true)?;
-                TcpListener::from_std(std_listener)?
-            } else {
-                TcpListener::bind(self.bind_addr).await?
-            }
+    /// Start the HTTPS proxy server.
+    /// `listener` is an already-bound TcpListener; if None a fresh bind is performed.
+    pub async fn run(self, listener: Option<TcpListener>) -> anyhow::Result<()> {
+        let listener = match listener {
+            Some(l) => l,
+            None => TcpListener::bind(self.bind_addr).await?,
         };
         info!("Proxy server listening on https://{}", self.bind_addr);
 
