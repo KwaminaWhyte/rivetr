@@ -1,0 +1,13 @@
+[Unit]
+Description=Rivetr Proxy Socket (ports 80 and 443)
+
+[Socket]
+# fd index 0 → HTTP (port 80)
+ListenStream=0.0.0.0:80
+# fd index 1 → HTTPS (port 443)
+ListenStream=0.0.0.0:443
+BindIPv6Only=both
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

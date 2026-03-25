@@ -40,11 +40,12 @@ if [ "$FRONTEND_ONLY" = false ]; then
 fi
 
 # Ensure the systemd socket unit is installed (idempotent — safe to run every deploy).
-# The socket unit keeps ports 80 and 443 open in the kernel during service restarts,
-# so connections queue instead of getting ECONNREFUSED.
+# Named rivetr.socket so systemd auto-associates it with rivetr.service.
+# Keeps ports 80 and 443 open in the kernel during service restarts so connections
+# queue instead of getting ECONNREFUSED.
 echo "  → Installing systemd socket unit (zero-downtime socket activation)..."
-scp "deploy/rivetr-proxy.socket" "$SERVER:/etc/systemd/system/rivetr-proxy.socket"
-ssh "$SERVER" "systemctl daemon-reload && systemctl enable rivetr-proxy.socket && systemctl start rivetr-proxy.socket 2>/dev/null || true"
+scp "deploy/rivetr.socket" "$SERVER:/etc/systemd/system/rivetr.socket"
+ssh "$SERVER" "systemctl stop rivetr-proxy.socket 2>/dev/null || true; systemctl disable rivetr-proxy.socket 2>/dev/null || true; rm -f /etc/systemd/system/rivetr-proxy.socket; systemctl daemon-reload && systemctl enable rivetr.socket && systemctl start rivetr.socket 2>/dev/null || true"
 
 # Frontend is embedded in the binary (rust_embed) - but if we want to swap just frontend,
 # we'd need a separate assets dir. For now, always sync via binary.
