@@ -530,9 +530,16 @@ async fn main() -> Result<()> {
     tracing::info!("Proxy server listening on http://{}", proxy_addr);
     tracing::info!("Admin token: {}", config.auth.admin_token);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // `into_make_service_with_connect_info` exposes the peer SocketAddr to handlers
+    // via `ConnectInfo<SocketAddr>` extractors.  We use this in the audit-log helper
+    // to capture the request IP when it isn't fronted by a reverse proxy that sets
+    // `X-Forwarded-For`.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     tracing::info!("Server stopped");
     Ok(())

@@ -60,6 +60,9 @@ pub struct AuditLogQuery {
     pub page: Option<i64>,
     /// Items per page (defaults to 50, max 100)
     pub per_page: Option<i64>,
+    /// Alias for `per_page` — accepted for compatibility with REST conventions where
+    /// `?limit=N` is more common.  If both are set, `per_page` wins.
+    pub limit: Option<i64>,
 }
 
 /// Common audit action types
@@ -75,6 +78,7 @@ pub mod actions {
     // Deployment actions
     pub const DEPLOYMENT_TRIGGER: &str = "deployment.trigger";
     pub const DEPLOYMENT_ROLLBACK: &str = "deployment.rollback";
+    pub const DEPLOYMENT_CANCEL: &str = "deployment.cancel";
 
     // Database actions
     pub const DATABASE_CREATE: &str = "database.create";
@@ -128,6 +132,16 @@ pub mod actions {
     // Environment variable actions
     pub const ENV_VAR_SET: &str = "env_var.set";
     pub const ENV_VAR_DELETE: &str = "env_var.delete";
+    pub const ENV_VAR_CREATE: &str = "env_var.create";
+    pub const ENV_VAR_UPDATE: &str = "env_var.update";
+
+    // API token actions
+    pub const TOKEN_CREATE: &str = "token.create";
+    pub const TOKEN_DELETE: &str = "token.delete";
+
+    // Domain actions
+    pub const DOMAIN_ADD: &str = "domain.add";
+    pub const DOMAIN_REMOVE: &str = "domain.remove";
 
     // Notification actions
     pub const NOTIFICATION_CHANNEL_CREATE: &str = "notification_channel.create";
@@ -149,6 +163,8 @@ pub mod resource_types {
     pub const GITHUB_APP: &str = "github_app";
     pub const ENV_VAR: &str = "env_var";
     pub const NOTIFICATION_CHANNEL: &str = "notification_channel";
+    pub const TOKEN: &str = "token";
+    pub const DOMAIN: &str = "domain";
 }
 
 /// Log an audit event to the database
@@ -202,7 +218,13 @@ pub async fn list_audit_logs(
     query: &AuditLogQuery,
 ) -> Result<AuditLogListResponse, sqlx::Error> {
     let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(50).clamp(1, 100);
+    // Accept `limit` as an alias for `per_page` (?limit=N is the REST convention).
+    // `per_page` takes precedence if both are provided.
+    let per_page = query
+        .per_page
+        .or(query.limit)
+        .unwrap_or(50)
+        .clamp(1, 100);
     let offset = (page - 1) * per_page;
 
     // Build dynamic WHERE clause

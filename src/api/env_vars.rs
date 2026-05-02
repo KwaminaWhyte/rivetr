@@ -1,14 +1,17 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::audit::{audit_log, extract_client_ip};
 use crate::crypto;
-use crate::db::{CreateEnvVarRequest, EnvVar, EnvVarResponse, UpdateEnvVarRequest};
+use crate::db::{
+    actions, resource_types, CreateEnvVarRequest, EnvVar, EnvVarResponse, UpdateEnvVarRequest, User,
+};
 use crate::AppState;
 
 /// Key length for AES-256 encryption
@@ -90,6 +93,8 @@ pub async fn list_env_vars(
 /// Create a new environment variable for an app
 pub async fn create_env_var(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(app_id): Path<String>,
     Json(req): Json<CreateEnvVarRequest>,
 ) -> Result<(StatusCode, Json<EnvVarResponse>), StatusCode> {
@@ -160,6 +165,19 @@ pub async fn create_env_var(
         ..env_var
     };
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::ENV_VAR_CREATE,
+        resource_types::ENV_VAR,
+        Some(&id),
+        Some(&req.key),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({ "app_id": app_id, "is_secret": req.is_secret })),
+    )
+    .await;
+
     // Return with value visible since user just created it
     Ok((StatusCode::CREATED, Json(response_var.to_response(true))))
 }
@@ -167,6 +185,8 @@ pub async fn create_env_var(
 /// Update an existing environment variable
 pub async fn update_env_var(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path((app_id, key)): Path<(String, String)>,
     Json(req): Json<UpdateEnvVarRequest>,
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
@@ -240,6 +260,19 @@ pub async fn update_env_var(
         ..env_var
     };
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::ENV_VAR_UPDATE,
+        resource_types::ENV_VAR,
+        Some(&existing.id),
+        Some(&key),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({ "app_id": app_id })),
+    )
+    .await;
+
     // Return with value visible since user just updated it
     Ok(Json(response_var.to_response(true)))
 }
@@ -247,8 +280,20 @@ pub async fn update_env_var(
 /// Delete an environment variable
 pub async fn delete_env_var(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path((app_id, key)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
+    // Capture id before delete for the audit entry
+    let id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM env_vars WHERE app_id = ? AND key = ?")
+            .bind(&app_id)
+            .bind(&key)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+
     let result = sqlx::query("DELETE FROM env_vars WHERE app_id = ? AND key = ?")
         .bind(&app_id)
         .bind(&key)
@@ -262,6 +307,19 @@ pub async fn delete_env_var(
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
     }
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::ENV_VAR_DELETE,
+        resource_types::ENV_VAR,
+        id.as_deref(),
+        Some(&key),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({ "app_id": app_id })),
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }
