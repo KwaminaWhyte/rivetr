@@ -287,6 +287,40 @@ mod tests {
     }
 
     #[test]
+    fn test_mariadb_config() {
+        let config = mariadb_config();
+        assert_eq!(config.image, "mariadb");
+        assert_eq!(config.port, 3306);
+        assert_eq!(config.default_version, "11");
+        assert!(config.versions.contains(&"11"));
+        assert!(config.versions.contains(&"10.11"));
+        assert!(config.env_vars.root_password.is_some());
+        assert_eq!(config.env_vars.password, "MARIADB_PASSWORD");
+        assert_eq!(config.env_vars.username, Some("MARIADB_USER"));
+        assert_eq!(config.env_vars.database, Some("MARIADB_DATABASE"));
+        assert_eq!(config.env_vars.root_password, Some("MARIADB_ROOT_PASSWORD"));
+        assert_eq!(config.data_path, "/var/lib/mysql");
+    }
+
+    #[test]
+    fn test_generate_env_vars_mariadb() {
+        let creds = DatabaseCredentials {
+            username: "appuser".to_string(),
+            password: "apppass".to_string(),
+            database: Some("appdb".to_string()),
+            root_password: Some("rootpass".to_string()),
+        };
+        let env = generate_env_vars(&DatabaseType::Mariadb, &creds);
+        assert!(env.contains(&("MARIADB_USER".to_string(), "appuser".to_string())));
+        assert!(env.contains(&("MARIADB_PASSWORD".to_string(), "apppass".to_string())));
+        assert!(env.contains(&("MARIADB_DATABASE".to_string(), "appdb".to_string())));
+        assert!(env.contains(&(
+            "MARIADB_ROOT_PASSWORD".to_string(),
+            "rootpass".to_string()
+        )));
+    }
+
+    #[test]
     fn test_mongodb_config() {
         let config = mongodb_config();
         assert_eq!(config.image, "mongo");
