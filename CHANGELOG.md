@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.20] - 2026-05-02
+
+### Added
+- **Coolify-style deploy log side panel** — A dockable side panel now opens automatically whenever a Deploy, Start, or Restart is triggered (apps, services, managed databases) and streams the underlying image-pull and container-start activity in real time. Powered by a new in-process `StartLogRegistry` broadcaster (`src/api/start_logs.rs`) plus per-resource WS/REST routes:
+  - `GET /api/services/:id/start-stream` (WebSocket) and `GET /api/services/:id/start-events` (snapshot)
+  - `GET /api/databases/:id/start-stream` (WebSocket) and `GET /api/databases/:id/start-events` (snapshot)
+  - Frontend: `DeployPanelProvider` + `DeploySidePanel` mounted at the dashboard root.
+- **MariaDB as a managed database type** — MariaDB joins the managed database catalogue with versions **11 (default)**, **10.11**, **10.6**, and **10.5**. The frontend now correctly routes MariaDB through the `mariadb://...` MySQL-compatible scheme, mounts data at `/var/lib/mysql`, and uses `mariadb-dump` for backups. Backend tests (`test_mariadb_config`, `test_generate_env_vars_mariadb`) cover the config/env-var paths.
+- **`scripts/deploy-vm.sh`** — Local Parallels Ubuntu ARM64 VM deploy mirror of `deploy-dev.sh` for faster iteration on Apple Silicon (cross-compiles `aarch64-unknown-linux-gnu` via zigbuild, uploads to the Parallels VM, restarts systemd unit).
+
+### Fixed
+- **Container monitor service health check broken since v0.10.18 (HIGH)** — `container_monitor::health::check_services` was issuing a SELECT that omitted the columns added by migration `105_service_public_access` (`public_access`, `external_port`, `expose_container_port`). `query_as` failed to deserialize on every 30-second poll, silently disabling crash detection for all Compose services. The query now SELECTs the full column set so service health monitoring works again.
+- **`/api/apps/:id/insights` returned 503 when AI provider not configured** — The endpoint now returns `404 NOT_FOUND` when no AI provider is configured, matching the semantics of "feature not available." This eliminates the misleading per-page-load 503 in the browser console and the `tower_http: response failed classification=Status code: 503` warn spam in `journalctl -u rivetr`.
+
+[0.10.20]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.19...v0.10.20
+
 ## [v0.10.19] - 2026-03-25
 
 ### Fixed
@@ -896,6 +912,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.10.20 | 2026-05-02 | Coolify-style deploy log side panel, MariaDB managed DB type, container monitor service-health regression fix, AI insights 503 → 404 |
 | 0.2.16 | 2026-02-13 | Auto-update fixes, delete GitHub App, git provider FK fix, audit logging |
 | 0.2.15 | 2026-02-13 | Install script download fix, GitHub App callback fix |
 | 0.2.14 | 2026-02-05 | Container monitor and notification webhook fixes |
@@ -939,7 +956,8 @@ curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh
 
 ---
 
-[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.16...HEAD
+[Unreleased]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.20...HEAD
+[0.10.20]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.19...v0.10.20
 [0.2.16]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/KwaminaWhyte/rivetr/compare/v0.2.13...v0.2.14
