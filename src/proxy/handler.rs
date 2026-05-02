@@ -28,6 +28,17 @@ use super::{Backend, ProxyService, RouteTable};
 /// ACME HTTP-01 challenge path prefix
 const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
 
+/// Owned fields needed to write a proxy access log row.
+struct ProxyLogEntry {
+    host: String,
+    method: String,
+    path: String,
+    status: u16,
+    response_ms: u64,
+    client_ip: String,
+    user_agent: String,
+}
+
 /// Handles incoming proxy connections
 #[derive(Clone)]
 pub struct ProxyHandler {
@@ -124,19 +135,19 @@ impl ProxyHandler {
     }
 
     /// Write a proxy access log entry to the database (fire-and-forget)
-    fn log_request(
-        &self,
-        host: String,
-        method: String,
-        path: String,
-        status: u16,
-        response_ms: u64,
-        client_ip: String,
-        user_agent: String,
-    ) {
+    fn log_request(&self, entry: ProxyLogEntry) {
         if let Some(ref db) = self.db {
             let db = db.clone();
             tokio::spawn(async move {
+                let ProxyLogEntry {
+                    host,
+                    method,
+                    path,
+                    status,
+                    response_ms,
+                    client_ip,
+                    user_agent,
+                } = entry;
                 let _ = sqlx::query(
                     "INSERT INTO proxy_logs (host, method, path, status, response_ms, bytes_out, client_ip, user_agent) \
                      VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
@@ -255,13 +266,12 @@ impl ProxyHandler {
                         to = %target_host,
                         "www redirect"
                     );
-                    let response = Response::builder()
+                    Response::builder()
                         .status(hyper::StatusCode::MOVED_PERMANENTLY)
                         .header(hyper::header::LOCATION, location)
                         .header("X-Powered-By", "Rivetr")
                         .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                        .unwrap();
-                    response
+                        .unwrap()
                 } else {
                     // Check HTTP Basic Auth if enabled (but bypass for health check path)
                     if backend.basic_auth.enabled {
@@ -279,15 +289,15 @@ impl ProxyHandler {
                                     "Basic auth required but not provided or invalid"
                                 );
                                 let ms = start.elapsed().as_millis() as u64;
-                                self.log_request(
-                                    log_host,
-                                    log_method,
-                                    log_path,
-                                    response.status().as_u16(),
-                                    ms,
-                                    log_client_ip,
-                                    log_user_agent,
-                                );
+                                self.log_request(ProxyLogEntry {
+                                    host: log_host,
+                                    method: log_method,
+                                    path: log_path,
+                                    status: response.status().as_u16(),
+                                    response_ms: ms,
+                                    client_ip: log_client_ip,
+                                    user_agent: log_user_agent,
+                                });
                                 return Ok(response);
                             }
                         }
@@ -299,15 +309,15 @@ impl ProxyHandler {
                             self.apply_redirect_rules(path, &backend.redirect_rules)
                         {
                             let ms = start.elapsed().as_millis() as u64;
-                            self.log_request(
-                                log_host,
-                                log_method,
-                                log_path,
-                                redirect_response.status().as_u16(),
-                                ms,
-                                log_client_ip,
-                                log_user_agent,
-                            );
+                            self.log_request(ProxyLogEntry {
+                                host: log_host,
+                                method: log_method,
+                                path: log_path,
+                                status: redirect_response.status().as_u16(),
+                                response_ms: ms,
+                                client_ip: log_client_ip,
+                                user_agent: log_user_agent,
+                            });
                             return Ok(redirect_response);
                         }
                     }
@@ -356,15 +366,15 @@ impl ProxyHandler {
 
         let ms = start.elapsed().as_millis() as u64;
         let status = response.status().as_u16();
-        self.log_request(
-            log_host,
-            log_method,
-            log_path,
+        self.log_request(ProxyLogEntry {
+            host: log_host,
+            method: log_method,
+            path: log_path,
             status,
-            ms,
-            log_client_ip,
-            log_user_agent,
-        );
+            response_ms: ms,
+            client_ip: log_client_ip,
+            user_agent: log_user_agent,
+        });
         Ok(response)
     }
 

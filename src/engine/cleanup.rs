@@ -25,8 +25,8 @@ fn disk_usage_percent(path: &str) -> Option<f64> {
         return None;
     }
     let stat = unsafe { stat.assume_init() };
-    let total = stat.f_blocks as u64 * stat.f_frsize as u64;
-    let free = stat.f_bfree as u64 * stat.f_frsize as u64;
+    let total = stat.f_blocks as u64 * stat.f_frsize;
+    let free = stat.f_bfree as u64 * stat.f_frsize;
     if total == 0 {
         return None;
     }
