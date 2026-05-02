@@ -518,12 +518,25 @@ export default function AppDetailLayout() {
                 Redeploy (latest commit)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowDeployOptionsDialog(true)}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  // Prevent the dropdown's auto-focus restore from racing
+                  // with the dialog mount; defer the open one tick so the
+                  // menu closes cleanly first.
+                  e.preventDefault();
+                  setTimeout(() => setShowDeployOptionsDialog(true), 0);
+                }}
+              >
                 <GitCommitHorizontal className="h-4 w-4 mr-2" />
                 Deploy specific commit/tag
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowUploadDialog(true)}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setTimeout(() => setShowUploadDialog(true), 0);
+                }}
+              >
                 <Upload className="h-4 w-4 mr-2" />
                 Deploy from ZIP file
               </DropdownMenuItem>
