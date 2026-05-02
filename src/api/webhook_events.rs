@@ -207,7 +207,7 @@ pub async fn list_webhook_events(
     Query(query): Query<WebhookEventsQuery>,
 ) -> Result<Json<WebhookEventListResponse>, StatusCode> {
     // If the legacy `limit` param is provided, treat it as per_page (capped at 200).
-    let per_page = query.limit.unwrap_or(query.per_page).min(200).max(1);
+    let per_page = query.limit.unwrap_or(query.per_page).clamp(1, 200);
     let page = query.page.max(1);
     let offset = (page - 1) * per_page;
 
