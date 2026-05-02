@@ -825,6 +825,16 @@ async fn start_database_container_inner(
         custom_labels: vec![],
     };
 
+    // Apply database-specific CMD args (e.g. `--skip-ssl` for MySQL 8 to avoid
+    // self-signed-cert TLS errors when clients connect over the private network).
+    let run_config = if !config.cmd_args.is_empty() {
+        let mut rc = run_config;
+        rc.cmd = Some(config.cmd_args.iter().map(|s| s.to_string()).collect());
+        rc
+    } else {
+        run_config
+    };
+
     // Start the container
     tracing::info!("Starting database container: {}", container_name);
     state.start_log_streams.info(
