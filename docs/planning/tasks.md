@@ -9,7 +9,7 @@
 ### 0.1 Project Setup
 
 - [x] **T0.1.1** Create Cargo.toml with workspace configuration
-- [x] **T0.1.2** Add all dependencies to Cargo.toml (see TECH_STACK.md)
+- [x] **T0.1.2** Add all dependencies to Cargo.toml (see [tech-stack.md](../architecture/tech-stack.md))
 - [x] **T0.1.3** Create directory structure
 - [x] **T0.1.4** Create `.gitignore`
 - [ ] **T0.1.5** Create `rustfmt.toml` with project conventions

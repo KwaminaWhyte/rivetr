@@ -413,7 +413,6 @@ rivetr/
 ├── static/dist/             # Built frontend assets (served by Rivetr)
 ├── docs/                    # Architecture and reference documentation
 ├── ansible/                 # Ansible playbook for automated provisioning
-├── scripts/ralph/           # Ralph autonomous agent loop
 ├── .claude/                 # Claude Code agents and skills
 ├── live-testing/            # Manual testing guides
 ├── rivetr.example.toml      # Annotated configuration reference
@@ -439,12 +438,11 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Production install, configuration, backup, troubleshooting |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [ROADMAP.md](ROADMAP.md) | Planned features and future direction |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and component breakdown |
-| [docs/TECH_STACK.md](docs/TECH_STACK.md) | Technology choices and crate selection |
-| [docs/SERVICE-TEMPLATES.md](docs/SERVICE-TEMPLATES.md) | Catalogue of all 273 service templates by category |
-| [docs/COMPETITIVE-GAP-ANALYSIS.md](docs/COMPETITIVE-GAP-ANALYSIS.md) | Feature comparison with Coolify and Dokploy |
-| [docs/REFACTORING.md](docs/REFACTORING.md) | Code organization and module splitting guide |
-| [docs/RALPH_GUIDE.md](docs/RALPH_GUIDE.md) | Ralph autonomous agent loop for feature development |
+| [docs/architecture/architecture.md](docs/architecture/architecture.md) | System design and component breakdown |
+| [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md) | Technology choices and crate selection |
+| [docs/reference/service-templates.md](docs/reference/service-templates.md) | Catalogue of all 273 service templates by category |
+| [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Feature comparison with Coolify and Dokploy |
+| [docs/architecture/code-organization.md](docs/architecture/code-organization.md) | Code organization and module splitting guide |
 | [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
 | [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |
 

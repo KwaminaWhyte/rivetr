@@ -2,7 +2,7 @@
 
 > A fast, lightweight deployment engine built in Rust
 
-This document outlines the planned development roadmap for Rivetr. For detailed task tracking, see [docs/TASKS.md](./docs/TASKS.md).
+This document outlines the planned development roadmap for Rivetr. For detailed task tracking, see [docs/planning/tasks.md](./docs/planning/tasks.md).
 
 ## Current Status
 
@@ -34,7 +34,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 ### Platform Services
 - One-click managed databases (PostgreSQL, MySQL, MariaDB, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
 - Docker Compose multi-container deployments with raw mode, preview, and magic variables
-- 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more — see [docs/SERVICE-TEMPLATES.md](./docs/SERVICE-TEMPLATES.md))
+- 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more — see [docs/reference/service-templates.md](./docs/reference/service-templates.md))
 - Port conflict validation across services and databases (real-time frontend checks + server-side enforcement)
 - Auto-subdomain assignment for template-deployed services
 - Automated database backup scheduling with retention policies
