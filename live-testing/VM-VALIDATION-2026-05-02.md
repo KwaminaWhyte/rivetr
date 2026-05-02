@@ -60,3 +60,17 @@
 **MariaDB:** production-ready for the v0.10.20 release.
 **Side panel:** verified for managed DBs only; needs manual pass on app + service surfaces before we trust it as "done" for those flows.
 **Other v0.10.20 fixes (backend + frontend bug sweep):** code merged, builds green, but not exercised live — recommend a 30-minute manual sweep on the VM before tagging the release.
+
+---
+
+## Update — 2026-05-02 v0.10.20+1 inline validation pass
+
+Sub-agents (`a91d7228beb1cfed3` backend, `a4a285e71537df379` frontend) were dispatched but blocked by a subscription-access disable mid-run. Validation continued inline. Two follow-up reports:
+
+- `live-testing/VM-VALIDATION-2026-05-02-backend.md` — 13 of 15 backend fixes PASS, 1 FAIL (B8 ip_address — extractor staged but unwired), 2 ⏸ (B12, B13 — need a multi-deploy app to exercise rollback flow).
+- `live-testing/VM-VALIDATION-2026-05-02-frontend.md` — 4 of 12 frontend fixes PASS via static-bundle inspection (no Playwright); 8 ⏸ pending a real browser session.
+
+New bug discovered + fixed live this session:
+- **B28** — Docker network "endpoint with name X already exists in network rivetr" 403 warning on every Rivetr restart for any container that was already attached. Fix in `src/runtime/docker/container.rs` swallows the specific 403+message; verified by zero matches in `journalctl --since "30 seconds ago"` after restart.
+
+Tagged v0.10.20 status: **release-eligible for backend (after B12/B13 live test) + DB-flow side panel + MariaDB**. Frontend bug fixes need a Playwright pass before we can claim them validated.

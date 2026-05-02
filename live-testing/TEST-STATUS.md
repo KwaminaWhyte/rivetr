@@ -86,9 +86,19 @@ Track which feature areas have been fully tested. Update after each testing sess
 | 80 | PostgreSQL Extensions UI | [x] | 2026-03-14 | claude | v0.10.5 | pgvector installed on pharmapro-db; "Installed Extensions" list updated live |
 | 81 | Docker Options (shm_size, cap_add) | [x] | 2026-03-14 | claude | v0.10.5 | Saved via UI; deployed westel-soleil; container shows shm=256M, CapAdd=[NET_ADMIN] ✓ |
 | 82 | White Label | [x] | 2026-03-14 | claude | v0.10.5 | app_name→"MyPaaS" rendered in sidebar/title immediately; API confirmed save; reverted ✓ |
-| 83 | Deployment Cancellation | [x] | 2026-05-02 | claude | v0.10.19 | Cancel API present at nested path; B11 wrong status code |
+| 83 | Deployment Cancellation | [x] | 2026-05-02 | claude | v0.10.20 | B11 fixed — non-cancellable returns 409 Conflict ✓; empty-body POST returns 200 ✓ |
 | 84 | PG 17/18 Version Support | [x] | 2026-03-14 | claude | v0.10.5 | Version dropdown shows 12–18; PG 18 created, pulled, Running; container confirmed |
-| 85 | Container Monitor (services) | [!] | 2026-05-02 | claude | v0.10.19 | B4: SQL query missing public_access etc. — service health detection silently broken (fixed in v0.10.20) |
+| 85 | Container Monitor (services) | [x] | 2026-05-02 | claude | v0.10.20 | B4 fixed — SELECT now includes migration-105 columns; zero log noise post-restart ✓ |
+| 86 | MariaDB Managed DB | [x] | 2026-05-02 | claude | v0.10.20 | Created MariaDB:11 on VM; mysql:// scheme + /var/lib/mysql + mariadb-dump backup all wired (11 screenshots) |
+| 87 | Coolify-style Deploy Side Panel | [~] | 2026-05-02 | claude | v0.10.20 | DB start/stream verified live ✓; app deploy + service start surfaces still need browser pass |
+| 88 | Templates list compression + slim | [x] | 2026-05-02 | claude | v0.10.20 | B17 — gzip + cache-control: public, max-age=300 + list omits compose_template (full body at /api/templates/:id) |
+| 89 | Audit log new event types | [x] | 2026-05-02 | claude | v0.10.20 | B7 — service.create, deployment.cancel, app.update, env_var.create, token.create/delete, database.create all observed |
+| 90 | Audit `?limit=` alias | [x] | 2026-05-02 | claude | v0.10.20 | B9 — `?limit=3` returns 3 items ✓ |
+| 91 | Audit ip_address capture | [!] | 2026-05-02 | claude | v0.10.20 | B8 — ClientIp extractor staged in audit.rs but NOT wired into handlers; ip_address still null. v0.10.21 follow-up. |
+| 92 | App `internal_hostname` field | [x] | 2026-05-02 | claude | v0.10.20 | B14/B15 — `GET /api/apps/:id` returns `internal_hostname: "rivetr-<name>"` |
+| 93 | DB SQL backup Content-Type | [x] | 2026-05-02 | claude | v0.10.20 | B26 — `application/sql` + content-disposition attachment ✓ |
+| 94 | Compose service auto-domain fallback | [x] | 2026-05-02 | claude | v0.10.20 | B27 — fresh service → domain `<name>.local` when instance_domain unset ✓ |
+| 95 | Docker network reconnect idempotent | [x] | 2026-05-02 | claude | v0.10.20 | B28 — restart no longer logs "endpoint already exists in network rivetr" |
 
 ---
 
@@ -106,12 +116,21 @@ Track which feature areas have been fully tested. Update after each testing sess
 
 ## Session Log
 
-### 2026-05-02 — v0.10.20 (Parallels VM Sweep)
+### 2026-05-02 — v0.10.20 (Parallels VM Sweep + Fix Sprint + Validation)
 - **Server:** rivetr-vm (10.211.55.5, Parallels Ubuntu 24.04 ARM64)
-- **Tester:** claude (sub-agent VM sweep)
-- **Areas Covered:** Installation, auth, app create/general/env-vars/domain/network, Nixpacks deploy, deployment controls + history, monitoring, live logs, managed databases (Postgres/Redis/MySQL/MariaDB) including backups + settings, Compose services (Uptime-Kuma) create/start/proxy, webhook events, SSH keys, API tokens, alert defaults, dashboard, monitoring page, deployment cancellation, container monitor (services).
-- **Findings:** 27 bugs, 10 UX issues, 6 perf notes, 15 improvement ideas. See `live-testing/VM-SWEEP-2026-05-02.md`.
-- **Critical Fixes Shipped in v0.10.20:** B3 (AI insights 503 → 404), B4 (container monitor `check_services` SELECT missing migration-105 columns)
+- **Tester:** claude (sub-agent VM sweep + 5-agent parallel fix sprint + inline validation)
+- **Areas Covered:** Installation, auth, app create/general/env-vars/domain/network, Nixpacks deploy, deployment controls + history, monitoring, live logs, managed databases (Postgres/Redis/MySQL/MariaDB) including backups + settings, Compose services (Uptime-Kuma) create/start/proxy, webhook events, SSH keys, API tokens, alert defaults, dashboard, monitoring page, deployment cancellation, container monitor (services), Coolify-style deploy log side panel, MariaDB end-to-end.
+- **Findings:** 27 bugs (B1–B27), 10 UX issues (U1–U10), 6 perf notes, 15 improvement ideas. See `live-testing/VM-SWEEP-2026-05-02.md`.
+- **Sprint outcome (5 parallel sub-agents):**
+  - `feat/deploy-side-panel` — Coolify-style side panel (DB ✓ live; app/service surfaces ⏸ need browser).
+  - `feat/mariadb-support` — frontend wiring + tests merged; live PASS via 11 screenshots.
+  - `fix/clippy-baseline` — 7 pre-existing clippy errors fixed; lint gate green.
+  - `fix/vm-sweep-backend` — B5/B7/B9/B10/B11/B12/B13/B14/B15/B17/B26/B27 fixes (B8 staged but unwired).
+  - `fix/vm-sweep-frontend` — B1/B2/B16/B18/B19/B21/B22/B23/B24/U2/U4/U10 fixes.
+- **B28** newly discovered + fixed during validation: Docker network "endpoint already exists" 403 swallowed.
+- **Live validation:** see `live-testing/VM-VALIDATION-2026-05-02-backend.md` (13/15 PASS, 1 FAIL, 2 ⏸) and `live-testing/VM-VALIDATION-2026-05-02-frontend.md` (4/12 confirmed via static analysis, 8 ⏸ Playwright).
+- **Critical Fixes Shipped in v0.10.20:** B3 (AI 503→404), B4 (container monitor SELECT), B28 (network reconnect noise).
+- **Open for v0.10.21:** B6 (MySQL 8 SSL), B8 (audit ip_address wiring), B12/B13 (live rollback test), B20 (disk path), B25 (DB→app env injection UI).
 
 ### 2026-03-14 — v0.10.5 (Sprint 19 Feature Testing)
 - **Server:** rivetr.site (46.101.187.233)

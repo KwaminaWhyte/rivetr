@@ -18,8 +18,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`scripts/deploy-vm.sh`** — Local Parallels Ubuntu ARM64 VM deploy mirror of `deploy-dev.sh` for faster iteration on Apple Silicon (cross-compiles `aarch64-unknown-linux-gnu` via zigbuild, uploads to the Parallels VM, restarts systemd unit).
 
 ### Fixed
-- **Container monitor service health check broken since v0.10.18 (HIGH)** — `container_monitor::health::check_services` was issuing a SELECT that omitted the columns added by migration `105_service_public_access` (`public_access`, `external_port`, `expose_container_port`). `query_as` failed to deserialize on every 30-second poll, silently disabling crash detection for all Compose services. The query now SELECTs the full column set so service health monitoring works again.
-- **`/api/apps/:id/insights` returned 503 when AI provider not configured** — The endpoint now returns `404 NOT_FOUND` when no AI provider is configured, matching the semantics of "feature not available." This eliminates the misleading per-page-load 503 in the browser console and the `tower_http: response failed classification=Status code: 503` warn spam in `journalctl -u rivetr`.
+- **Container monitor service health check broken since v0.10.18 (HIGH, B4)** — `container_monitor::health::check_services` was issuing a SELECT that omitted the columns added by migration `105_service_public_access` (`public_access`, `external_port`, `expose_container_port`). `query_as` failed to deserialize on every 30-second poll, silently disabling crash detection for all Compose services. The query now SELECTs the full column set so service health monitoring works again.
+- **`/api/apps/:id/insights` returned 503 when AI provider not configured (B3)** — The endpoint now returns `404 NOT_FOUND` when no AI provider is configured, matching the semantics of "feature not available." This eliminates the misleading per-page-load 503 in the browser console and the `tower_http: response failed classification=Status code: 503` warn spam in `journalctl -u rivetr`.
+- **Docker network "endpoint already exists" warnings on every restart (B28)** — The container reconcile-on-startup path called `connect_network` for every running container, and Docker returned a 403 if the container was already attached. The connect helper now matches the specific `403 + "already exists"` pair as an idempotent no-op; other connect errors still log a warning.
+- **MariaDB/MySQL post-start user-provisioning warning is now silenced when the entrypoint already created the user (B5)** — The user is provisioned by the official entrypoint via `MARIADB_USER` / `MYSQL_USER`; the redundant follow-up logged a misleading warning even on success.
+- **Audit log now records the full set of mutating actions (B7)** — `token.create`, `token.delete`, `app.start/stop/restart`, `app.delete`, `app.update`, `service.create/start/stop`, `database.delete`, `deployment.cancel`, `deployment.rollback`, `env_var.create/update/delete`, `domain.add/remove` were missing from prior versions.
+- **`/api/audit?limit=N` alias accepted (B9)** — REST clients that send `?limit=` (Coolify/Dokploy convention) now get the same behavior as `?per_page=`.
+- **POST/DELETE endpoints accept empty body / no `Content-Type` (B10)** — `DELETE /api/apps/:id`, `POST /api/deployments/:id/rollback`, and `POST /api/apps/:id/deployments/:did/cancel` no longer return 415 when called without a body.
+- **Cancel deployment in non-cancellable state returns 409 (B11)** — Was 404, which masked the fact that the deployment exists but isn't cancellable. Now returns `409 Conflict` with `code: "conflict"` and a descriptive message.
+- **Rollback `commit_message` references the correct deployment id (B12)** — Was using the previously-running deployment id instead of the path-param target.
+- **Old running deployment marked `replaced` (not `failed`) after rollback (B13)** — `failed` connoted a build error that didn't happen; `replaced` is the accurate transition.
+- **Stable internal hostname surfaced in App model (B14/B15)** — `GET /api/apps/:id` now exposes a derived `internal_hostname` field (either `custom_container_name` or `rivetr-<app-name>`) so the Network tab "service-to-service connection example" stays correct across restarts even when the container itself has a `-restart-<hash>` suffix.
+- **Templates list endpoint compressed + slim (B17)** — `tower_http::CompressionLayer` now gzip-compresses JSON responses ≥4KB. `GET /api/templates` returns only `{id, name, description, category, icon, is_builtin, created_at}` (was 500 KB plain, now ~86 KB gzipped). Full `compose_template` and `env_schema` bodies are at `GET /api/templates/:id`. Cache headers updated to `public, max-age=300, stale-while-revalidate=900`.
+- **Database SQL backup downloads use `application/sql` Content-Type (B26)** — Was `application/octet-stream`; browsers can now display rather than save-as.
+- **Compose service auto-domain fallback (B27)** — When no `instance_domain` is set, new compose services now auto-assign `<service-name>.local` so the service is reachable via the proxy without a manual domain step.
+
+### Frontend bug fixes (VM sweep B1, B2, B16, B18, B19, B21, B22, B23, B24, U2, U4, U10)
+- **B1** Setup form placeholder + zod validator now agree on **12-character** minimum (server already required 12).
+- **B2** App General tab hides the "Dockerfile path" field when `build_type !== "dockerfile"`.
+- **B16** Network tab no longer renders the wrong network name `"rivetr-network"`; the actual network is `"rivetr"`.
+- **B18** Templates page first-paint card count drops from ~1300 to <100 by capping each category to 6 cards in the "all" view with a "View all N" link.
+- **B19** `/monitoring` no longer logs the `width(-1) and height(-1)` recharts warning — chart wrapper now has explicit `min-h-[220px]`.
+- **B21** Setup → auto-login when the API returns a session token; falls back to `/login` only when no token is included.
+- **B22** Deployment detail page label switches from "Finished" to "Deployed at" while the status is `running`.
+- **B23** Project page no longer renders duplicate empty-state CTA buttons (responsive split was double-rendering).
+- **B24** Form `autocomplete` attrs added (`email` / `new-password` / `current-password` / `name`) so password managers and iOS strong-password generators work correctly.
+- **U2** Login submit button is disabled when email or password is empty.
+- **U4** Project page hides the Healthy/Issues/Building tabs when a project has zero apps.
+- **U10** Deployment-log render strips ANSI escape sequences (e.g. `\x1b[33m`).
+
+### Infrastructure
+- Added `scripts/deploy-vm.sh` for fast Parallels-VM iteration on Apple Silicon.
+- 7 pre-existing clippy errors fixed (`fix/clippy-baseline`); `cargo clippy --all-targets --all-features -- -D warnings` now exits 0.
+
+### Known limitations carried into v0.10.21
+- B6 — MySQL 8 default SSL breaks the published `mysql://` connection string. Need either a server-side SSL-disable on the managed DB or a `?ssl-mode=DISABLED` suffix.
+- B8 — `ClientIp` extractor staged in `src/api/audit.rs` but not wired into handlers. `audit_log.ip_address` remains null. Mechanical wiring across ~30 handlers planned for the next release.
+- B12/B13 fixes are in code but not yet exercised on a multi-deploy app.
+- B20 — Disk usage path inconsistency (`/` vs `/var/lib/rivetr`) between Dashboard and Monitoring page.
+- B25 — DB-to-app env-var auto-injection UI (manual copy still required).
+- 8 frontend fixes pass static-bundle inspection but need a Playwright pass before they're claimed validated.
 
 [0.10.20]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.19...v0.10.20
 
@@ -63,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Dockerfile Optimizer** (`#6`) — `POST /api/apps/:id/suggest-dockerfile` asks the AI to analyse the stored Dockerfile and return an optimised version with a list of improvements. Surfaced in Settings → Build.
   - **Security & Compliance Advisor** (`#11`) — `GET /api/apps/:id/security-scan` runs five rule-based checks (untagged images, missing healthcheck, no domain, empty secret env vars, credential patterns in logs) and optionally requests an AI executive summary. New **Security** tab added to every app.
   - **Global security scan** — `GET /api/security/scan` runs all checks across every app and returns an aggregated report.
-  - `docs/AI_OPPORTUNITIES.md` documents all 12 AI opportunities across three phases.
+  - `docs/planning/ai-opportunities.md` documents all 12 AI opportunities across three phases.
 
 ## [v0.10.15] - 2026-03-25
 
@@ -225,10 +263,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ClickHouse** — New managed database type. Analytics-focused columnar store on port 8123, `clickhouse://` connection string, `CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1` enabled by default, post-start database init.
 - **Docker Compose Raw Mode** — New per-service toggle that deploys the compose file exactly as written, skipping all Rivetr network injection, container name namespacing, and label additions. Essential for services with opinionated internal networking.
 - **Ansible Playbook** — `ansible/rivetr.yml` provides an idempotent playbook for automated server provisioning on Ubuntu 22.04/24.04 and Debian 12. Installs Docker, downloads the Rivetr binary, configures systemd service, and sets up UFW firewall rules.
-- **Service Templates Master Registry** — `docs/SERVICE-TEMPLATES.md` lists all 273 unique templates by category with IDs and source files. Referenced before adding new templates to prevent duplicates.
+- **Service Templates Master Registry** — `docs/reference/service-templates.md` lists all 273 unique templates by category with IDs and source files. Referenced before adding new templates to prevent duplicates.
 
 ### Fixed
-- **Duplicate Service Templates** — Removed 55 duplicate template entries (same app, different IDs across sprint files). Total unique templates reduced from 328 → 273 after full deduplication. All future templates must be checked against `docs/SERVICE-TEMPLATES.md` first.
+- **Duplicate Service Templates** — Removed 55 duplicate template entries (same app, different IDs across sprint files). Total unique templates reduced from 328 → 273 after full deduplication. All future templates must be checked against `docs/reference/service-templates.md` first.
 - **Env Vars in Storage Settings** — Removed the duplicate Environment Variables panel from Settings → Storage. Env vars are only managed from the dedicated Env Vars tab.
 
 ---
