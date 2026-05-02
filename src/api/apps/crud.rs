@@ -444,9 +444,7 @@ pub async fn update_app(
     };
 
     // Static site flag (migration 095)
-    let is_static_site = req
-        .is_static_site
-        .unwrap_or(existing.is_static_site != 0);
+    let is_static_site = req.is_static_site.unwrap_or(existing.is_static_site != 0);
 
     // Strip prefix (migration 097) — empty string clears it
     let strip_prefix = merge_optional_string(&req.strip_prefix, &existing.strip_prefix);

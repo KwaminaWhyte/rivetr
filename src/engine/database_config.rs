@@ -314,10 +314,7 @@ mod tests {
         assert!(env.contains(&("MARIADB_USER".to_string(), "appuser".to_string())));
         assert!(env.contains(&("MARIADB_PASSWORD".to_string(), "apppass".to_string())));
         assert!(env.contains(&("MARIADB_DATABASE".to_string(), "appdb".to_string())));
-        assert!(env.contains(&(
-            "MARIADB_ROOT_PASSWORD".to_string(),
-            "rootpass".to_string()
-        )));
+        assert!(env.contains(&("MARIADB_ROOT_PASSWORD".to_string(), "rootpass".to_string())));
     }
 
     #[test]

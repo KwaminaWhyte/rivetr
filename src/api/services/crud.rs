@@ -445,10 +445,7 @@ pub async fn update_service(
             .fetch_optional(&state.db)
             .await
             .map_err(|e| {
-                tracing::error!(
-                    "Failed to check external port conflict in databases: {}",
-                    e
-                );
+                tracing::error!("Failed to check external port conflict in databases: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 

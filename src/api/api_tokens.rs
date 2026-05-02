@@ -183,13 +183,12 @@ pub async fn delete_token(
     }
 
     // Capture name before delete for the audit log entry.
-    let name: Option<String> = sqlx::query_scalar(
-        "SELECT name FROM api_tokens WHERE id = ? AND user_id = ?",
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let name: Option<String> =
+        sqlx::query_scalar("SELECT name FROM api_tokens WHERE id = ? AND user_id = ?")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let result = sqlx::query("DELETE FROM api_tokens WHERE id = ? AND user_id = ?")
         .bind(&id)

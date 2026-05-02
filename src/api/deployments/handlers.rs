@@ -1148,14 +1148,13 @@ pub async fn cancel_deployment(
         // Differentiate between "deployment doesn't exist" (404) and "exists but not
         // in a cancellable state" (409 Conflict — semantically a state conflict, not
         // a missing resource).
-        let exists: Option<String> = sqlx::query_scalar(
-            "SELECT status FROM deployments WHERE id = ? AND app_id = ?",
-        )
-        .bind(&deployment_id)
-        .bind(&app_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| ApiError::database(e.to_string()))?;
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT status FROM deployments WHERE id = ? AND app_id = ?")
+                .bind(&deployment_id)
+                .bind(&app_id)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| ApiError::database(e.to_string()))?;
 
         return match exists {
             Some(status) => Err(ApiError::conflict(format!(

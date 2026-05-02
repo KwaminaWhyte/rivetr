@@ -223,8 +223,16 @@ pub async fn list_webhook_events(
     let count_sql = format!("SELECT COUNT(*) FROM webhook_events{}", where_clause);
     let total: i64 = {
         let q = sqlx::query_scalar(&count_sql);
-        let q = if has_provider { q.bind(query.provider.as_deref().unwrap()) } else { q };
-        let q = if has_status { q.bind(query.status.as_deref().unwrap()) } else { q };
+        let q = if has_provider {
+            q.bind(query.provider.as_deref().unwrap())
+        } else {
+            q
+        };
+        let q = if has_status {
+            q.bind(query.status.as_deref().unwrap())
+        } else {
+            q
+        };
         q.fetch_one(&state.db).await.map_err(|e| {
             tracing::error!("Failed to count webhook events: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -238,8 +246,16 @@ pub async fn list_webhook_events(
     );
     let events: Vec<WebhookEvent> = {
         let q = sqlx::query_as::<_, WebhookEvent>(&items_sql);
-        let q = if has_provider { q.bind(query.provider.as_deref().unwrap()) } else { q };
-        let q = if has_status { q.bind(query.status.as_deref().unwrap()) } else { q };
+        let q = if has_provider {
+            q.bind(query.provider.as_deref().unwrap())
+        } else {
+            q
+        };
+        let q = if has_status {
+            q.bind(query.status.as_deref().unwrap())
+        } else {
+            q
+        };
         let q = q.bind(per_page).bind(offset);
         q.fetch_all(&state.db).await.map_err(|e| {
             tracing::error!("Failed to fetch webhook events: {}", e);

@@ -140,7 +140,9 @@ pub async fn update_instance_settings(
                                         .await
                                     {
                                         Ok(result) => {
-                                            let _ = acme_client.save_certificate(&result, &domain).await;
+                                            let _ = acme_client
+                                                .save_certificate(&result, &domain)
+                                                .await;
                                             tracing::info!(
                                                 domain = %domain,
                                                 "ACME certificate obtained for new instance domain"

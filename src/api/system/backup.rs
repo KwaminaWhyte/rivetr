@@ -667,12 +667,10 @@ pub async fn create_full_backup(
         .fetch_all(&state.db)
         .await
         .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
-        _ => sqlx::query_as::<_, ManagedDatabase>(
-            "SELECT * FROM databases ORDER BY name ASC",
-        )
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
+        _ => sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases ORDER BY name ASC")
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("Failed to list databases: {}", e)))?,
     };
 
     // 5. Query Docker Compose services (optionally scoped to team).

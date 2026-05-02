@@ -365,8 +365,7 @@ pub async fn get_system_stats(
     // running.  Falls back to process uptime on non-Linux platforms (e.g. macOS
     // dev machines).
     let uptime_seconds = read_system_uptime_seconds().unwrap_or_else(|| {
-        static START_TIME: std::sync::OnceLock<std::time::Instant> =
-            std::sync::OnceLock::new();
+        static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
         let start = START_TIME.get_or_init(std::time::Instant::now);
         start.elapsed().as_secs()
     });

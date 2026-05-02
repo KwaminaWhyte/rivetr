@@ -7,7 +7,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User};
+use crate::db::{
+    actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User,
+};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
 use crate::AppState;
