@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -14,7 +14,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 
 /// OIDC discovery document structure
 #[derive(Deserialize)]
@@ -78,7 +78,7 @@ pub async fn list_providers(
 pub async fn create_provider(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateOidcProviderRequest>,
 ) -> Result<Json<OidcProviderResponse>, (StatusCode, String)> {
     if user.role != "admin" {
@@ -155,7 +155,6 @@ pub async fn create_provider(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         sso_actions::SSO_PROVIDER_CREATE,
@@ -163,7 +162,7 @@ pub async fn create_provider(
         Some(&id),
         Some(req.name.trim()),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -205,7 +204,7 @@ pub async fn update_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateOidcProviderRequest>,
 ) -> Result<Json<OidcProviderResponse>, (StatusCode, String)> {
     if user.role != "admin" {
@@ -286,7 +285,6 @@ pub async fn update_provider(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         sso_actions::SSO_PROVIDER_UPDATE,
@@ -294,7 +292,7 @@ pub async fn update_provider(
         Some(&id),
         Some(req.name.trim()),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -313,7 +311,7 @@ pub async fn delete_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     if user.role != "admin" {
         return Err((StatusCode::FORBIDDEN, "Admin access required".to_string()));
@@ -329,7 +327,6 @@ pub async fn delete_provider(
         return Err((StatusCode::NOT_FOUND, "OIDC provider not found".to_string()));
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         sso_actions::SSO_PROVIDER_DELETE,
@@ -337,7 +334,7 @@ pub async fn delete_provider(
         Some(&id),
         None,
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -422,7 +419,7 @@ pub async fn handle_sso_callback(
     State(state): State<Arc<AppState>>,
     Path(provider_id): Path<String>,
     Query(params): Query<OidcCallbackParams>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check for errors from provider
     if let Some(error) = &params.error {
@@ -605,7 +602,6 @@ pub async fn handle_sso_callback(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Audit log
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         sso_actions::SSO_LOGIN,
@@ -613,7 +609,7 @@ pub async fn handle_sso_callback(
         Some(&user_id),
         Some(&email),
         Some(&user_id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "provider_id": provider_id, "provider_name": provider.name })),
     )
     .await;

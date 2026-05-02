@@ -8,14 +8,14 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Redirect},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use crate::crypto;
 use crate::db::{
     actions, resource_types, GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse,
@@ -258,7 +258,7 @@ pub async fn delete_app(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check if app exists
     let _app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
@@ -282,7 +282,6 @@ pub async fn delete_app(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::GITHUB_APP_DELETE,
@@ -290,7 +289,7 @@ pub async fn delete_app(
         Some(&id),
         Some(&id),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

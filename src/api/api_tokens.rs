@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
     Json,
 };
 use chrono::Utc;
@@ -15,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use super::error::ApiError;
 use crate::{
     db::{actions, resource_types, User},
@@ -110,7 +109,7 @@ pub async fn list_tokens(
 pub async fn create_token(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateApiTokenRequest>,
 ) -> Result<Json<ApiTokenResponse>, ApiError> {
     if user.id == "system" {
@@ -144,7 +143,6 @@ pub async fn create_token(
     .execute(&state.db)
     .await?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::TOKEN_CREATE,
@@ -152,7 +150,7 @@ pub async fn create_token(
         Some(&id),
         Some(&name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -174,7 +172,7 @@ pub async fn delete_token(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if user.id == "system" {
         return Err(ApiError::forbidden(
@@ -200,7 +198,6 @@ pub async fn delete_token(
         return Err(ApiError::not_found("Token not found"));
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::TOKEN_DELETE,
@@ -208,7 +205,7 @@ pub async fn delete_token(
         Some(&id),
         name.as_deref(),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

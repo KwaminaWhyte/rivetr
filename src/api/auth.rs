@@ -6,7 +6,7 @@ use axum::{
     async_trait,
     body::Body,
     extract::{FromRequestParts, State},
-    http::{request::Parts, HeaderMap, Request, StatusCode},
+    http::{request::Parts, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -23,7 +23,7 @@ use crate::db::{
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 
 /// Response for setup status check
 #[derive(Serialize)]
@@ -129,7 +129,7 @@ fn validate_password_strength(password: &str) -> Option<String> {
 /// Login endpoint
 pub async fn login(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     // Find user by email
@@ -197,7 +197,6 @@ pub async fn login(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::AUTH_LOGIN,
@@ -205,7 +204,7 @@ pub async fn login(
         Some(&user.id),
         Some(&user.email),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -421,7 +420,7 @@ pub async fn setup_status(State(state): State<Arc<AppState>>) -> Json<SetupStatu
 /// Initial setup endpoint - creates the first admin user
 pub async fn setup(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(request): Json<SetupRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     // Check if any user already exists
@@ -502,7 +501,6 @@ pub async fn setup(
     tracing::info!("Created default Personal team for user: {}", request.email);
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::AUTH_SETUP,
@@ -510,7 +508,7 @@ pub async fn setup(
         Some(&id),
         Some(&request.email),
         Some(&id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

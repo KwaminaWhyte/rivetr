@@ -16,7 +16,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use super::error::ApiError;
 use super::validation::validate_uuid;
 
@@ -283,10 +283,9 @@ async fn trigger_deploy_for_app(state: &Arc<AppState>, app: &App) -> Result<(), 
 pub async fn bulk_start(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<BulkAppIdsRequest>,
 ) -> Result<Json<BulkOperationResponse>, ApiError> {
-    let ip = extract_client_ip(&headers, None);
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
@@ -311,7 +310,7 @@ pub async fn bulk_start(
                     Some(&app.id),
                     Some(&app.name),
                     Some(&user.id),
-                    ip.as_deref(),
+                    client_ip.as_deref(),
                     None,
                 )
                 .await;
@@ -341,10 +340,9 @@ pub async fn bulk_start(
 pub async fn bulk_stop(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<BulkAppIdsRequest>,
 ) -> Result<Json<BulkOperationResponse>, ApiError> {
-    let ip = extract_client_ip(&headers, None);
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
@@ -369,7 +367,7 @@ pub async fn bulk_stop(
                     Some(&app.id),
                     Some(&app.name),
                     Some(&user.id),
-                    ip.as_deref(),
+                    client_ip.as_deref(),
                     None,
                 )
                 .await;
@@ -399,10 +397,9 @@ pub async fn bulk_stop(
 pub async fn bulk_restart(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<BulkAppIdsRequest>,
 ) -> Result<Json<BulkOperationResponse>, ApiError> {
-    let ip = extract_client_ip(&headers, None);
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
@@ -427,7 +424,7 @@ pub async fn bulk_restart(
                     Some(&app.id),
                     Some(&app.name),
                     Some(&user.id),
-                    ip.as_deref(),
+                    client_ip.as_deref(),
                     None,
                 )
                 .await;
@@ -457,10 +454,9 @@ pub async fn bulk_restart(
 pub async fn bulk_deploy(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<BulkAppIdsRequest>,
 ) -> Result<Json<BulkOperationResponse>, ApiError> {
-    let ip = extract_client_ip(&headers, None);
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
@@ -485,7 +481,7 @@ pub async fn bulk_deploy(
                     Some(&app.id),
                     Some(&app.name),
                     Some(&user.id),
-                    ip.as_deref(),
+                    client_ip.as_deref(),
                     None,
                 )
                 .await;
@@ -520,7 +516,7 @@ pub struct CloneAppResponse {
 pub async fn clone_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     body: Option<Json<CloneAppRequest>>,
 ) -> Result<(StatusCode, Json<CloneAppResponse>), ApiError> {
@@ -675,7 +671,6 @@ pub async fn clone_app(
         .fetch_one(&state.db)
         .await?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_CREATE,
@@ -683,7 +678,7 @@ pub async fn clone_app(
         Some(&new_id),
         Some(&clone_name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "cloned_from": id })),
     )
     .await;
@@ -787,7 +782,7 @@ pub async fn list_snapshots(
 pub async fn restore_snapshot(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path((id, snapshot_id)): Path<(String, String)>,
 ) -> Result<Json<crate::db::AppResponse>, ApiError> {
     if let Err(e) = validate_uuid(&id, "app_id") {
@@ -862,7 +857,6 @@ pub async fn restore_snapshot(
         .fetch_one(&state.db)
         .await?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_UPDATE,
@@ -870,7 +864,7 @@ pub async fn restore_snapshot(
         Some(&id),
         Some(&updated.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "restored_from_snapshot": snapshot_id })),
     )
     .await;
@@ -1002,7 +996,7 @@ pub async fn export_project(
 pub async fn import_project(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(project_id): Path<String>,
     Json(export): Json<ProjectExport>,
 ) -> Result<(StatusCode, Json<ProjectImportResponse>), ApiError> {
@@ -1020,7 +1014,6 @@ pub async fn import_project(
         return Err(ApiError::not_found("Project not found"));
     }
 
-    let ip = extract_client_ip(&headers, None);
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let mut app_ids = Vec::new();
 
@@ -1118,7 +1111,7 @@ pub async fn import_project(
             Some(&new_app_id),
             Some(&export_app.name),
             Some(&user.id),
-            ip.as_deref(),
+            client_ip.as_deref(),
             Some(serde_json::json!({ "imported_from_project_export": true })),
         )
         .await;
@@ -1149,7 +1142,7 @@ pub struct MaintenanceModeResponse {
 pub async fn set_maintenance_mode(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     Json(req): Json<MaintenanceModeRequest>,
 ) -> Result<Json<MaintenanceModeResponse>, ApiError> {
@@ -1170,7 +1163,6 @@ pub async fn set_maintenance_mode(
     .execute(&state.db)
     .await?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_UPDATE,
@@ -1178,7 +1170,7 @@ pub async fn set_maintenance_mode(
         Some(&id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "maintenance_mode": req.enabled })),
     )
     .await;

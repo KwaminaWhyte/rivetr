@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
@@ -14,7 +14,7 @@ use crate::db::{
 use crate::AppState;
 use axum::http::header;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::auth::verify_password;
 use super::super::error::ApiError;
 use super::super::teams::log_team_audit;
@@ -75,7 +75,7 @@ pub async fn get_app(
 pub async fn create_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<AppResponse>), ApiError> {
     // Validate request
@@ -214,7 +214,6 @@ pub async fn create_app(
         .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_CREATE,
@@ -222,7 +221,7 @@ pub async fn create_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "git_url": req.git_url,
             "branch": req.branch,
@@ -258,7 +257,7 @@ pub async fn create_app(
 pub async fn update_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
 ) -> Result<Json<AppResponse>, ApiError> {
@@ -727,7 +726,6 @@ pub async fn update_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_UPDATE,
@@ -735,7 +733,7 @@ pub async fn update_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -764,7 +762,7 @@ pub async fn update_app(
 
 pub async fn delete_app(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     user: User,
     // Body is optional: admin API tokens can DELETE without supplying a password
@@ -839,7 +837,6 @@ pub async fn delete_app(
     tracing::info!(app_id = %id, app_name = %app.name, "App deleted successfully");
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_DELETE,
@@ -847,7 +844,7 @@ pub async fn delete_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::error::ApiError;
 use super::super::teams::log_team_audit;
 use super::super::validation::validate_uuid;
@@ -99,7 +99,7 @@ pub async fn list_app_shares(
 pub async fn create_app_share(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(app_id): Path<String>,
     Json(req): Json<CreateAppShareRequest>,
 ) -> Result<(StatusCode, Json<AppShareResponse>), ApiError> {
@@ -174,7 +174,6 @@ pub async fn create_app_share(
     .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_UPDATE,
@@ -182,7 +181,7 @@ pub async fn create_app_share(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "action": "share",
             "shared_with_team_id": target_team_id,
@@ -234,7 +233,7 @@ pub async fn create_app_share(
 pub async fn delete_app_share(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path((app_id, team_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID formats
@@ -270,7 +269,6 @@ pub async fn delete_app_share(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_UPDATE,
@@ -278,7 +276,7 @@ pub async fn delete_app_share(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "action": "unshare",
             "unshared_team_id": team_id,

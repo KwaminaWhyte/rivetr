@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
@@ -13,7 +12,7 @@ use crate::db::{
 use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
 use super::AppStatusResponse;
@@ -242,7 +241,7 @@ pub async fn get_app_status(
 pub async fn start_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -320,7 +319,6 @@ pub async fn start_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_START,
@@ -328,7 +326,7 @@ pub async fn start_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -349,7 +347,7 @@ pub async fn start_app(
 pub async fn stop_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -413,7 +411,6 @@ pub async fn stop_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_STOP,
@@ -421,7 +418,7 @@ pub async fn stop_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -530,7 +527,7 @@ async fn finish_restart_deployment(
 pub async fn restart_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -658,7 +655,6 @@ pub async fn restart_app(
             )
             .await;
 
-            let ip = extract_client_ip(&headers, None);
             audit_log(
                 &state,
                 actions::APP_RESTART,
@@ -666,7 +662,7 @@ pub async fn restart_app(
                 Some(&app.id),
                 Some(&app.name),
                 Some(&user.id),
-                ip.as_deref(),
+                client_ip.as_deref(),
                 None,
             )
             .await;
@@ -1141,7 +1137,6 @@ pub async fn restart_app(
     .await;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_RESTART,
@@ -1149,7 +1144,7 @@ pub async fn restart_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
