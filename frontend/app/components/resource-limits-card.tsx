@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import type { App, UpdateAppRequest } from "@/types/api";
+import type { App, AppStatus, UpdateAppRequest } from "@/types/api";
 
 // CPU options from 0.25 to 4 cores, step 0.25
 const CPU_OPTIONS = [
@@ -76,10 +76,44 @@ export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
     setHasChanges(cpuChanged || memoryChanged);
   }, [cpuLimit, memoryLimit, app.cpu_limit, app.memory_limit]);
 
+  // Watch container status so we know whether to live-apply via docker update
+  // (only meaningful when the container is actually running).
+  const { data: appStatus } = useQuery<AppStatus>({
+    queryKey: ["appStatus", app.id],
+    queryFn: () => api.getAppStatus(app.id, token),
+    refetchInterval: 10000,
+  });
+  const isRunning = appStatus?.running === true;
+
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateAppRequest) => api.updateApp(app.id, data, token),
+    mutationFn: async (data: UpdateAppRequest) => {
+      // 1. Persist the new values so the next deployment picks them up.
+      const updated = await api.updateApp(app.id, data, token);
+      // 2. If the container is running, ask the backend to docker-update
+      //    the live container so the limits take effect immediately. The
+      //    PUT alone only stores values; apply-limits is what actually
+      //    reaches into the runtime.
+      if (isRunning) {
+        try {
+          await api.applyResourceLimits(app.id, token);
+        } catch (err) {
+          // Don't fail the whole save — values are persisted; the user can
+          // redeploy if the live apply hit a runtime-specific limitation.
+          toast.warning(
+            err instanceof Error
+              ? `Saved, but live apply failed: ${err.message}`
+              : "Saved, but live apply failed",
+          );
+        }
+      }
+      return updated;
+    },
     onSuccess: () => {
-      toast.success("Resource limits updated");
+      toast.success(
+        isRunning
+          ? "Resource limits applied to running container"
+          : "Resource limits saved",
+      );
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
       setHasChanges(false);
     },
@@ -164,7 +198,9 @@ export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Changes will take effect on the next deployment.
+          {isRunning
+            ? "Saved limits are applied immediately to the running container via docker update."
+            : "Saved limits will take effect on the next deployment."}
         </p>
       </CardContent>
     </Card>
