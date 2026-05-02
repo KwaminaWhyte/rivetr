@@ -521,12 +521,23 @@ pub struct DiskStatsResponse {
 
 /// Get current disk space statistics
 /// GET /api/system/disk
+///
+/// Always reports stats for the configured `data_dir` (canonicalized when
+/// possible) so the Dashboard "Disk Usage" card and the Monitoring page
+/// agree.  Previously the Dashboard read root `/` while Monitoring read
+/// `/var/lib/rivetr`, which produced two different numbers in the same UI
+/// for what users perceived as the same metric (B20).
 pub async fn get_disk_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DiskStatsResponse>, ApiError> {
-    let data_dir = &state.config.server.data_dir;
+    let configured = &state.config.server.data_dir;
 
-    let stats = get_current_disk_stats(data_dir).map_err(|e| {
+    // Canonicalize so `path` in the response is the absolute resolved form
+    // (e.g. `/var/lib/rivetr` instead of `./data`).  Falls back to the raw
+    // configured path if the directory does not exist yet.
+    let resolved = std::fs::canonicalize(configured).unwrap_or_else(|_| configured.clone());
+
+    let stats = get_current_disk_stats(&resolved).map_err(|e| {
         tracing::error!(error = %e, "Failed to get disk stats");
         ApiError::internal(format!("Failed to get disk stats: {}", e))
     })?;
@@ -536,7 +547,7 @@ pub async fn get_disk_stats(
         used_bytes: stats.used_bytes,
         free_bytes: stats.free_bytes,
         usage_percent: stats.usage_percent,
-        path: data_dir.display().to_string(),
+        path: resolved.display().to_string(),
         total_human: format_bytes(stats.total_bytes),
         used_human: format_bytes(stats.used_bytes),
         free_human: format_bytes(stats.free_bytes),
