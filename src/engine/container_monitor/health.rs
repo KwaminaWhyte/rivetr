@@ -525,7 +525,10 @@ pub(super) async fn check_services(
         r#"
         SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at,
                COALESCE(isolated_network, 1) AS isolated_network,
-               COALESCE(raw_compose_mode, 0) AS raw_compose_mode
+               COALESCE(raw_compose_mode, 0) AS raw_compose_mode,
+               COALESCE(public_access, 0) AS public_access,
+               COALESCE(external_port, 0) AS external_port,
+               COALESCE(expose_container_port, 0) AS expose_container_port
         FROM services
         WHERE status = 'running'
         "#,

@@ -18,7 +18,7 @@ pub struct AiUnavailable {
 
 fn ai_unavailable() -> (StatusCode, Json<AiUnavailable>) {
     (
-        StatusCode::SERVICE_UNAVAILABLE,
+        StatusCode::NOT_FOUND,
         Json(AiUnavailable {
             error: "AI provider not configured. Add [ai] section to rivetr.toml.",
         }),
