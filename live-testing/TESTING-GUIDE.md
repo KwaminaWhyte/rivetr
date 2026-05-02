@@ -2007,6 +2007,24 @@ echo $TOKEN
 - B25 — DB-to-app env-var auto-injection UI
 - 8 frontend fixes need browser-driven validation pass
 
+### Known fixed issues (v0.10.21 — carry-forward sprint, 2026-05-02 evening)
+| Issue | Fixed In |
+|-------|----------|
+| MySQL 8 self-signed TLS broke published `mysql://` connection string | v0.10.21 (B6) — `--skip-ssl` server-side flag |
+| Audit `ip_address` always null even with extractor present | v0.10.21 (B8) — wired into 30+ handlers |
+| Disk usage card vs Monitoring page used different paths | v0.10.21 (B20) — canonicalized `data_dir` |
+| No DB-to-app linking UI; users had to manually copy connection strings | v0.10.21 (B25) — new migration 106 + `/apps/:id/links` endpoints + UI |
+| Sidebar user menu cramped + caret didn't rotate | v0.10.21 (U1) |
+| Deploy menu "commit/tag" + "ZIP file" items did nothing on click | v0.10.21 (U3) — Radix dropdown→dialog focus race |
+| Template category headings not anchored; "View all N" had no destination | v0.10.21 (U5) — anchor IDs + expand-inline |
+| Project DB list had no inline credentials display | v0.10.21 (U6) — Show credentials toggle with copy buttons |
+| Resource Limits Save said "next deployment" even though `/apply-limits` exists | v0.10.21 (U9) — calls `/apply-limits` when running |
+
+### Open in v0.10.21 (move to v0.10.22 backlog)
+- B12/B13 — Rollback flow live multi-deploy validation (code in place since v0.10.20)
+- 8 frontend fixes from v0.10.20 still need a Playwright pass
+- 5 v0.10.21 frontend fixes (U1/U3/U5/U6/U9) need browser confirmation
+
 ### Validation reports
 - `live-testing/VM-SWEEP-2026-05-02.md` — original 27-bug sweep + post-fix status table
 - `live-testing/VM-VALIDATION-2026-05-02.md` — MariaDB + side panel browser session

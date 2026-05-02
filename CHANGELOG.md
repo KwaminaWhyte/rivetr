@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.21] - 2026-05-02
+
+### Added
+- **Database-to-app linking with auto env injection (B25)** — A new "Linked Databases" section on the App Env Vars tab lets users connect a managed database (Postgres / MySQL / MariaDB / Redis / Mongo) to an app with one click. The next deployment automatically receives `DATABASE_URL`, `HOST`, `PORT`, `USER`, `PASSWORD`, and `DB` env vars (or `REDIS_URL` / `MONGODB_URL` for those types) using the database's internal connection string. An optional prefix (`ANALYTICS_`, `CACHE_`, …) lets the same app link multiple DBs without key collisions. User-defined `env_vars` always win over injected vars (the preview UI strikes through overridden keys).
+  - New migration `106_database_app_links.sql` and module `src/api/database_links.rs`.
+  - New endpoints: `GET/POST /api/apps/:app_id/links`, `DELETE /api/apps/:app_id/links/:link_id`, `GET /api/apps/:app_id/linked-env-vars`.
+  - Pipeline change in `src/engine/pipeline/start.rs` to merge linked-DB vars into the deployment env.
+- **Inline credentials display on the project DB list (U6)** — Each database card on the project detail page now has a "Show credentials" toggle that expands the connection string, username, and password inline (with copy-to-clipboard buttons and a password reveal toggle), so users no longer have to drill into each DB to get its connection info.
+
+### Fixed
+- **MySQL 8 connection broken via published connection string (B6)** — Managed MySQL containers now start with `--skip-ssl` (matching MariaDB) so clients can connect via `mysql://user:pass@host:3306/db` without TLS errors. Reverted the v0.10.20 `?ssl-mode=DISABLED` query-string workaround that had been incorrectly applied to MariaDB too.
+- **Audit `ip_address` was always `null` (B8)** — `ClientIp` extractor is now wired into all 30+ handlers that emit audit logs (`src/api/{api_tokens,github_apps,ssh_keys,sso,two_factor,env_vars,bulk,databases,auth,oauth,projects,git_providers,apps,services,deployments}.rs`). Direct (non-proxied) clients get their socket IP recorded; proxied requests use `X-Forwarded-For` / `X-Real-IP`.
+- **Disk-stats path inconsistency (B20)** — Dashboard "Disk Usage" card and Monitoring page were measuring different mountpoints (`/` vs `/var/lib/rivetr`). Backend now canonicalizes `data_dir` via `fs::canonicalize` so both surfaces show the same number for the same data path.
+
+### UX
+- **Sidebar user menu (U1)** — Added explicit `gap-3` between avatar and text, hover/focus states, and a chevron that rotates 180° when the menu is open. The user pill is now obviously interactive.
+- **Deploy menu commit/tag and ZIP-file modals (U3)** — Both menu items now actually open their dialogs. Bug was a Radix dropdown→dialog focus race; fixed by using `onSelect` with `preventDefault()` + a deferred state update.
+- **Template page category anchors (U5)** — Each category section has an `id` anchor and "View all N" links smooth-scroll to the heading + expand the section inline. Tab switching also scrolls to the top of the filtered grid.
+- **Resource Limits live-apply (U9)** — Resource Limits card now calls `POST /api/apps/:id/apply-limits` after Save when the container is running (uses `docker update` under the hood). Helper text and toast switch between "applied immediately" (running) and "next deployment" (stopped).
+
+### Removed
+- The v0.10.20 `?ssl-mode=DISABLED` MySQL connection-string workaround (replaced by the `--skip-ssl` server-side fix in B6).
+
+[0.10.21]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.20...v0.10.21
+
 ## [0.10.20] - 2026-05-02
 
 ### Added

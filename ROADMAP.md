@@ -257,6 +257,15 @@ Features required for enterprise adoption and high availability.
 
 ## Recent Bug Fixes (Unreleased)
 
+- **v0.10.21 — Database-to-app linking with auto env injection (B25)** ✅ — New "Linked Databases" section on the App Env Vars tab one-clicks Postgres/MySQL/MariaDB/Redis/Mongo into an app; deployment auto-receives `DATABASE_URL`/`HOST`/`PORT`/`USER`/`PASSWORD`/`DB` (or `REDIS_URL`/`MONGODB_URL`). Optional prefix lets one app link multiple DBs. Migration `106_database_app_links.sql`; new module `src/api/database_links.rs`
+- **v0.10.21 — Inline credentials display on project DB list (U6)** ✅ — Each DB card now has a "Show credentials" toggle revealing the connection string + user/pass with copy buttons and a password reveal toggle
+- **v0.10.21 — MySQL 8 client connection broken via published string (B6)** ✅ — Container starts with `--skip-ssl` so `mysql://user:pass@host:3306/db` works without TLS errors
+- **v0.10.21 — Audit `ip_address` always null (B8)** ✅ — `ClientIp` extractor wired into 30+ audit-emitting handlers; both direct socket IPs and proxied `X-Forwarded-For` recorded
+- **v0.10.21 — Disk-stats path inconsistency (B20)** ✅ — `data_dir` canonicalized via `fs::canonicalize`; Dashboard + Monitoring page report identical numbers
+- **v0.10.21 — Sidebar user menu UX (U1)** ✅ — Spacing, hover/focus states, rotating chevron
+- **v0.10.21 — Deploy commit/tag + ZIP modals (U3)** ✅ — Radix dropdown→dialog focus race fixed
+- **v0.10.21 — Template category anchors (U5)** ✅ — Category sections have anchor IDs; "View all N" smooth-scrolls and expands inline
+- **v0.10.21 — Resource Limits live-apply (U9)** ✅ — Save now calls `POST /api/apps/:id/apply-limits` when running, applying via `docker update` without redeploy
 - **v0.10.20 — Coolify-style deploy log side panel** ✅ — A dockable side panel auto-opens on Deploy/Start/Restart and live-streams image-pull + container-start logs for apps, services, and managed databases (new `StartLogRegistry` + WS/REST routes; `DeployPanelProvider` mounted at the dashboard root)
 - **v0.10.20 — MariaDB managed database type** ✅ — Frontend now wires MariaDB through the `mariadb://...` MySQL scheme, `/var/lib/mysql` data path, and `mariadb-dump` backups; supports versions 11 (default), 10.11, 10.6, 10.5; backend covered by `test_mariadb_config` and `test_generate_env_vars_mariadb`
 - **v0.10.20 — Container monitor service health check broken since v0.10.18 (HIGH)** ✅ — `check_services` SELECT was missing migration-105 columns (`public_access`, `external_port`, `expose_container_port`); compose service crash detection was silently disabled. SELECT now lists the full column set

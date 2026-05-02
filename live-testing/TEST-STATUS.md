@@ -94,11 +94,19 @@ Track which feature areas have been fully tested. Update after each testing sess
 | 88 | Templates list compression + slim | [x] | 2026-05-02 | claude | v0.10.20 | B17 — gzip + cache-control: public, max-age=300 + list omits compose_template (full body at /api/templates/:id) |
 | 89 | Audit log new event types | [x] | 2026-05-02 | claude | v0.10.20 | B7 — service.create, deployment.cancel, app.update, env_var.create, token.create/delete, database.create all observed |
 | 90 | Audit `?limit=` alias | [x] | 2026-05-02 | claude | v0.10.20 | B9 — `?limit=3` returns 3 items ✓ |
-| 91 | Audit ip_address capture | [!] | 2026-05-02 | claude | v0.10.20 | B8 — ClientIp extractor staged in audit.rs but NOT wired into handlers; ip_address still null. v0.10.21 follow-up. |
+| 91 | Audit ip_address capture | [x] | 2026-05-02 | claude | v0.10.21 | B8 — ClientIp wired into all 30+ audit handlers; new `database.create` entry shows `ip_address: 10.211.55.2` ✓ |
 | 92 | App `internal_hostname` field | [x] | 2026-05-02 | claude | v0.10.20 | B14/B15 — `GET /api/apps/:id` returns `internal_hostname: "rivetr-<name>"` |
 | 93 | DB SQL backup Content-Type | [x] | 2026-05-02 | claude | v0.10.20 | B26 — `application/sql` + content-disposition attachment ✓ |
 | 94 | Compose service auto-domain fallback | [x] | 2026-05-02 | claude | v0.10.20 | B27 — fresh service → domain `<name>.local` when instance_domain unset ✓ |
 | 95 | Docker network reconnect idempotent | [x] | 2026-05-02 | claude | v0.10.20 | B28 — restart no longer logs "endpoint already exists in network rivetr" |
+| 96 | MySQL 8 SSL disabled in container | [x] | 2026-05-02 | claude | v0.10.21 | B6 — `docker inspect rivetr-db-<id> --format {{.Config.Cmd}}` → `[--skip-ssl]` ✓ |
+| 97 | Disk-stats path consistency | [x] | 2026-05-02 | claude | v0.10.21 | B20 — `/api/system/disk` now returns `path: "/var/lib/rivetr"` (canonicalized); Dashboard + Monitoring agree |
+| 98 | Database-to-app linking + env injection | [x] | 2026-05-02 | claude | v0.10.21 | B25 — POST/GET/DELETE /apps/:id/links work; preview returns DATABASE_URL/HOST/PORT/USER/PASSWORD/DB |
+| 99 | Project DB inline credentials | [~] | 2026-05-02 | claude | v0.10.21 | U6 — built-bundle confirm; needs browser-driven validation |
+| 100 | Sidebar user menu UX | [~] | 2026-05-02 | claude | v0.10.21 | U1 — source confirm + chevron rotate; needs browser pass |
+| 101 | Deploy commit/tag + ZIP modals | [~] | 2026-05-02 | claude | v0.10.21 | U3 — Radix focus race fix; modal opens — needs browser pass |
+| 102 | Template category anchors + View-all | [~] | 2026-05-02 | claude | v0.10.21 | U5 — anchor IDs + smooth-scroll + expand-inline; needs browser pass |
+| 103 | Resource Limits live-apply | [~] | 2026-05-02 | claude | v0.10.21 | U9 — Save now calls /apply-limits when running; needs running app for live test |
 
 ---
 
@@ -115,6 +123,22 @@ Track which feature areas have been fully tested. Update after each testing sess
 ---
 
 ## Session Log
+
+### 2026-05-02 evening — v0.10.21 (carry-forward fix sprint)
+- **Server:** rivetr-vm (10.211.55.5)
+- **Tester:** claude (3 sub-agents in parallel + inline live validation)
+- **Sprint:** drove every remaining v0.10.20 backlog item to a fix, except B12/B13 which still need a multi-deploy app for live validation.
+- **Shipped:**
+  - **B6** — MySQL 8 starts with `--skip-ssl` (server-side fix); reverted MariaDB regression. Verified via `docker inspect`.
+  - **B8** — `ClientIp` extractor wired into 30+ audit handlers; verified `database.create` entry has `ip_address: 10.211.55.2`.
+  - **B20** — `data_dir` canonicalized; `/api/system/disk` returns absolute path so Dashboard + Monitoring agree.
+  - **B25** — Migration `106_database_app_links.sql` + `database_app_links` table + per-app linking UI + auto env injection in pipeline. Verified link CRUD + 6-var preview.
+  - **U1** — sidebar user menu spacing/hover/focus + chevron rotate.
+  - **U3** — deploy menu commit/tag + ZIP modals (Radix focus race).
+  - **U5** — template category anchors + View-all expand inline.
+  - **U6** — inline credentials toggle on project DB cards.
+  - **U9** — Resource Limits live-apply via `/apply-limits` when container running.
+- **Carry-forward:** B12/B13 (need multi-deploy app), 8 frontend fixes from v0.10.20 still need Playwright pass, U1/U3/U5/U6/U9 from v0.10.21 also need browser confirm.
 
 ### 2026-05-02 — v0.10.20 (Parallels VM Sweep + Fix Sprint + Validation)
 - **Server:** rivetr-vm (10.211.55.5, Parallels Ubuntu 24.04 ARM64)
