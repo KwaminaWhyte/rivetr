@@ -363,13 +363,22 @@ pub async fn connect_to_rivetr_network(
         )
         .await;
 
-    if let Err(e) = result {
-        tracing::warn!(
-            "Could not connect container {} to network '{}': {}",
-            container_id,
-            RIVETR_NETWORK,
-            e
-        );
+    match result {
+        Ok(_) => {}
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 403,
+            message,
+        }) if message.contains("already exists") => {
+            // Container already attached to the network — idempotent no-op.
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Could not connect container {} to network '{}': {}",
+                container_id,
+                RIVETR_NETWORK,
+                e
+            );
+        }
     }
 }
 
@@ -417,13 +426,22 @@ pub async fn connect_to_named_network(
         )
         .await;
 
-    if let Err(e) = result {
-        tracing::warn!(
-            "Could not connect container {} to network '{}': {}",
-            container_id,
-            net_name,
-            e
-        );
+    match result {
+        Ok(_) => {}
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 403,
+            message,
+        }) if message.contains("already exists") => {
+            // Container already attached to the network — idempotent no-op.
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Could not connect container {} to network '{}': {}",
+                container_id,
+                net_name,
+                e
+            );
+        }
     }
 }
 
