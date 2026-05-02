@@ -146,6 +146,17 @@ pub(super) async fn collect_env_vars(
         }
     }
 
+    // Merge linked-database env vars (lowest priority — user-defined wins).
+    // These come from `database_app_links` and inject DATABASE_URL/REDIS_URL/etc.
+    let links = crate::api::database_links::load_links_for_app(db, &app.id).await;
+    for (database, prefix) in links {
+        for (key, value) in crate::api::database_links::compute_injected_vars(&database, &prefix) {
+            if !env_vars.iter().any(|(k, _)| k == &key) {
+                env_vars.push((key, value));
+            }
+        }
+    }
+
     env_vars
 }
 
