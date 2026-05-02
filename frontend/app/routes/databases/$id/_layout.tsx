@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import { useDeployPanel } from "@/lib/deploy-panel-context";
 import type { ManagedDatabase, DatabaseStatus, Project } from "@/types/api";
 import { Play, Square, Circle, Database } from "lucide-react";
 
@@ -97,6 +98,7 @@ export default function DatabaseDetailLayout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setItems } = useBreadcrumb();
+  const { show: showDeployPanel } = useDeployPanel();
   const databaseId = id!;
 
   // Fetch database data client-side
@@ -133,9 +135,18 @@ export default function DatabaseDetailLayout() {
     }
   }, [database, project, setItems]);
 
-  // Mutations
+  // Mutations. Open the deploy side panel before firing the request so the
+  // user can watch image-pull / container-create logs live.
   const startMutation = useMutation({
-    mutationFn: () => api.startDatabase(databaseId),
+    mutationFn: () => {
+      showDeployPanel({
+        kind: "database",
+        id: databaseId,
+        title: database?.name ?? "Database",
+        subtitle: "Database start",
+      });
+      return api.startDatabase(databaseId);
+    },
     onSuccess: () => {
       toast.success("Database started");
       queryClient.invalidateQueries({ queryKey: ["database", databaseId] });

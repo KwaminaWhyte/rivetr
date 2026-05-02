@@ -483,6 +483,123 @@ pub async fn substitute_magic_vars(
     Ok(content)
 }
 
+/// Run a docker compose command while streaming each stdout/stderr line to a
+/// callback. Used by the start path so the deploy side panel can render
+/// `docker compose up` output (image pulls, container creation) live.
+///
+/// Returns the captured stdout on success, or stderr on failure (matching
+/// `run_compose_command` semantics).
+pub async fn run_compose_command_streaming<F>(
+    project_dir: &std::path::Path,
+    project_name: &str,
+    args: &[&str],
+    mut on_line: F,
+) -> Result<String, String>
+where
+    F: FnMut(&str, bool),
+{
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    // Build command — try modern `docker compose` first, fall back to legacy
+    // `docker-compose` if Docker is missing.
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.arg("compose")
+        .arg("-p")
+        .arg(project_name)
+        .args(args)
+        .current_dir(project_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(_) => {
+            // Fallback to docker-compose (legacy)
+            let mut legacy = tokio::process::Command::new("docker-compose");
+            legacy
+                .arg("-p")
+                .arg(project_name)
+                .args(args)
+                .current_dir(project_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            legacy
+                .spawn()
+                .map_err(|e| format!("Failed to execute docker-compose: {}", e))?
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let mut captured_stdout = String::new();
+    let mut captured_stderr = String::new();
+
+    let stdout_task = stdout.map(|s| {
+        let reader = BufReader::new(s);
+        reader.lines()
+    });
+    let stderr_task = stderr.map(|s| {
+        let reader = BufReader::new(s);
+        reader.lines()
+    });
+
+    if let (Some(mut out_lines), Some(mut err_lines)) = (stdout_task, stderr_task) {
+        loop {
+            tokio::select! {
+                line = out_lines.next_line() => {
+                    match line {
+                        Ok(Some(l)) => {
+                            on_line(&l, false);
+                            captured_stdout.push_str(&l);
+                            captured_stdout.push('\n');
+                        }
+                        _ => break,
+                    }
+                }
+                line = err_lines.next_line() => {
+                    match line {
+                        Ok(Some(l)) => {
+                            // Docker writes pull progress to stderr. Treat it as
+                            // info for the panel, not an error.
+                            on_line(&l, true);
+                            captured_stderr.push_str(&l);
+                            captured_stderr.push('\n');
+                        }
+                        _ => break,
+                    }
+                }
+            }
+        }
+
+        // Drain any remaining lines after one of the readers returned None.
+        while let Ok(Some(l)) = out_lines.next_line().await {
+            on_line(&l, false);
+            captured_stdout.push_str(&l);
+            captured_stdout.push('\n');
+        }
+        while let Ok(Some(l)) = err_lines.next_line().await {
+            on_line(&l, true);
+            captured_stderr.push_str(&l);
+            captured_stderr.push('\n');
+        }
+    }
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed to await child: {}", e))?;
+
+    if status.success() {
+        Ok(captured_stdout)
+    } else if !captured_stderr.is_empty() {
+        Err(captured_stderr)
+    } else {
+        Err(format!("docker compose exited with status {}", status))
+    }
+}
+
 /// Run docker compose command
 pub async fn run_compose_command(
     project_dir: &std::path::Path,

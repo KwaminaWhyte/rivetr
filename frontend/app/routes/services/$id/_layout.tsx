@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { useDeployPanel } from "@/lib/deploy-panel-context";
 import type { Service, ServiceStatus } from "@/types/api";
 import { Play, Square, Circle, Layers, RotateCw, Activity, ExternalLink } from "lucide-react";
 
@@ -70,6 +71,7 @@ export default function ServiceDetailLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { show: showDeployPanel } = useDeployPanel();
   const serviceId = id!;
 
   // Use React Query for client-side fetching
@@ -84,9 +86,19 @@ export default function ServiceDetailLayout() {
     },
   });
 
-  // Mutations for start/stop
+  // Mutations for start/stop. The mutationFn opens the deploy side panel
+  // immediately so the user can watch image-pull / container-start logs flow
+  // while the (sometimes slow) docker compose up call resolves.
   const startMutation = useMutation({
-    mutationFn: () => api.startService(serviceId),
+    mutationFn: () => {
+      showDeployPanel({
+        kind: "service",
+        id: serviceId,
+        title: service?.name ?? "Service",
+        subtitle: "Service start",
+      });
+      return api.startService(serviceId);
+    },
     onSuccess: () => {
       toast.success("Service started");
       queryClient.invalidateQueries({ queryKey: ["service", serviceId] });
@@ -108,7 +120,15 @@ export default function ServiceDetailLayout() {
   });
 
   const restartMutation = useMutation({
-    mutationFn: () => api.restartService(serviceId),
+    mutationFn: () => {
+      showDeployPanel({
+        kind: "service",
+        id: serviceId,
+        title: service?.name ?? "Service",
+        subtitle: "Service restart",
+      });
+      return api.restartService(serviceId);
+    },
     onSuccess: () => {
       toast.success("Service restarted");
       queryClient.invalidateQueries({ queryKey: ["service", serviceId] });

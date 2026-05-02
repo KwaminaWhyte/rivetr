@@ -1,7 +1,6 @@
 mod ai_features;
 mod alerts;
 mod api_tokens;
-mod ca_certificates;
 mod apps;
 mod audit;
 pub mod auth;
@@ -9,6 +8,7 @@ mod autoscaling;
 mod basic_auth;
 mod build_servers;
 mod bulk;
+mod ca_certificates;
 mod clone;
 mod cloudflare_tunnels;
 mod community_templates;
@@ -34,8 +34,8 @@ mod notifications;
 pub mod oauth;
 mod patches;
 mod previews;
-mod proxy_logs;
 mod projects;
+mod proxy_logs;
 pub mod rate_limit;
 mod redirect_rules;
 mod replicas;
@@ -48,6 +48,7 @@ mod services;
 mod shared_env_vars;
 mod ssh_keys;
 mod sso;
+pub mod start_logs;
 mod swarm;
 mod system;
 mod teams;
@@ -141,7 +142,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let ws_routes = Router::new()
         .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
         .route("/apps/:id/terminal", get(ws::terminal_ws))
-        .route("/servers/:id/terminal", get(servers::server_terminal_ws));
+        .route("/servers/:id/terminal", get(servers::server_terminal_ws))
+        .route(
+            "/services/:id/start-stream",
+            get(start_logs::service_start_stream_ws),
+        )
+        .route(
+            "/databases/:id/start-stream",
+            get(start_logs::database_start_stream_ws),
+        );
 
     // Protected API routes
     let api_routes = Router::new()
@@ -631,6 +640,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/databases/:id/start", post(databases::start_database))
         .route("/databases/:id/stop", post(databases::stop_database))
         .route("/databases/:id/logs", get(databases::get_database_logs))
+        .route(
+            "/databases/:id/start-events",
+            get(start_logs::database_start_stream_snapshot),
+        )
         .route("/databases/:id/stats", get(databases::get_database_stats))
         .route(
             "/databases/:id/import",
@@ -689,6 +702,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/:id/start", post(services::start_service))
         .route("/services/:id/stop", post(services::stop_service))
         .route("/services/:id/restart", post(services::restart_service))
+        .route(
+            "/services/:id/start-events",
+            get(start_logs::service_start_stream_snapshot),
+        )
         .route("/services/:id/stats", get(services::get_service_stats))
         .route("/services/:id/logs", get(services::get_service_logs))
         .route(
