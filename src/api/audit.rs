@@ -1,16 +1,53 @@
 //! Audit log API endpoints and helpers.
 
 use axum::{
-    extract::{Query, State},
-    http::HeaderMap,
+    extract::{ConnectInfo, FromRequestParts, Query, State},
+    http::{request::Parts, HeaderMap},
     Json,
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 
 use crate::db::{list_audit_logs, log_audit, AuditLogListResponse, AuditLogQuery};
 use crate::AppState;
 
 use super::error::ApiError;
+
+/// Axum extractor that resolves the client IP from headers and connection info.
+///
+/// Prefers `X-Forwarded-For` / `X-Real-IP` (when fronted by a reverse proxy) and
+/// falls back to the raw socket address attached via
+/// `into_make_service_with_connect_info::<SocketAddr>()` in `main.rs`.
+///
+/// Always succeeds — if no IP can be determined, the inner Option is None.
+#[derive(Debug, Clone, Default)]
+pub struct ClientIp(pub Option<String>);
+
+impl ClientIp {
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for ClientIp
+where
+    S: Send + Sync,
+{
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Headers first (X-Forwarded-For, X-Real-IP)
+        let ip = extract_client_ip(
+            &parts.headers,
+            // Fall back to socket connection info if available
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ConnectInfo(addr)| addr),
+        );
+        Ok(ClientIp(ip))
+    }
+}
 
 /// Extract client IP address from request headers or connection info.
 /// Checks X-Forwarded-For, X-Real-IP headers first (for reverse proxy scenarios),

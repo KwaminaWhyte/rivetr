@@ -152,10 +152,31 @@ pub async fn create_service(
         }
     }
 
-    // Auto-generate domain if not provided
+    // Auto-generate domain if not provided.
+    //
+    // Priority:
+    //   1. Caller-supplied domain (anything truthy).
+    //   2. ProxyConfig::generate_auto_domain (uses base_domain or server_ip).
+    //   3. Fallback to `<name>.<instance_domain>` if instance_domain is set.
+    //   4. Final fallback: `<name>.local` so the user always has *some* hostname
+    //      they can plug into /etc/hosts or a local DNS resolver.  The previous
+    //      behaviour (returning None) made compose services reachable only on raw
+    //      host ports.
     let domain = match &req.domain {
         Some(d) if !d.is_empty() => req.domain.clone(),
-        _ => state.config.proxy.generate_auto_domain(&req.name),
+        _ => state
+            .config
+            .proxy
+            .generate_auto_domain(&req.name)
+            .or_else(|| {
+                state
+                    .config
+                    .proxy
+                    .instance_domain
+                    .as_ref()
+                    .map(|d| format!("{}.{}", req.name, d))
+            })
+            .or_else(|| Some(format!("{}.local", req.name))),
     };
 
     // Create service record

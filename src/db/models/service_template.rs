@@ -141,6 +141,36 @@ pub struct ServiceTemplateResponse {
     pub created_at: String,
 }
 
+/// Lightweight DTO for the templates LIST endpoint.  Omits `compose_template` and
+/// `env_schema` (which together can be ~1 KB per template; with 322 templates the
+/// full response was ~500 KB).  Clients who need the full body fetch it from
+/// `GET /api/templates/:id`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceTemplateSummary {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub category: String,
+    pub icon: Option<String>,
+    pub is_builtin: bool,
+    pub created_at: String,
+}
+
+impl ServiceTemplate {
+    /// Convert to a lightweight summary (used by the list endpoint).
+    pub fn to_summary(&self) -> ServiceTemplateSummary {
+        ServiceTemplateSummary {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            description: self.description.clone(),
+            category: self.category.clone(),
+            icon: self.icon.clone(),
+            is_builtin: self.is_builtin(),
+            created_at: self.created_at.clone(),
+        }
+    }
+}
+
 /// Request to deploy a service template
 #[derive(Debug, Deserialize)]
 pub struct DeployTemplateRequest {

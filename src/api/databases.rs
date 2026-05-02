@@ -1069,11 +1069,17 @@ async fn ensure_mysql_user(
         }
     }
 
-    tracing::warn!(
+    // The warning is intentionally low-severity (debug, not warn) because the
+    // official MySQL/MariaDB entrypoint already creates the user from `MYSQL_USER` /
+    // `MARIADB_USER` env vars on first boot.  This redundant CREATE USER is only
+    // needed when the data dir was pre-populated by an earlier container.  Failing
+    // here usually means "user already exists" or "still initializing", neither of
+    // which is actually a problem the user should worry about.
+    tracing::debug!(
         user = %credentials.username,
         database = %db_name,
-        "Could not provision MySQL/MariaDB user after 30 s — \
-         the app may fail to connect until the database container is restarted"
+        "MySQL/MariaDB redundant user provisioning timed out after 30 s — \
+         the entrypoint should have created the user via env vars; ignoring."
     );
 }
 

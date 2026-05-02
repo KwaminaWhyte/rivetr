@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
+    http::HeaderMap,
     Json,
 };
 use chrono::Utc;
@@ -14,8 +15,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use super::audit::{audit_log, extract_client_ip};
 use super::error::ApiError;
-use crate::{db::User, AppState};
+use crate::{
+    db::{actions, resource_types, User},
+    AppState,
+};
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -105,6 +110,7 @@ pub async fn list_tokens(
 pub async fn create_token(
     State(state): State<Arc<AppState>>,
     user: User,
+    headers: HeaderMap,
     Json(req): Json<CreateApiTokenRequest>,
 ) -> Result<Json<ApiTokenResponse>, ApiError> {
     if user.id == "system" {
@@ -138,6 +144,19 @@ pub async fn create_token(
     .execute(&state.db)
     .await?;
 
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::TOKEN_CREATE,
+        resource_types::TOKEN,
+        Some(&id),
+        Some(&name),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
+
     Ok(Json(ApiTokenResponse {
         id,
         name,
@@ -155,12 +174,22 @@ pub async fn delete_token(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if user.id == "system" {
         return Err(ApiError::forbidden(
             "Cannot delete tokens for the admin API token user",
         ));
     }
+
+    // Capture name before delete for the audit log entry.
+    let name: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM api_tokens WHERE id = ? AND user_id = ?",
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .fetch_optional(&state.db)
+    .await?;
 
     let result = sqlx::query("DELETE FROM api_tokens WHERE id = ? AND user_id = ?")
         .bind(&id)
@@ -171,6 +200,19 @@ pub async fn delete_token(
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Token not found"));
     }
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::TOKEN_DELETE,
+        resource_types::TOKEN,
+        Some(&id),
+        name.as_deref(),
+        Some(&user.id),
+        ip.as_deref(),
+        None,
+    )
+    .await;
 
     Ok(Json(serde_json::json!({ "message": "Token deleted" })))
 }

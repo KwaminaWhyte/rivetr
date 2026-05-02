@@ -70,7 +70,7 @@ use axum::{
 };
 use rust_embed::Embed;
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
+use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
 use crate::AppState;
 use rate_limit::{rate_limit_api, rate_limit_auth, rate_limit_webhook};
@@ -1065,6 +1065,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .fallback(serve_embedded_static)
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(metrics::metrics_middleware))
+        // Apply gzip compression to JSON / text responses.  Honours `Accept-Encoding`
+        // so clients that don't advertise gzip get plain bytes.  Big endpoints like
+        // `GET /api/templates` (~500 KB JSON) shrink ~80% over the wire.
+        .layer(CompressionLayer::new().gzip(true))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

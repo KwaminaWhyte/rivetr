@@ -1113,6 +1113,8 @@ pub async fn get_deployment_diff(
 /// POST /api/apps/:app_id/deployments/:id/cancel
 pub async fn cancel_deployment(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path((app_id, deployment_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID formats
@@ -1143,11 +1145,38 @@ pub async fn cancel_deployment(
     .rows_affected();
 
     if rows_affected == 0 {
-        // Deployment not found or not in a cancellable state
-        return Err(ApiError::not_found(
-            "Deployment not found or is not in a cancellable state",
-        ));
+        // Differentiate between "deployment doesn't exist" (404) and "exists but not
+        // in a cancellable state" (409 Conflict — semantically a state conflict, not
+        // a missing resource).
+        let exists: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM deployments WHERE id = ? AND app_id = ?",
+        )
+        .bind(&deployment_id)
+        .bind(&app_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| ApiError::database(e.to_string()))?;
+
+        return match exists {
+            Some(status) => Err(ApiError::conflict(format!(
+                "Deployment is in state '{status}' which is not cancellable"
+            ))),
+            None => Err(ApiError::not_found("Deployment not found")),
+        };
     }
+
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DEPLOYMENT_CANCEL,
+        resource_types::DEPLOYMENT,
+        Some(&deployment_id),
+        None,
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({ "app_id": app_id })),
+    )
+    .await;
 
     Ok(StatusCode::OK)
 }

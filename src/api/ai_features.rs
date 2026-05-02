@@ -346,14 +346,14 @@ pub async fn scan_app_security(
     Path(app_id): Path<String>,
 ) -> Result<Json<SecurityScanResponse>, StatusCode> {
     // Rule-based scan -- works without AI
-    let info: Option<(String, Option<String>, Option<String>, Option<String>, i64)> =
-        sqlx::query_as(
-            "SELECT name, docker_image, domain, healthcheck, replica_count FROM apps WHERE id=?",
-        )
-        .bind(&app_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    type AppSecurityInfo = (String, Option<String>, Option<String>, Option<String>, i64);
+    let info: Option<AppSecurityInfo> = sqlx::query_as(
+        "SELECT name, docker_image, domain, healthcheck, replica_count FROM apps WHERE id=?",
+    )
+    .bind(&app_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (app_name, docker_image, domain, healthcheck, _replicas) = info.unwrap_or_default();
 

@@ -1,17 +1,18 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{App, Deployment, TeamAuditAction, TeamAuditResourceType};
+use crate::db::{actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
 use crate::AppState;
 
+use crate::api::audit::{audit_log, extract_client_ip};
 use crate::api::error::ApiError;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
@@ -35,9 +36,15 @@ pub struct RollbackRequest {
 /// the current one.
 pub async fn rollback_deployment(
     State(state): State<Arc<AppState>>,
+    user: User,
+    headers: HeaderMap,
     Path(deployment_id): Path<String>,
-    Json(body): Json<Option<RollbackRequest>>,
+    // Accept missing body / missing Content-Type (Option<Json<...>> instead of
+    // Json<Option<...>>).  The body itself is optional — callers usually invoke this
+    // with no body to pick the previous successful deployment automatically.
+    body: Option<Json<RollbackRequest>>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
+    let body: Option<RollbackRequest> = body.map(|Json(b)| b);
     // Validate deployment_id format
     if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
         return Err(ApiError::validation_field("deployment_id", e));
@@ -119,7 +126,11 @@ pub async fn rollback_deployment(
     .bind(&rollback_id)
     .bind(&current_deployment.app_id)
     .bind(&target_deployment.commit_sha)
-    .bind(format!("Rollback to deployment {}", target_deployment.id))
+    // Message references the path-param deployment id (the one the rollback was
+    // requested from in the URL).  Previously this referenced `target_deployment.id`,
+    // which was the *resolved* previous-running deployment — confusing for callers
+    // who triggered the rollback against a specific deployment id in the URL.
+    .bind(format!("Rollback to deployment {}", deployment_id))
     .bind(&now)
     .execute(&state.db)
     .await?;
@@ -133,6 +144,7 @@ pub async fn rollback_deployment(
     let app_clone = app.clone();
     let encryption_key = get_encryption_key(&state);
 
+    let app_id_clone = app.id.clone();
     tokio::spawn(async move {
         match run_rollback(
             &db,
@@ -145,6 +157,20 @@ pub async fn rollback_deployment(
         .await
         {
             Ok(result) => {
+                // Mark any previously-running deployments for this app as 'replaced'
+                // (not 'failed').  The previous deployment didn't fail — we deliberately
+                // swapped it out for the rollback, so 'replaced' is the correct terminal
+                // status (matches what regular successful deploys do in src/engine/mod.rs).
+                let _ = sqlx::query(
+                    "UPDATE deployments SET status = 'replaced', finished_at = ?
+                     WHERE app_id = ? AND status = 'running' AND id != ?",
+                )
+                .bind(chrono::Utc::now().to_rfc3339())
+                .bind(&app_id_clone)
+                .bind(&rollback_id_clone)
+                .execute(&db)
+                .await;
+
                 // Update proxy routes on successful rollback for all domains
                 if let Some(port) = result.port {
                     let domain_entries = app_clone.get_all_domains_with_redirects();
@@ -209,6 +235,24 @@ pub async fn rollback_deployment(
         .bind(&rollback_id)
         .fetch_one(&state.db)
         .await?;
+
+    // Log audit event
+    let ip = extract_client_ip(&headers, None);
+    audit_log(
+        &state,
+        actions::DEPLOYMENT_ROLLBACK,
+        resource_types::DEPLOYMENT,
+        Some(&deployment.id),
+        Some(&app.name),
+        Some(&user.id),
+        ip.as_deref(),
+        Some(serde_json::json!({
+            "app_id": app.id,
+            "from_deployment_id": deployment_id,
+            "target_deployment_id": target_deployment.id,
+        })),
+    )
+    .await;
 
     // Log team audit event if app belongs to a team
     if let Some(ref team_id) = app.team_id {

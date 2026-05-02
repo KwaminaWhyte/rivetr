@@ -769,8 +769,12 @@ pub async fn delete_app(
     headers: HeaderMap,
     Path(id): Path<String>,
     user: User,
-    Json(req): Json<DeleteAppRequest>,
+    // Body is optional: admin API tokens can DELETE without supplying a password
+    // body, and other tooling (curl with no `-d`) sends no body at all.  Accept
+    // both missing bodies and missing/wrong Content-Type headers.
+    body: Option<Json<DeleteAppRequest>>,
 ) -> Result<StatusCode, ApiError> {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
     // Validate ID format
     if let Err(e) = validate_uuid(&id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));
