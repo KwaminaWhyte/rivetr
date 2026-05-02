@@ -393,20 +393,39 @@ export default function TemplatesPage() {
           </CardContent>
         </Card>
       ) : activeCategory === "all" ? (
-        // Grouped by category when showing all
+        // Grouped by category when showing all. To keep the initial paint
+        // light (B18 — was rendering ~1300 cards), cap each category to a
+        // small preview when the user hasn't searched. Users click into a
+        // specific category tab to see the full list.
         <div className="space-y-8">
           {Object.entries(templatesByCategory).map(([category, categoryTemplates]) => {
             const categoryInfo = TEMPLATE_CATEGORIES.find((c) => c.id === category);
             const Icon = getCategoryIcon(category as TemplateCategory);
+            const PREVIEW_LIMIT = 6;
+            const isPreviewing =
+              !searchQuery.trim() && categoryTemplates.length > PREVIEW_LIMIT;
+            const visibleTemplates = isPreviewing
+              ? categoryTemplates.slice(0, PREVIEW_LIMIT)
+              : categoryTemplates;
             return (
               <div key={category}>
                 <div className="flex items-center gap-2 mb-4">
                   <Icon className="h-5 w-5" />
                   <h2 className="text-xl font-semibold">{categoryInfo?.name || category}</h2>
                   <Badge variant="secondary">{categoryTemplates.length}</Badge>
+                  {isPreviewing && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="ml-auto h-auto p-0"
+                      onClick={() => setActiveCategory(category as TemplateCategory)}
+                    >
+                      View all {categoryTemplates.length}
+                    </Button>
+                  )}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {categoryTemplates.map((template) => (
+                  {visibleTemplates.map((template) => (
                     <TemplateCard
                       key={template.id}
                       template={template}

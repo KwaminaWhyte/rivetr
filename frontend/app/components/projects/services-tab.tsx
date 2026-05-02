@@ -267,19 +267,12 @@ services:
           {!project.services || project.services.length === 0 ? (
             <div className="py-8 text-center">
               <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">
-                No services in this project yet.
+              <p className="text-muted-foreground">
+                No services in this project yet. Use{" "}
+                <span className="font-medium">Deploy Template</span> or{" "}
+                <span className="font-medium">Custom Service</span> above to add
+                one.
               </p>
-              <div className="flex justify-center gap-2">
-                <Button variant="outline" onClick={() => setIsTemplatesModalOpen(true)}>
-                  <Rocket className="mr-2 h-4 w-4" />
-                  Deploy Template
-                </Button>
-                <Button onClick={() => setIsCreateServiceDialogOpen(true)}>
-                  <Layers className="mr-2 h-4 w-4" />
-                  Custom Service
-                </Button>
-              </div>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

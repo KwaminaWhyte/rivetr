@@ -220,13 +220,11 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
           {!project.databases || project.databases.length === 0 ? (
             <div className="py-8 text-center">
               <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">
-                No databases in this project yet.
+              <p className="text-muted-foreground">
+                No databases in this project yet. Use the
+                {" "}<span className="font-medium">Create Database</span>{" "}
+                button above to add one.
               </p>
-              <Button onClick={() => setIsCreateDbDialogOpen(true)}>
-                <Database className="mr-2 h-4 w-4" />
-                Create Database
-              </Button>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
