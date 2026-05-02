@@ -151,6 +151,10 @@ export default function TemplatesPage() {
   const queryClient = useQueryClient();
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // Track which category sections the user has expanded inline (overrides the
+  // PREVIEW_LIMIT cap on the "all" view so users can see every card without
+  // leaving the grouped layout). U5: also gives us a target to scrollIntoView.
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
   const [deployName, setDeployName] = useState("");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
@@ -360,7 +364,18 @@ export default function TemplatesPage() {
         </div>
         <Tabs
           value={activeCategory}
-          onValueChange={(v) => setActiveCategory(v as TemplateCategory | "all")}
+          onValueChange={(v) => {
+            const next = v as TemplateCategory | "all";
+            setActiveCategory(next);
+            // U5: after the filtered grid mounts, scroll to the top of the
+            // page so users see the category heading instead of being left
+            // wherever the previous scroll position was.
+            if (next !== "all") {
+              requestAnimationFrame(() => {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              });
+            }
+          }}
         >
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="all">All</TabsTrigger>
@@ -402,13 +417,17 @@ export default function TemplatesPage() {
             const categoryInfo = TEMPLATE_CATEGORIES.find((c) => c.id === category);
             const Icon = getCategoryIcon(category as TemplateCategory);
             const PREVIEW_LIMIT = 6;
+            const isExpanded = expandedCategories.has(category);
             const isPreviewing =
-              !searchQuery.trim() && categoryTemplates.length > PREVIEW_LIMIT;
+              !searchQuery.trim() &&
+              !isExpanded &&
+              categoryTemplates.length > PREVIEW_LIMIT;
             const visibleTemplates = isPreviewing
               ? categoryTemplates.slice(0, PREVIEW_LIMIT)
               : categoryTemplates;
+            const anchorId = `category-${category.toLowerCase()}`;
             return (
-              <div key={category}>
+              <div key={category} id={anchorId} className="scroll-mt-20">
                 <div className="flex items-center gap-2 mb-4">
                   <Icon className="h-5 w-5" />
                   <h2 className="text-xl font-semibold">{categoryInfo?.name || category}</h2>
@@ -418,9 +437,38 @@ export default function TemplatesPage() {
                       variant="link"
                       size="sm"
                       className="ml-auto h-auto p-0"
-                      onClick={() => setActiveCategory(category as TemplateCategory)}
+                      onClick={() => {
+                        setExpandedCategories((prev) => {
+                          const next = new Set(prev);
+                          next.add(category);
+                          return next;
+                        });
+                        // Defer to next frame so the newly rendered cards
+                        // don't push the heading off-screen before we scroll.
+                        requestAnimationFrame(() => {
+                          document
+                            .getElementById(anchorId)
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        });
+                      }}
                     >
                       View all {categoryTemplates.length}
+                    </Button>
+                  )}
+                  {isExpanded && categoryTemplates.length > PREVIEW_LIMIT && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="ml-auto h-auto p-0"
+                      onClick={() => {
+                        setExpandedCategories((prev) => {
+                          const next = new Set(prev);
+                          next.delete(category);
+                          return next;
+                        });
+                      }}
+                    >
+                      Show less
                     </Button>
                   )}
                 </div>
