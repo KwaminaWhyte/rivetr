@@ -261,7 +261,10 @@ export default function DeploymentDetailPage() {
                 {deployment.finished_at && (
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Finished
+                      <Calendar className="h-3 w-3" />{" "}
+                      {deployment.status === "running"
+                        ? "Deployed at"
+                        : "Finished"}
                     </p>
                     <p>{formatDateTime(deployment.finished_at)}</p>
                   </div>

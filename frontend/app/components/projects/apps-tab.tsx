@@ -291,17 +291,11 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
           )}
           {filteredApps.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-muted-foreground mb-4">
-                No applications in this project yet.
+              <p className="text-muted-foreground">
+                No applications in this project yet. Use the{" "}
+                <span className="font-medium">Create New App</span> button
+                above to add one.
               </p>
-              <div className="flex gap-2 justify-center">
-                <Button asChild>
-                  <Link to={`/projects/${project.id}/apps/new`}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create New App
-                  </Link>
-                </Button>
-              </div>
             </div>
           ) : (
             <>
