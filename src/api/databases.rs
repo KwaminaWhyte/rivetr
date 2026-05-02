@@ -597,8 +597,42 @@ pub async fn get_database_logs(
     Ok(Json(logs))
 }
 
-/// Internal function to start a database container
+/// Internal function to start a database container.
+///
+/// Emits live "start log" events through `state.start_log_streams` so the
+/// dashboard side panel can show image-pull / container-create / running
+/// progress without persisting a synthetic deployment row.
 async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Result<()> {
+    let resource_key = format!("database:{}", id);
+    state.start_log_streams.clear(&resource_key);
+    state
+        .start_log_streams
+        .info(&resource_key, "info", "Starting database…");
+
+    let result = start_database_container_inner(state, id, &resource_key).await;
+    match &result {
+        Ok(_) => {
+            state
+                .start_log_streams
+                .end(&resource_key, "running", "Database is running");
+        }
+        Err(e) => {
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", format!("Failed: {}", e));
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Start aborted");
+        }
+    }
+    result
+}
+
+async fn start_database_container_inner(
+    state: &Arc<AppState>,
+    id: &str,
+    resource_key: &str,
+) -> anyhow::Result<()> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
         .bind(id)
         .fetch_one(&state.db)
@@ -616,6 +650,12 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             tracing::info!(
                 "Starting existing database container: {}",
                 existing_container_id
+            );
+            let short = &existing_container_id[..12.min(existing_container_id.len())];
+            state.start_log_streams.info(
+                resource_key,
+                "starting",
+                format!("Starting existing container {}", short),
             );
 
             // Update status to starting
@@ -643,35 +683,34 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
                 .await?;
                 // Fall through to create a new container below
             } else {
-
-            // For MySQL/MariaDB: ensure the app user exists even if the data directory
-            // was pre-initialized (Docker only creates MYSQL_USER on first boot).
-            if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
-                if let Some(ref db_name) = credentials.database {
-                    let runtime = state.runtime.clone();
-                    let cid = existing_container_id.clone();
-                    let creds = credentials.clone();
-                    let db_nm = db_name.clone();
-                    let dt = db_type.clone();
-                    tokio::spawn(async move {
-                        ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
-                    });
+                // For MySQL/MariaDB: ensure the app user exists even if the data directory
+                // was pre-initialized (Docker only creates MYSQL_USER on first boot).
+                if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
+                    if let Some(ref db_name) = credentials.database {
+                        let runtime = state.runtime.clone();
+                        let cid = existing_container_id.clone();
+                        let creds = credentials.clone();
+                        let db_nm = db_name.clone();
+                        let dt = db_type.clone();
+                        tokio::spawn(async move {
+                            ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
+                        });
+                    }
                 }
-            }
 
-            // Get the assigned host port if public access is enabled
-            let external_port = if database.is_public() {
-                if database.external_port > 0 {
-                    database.external_port
+                // Get the assigned host port if public access is enabled
+                let external_port = if database.is_public() {
+                    if database.external_port > 0 {
+                        database.external_port
+                    } else {
+                        let info = state.runtime.inspect(existing_container_id).await?;
+                        info.host_port.unwrap_or(0) as i32
+                    }
                 } else {
-                    let info = state.runtime.inspect(existing_container_id).await?;
-                    info.host_port.unwrap_or(0) as i32
-                }
-            } else {
-                0
-            };
+                    0
+                };
 
-            sqlx::query(
+                sqlx::query(
                 "UPDATE databases SET external_port = ?, status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?",
             )
             .bind(external_port)
@@ -680,13 +719,21 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             .execute(&state.db)
             .await?;
 
-            tracing::info!(
-                "Database {} started successfully (existing container: {})",
-                database.name,
-                existing_container_id
-            );
+                tracing::info!(
+                    "Database {} started successfully (existing container: {})",
+                    database.name,
+                    existing_container_id
+                );
+                state.start_log_streams.info(
+                    resource_key,
+                    "running",
+                    format!(
+                        "Container {} started",
+                        &existing_container_id[..12.min(existing_container_id.len())]
+                    ),
+                );
 
-            return Ok(());
+                return Ok(());
             } // end else (start succeeded)
         }
     }
@@ -706,7 +753,13 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         format!("{}:{}", config.image, database.version)
     };
     tracing::info!("Pulling database image: {}", image);
+    state
+        .start_log_streams
+        .info(resource_key, "pulling", format!("Pulling image {}", image));
     state.runtime.pull_image(&image, None).await?;
+    state
+        .start_log_streams
+        .info(resource_key, "pulling", format!("Image {} ready", image));
 
     // Update status to starting
     sqlx::query("UPDATE databases SET status = ?, updated_at = datetime('now') WHERE id = ?")
@@ -774,7 +827,20 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
 
     // Start the container
     tracing::info!("Starting database container: {}", container_name);
+    state.start_log_streams.info(
+        resource_key,
+        "starting",
+        format!("Creating container {}", container_name),
+    );
     let container_id = state.runtime.run(&run_config).await?;
+    state.start_log_streams.info(
+        resource_key,
+        "starting",
+        format!(
+            "Container {} created",
+            &container_id[..12.min(container_id.len())]
+        ),
+    );
 
     // Get the assigned host port if public access is enabled
     let external_port = if database.is_public() {
@@ -805,6 +871,11 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         "Database {} started successfully (container: {})",
         database.name,
         container_id
+    );
+    state.start_log_streams.info(
+        resource_key,
+        "running",
+        format!("Database {} started successfully", database.name),
     );
 
     // For MySQL/MariaDB: ensure the app user exists. Docker only runs its init scripts

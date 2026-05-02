@@ -34,19 +34,18 @@ pub async fn validate_ws_token_pub(state: &AppState, query: &WsAuthQuery) -> boo
     validate_ws_token(state, query).await
 }
 
-/// Validate a token from query params
-async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
-    let token = match &query.token {
-        Some(t) => t,
-        None => return false,
+/// Validate a raw token string (None or empty → false). Public so other
+/// modules can authenticate WebSocket upgrades using their own query types.
+pub async fn validate_ws_token_str(state: &AppState, token: Option<&str>) -> bool {
+    let token = match token {
+        Some(t) if !t.is_empty() => t,
+        _ => return false,
     };
 
-    // Check admin token first
-    if token == &state.config.auth.admin_token {
+    if token == state.config.auth.admin_token {
         return true;
     }
 
-    // Check session token
     let token_hash = hash_token(token);
     let session: Option<Session> = sqlx::query_as(
         "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
@@ -58,6 +57,11 @@ async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
     .flatten();
 
     session.is_some()
+}
+
+/// Validate a token from query params
+async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
+    validate_ws_token_str(state, query.token.as_deref()).await
 }
 
 /// WebSocket endpoint for streaming deployment logs
