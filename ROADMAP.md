@@ -32,7 +32,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 - Real-time build and runtime log streaming via WebSocket
 
 ### Platform Services
-- One-click managed databases (PostgreSQL, MySQL, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
+- One-click managed databases (PostgreSQL, MySQL, MariaDB, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
 - Docker Compose multi-container deployments with raw mode, preview, and magic variables
 - 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more — see [docs/SERVICE-TEMPLATES.md](./docs/SERVICE-TEMPLATES.md))
 - Port conflict validation across services and databases (real-time frontend checks + server-side enforcement)
@@ -257,6 +257,10 @@ Features required for enterprise adoption and high availability.
 
 ## Recent Bug Fixes (Unreleased)
 
+- **v0.10.20 — Coolify-style deploy log side panel** ✅ — A dockable side panel auto-opens on Deploy/Start/Restart and live-streams image-pull + container-start logs for apps, services, and managed databases (new `StartLogRegistry` + WS/REST routes; `DeployPanelProvider` mounted at the dashboard root)
+- **v0.10.20 — MariaDB managed database type** ✅ — Frontend now wires MariaDB through the `mariadb://...` MySQL scheme, `/var/lib/mysql` data path, and `mariadb-dump` backups; supports versions 11 (default), 10.11, 10.6, 10.5; backend covered by `test_mariadb_config` and `test_generate_env_vars_mariadb`
+- **v0.10.20 — Container monitor service health check broken since v0.10.18 (HIGH)** ✅ — `check_services` SELECT was missing migration-105 columns (`public_access`, `external_port`, `expose_container_port`); compose service crash detection was silently disabled. SELECT now lists the full column set
+- **v0.10.20 — `/api/apps/:id/insights` 503 noise** ✅ — Endpoint now returns 404 when no AI provider is configured (was 503), eliminating misleading browser console errors and `tower_http` warn spam
 - **Stale `container_id` on destroyed database container** ✅ — Engine now detects when a database's recorded container no longer exists, clears the stale ID, resets status to `stopped`, and provisions a fresh container instead of getting stuck in `starting`
 - **Reconciliation queries break on new migrations** ✅ — `reconcile_databases` / `reconcile_services` now use `SELECT *` to avoid `no column found` errors when new columns are added
 - **5-field cron expressions for scheduled restarts** ✅ — Standard Unix cron strings (5 fields) now normalized to 6-field format required by the cron crate
