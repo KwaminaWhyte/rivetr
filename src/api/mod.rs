@@ -16,6 +16,7 @@ mod cost_rates;
 mod costs;
 mod database_backups;
 mod database_extensions;
+pub mod database_links;
 mod databases;
 mod deployments;
 mod destinations;
@@ -177,6 +178,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/:id/shares", get(apps::list_app_shares))
         .route("/apps/:id/shares", post(apps::create_app_share))
         .route("/apps/:id/shares/:team_id", delete(apps::delete_app_share))
+        // Database ↔ App env-var injection links
+        .route("/apps/:app_id/links", get(database_links::list_links))
+        .route("/apps/:app_id/links", post(database_links::create_link))
+        .route(
+            "/apps/:app_id/links/:link_id",
+            delete(database_links::delete_link),
+        )
+        .route(
+            "/apps/:app_id/linked-env-vars",
+            get(database_links::preview_linked_env_vars),
+        )
         // Deployments
         .route("/apps/:id/deploy", post(deployments::trigger_deploy))
         .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))

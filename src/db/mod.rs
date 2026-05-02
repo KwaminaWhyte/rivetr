@@ -1440,6 +1440,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 106: Add database_app_links table for DB→app env var auto-injection
+    let has_database_app_links: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'database_app_links'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_database_app_links {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/106_database_app_links.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

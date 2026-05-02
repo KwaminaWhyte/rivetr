@@ -1,7 +1,6 @@
-import { useOutletContext } from "react-router";
 import { useParams } from "react-router";
 import { EnvVarsTab } from "@/components/env-vars-tab";
-import type { App } from "@/types/api";
+import { LinkedDatabasesSection } from "@/components/linked-databases-section";
 
 export function meta() {
   return [
@@ -10,11 +9,12 @@ export function meta() {
   ];
 }
 
-interface OutletContext {
-  app: App;
-}
-
 export default function AppEnvVarsPage() {
   const { id } = useParams();
-  return <EnvVarsTab appId={id!} />;
+  return (
+    <div className="space-y-4">
+      <EnvVarsTab appId={id!} />
+      <LinkedDatabasesSection appId={id!} />
+    </div>
+  );
 }

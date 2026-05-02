@@ -57,6 +57,154 @@ interface DatabasesTabProps {
   projectId: string;
 }
 
+/**
+ * Inline credentials block (U6) — rendered below a database card when the user
+ * clicks "Show credentials". Pops the connection string + user/password/db,
+ * each with a copy-to-clipboard button.
+ */
+function InlineCredentials({
+  database,
+  showPassword,
+  onTogglePassword,
+  onCopy,
+}: {
+  database: ManagedDatabase;
+  showPassword: boolean;
+  onTogglePassword: () => void;
+  onCopy: (text: string, label: string) => void;
+}) {
+  const creds = database.credentials;
+  const internal = database.internal_connection_string;
+  const external = database.external_connection_string;
+
+  const maskUrl = (url: string) =>
+    showPassword ? url : url.replace(/:[^:@]+@/, ":••••••••@");
+
+  return (
+    <div className="relative z-10 mt-3 space-y-2 border-t pt-3 text-xs">
+      {creds?.username && (
+        <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-muted/60">
+          <div className="min-w-0 flex-1">
+            <div className="text-muted-foreground">Username</div>
+            <code className="block truncate">{creds.username}</code>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.preventDefault();
+              onCopy(creds.username, "Username");
+            }}
+            title="Copy username"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {creds?.password && (
+        <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-muted/60">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              Password
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTogglePassword();
+                }}
+                className="hover:text-foreground"
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-3 w-3" />
+                ) : (
+                  <Eye className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+            <code className="block truncate">
+              {showPassword ? creds.password : "••••••••"}
+            </code>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.preventDefault();
+              onCopy(creds.password, "Password");
+            }}
+            title="Copy password"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {creds?.database && (
+        <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-muted/60">
+          <div className="min-w-0 flex-1">
+            <div className="text-muted-foreground">Database</div>
+            <code className="block truncate">{creds.database}</code>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.preventDefault();
+              onCopy(creds.database!, "Database");
+            }}
+            title="Copy database name"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {internal && (
+        <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-muted/60">
+          <div className="min-w-0 flex-1">
+            <div className="text-muted-foreground">Internal connection</div>
+            <code className="block truncate">{maskUrl(internal)}</code>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.preventDefault();
+              onCopy(internal, "Internal connection string");
+            }}
+            title="Copy connection string"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {external && (
+        <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-muted/60">
+          <div className="min-w-0 flex-1">
+            <div className="text-muted-foreground">External connection</div>
+            <code className="block truncate">{maskUrl(external)}</code>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.preventDefault();
+              onCopy(external, "External connection string");
+            }}
+            title="Copy connection string"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DatabaseStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "running":
@@ -87,6 +235,15 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
   const [showCustomCredentials, setShowCustomCredentials] = useState(false);
   const [showPasswords, setShowPasswords] = useState(false);
   const [revealedDatabase, setRevealedDatabase] = useState<ManagedDatabase | null>(null);
+  // Inline credentials state for U6: dbId → revealed ManagedDatabase, and a
+  // separate set of dbIds whose password should be shown as plaintext.
+  const [inlineCredentials, setInlineCredentials] = useState<
+    Record<string, ManagedDatabase>
+  >({});
+  const [inlinePasswordRevealed, setInlinePasswordRevealed] = useState<
+    Set<string>
+  >(new Set());
+  const [inlineLoadingId, setInlineLoadingId] = useState<string | null>(null);
 
   // Form state
   const [dbName, setDbName] = useState("");
@@ -130,6 +287,45 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
     } catch {
       toast.error("Failed to fetch credentials");
     }
+  };
+
+  // U6: toggle inline credentials display for a database card.
+  const toggleInlineCredentials = async (database: ManagedDatabase) => {
+    if (inlineCredentials[database.id]) {
+      // Already shown — hide.
+      setInlineCredentials((prev) => {
+        const next = { ...prev };
+        delete next[database.id];
+        return next;
+      });
+      setInlinePasswordRevealed((prev) => {
+        const next = new Set(prev);
+        next.delete(database.id);
+        return next;
+      });
+      return;
+    }
+    setInlineLoadingId(database.id);
+    try {
+      const revealed = await api.getDatabase(database.id, true);
+      setInlineCredentials((prev) => ({ ...prev, [database.id]: revealed }));
+    } catch {
+      toast.error("Failed to fetch credentials");
+    } finally {
+      setInlineLoadingId(null);
+    }
+  };
+
+  const toggleInlinePassword = (databaseId: string) => {
+    setInlinePasswordRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(databaseId)) {
+        next.delete(databaseId);
+      } else {
+        next.add(databaseId);
+      }
+      return next;
+    });
   };
 
   const createDatabaseMutation = useMutation({
@@ -302,6 +498,32 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                           )}
                         </span>
                         <div className="relative z-10 flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            disabled={inlineLoadingId === db.id}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              toggleInlineCredentials(db);
+                            }}
+                            title={
+                              inlineCredentials[db.id]
+                                ? "Hide credentials"
+                                : "Show credentials"
+                            }
+                          >
+                            {inlineCredentials[db.id] ? (
+                              <EyeOff className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Eye className="h-3 w-3 mr-1" />
+                            )}
+                            {inlineLoadingId === db.id
+                              ? "Loading…"
+                              : inlineCredentials[db.id]
+                              ? "Hide credentials"
+                              : "Show credentials"}
+                          </Button>
                           {db.status === "stopped" && (
                             <Button
                               variant="outline"
@@ -334,6 +556,14 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                           )}
                         </div>
                       </div>
+                      {inlineCredentials[db.id] && (
+                        <InlineCredentials
+                          database={inlineCredentials[db.id]}
+                          showPassword={inlinePasswordRevealed.has(db.id)}
+                          onTogglePassword={() => toggleInlinePassword(db.id)}
+                          onCopy={copyToClipboard}
+                        />
+                      )}
                     </CardContent>
                   </Card>
                 );
