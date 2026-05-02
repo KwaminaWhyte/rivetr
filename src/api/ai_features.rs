@@ -75,7 +75,10 @@ pub async fn diagnose_deployment(
         error_message.unwrap_or_default()
     );
 
-    let raw = ai.complete(system, &user).await.map_err(|_| ai_unavailable())?;
+    let raw = ai
+        .complete(system, &user)
+        .await
+        .map_err(|_| ai_unavailable())?;
 
     // Try to parse as JSON; fall back to wrapping the raw text
     if let Ok(parsed) = serde_json::from_str::<DiagnosisResponse>(&raw) {
@@ -218,13 +221,12 @@ pub async fn get_cost_suggestions(
         None => return Err(ai_unavailable()),
     };
 
-    let info: Option<(String, Option<String>, Option<String>, i64)> = sqlx::query_as(
-        "SELECT name, memory_limit, cpu_limit, replica_count FROM apps WHERE id=?",
-    )
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| ai_unavailable())?;
+    let info: Option<(String, Option<String>, Option<String>, i64)> =
+        sqlx::query_as("SELECT name, memory_limit, cpu_limit, replica_count FROM apps WHERE id=?")
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| ai_unavailable())?;
 
     let (name, memory_limit, cpu_limit, replicas) = info.unwrap_or_default();
 
@@ -235,7 +237,10 @@ pub async fn get_cost_suggestions(
         cpu_limit.as_deref().unwrap_or("not set"),
     );
 
-    let raw = ai.complete(system, &user).await.map_err(|_| ai_unavailable())?;
+    let raw = ai
+        .complete(system, &user)
+        .await
+        .map_err(|_| ai_unavailable())?;
 
     // Parse JSON array from response
     let json_start = raw.find('[').unwrap_or(0);
@@ -264,13 +269,12 @@ pub async fn suggest_dockerfile(
         None => return Err(ai_unavailable()),
     };
 
-    let info: Option<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT name, dockerfile, build_type FROM apps WHERE id=?",
-    )
-    .bind(&app_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| ai_unavailable())?;
+    let info: Option<(String, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT name, dockerfile, build_type FROM apps WHERE id=?")
+            .bind(&app_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| ai_unavailable())?;
 
     let (app_name, dockerfile, build_type) = info.unwrap_or_default();
     let dockerfile = dockerfile.unwrap_or_default();
@@ -289,7 +293,10 @@ pub async fn suggest_dockerfile(
         build_type.as_deref().unwrap_or("dockerfile")
     );
 
-    let raw = ai.complete(system, &user).await.map_err(|_| ai_unavailable())?;
+    let raw = ai
+        .complete(system, &user)
+        .await
+        .map_err(|_| ai_unavailable())?;
 
     #[derive(Deserialize)]
     struct AiResp {
@@ -299,8 +306,8 @@ pub async fn suggest_dockerfile(
 
     let json_start = raw.find('{').unwrap_or(0);
     let json_end = raw.rfind('}').map(|i| i + 1).unwrap_or(raw.len());
-    let parsed = serde_json::from_str::<AiResp>(&raw[json_start..json_end])
-        .map_err(|_| ai_unavailable())?;
+    let parsed =
+        serde_json::from_str::<AiResp>(&raw[json_start..json_end]).map_err(|_| ai_unavailable())?;
 
     Ok(Json(DockerfileOptimization {
         original: dockerfile,
@@ -382,10 +389,9 @@ pub async fn scan_app_security(
             severity: Severity::Low,
             category: "availability".into(),
             title: "No health check configured".into(),
-            description:
-                "App has no health check URL. Unhealthy containers may receive traffic.".into(),
-            recommendation: "Set a health check path (e.g. /health or /up) in app Settings."
+            description: "App has no health check URL. Unhealthy containers may receive traffic."
                 .into(),
+            recommendation: "Set a health check path (e.g. /health or /up) in app Settings.".into(),
         });
     }
 
@@ -433,9 +439,10 @@ pub async fn scan_app_security(
                         "A {label} credential pattern was detected in deployment logs. \
                          Credentials in logs can be harvested from log storage."
                     ),
-                    recommendation: "Rotate the credential immediately. Use environment variables, \
+                    recommendation:
+                        "Rotate the credential immediately. Use environment variables, \
                         not inline config, for secrets. Ensure logs are redacted before storage."
-                        .into(),
+                            .into(),
                 });
                 break;
             }
@@ -460,11 +467,7 @@ pub async fn scan_app_security(
     ];
     for (key, value) in &env_vars {
         let key_lower = key.to_lowercase();
-        if secret_key_patterns
-            .iter()
-            .any(|p| key_lower.contains(p))
-            && value.is_empty()
-        {
+        if secret_key_patterns.iter().any(|p| key_lower.contains(p)) && value.is_empty() {
             findings.push(SecurityFinding {
                 severity: Severity::Medium,
                 category: "missing_secret".into(),

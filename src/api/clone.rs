@@ -65,7 +65,10 @@ pub async fn clone_environment(
     // Validate new name
     let new_name = req.name.trim().to_string();
     if new_name.is_empty() {
-        return Err(ApiError::validation_field("name", "Environment name is required"));
+        return Err(ApiError::validation_field(
+            "name",
+            "Environment name is required",
+        ));
     }
     if new_name.len() > 50 {
         return Err(ApiError::validation_field(
@@ -75,23 +78,23 @@ pub async fn clone_environment(
     }
 
     // Verify project exists
-    let project_exists =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
-            .bind(&project_id)
-            .fetch_one(&state.db)
-            .await?;
+    let project_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM projects WHERE id = ?")
+        .bind(&project_id)
+        .fetch_one(&state.db)
+        .await?;
     if project_exists == 0 {
         return Err(ApiError::not_found("Project not found"));
     }
 
     // Fetch source environment
-    let source_env =
-        sqlx::query_as::<_, ProjectEnvironment>("SELECT * FROM environments WHERE id = ? AND project_id = ?")
-            .bind(&env_id)
-            .bind(&project_id)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or_else(|| ApiError::not_found("Environment not found"))?;
+    let source_env = sqlx::query_as::<_, ProjectEnvironment>(
+        "SELECT * FROM environments WHERE id = ? AND project_id = ?",
+    )
+    .bind(&env_id)
+    .bind(&project_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("Environment not found"))?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let new_env_id = Uuid::new_v4().to_string();
@@ -157,13 +160,12 @@ pub async fn clone_environment(
     // -----------------------------------------------------------------------
     // 3. Clone apps from the source environment
     // -----------------------------------------------------------------------
-    let apps = sqlx::query_as::<_, App>(
-        "SELECT * FROM apps WHERE environment_id = ? AND project_id = ?",
-    )
-    .bind(&env_id)
-    .bind(&project_id)
-    .fetch_all(&state.db)
-    .await?;
+    let apps =
+        sqlx::query_as::<_, App>("SELECT * FROM apps WHERE environment_id = ? AND project_id = ?")
+            .bind(&env_id)
+            .bind(&project_id)
+            .fetch_all(&state.db)
+            .await?;
 
     let cloned_apps = apps.len();
 
@@ -289,12 +291,11 @@ pub async fn clone_environment(
         })?;
 
         // Clone app env vars
-        let app_env_vars = sqlx::query_as::<_, AppEnvVarRow>(
-            "SELECT * FROM env_vars WHERE app_id = ?",
-        )
-        .bind(&app.id)
-        .fetch_all(&state.db)
-        .await?;
+        let app_env_vars =
+            sqlx::query_as::<_, AppEnvVarRow>("SELECT * FROM env_vars WHERE app_id = ?")
+                .bind(&app.id)
+                .fetch_all(&state.db)
+                .await?;
 
         for ev in &app_env_vars {
             let new_ev_id = Uuid::new_v4().to_string();
@@ -320,12 +321,10 @@ pub async fn clone_environment(
         }
 
         // Clone volumes
-        let volumes = sqlx::query_as::<_, VolumeRow>(
-            "SELECT * FROM volumes WHERE app_id = ?",
-        )
-        .bind(&app.id)
-        .fetch_all(&state.db)
-        .await?;
+        let volumes = sqlx::query_as::<_, VolumeRow>("SELECT * FROM volumes WHERE app_id = ?")
+            .bind(&app.id)
+            .fetch_all(&state.db)
+            .await?;
 
         for vol in &volumes {
             let new_vol_id = Uuid::new_v4().to_string();
@@ -363,12 +362,11 @@ pub async fn clone_environment(
     //    We clone ALL project databases since there is no environment_id on
     //    databases. Fresh container_id (NULL) and status = 'pending'.
     // -----------------------------------------------------------------------
-    let databases = sqlx::query_as::<_, ManagedDatabase>(
-        "SELECT * FROM databases WHERE project_id = ?",
-    )
-    .bind(&project_id)
-    .fetch_all(&state.db)
-    .await?;
+    let databases =
+        sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE project_id = ?")
+            .bind(&project_id)
+            .fetch_all(&state.db)
+            .await?;
 
     let cloned_databases = databases.len();
 
@@ -425,12 +423,10 @@ pub async fn clone_environment(
     // -----------------------------------------------------------------------
     // 5. Clone services
     // -----------------------------------------------------------------------
-    let services = sqlx::query_as::<_, Service>(
-        "SELECT * FROM services WHERE project_id = ?",
-    )
-    .bind(&project_id)
-    .fetch_all(&state.db)
-    .await?;
+    let services = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE project_id = ?")
+        .bind(&project_id)
+        .fetch_all(&state.db)
+        .await?;
 
     let cloned_services = services.len();
 

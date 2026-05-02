@@ -220,11 +220,7 @@ pub async fn list_audit_logs(
     let page = query.page.unwrap_or(1).max(1);
     // Accept `limit` as an alias for `per_page` (?limit=N is the REST convention).
     // `per_page` takes precedence if both are provided.
-    let per_page = query
-        .per_page
-        .or(query.limit)
-        .unwrap_or(50)
-        .clamp(1, 100);
+    let per_page = query.per_page.or(query.limit).unwrap_or(50).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
     // Build dynamic WHERE clause

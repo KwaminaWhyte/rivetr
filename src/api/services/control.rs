@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::sse::{Event, Sse},
     Json,
 };
@@ -19,7 +19,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::compose::{
     get_compose_dir, get_service_compose_dir, inject_public_ports, run_compose_command,
     run_compose_command_streaming, substitute_magic_vars, write_compose_file_with_options,
@@ -49,7 +49,7 @@ fn default_lines() -> u32 {
 pub async fn start_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
     // Reset and seed the live start-log stream so the dashboard side panel
@@ -299,7 +299,6 @@ pub async fn start_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_START,
@@ -307,7 +306,7 @@ pub async fn start_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -319,7 +318,7 @@ pub async fn start_service(
 pub async fn stop_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
     // Get the service
@@ -392,7 +391,6 @@ pub async fn stop_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_STOP,
@@ -400,7 +398,7 @@ pub async fn stop_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -412,7 +410,7 @@ pub async fn stop_service(
 pub async fn restart_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
     let resource_key = format!("service:{}", id);
@@ -644,7 +642,6 @@ pub async fn restart_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_START,
@@ -652,7 +649,7 @@ pub async fn restart_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

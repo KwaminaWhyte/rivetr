@@ -145,7 +145,8 @@ async fn run_inline_dockerfile_deployment(
     update_deployment_status(db, deployment_id, "building", None).await?;
 
     // Create a temporary directory and write the Dockerfile into it
-    let temp_dir = tempfile::TempDir::new().context("Failed to create temp directory for inline Dockerfile")?;
+    let temp_dir = tempfile::TempDir::new()
+        .context("Failed to create temp directory for inline Dockerfile")?;
     let dockerfile_path = temp_dir.path().join("Dockerfile");
     tokio::fs::write(&dockerfile_path, dockerfile_content)
         .await
@@ -230,7 +231,14 @@ async fn run_git_deployment(
         // Need full clone for specific commit/tag checkout
         clone::clone_repository_full(&clone_url, &app.branch, &work_dir, ssh_key.as_ref()).await?;
     } else {
-        clone::clone_repository(&clone_url, &app.branch, &work_dir, ssh_key.as_ref(), &clone_opts).await?;
+        clone::clone_repository(
+            &clone_url,
+            &app.branch,
+            &work_dir,
+            ssh_key.as_ref(),
+            &clone_opts,
+        )
+        .await?;
     }
     add_deployment_log(db, deployment_id, "info", "Repository cloned successfully").await?;
 
@@ -501,7 +509,9 @@ pub async fn run_deployment(
                 }
             };
         (tag, remote)
-    } else if let Some(ref dockerfile_content) = app.inline_dockerfile.clone().filter(|s| !s.is_empty()) {
+    } else if let Some(ref dockerfile_content) =
+        app.inline_dockerfile.clone().filter(|s| !s.is_empty())
+    {
         // Inline Dockerfile deployment: write to temp dir and build (no git clone)
         let tag = run_inline_dockerfile_deployment(
             db,

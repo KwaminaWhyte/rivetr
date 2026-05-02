@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -15,7 +15,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 
 /// Query params for OAuth callback
 #[derive(Debug, Deserialize)]
@@ -177,7 +177,7 @@ pub async fn oauth_login_callback(
     State(state): State<Arc<AppState>>,
     Path(provider): Path<String>,
     axum::extract::Query(params): axum::extract::Query<OAuthCallbackParams>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Validate provider
     if !is_supported_login_provider(&provider) {
@@ -425,7 +425,6 @@ pub async fn oauth_login_callback(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Audit log
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         oauth_actions::OAUTH_LOGIN,
@@ -433,7 +432,7 @@ pub async fn oauth_login_callback(
         Some(&user_id),
         Some(&email),
         Some(&user_id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "provider": provider })),
     )
     .await;
@@ -474,7 +473,7 @@ pub async fn list_oauth_providers(
 pub async fn create_oauth_provider(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateOAuthProviderRequest>,
 ) -> Result<Json<OAuthProviderResponse>, (StatusCode, String)> {
     if user.role != "admin" {
@@ -571,7 +570,6 @@ pub async fn create_oauth_provider(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         oauth_actions::OAUTH_PROVIDER_CREATE,
@@ -579,7 +577,7 @@ pub async fn create_oauth_provider(
         Some(&id),
         Some(&req.provider),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "provider": req.provider })),
     )
     .await;
@@ -600,7 +598,7 @@ pub async fn delete_oauth_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     if user.role != "admin" {
         return Err((StatusCode::FORBIDDEN, "Admin access required".to_string()));
@@ -619,7 +617,6 @@ pub async fn delete_oauth_provider(
         ));
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         oauth_actions::OAUTH_PROVIDER_DELETE,
@@ -627,7 +624,7 @@ pub async fn delete_oauth_provider(
         Some(&id),
         None,
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -665,7 +662,7 @@ pub async fn delete_user_connection(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // User always has password (set during account creation), so it's safe to unlink any OAuth connection
 
@@ -683,7 +680,6 @@ pub async fn delete_user_connection(
         ));
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         oauth_actions::OAUTH_ACCOUNT_UNLINK,
@@ -691,7 +687,7 @@ pub async fn delete_user_connection(
         Some(&id),
         None,
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

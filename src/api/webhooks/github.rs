@@ -322,9 +322,7 @@ async fn handle_github_push(
             .bind(&now)
             .execute(&mut *conn)
             .await
-            .map_err(|_| {
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             sqlx::query("COMMIT")
                 .execute(&mut *conn)

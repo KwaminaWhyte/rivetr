@@ -20,6 +20,10 @@ pub struct DatabaseTypeConfig {
     pub data_path: &'static str,
     /// Additional static environment variables (key, value)
     pub extra_env: &'static [(&'static str, &'static str)],
+    /// Additional CMD arguments passed to the container entrypoint.
+    /// Used e.g. to disable SSL on MySQL 8 (which would otherwise present
+    /// a self-signed cert that clients can't validate).
+    pub cmd_args: &'static [&'static str],
 }
 
 /// Environment variable mappings for database credentials
@@ -50,6 +54,7 @@ pub fn postgres_config() -> DatabaseTypeConfig {
         },
         data_path: "/var/lib/postgresql/data",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -68,6 +73,14 @@ pub fn mysql_config() -> DatabaseTypeConfig {
         },
         data_path: "/var/lib/mysql",
         extra_env: &[],
+        // MySQL 8 enables TLS by default with a self-signed cert that clients
+        // can't validate, so out-of-the-box connections fail with `TLS/SSL
+        // error: self-signed certificate in certificate chain`.  We turn
+        // server-side TLS off entirely to match MariaDB's default behaviour
+        // — managed DBs sit on a private Docker network where the connection
+        // is not user-facing.  Users who want TLS can override `custom_image`
+        // or supply their own CMD.
+        cmd_args: &["--skip-ssl"],
     }
 }
 
@@ -86,6 +99,7 @@ pub fn mongodb_config() -> DatabaseTypeConfig {
         },
         data_path: "/data/db",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -104,6 +118,7 @@ pub fn redis_config() -> DatabaseTypeConfig {
         },
         data_path: "/data",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -122,6 +137,7 @@ pub fn mariadb_config() -> DatabaseTypeConfig {
         },
         data_path: "/var/lib/mysql",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -140,6 +156,7 @@ pub fn dragonfly_config() -> DatabaseTypeConfig {
         },
         data_path: "/data",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -158,6 +175,7 @@ pub fn keydb_config() -> DatabaseTypeConfig {
         },
         data_path: "/data",
         extra_env: &[],
+        cmd_args: &[],
     }
 }
 
@@ -176,6 +194,7 @@ pub fn clickhouse_config() -> DatabaseTypeConfig {
         },
         data_path: "/var/lib/clickhouse",
         extra_env: &[("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")],
+        cmd_args: &[],
     }
 }
 
@@ -286,6 +305,29 @@ mod tests {
         assert!(config.env_vars.root_password.is_some());
     }
 
+    /// B6: MySQL 8 enables TLS by default with a self-signed cert clients
+    /// can't validate; we disable server-side TLS via `--skip-ssl` so
+    /// connections via the published mysql://… URI work out of the box.
+    /// MariaDB ships TLS off by default, so we keep its CMD untouched.
+    #[test]
+    fn test_mysql_disables_ssl_via_cmd_args() {
+        let config = mysql_config();
+        assert!(
+            config.cmd_args.contains(&"--skip-ssl"),
+            "MySQL must pass --skip-ssl in CMD to avoid self-signed-cert TLS \
+             errors; got cmd_args={:?}",
+            config.cmd_args
+        );
+
+        // MariaDB must remain untouched — TLS is off by default upstream.
+        let mariadb = mariadb_config();
+        assert!(
+            mariadb.cmd_args.is_empty(),
+            "MariaDB cmd_args must stay empty; got {:?}",
+            mariadb.cmd_args
+        );
+    }
+
     #[test]
     fn test_mariadb_config() {
         let config = mariadb_config();
@@ -314,10 +356,7 @@ mod tests {
         assert!(env.contains(&("MARIADB_USER".to_string(), "appuser".to_string())));
         assert!(env.contains(&("MARIADB_PASSWORD".to_string(), "apppass".to_string())));
         assert!(env.contains(&("MARIADB_DATABASE".to_string(), "appdb".to_string())));
-        assert!(env.contains(&(
-            "MARIADB_ROOT_PASSWORD".to_string(),
-            "rootpass".to_string()
-        )));
+        assert!(env.contains(&("MARIADB_ROOT_PASSWORD".to_string(), "rootpass".to_string())));
     }
 
     #[test]

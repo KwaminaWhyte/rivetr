@@ -4,7 +4,7 @@ mod gitlab;
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
@@ -17,7 +17,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 
 /// Shared user info returned by provider validation/OAuth flows
 pub(super) struct ProviderUserInfo {
@@ -122,7 +122,7 @@ pub async fn delete_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let result = sqlx::query("DELETE FROM git_providers WHERE id = ?")
         .bind(&id)
@@ -134,7 +134,6 @@ pub async fn delete_provider(
         return Err((StatusCode::NOT_FOUND, "Provider not found".to_string()));
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::GIT_PROVIDER_DELETE,
@@ -142,7 +141,7 @@ pub async fn delete_provider(
         Some(&id),
         None,
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -154,7 +153,7 @@ pub async fn delete_provider(
 pub async fn add_token_provider(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<AddTokenProviderRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let provider_type: GitProviderType = req
@@ -224,7 +223,6 @@ pub async fn add_token_provider(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::GIT_PROVIDER_ADD,
@@ -232,7 +230,7 @@ pub async fn add_token_provider(
         Some(&id),
         Some(&req.provider),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "provider": req.provider,
             "username": &user_info.username,

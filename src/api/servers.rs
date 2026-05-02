@@ -554,11 +554,15 @@ async fn run_ssh_health_check(
             );
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(pw)
+                .arg("-p")
+                .arg(pw)
                 .arg("ssh")
-                .arg("-o").arg("StrictHostKeyChecking=no")
-                .arg("-o").arg("ConnectTimeout=5")
-                .arg("-p").arg(port.to_string())
+                .arg("-o")
+                .arg("StrictHostKeyChecking=no")
+                .arg("-o")
+                .arg("ConnectTimeout=5")
+                .arg("-p")
+                .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
                 .arg(remote_cmd);
 
@@ -829,11 +833,15 @@ async fn run_ssh_install_docker(
             tracing::warn!("SSH key auth failed, retrying with password");
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(pw)
+                .arg("-p")
+                .arg(pw)
                 .arg("ssh")
-                .arg("-o").arg("StrictHostKeyChecking=no")
-                .arg("-o").arg("ConnectTimeout=30")
-                .arg("-p").arg(port.to_string())
+                .arg("-o")
+                .arg("StrictHostKeyChecking=no")
+                .arg("-o")
+                .arg("ConnectTimeout=30")
+                .arg("-p")
+                .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
                 .arg(remote_cmd);
             let fallback_output = fallback.output().await?;
@@ -1952,22 +1960,20 @@ pub async fn fetch_details(
     .to_string();
 
     let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query(
-        "UPDATE servers SET os_info = ?, docker_version = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(&os_info_json)
-    .bind(&details.docker_version)
-    .bind(&now)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to update server details: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": "Failed to save server details"})),
-        )
-    })?;
+    sqlx::query("UPDATE servers SET os_info = ?, docker_version = ?, updated_at = ? WHERE id = ?")
+        .bind(&os_info_json)
+        .bind(&details.docker_version)
+        .bind(&now)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update server details: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to save server details"})),
+            )
+        })?;
 
     Ok(Json(details))
 }
@@ -2046,11 +2052,15 @@ async fn run_fetch_server_details(
             );
             let mut fallback = Command::new("sshpass");
             fallback
-                .arg("-p").arg(pw)
+                .arg("-p")
+                .arg(pw)
                 .arg("ssh")
-                .arg("-o").arg("StrictHostKeyChecking=no")
-                .arg("-o").arg("ConnectTimeout=10")
-                .arg("-p").arg(port.to_string())
+                .arg("-o")
+                .arg("StrictHostKeyChecking=no")
+                .arg("-o")
+                .arg("ConnectTimeout=10")
+                .arg("-p")
+                .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
                 .arg(remote_cmd);
             let fallback_output = fallback.output().await?;
@@ -2114,4 +2124,3 @@ fn parse_server_details(output: &str) -> anyhow::Result<ServerDetails> {
         total_ram,
     })
 }
-

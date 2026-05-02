@@ -1,18 +1,20 @@
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User};
+use crate::db::{
+    actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User,
+};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
 use crate::AppState;
 
-use crate::api::audit::{audit_log, extract_client_ip};
+use crate::api::audit::{audit_log, ClientIp};
 use crate::api::error::ApiError;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
@@ -37,7 +39,7 @@ pub struct RollbackRequest {
 pub async fn rollback_deployment(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(deployment_id): Path<String>,
     // Accept missing body / missing Content-Type (Option<Json<...>> instead of
     // Json<Option<...>>).  The body itself is optional — callers usually invoke this
@@ -237,7 +239,6 @@ pub async fn rollback_deployment(
         .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DEPLOYMENT_ROLLBACK,
@@ -245,7 +246,7 @@ pub async fn rollback_deployment(
         Some(&deployment.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "app_id": app.id,
             "from_deployment_id": deployment_id,

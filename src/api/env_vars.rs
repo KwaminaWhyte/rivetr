@@ -1,13 +1,13 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use crate::crypto;
 use crate::db::{
     actions, resource_types, CreateEnvVarRequest, EnvVar, EnvVarResponse, UpdateEnvVarRequest, User,
@@ -94,7 +94,7 @@ pub async fn list_env_vars(
 pub async fn create_env_var(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(app_id): Path<String>,
     Json(req): Json<CreateEnvVarRequest>,
 ) -> Result<(StatusCode, Json<EnvVarResponse>), StatusCode> {
@@ -165,7 +165,6 @@ pub async fn create_env_var(
         ..env_var
     };
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::ENV_VAR_CREATE,
@@ -173,7 +172,7 @@ pub async fn create_env_var(
         Some(&id),
         Some(&req.key),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "app_id": app_id, "is_secret": req.is_secret })),
     )
     .await;
@@ -186,7 +185,7 @@ pub async fn create_env_var(
 pub async fn update_env_var(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path((app_id, key)): Path<(String, String)>,
     Json(req): Json<UpdateEnvVarRequest>,
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
@@ -260,7 +259,6 @@ pub async fn update_env_var(
         ..env_var
     };
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::ENV_VAR_UPDATE,
@@ -268,7 +266,7 @@ pub async fn update_env_var(
         Some(&existing.id),
         Some(&key),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "app_id": app_id })),
     )
     .await;
@@ -281,7 +279,7 @@ pub async fn update_env_var(
 pub async fn delete_env_var(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path((app_id, key)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
     // Capture id before delete for the audit entry
@@ -308,7 +306,6 @@ pub async fn delete_env_var(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::ENV_VAR_DELETE,
@@ -316,7 +313,7 @@ pub async fn delete_env_var(
         id.as_deref(),
         Some(&key),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({ "app_id": app_id })),
     )
     .await;

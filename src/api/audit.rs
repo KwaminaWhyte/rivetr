@@ -19,12 +19,10 @@ use super::error::ApiError;
 /// `into_make_service_with_connect_info::<SocketAddr>()` in `main.rs`.
 ///
 /// Always succeeds — if no IP can be determined, the inner Option is None.
-#[allow(dead_code)] // Staging API for incremental B8 wiring across handlers
 #[derive(Debug, Clone, Default)]
 pub struct ClientIp(pub Option<String>);
 
 impl ClientIp {
-    #[allow(dead_code)] // See struct attribute
     pub fn as_deref(&self) -> Option<&str> {
         self.0.as_deref()
     }
@@ -54,7 +52,7 @@ where
 /// Extract client IP address from request headers or connection info.
 /// Checks X-Forwarded-For, X-Real-IP headers first (for reverse proxy scenarios),
 /// then falls back to the connection info.
-pub fn extract_client_ip(headers: &HeaderMap, conn_info: Option<&SocketAddr>) -> Option<String> {
+fn extract_client_ip(headers: &HeaderMap, conn_info: Option<&SocketAddr>) -> Option<String> {
     // Check X-Forwarded-For header first (comma-separated list, first is client)
     if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|h| h.to_str().ok()) {
         if let Some(first_ip) = forwarded.split(',').next() {

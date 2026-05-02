@@ -212,21 +212,14 @@ impl ManagedDatabase {
                 self.internal_port,
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
-            DatabaseType::Mysql | DatabaseType::Mariadb => {
-                // MySQL 8 enables SSL by default with a self-signed cert that clients
-                // can't validate, so connections fail with `TLS/SSL error: self-signed
-                // certificate in certificate chain`.  Append `?ssl-mode=DISABLED` so the
-                // connection string works out of the box for managed DBs on the same
-                // private Docker network.  MariaDB ignores the parameter, which is fine.
-                Some(format!(
-                    "mysql://{}:{}@{}:{}/{}?ssl-mode=DISABLED",
-                    creds.username,
-                    creds.password,
-                    container_name,
-                    self.internal_port,
-                    creds.database.unwrap_or_else(|| creds.username.clone())
-                ))
-            }
+            DatabaseType::Mysql | DatabaseType::Mariadb => Some(format!(
+                "mysql://{}:{}@{}:{}/{}",
+                creds.username,
+                creds.password,
+                container_name,
+                self.internal_port,
+                creds.database.unwrap_or_else(|| creds.username.clone())
+            )),
             DatabaseType::Mongodb => Some(format!(
                 "mongodb://{}:{}@{}:{}/{}?authSource=admin",
                 creds.username,
@@ -274,7 +267,7 @@ impl ManagedDatabase {
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
             DatabaseType::Mysql | DatabaseType::Mariadb => Some(format!(
-                "mysql://{}:{}@{}:{}/{}?ssl-mode=DISABLED",
+                "mysql://{}:{}@{}:{}/{}",
                 creds.username,
                 creds.password,
                 host,

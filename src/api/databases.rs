@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
@@ -21,7 +21,7 @@ use crate::engine::database_config::{
 use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use super::teams::log_team_audit;
 
 #[derive(Debug, Deserialize)]
@@ -100,7 +100,7 @@ pub async fn get_database(
 pub async fn create_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateManagedDatabaseRequest>,
 ) -> Result<(StatusCode, Json<ManagedDatabaseResponse>), StatusCode> {
     // Validate name
@@ -243,7 +243,6 @@ pub async fn create_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_CREATE,
@@ -251,7 +250,7 @@ pub async fn create_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "db_type": req.db_type.to_string(),
             "version": version,
@@ -289,7 +288,7 @@ pub async fn create_database(
 pub async fn delete_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Get the database record
@@ -324,7 +323,6 @@ pub async fn delete_database(
         })?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_DELETE,
@@ -332,7 +330,7 @@ pub async fn delete_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -364,7 +362,7 @@ pub async fn delete_database(
 pub async fn start_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     // Check if database exists
@@ -394,7 +392,6 @@ pub async fn start_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_START,
@@ -402,7 +399,7 @@ pub async fn start_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -416,7 +413,7 @@ pub async fn start_database(
 pub async fn stop_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
@@ -447,7 +444,6 @@ pub async fn stop_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_STOP,
@@ -455,7 +451,7 @@ pub async fn stop_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -825,6 +821,16 @@ async fn start_database_container_inner(
         custom_labels: vec![],
     };
 
+    // Apply database-specific CMD args (e.g. `--skip-ssl` for MySQL 8 to avoid
+    // self-signed-cert TLS errors when clients connect over the private network).
+    let run_config = if !config.cmd_args.is_empty() {
+        let mut rc = run_config;
+        rc.cmd = Some(config.cmd_args.iter().map(|s| s.to_string()).collect());
+        rc
+    } else {
+        run_config
+    };
+
     // Start the container
     tracing::info!("Starting database container: {}", container_name);
     state.start_log_streams.info(
@@ -1146,7 +1152,7 @@ fn build_init_exec_cmd(
 pub async fn update_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     Json(req): Json<crate::db::UpdateManagedDatabaseRequest>,
 ) -> Result<Json<ManagedDatabaseResponse>, (StatusCode, Json<serde_json::Value>)> {
@@ -1382,7 +1388,6 @@ pub async fn update_database(
         })?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_UPDATE,
@@ -1390,7 +1395,7 @@ pub async fn update_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "public_access_changed": public_access_changed,
             "needs_restart": needs_restart,
