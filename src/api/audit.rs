@@ -19,10 +19,12 @@ use super::error::ApiError;
 /// `into_make_service_with_connect_info::<SocketAddr>()` in `main.rs`.
 ///
 /// Always succeeds — if no IP can be determined, the inner Option is None.
+#[allow(dead_code)] // Staging API for incremental B8 wiring across handlers
 #[derive(Debug, Clone, Default)]
 pub struct ClientIp(pub Option<String>);
 
 impl ClientIp {
+    #[allow(dead_code)] // See struct attribute
     pub fn as_deref(&self) -> Option<&str> {
         self.0.as_deref()
     }
