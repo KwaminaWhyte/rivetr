@@ -276,7 +276,10 @@ pub fn spawn_cleanup_task(rate_limiter: Arc<RateLimiter>, cleanup_interval_secs:
         let interval = Duration::from_secs(cleanup_interval_secs);
         loop {
             tokio::time::sleep(interval).await;
-            rate_limiter.cleanup_expired();
+            crate::utils::supervise::guarded("rate_limit_cleanup", async {
+                rate_limiter.cleanup_expired()
+            })
+            .await;
             tracing::debug!(
                 "Rate limiter cleanup complete, {} entries remaining",
                 rate_limiter.entry_count()

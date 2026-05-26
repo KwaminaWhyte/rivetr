@@ -378,7 +378,7 @@ pub fn start_update_checker(config: AutoUpdateConfig) -> Arc<UpdateChecker> {
         let mut check_interval = interval(Duration::from_secs(interval_hours * 3600));
         loop {
             check_interval.tick().await;
-            checker_clone.run_check().await;
+            crate::utils::supervise::guarded("update_checker", checker_clone.run_check()).await;
 
             // Auto-apply if enabled
             if checker_clone.config.auto_apply {

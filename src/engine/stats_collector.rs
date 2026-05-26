@@ -167,7 +167,11 @@ pub fn spawn_stats_collector_task_with_interval(
         loop {
             tick.tick().await;
 
-            let result = collector.collect().await;
+            let Some(result) =
+                crate::utils::supervise::guarded("stats_collect", collector.collect()).await
+            else {
+                continue;
+            };
 
             if result.containers_checked > 0 {
                 tracing::debug!(
@@ -198,7 +202,12 @@ pub fn spawn_stats_history_task(db: SqlitePool, runtime: Arc<dyn ContainerRuntim
         loop {
             tick.tick().await;
 
-            if let Err(e) = record_stats_snapshot(&db, &runtime).await {
+            if let Some(Err(e)) = crate::utils::supervise::guarded(
+                "stats_history",
+                record_stats_snapshot(&db, &runtime),
+            )
+            .await
+            {
                 tracing::warn!(error = %e, "Failed to record stats snapshot");
             }
         }
@@ -401,7 +410,12 @@ pub fn spawn_stats_retention_task(db: SqlitePool, config: StatsRetentionConfig) 
         loop {
             tick.tick().await;
 
-            if let Err(e) = run_stats_retention(&db, &config).await {
+            if let Some(Err(e)) = crate::utils::supervise::guarded(
+                "stats_retention",
+                run_stats_retention(&db, &config),
+            )
+            .await
+            {
                 tracing::warn!(error = %e, "Stats retention task failed");
             }
         }

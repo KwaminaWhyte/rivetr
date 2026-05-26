@@ -27,7 +27,7 @@ pub fn spawn_uptime_checker_task(db: DbPool) {
 
         loop {
             tick.tick().await;
-            uptime_cycle(&db, &client).await;
+            crate::utils::supervise::guarded("uptime", uptime_cycle(&db, &client)).await;
         }
     });
 }

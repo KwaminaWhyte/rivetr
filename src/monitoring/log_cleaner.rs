@@ -23,7 +23,7 @@ pub fn spawn_log_cleaner_task(db: DbPool) {
 
         loop {
             tick.tick().await;
-            run_log_cleanup(&db).await;
+            crate::utils::supervise::guarded("log_cleaner", run_log_cleanup(&db)).await;
         }
     });
 }

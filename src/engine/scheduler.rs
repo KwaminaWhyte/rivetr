@@ -163,7 +163,7 @@ pub fn spawn_backup_scheduler(db: DbPool) {
 
         loop {
             tick.tick().await;
-            backup_scheduler_cycle(&db).await;
+            crate::utils::supervise::guarded("backup_scheduler", backup_scheduler_cycle(&db)).await;
         }
     });
 }
@@ -500,7 +500,7 @@ pub fn spawn_scheduler(db: DbPool, runtime: Arc<dyn ContainerRuntime>) {
 
         loop {
             tick.tick().await;
-            scheduler_cycle(&db, &runtime).await;
+            crate::utils::supervise::guarded("scheduler", scheduler_cycle(&db, &runtime)).await;
         }
     });
 }
@@ -609,7 +609,11 @@ pub fn spawn_scheduled_deployment_checker(db: DbPool, deploy_tx: mpsc::Sender<(S
 
         loop {
             tick.tick().await;
-            check_scheduled_deployments(&db, &deploy_tx).await;
+            crate::utils::supervise::guarded(
+                "scheduled_deployment_checker",
+                check_scheduled_deployments(&db, &deploy_tx),
+            )
+            .await;
         }
     });
 }
@@ -761,7 +765,7 @@ pub fn spawn_autoscaling_checker(db: DbPool) {
 
         loop {
             tick.tick().await;
-            autoscaling_cycle(&db).await;
+            crate::utils::supervise::guarded("autoscaling", autoscaling_cycle(&db)).await;
         }
     });
 }

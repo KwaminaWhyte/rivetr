@@ -252,7 +252,11 @@ pub fn spawn_resource_metrics_collector_task_full(
         loop {
             tokio::select! {
                 _ = collect_tick.tick() => {
-                    let result = collector.collect().await;
+                    let Some(result) =
+                        crate::utils::supervise::guarded("resource_metrics_collect", collector.collect()).await
+                    else {
+                        continue;
+                    };
 
                     if result.apps_checked > 0 {
                         tracing::debug!(
@@ -264,7 +268,11 @@ pub fn spawn_resource_metrics_collector_task_full(
                     }
 
                     // Evaluate alerts after collecting metrics
-                    let alert_result = alert_evaluator.evaluate_all().await;
+                    let Some(alert_result) =
+                        crate::utils::supervise::guarded("alert_evaluator", alert_evaluator.evaluate_all()).await
+                    else {
+                        continue;
+                    };
                     if alert_result.alerts_triggered > 0 || alert_result.alerts_resolved > 0 {
                         tracing::debug!(
                             triggered = alert_result.alerts_triggered,
@@ -274,7 +282,7 @@ pub fn spawn_resource_metrics_collector_task_full(
                     }
                 }
                 _ = cleanup_tick.tick() => {
-                    collector.cleanup().await;
+                    crate::utils::supervise::guarded("resource_metrics_cleanup", collector.cleanup()).await;
 
                     // Also cleanup old alert events
                     match AlertEvent::cleanup_old_events(

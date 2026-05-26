@@ -275,7 +275,10 @@ async fn main() -> Result<()> {
         &config.auth,
     );
     tokio::spawn(async move {
-        engine.run().await;
+        // Each deployment already runs in its own isolated child task inside
+        // run(); guard the consumer loop itself so a panic in dispatch logs
+        // instead of silently ending the queue.
+        rivetr::utils::supervise::guarded("deployment_engine", engine.run()).await;
     });
 
     // Start deployment cleanup task

@@ -263,7 +263,9 @@ pub fn spawn_disk_monitor_task(path: std::path::PathBuf, config: DiskMonitorConf
 
         loop {
             tick.tick().await;
-            if let Err(e) = monitor.check() {
+            if let Some(Err(e)) =
+                crate::utils::supervise::guarded("disk_monitor", async { monitor.check() }).await
+            {
                 tracing::error!(error = %e, "Disk monitoring check failed");
             }
         }

@@ -342,7 +342,9 @@ pub fn spawn_cleanup_task(db: DbPool, runtime: Arc<dyn ContainerRuntime>, config
 
         loop {
             tick.tick().await;
-            if let Err(e) = cleanup.run_cleanup().await {
+            if let Some(Err(e)) =
+                crate::utils::supervise::guarded("cleanup", cleanup.run_cleanup()).await
+            {
                 tracing::error!(error = %e, "Cleanup cycle failed");
             }
         }

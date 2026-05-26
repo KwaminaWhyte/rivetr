@@ -134,5 +134,9 @@ tokio-test = "0.4"
 [profile.release]
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+# "unwind" (not "abort") so a panic in any spawned task unwinds only that task
+# instead of killing the whole process. Combined with parking_lot (no mutex
+# poisoning) and per-connection proxy tasks, this isolates panics: one bad
+# request/deploy/background-tick dies alone, the proxy and other apps keep running.
+panic = "unwind"
 strip = true

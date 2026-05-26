@@ -714,7 +714,9 @@ pub fn spawn_database_backup_task(
 
         loop {
             tick.tick().await;
-            if let Err(e) = task.run_backup_cycle().await {
+            if let Some(Err(e)) =
+                crate::utils::supervise::guarded("database_backups", task.run_backup_cycle()).await
+            {
                 error!(error = %e, "Backup cycle failed");
             }
         }

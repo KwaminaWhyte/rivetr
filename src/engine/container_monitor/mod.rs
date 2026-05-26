@@ -131,7 +131,12 @@ pub fn spawn_container_monitor_task(
         loop {
             tick.tick().await;
 
-            let result = monitor.check_and_restart().await;
+            let Some(result) =
+                crate::utils::supervise::guarded("container_monitor", monitor.check_and_restart())
+                    .await
+            else {
+                continue;
+            };
 
             // Update active apps/databases Prometheus gauges after each cycle
             set_active_apps_total(result.containers_running as f64);

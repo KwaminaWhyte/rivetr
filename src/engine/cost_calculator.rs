@@ -401,7 +401,14 @@ pub fn spawn_cost_calculator_task_with_config(db: SqlitePool, retention_days: i6
 
             // Only calculate if we haven't calculated for this day yet
             if yesterday_str != last_calculated_date {
-                let result = calculator.calculate_for_date(&yesterday_str).await;
+                let Some(result) = crate::utils::supervise::guarded(
+                    "cost_calculator",
+                    calculator.calculate_for_date(&yesterday_str),
+                )
+                .await
+                else {
+                    continue;
+                };
                 tracing::info!(
                     date = %yesterday_str,
                     apps = result.apps_processed,

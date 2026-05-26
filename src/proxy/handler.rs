@@ -228,7 +228,7 @@ impl ProxyHandler {
                     .status(hyper::StatusCode::MOVED_PERMANENTLY)
                     .header(hyper::header::LOCATION, location)
                     .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                    .unwrap();
+                    .unwrap_or_else(|_| empty_response(StatusCode::BAD_REQUEST));
                 return Ok(response);
             }
         } // end redirect_active
@@ -271,7 +271,7 @@ impl ProxyHandler {
                         .header(hyper::header::LOCATION, location)
                         .header("X-Powered-By", "Rivetr")
                         .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                        .unwrap()
+                        .unwrap_or_else(|_| empty_response(StatusCode::BAD_REQUEST))
                 } else {
                     // Check HTTP Basic Auth if enabled (but bypass for health check path)
                     if backend.basic_auth.enabled {
@@ -436,7 +436,7 @@ impl ProxyHandler {
                             .map_err(|e| match e {})
                             .boxed(),
                     )
-                    .unwrap(),
+                    .unwrap_or_else(|_| empty_response(StatusCode::BAD_REQUEST)),
             );
         }
 
@@ -455,7 +455,7 @@ impl ProxyHandler {
                                 .map_err(|e| match e {})
                                 .boxed(),
                         )
-                        .unwrap(),
+                        .unwrap_or_else(|_| empty_response(StatusCode::OK)),
                 )
             }
             None => {
@@ -468,7 +468,7 @@ impl ProxyHandler {
                                 .map_err(|e| match e {})
                                 .boxed(),
                         )
-                        .unwrap(),
+                        .unwrap_or_else(|_| empty_response(StatusCode::NOT_FOUND)),
                 )
             }
         }
@@ -592,7 +592,7 @@ impl ProxyHandler {
                     .header(hyper::header::LOCATION, &destination)
                     .header("X-Powered-By", "Rivetr")
                     .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                    .unwrap();
+                    .unwrap_or_else(|_| empty_response(StatusCode::BAD_REQUEST));
 
                 return Some(response);
             }
@@ -644,7 +644,7 @@ impl ProxyHandler {
             .header("Content-Type", "text/html; charset=utf-8")
             .header("X-Powered-By", "Rivetr")
             .body(Full::new(Bytes::from(body)).map_err(|e| match e {}).boxed())
-            .unwrap()
+            .unwrap_or_else(|_| empty_response(StatusCode::UNAUTHORIZED))
     }
 
     /// Create an error response
@@ -698,6 +698,19 @@ impl ProxyHandler {
             .header("Content-Type", "text/html; charset=utf-8")
             .header("X-Powered-By", "Rivetr")
             .body(Full::new(Bytes::from(body)).map_err(|e| match e {}).boxed())
-            .unwrap()
+            .unwrap_or_else(|_| empty_response(status))
     }
+}
+
+/// Build a header-less response with just a status and empty body.
+///
+/// `Response::new` cannot fail (no header/status validation), so this is a
+/// guaranteed-safe fallback for `Response::builder()` calls whose header values
+/// come from untrusted input (Host, path, redirect target, auth realm) — a
+/// crafted control character would otherwise make the builder error and the
+/// old `.unwrap()` panic, dropping the connection.
+fn empty_response(status: StatusCode) -> Response<BoxBody<Bytes, hyper::Error>> {
+    let mut resp = Response::new(Full::new(Bytes::new()).map_err(|e| match e {}).boxed());
+    *resp.status_mut() = status;
+    resp
 }
