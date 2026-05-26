@@ -1,6 +1,6 @@
 use axum::{
     extract::{Multipart, Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use crate::db::{actions, resource_types, App, TeamAuditAction, TeamAuditResource
 use crate::engine::{detect_build_type, extract_zip_and_find_root};
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::error::ApiError;
 use super::super::teams::log_team_audit;
 use super::super::validation::{validate_app_name, validate_uuid};
@@ -21,7 +21,7 @@ use super::{UploadAppConfig, UploadAppResponse};
 pub async fn upload_create_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(project_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadAppResponse>), ApiError> {
@@ -187,7 +187,6 @@ pub async fn upload_create_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_CREATE,
@@ -195,7 +194,7 @@ pub async fn upload_create_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "source": "upload",
             "build_type": build_type,

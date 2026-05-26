@@ -1982,3 +1982,51 @@ echo $TOKEN
 | Notification channels: CHECK constraint missing 'webhook' type | v0.2.14 |
 | Auto-update page missing route registration | v0.2.13 |
 | Migration 038 needs `PRAGMA foreign_keys=OFF` for table recreation | v0.2.14 |
+
+### Known fixed issues (v0.10.20 — Parallels VM sweep)
+| Issue | Fixed In |
+|-------|----------|
+| `/api/apps/:id/insights` returned 503 polluting tower_http logs | v0.10.20 (B3) |
+| Container monitor `check_services` SELECT missing migration-105 columns — service crash detection silently broken | v0.10.20 (B4) |
+| MySQL/MariaDB user provisioning warning even though entrypoint succeeded | v0.10.20 (B5) |
+| Audit log missing event types (token, deployment.cancel, env_var.*, app.update, etc.) | v0.10.20 (B7) |
+| `?limit=N` query alias on `/api/audit` ignored | v0.10.20 (B9) |
+| POST/DELETE returning 415 without `Content-Type: application/json` even when no body needed | v0.10.20 (B10) |
+| Cancel deployment in non-cancellable state returned 404 instead of 409 | v0.10.20 (B11) |
+| Templates list endpoint 500KB no-gzip with no-store cache | v0.10.20 (B17) — gzip + cache-control + slim list |
+| Database SQL backup downloaded as `application/octet-stream` | v0.10.20 (B26) — now `application/sql` |
+| Compose service has null domain when `instance_domain` unset | v0.10.20 (B27) — falls back to `<name>.local` |
+| App `internal_hostname` derived field for stable network alias | v0.10.20 (B14/B15) |
+| Docker network "endpoint already exists" 403 warning every restart | v0.10.20 (B28) |
+
+### Open in v0.10.20 (move to v0.10.21 backlog)
+- B6 — MySQL 8 default SSL breaks published connection string
+- B8 — Audit `ip_address` extractor staged but unwired into handlers
+- B12/B13 — Rollback flow needs live multi-deploy validation (code merged)
+- B20 — Disk usage path inconsistency (Dashboard vs Monitoring page)
+- B25 — DB-to-app env-var auto-injection UI
+- 8 frontend fixes need browser-driven validation pass
+
+### Known fixed issues (v0.10.21 — carry-forward sprint, 2026-05-02 evening)
+| Issue | Fixed In |
+|-------|----------|
+| MySQL 8 self-signed TLS broke published `mysql://` connection string | v0.10.21 (B6) — `--skip-ssl` server-side flag |
+| Audit `ip_address` always null even with extractor present | v0.10.21 (B8) — wired into 30+ handlers |
+| Disk usage card vs Monitoring page used different paths | v0.10.21 (B20) — canonicalized `data_dir` |
+| No DB-to-app linking UI; users had to manually copy connection strings | v0.10.21 (B25) — new migration 106 + `/apps/:id/links` endpoints + UI |
+| Sidebar user menu cramped + caret didn't rotate | v0.10.21 (U1) |
+| Deploy menu "commit/tag" + "ZIP file" items did nothing on click | v0.10.21 (U3) — Radix dropdown→dialog focus race |
+| Template category headings not anchored; "View all N" had no destination | v0.10.21 (U5) — anchor IDs + expand-inline |
+| Project DB list had no inline credentials display | v0.10.21 (U6) — Show credentials toggle with copy buttons |
+| Resource Limits Save said "next deployment" even though `/apply-limits` exists | v0.10.21 (U9) — calls `/apply-limits` when running |
+
+### Open in v0.10.21 (move to v0.10.22 backlog)
+- B12/B13 — Rollback flow live multi-deploy validation (code in place since v0.10.20)
+- 8 frontend fixes from v0.10.20 still need a Playwright pass
+- 5 v0.10.21 frontend fixes (U1/U3/U5/U6/U9) need browser confirmation
+
+### Validation reports
+- `live-testing/VM-SWEEP-2026-05-02.md` — original 27-bug sweep + post-fix status table
+- `live-testing/VM-VALIDATION-2026-05-02.md` — MariaDB + side panel browser session
+- `live-testing/VM-VALIDATION-2026-05-02-backend.md` — curl-based API validation (13/15 PASS)
+- `live-testing/VM-VALIDATION-2026-05-02-frontend.md` — static-bundle frontend validation (4/12 confirmed)

@@ -3,11 +3,7 @@
 //! Provides TOTP-based 2FA setup, verification, validation, and disabling.
 //! Compatible with Google Authenticator, Authy, and other TOTP apps.
 
-use axum::{
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -17,7 +13,7 @@ use crate::crypto;
 use crate::db::User;
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use crate::db::{actions, resource_types};
 
 use super::auth::verify_password;
@@ -185,7 +181,7 @@ pub async fn setup_2fa(
 /// On success, enables 2FA and returns one-time recovery codes.
 pub async fn verify_2fa(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     user: User,
     Json(request): Json<VerifyCodeRequest>,
 ) -> Result<Json<VerifyResponse>, (StatusCode, String)> {
@@ -248,7 +244,6 @@ pub async fn verify_2fa(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Audit log
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::AUTH_2FA_ENABLE,
@@ -256,7 +251,7 @@ pub async fn verify_2fa(
         Some(&user.id),
         Some(&user.email),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -268,7 +263,7 @@ pub async fn verify_2fa(
 /// Disable 2FA for the authenticated user. Requires a valid TOTP code or password.
 pub async fn disable_2fa(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     user: User,
     Json(request): Json<DisableRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
@@ -318,7 +313,6 @@ pub async fn disable_2fa(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Audit log
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::AUTH_2FA_DISABLE,
@@ -326,7 +320,7 @@ pub async fn disable_2fa(
         Some(&user.id),
         Some(&user.email),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -340,7 +334,7 @@ pub async fn disable_2fa(
 /// Returns a full auth token on success.
 pub async fn validate_2fa(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(request): Json<ValidateRequest>,
 ) -> Result<Json<crate::db::LoginResponse>, (StatusCode, String)> {
     // Look up the temporary session
@@ -467,7 +461,6 @@ pub async fn validate_2fa(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Audit log
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::AUTH_2FA_VALIDATE,
@@ -475,7 +468,7 @@ pub async fn validate_2fa(
         Some(&user.id),
         Some(&user.email),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { getPrimaryDomain } from "@/lib/utils";
 import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import { useDeployPanel } from "@/lib/deploy-panel-context";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentListResponse, Project, GitCommit, GitTag, DeploymentFreezeWindow } from "@/types/api";
 import {
   Play,
@@ -125,6 +126,7 @@ export default function AppDetailLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { show: showDeployPanel } = useDeployPanel();
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Persist restart state in localStorage so a page refresh doesn't lose the indicator.
   // We store the timestamp; if it's less than 90 seconds old, the restart is still in progress.
@@ -238,7 +240,10 @@ export default function AppDetailLayout() {
     return deployments.some((d) => isActiveDeployment(d.status));
   }, [deployments]);
 
-  // Handle deploy action with optional commit/tag targeting
+  // Handle deploy action with optional commit/tag targeting.
+  // Opens the deploy side panel so the user can watch live logs without
+  // leaving the current page; the panel includes an "Open detail" link for
+  // users who want the dedicated deployment page.
   const handleDeploy = async (options?: { commit_sha?: string; git_tag?: string }) => {
     if (!id) return;
     setIsSubmitting(true);
@@ -246,8 +251,13 @@ export default function AppDetailLayout() {
       const deployment = await api.triggerDeploy(id, options);
       toast.success("Deployment started");
       queryClient.invalidateQueries({ queryKey: ["deployments", id] });
-      // Navigate to deployment detail page to watch live logs
-      navigate(`/apps/${id}/deployments/${deployment.id}`);
+      showDeployPanel({
+        kind: "deployment",
+        id: deployment.id,
+        title: app?.name ?? "Deployment",
+        subtitle: "App deployment",
+        href: `/apps/${id}/deployments/${deployment.id}`,
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Deployment failed");
     } finally {
@@ -508,12 +518,25 @@ export default function AppDetailLayout() {
                 Redeploy (latest commit)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowDeployOptionsDialog(true)}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  // Prevent the dropdown's auto-focus restore from racing
+                  // with the dialog mount; defer the open one tick so the
+                  // menu closes cleanly first.
+                  e.preventDefault();
+                  setTimeout(() => setShowDeployOptionsDialog(true), 0);
+                }}
+              >
                 <GitCommitHorizontal className="h-4 w-4 mr-2" />
                 Deploy specific commit/tag
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowUploadDialog(true)}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setTimeout(() => setShowUploadDialog(true), 0);
+                }}
+              >
                 <Upload className="h-4 w-4 mr-2" />
                 Deploy from ZIP file
               </DropdownMenuItem>

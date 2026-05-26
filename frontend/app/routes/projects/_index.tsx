@@ -288,15 +288,17 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
-      {/* Filter Tabs */}
-      <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
-        <TabsList>
-          <TabsTrigger value="all">All ({statusCounts.all})</TabsTrigger>
-          <TabsTrigger value="healthy">Healthy ({statusCounts.healthy})</TabsTrigger>
-          <TabsTrigger value="issues">Issues ({statusCounts.issues})</TabsTrigger>
-          <TabsTrigger value="building">Building ({statusCounts.building})</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Filter Tabs — hidden until there are apps to filter (U4) */}
+      {apps.length > 0 && (
+        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
+          <TabsList>
+            <TabsTrigger value="all">All ({statusCounts.all})</TabsTrigger>
+            <TabsTrigger value="healthy">Healthy ({statusCounts.healthy})</TabsTrigger>
+            <TabsTrigger value="issues">Issues ({statusCounts.issues})</TabsTrigger>
+            <TabsTrigger value="building">Building ({statusCounts.building})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
       {/* Projects Grid */}
       {filteredProjects.length === 0 ? (

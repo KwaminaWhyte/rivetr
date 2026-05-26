@@ -645,10 +645,7 @@ mod tests {
 
         // multi_routes should be empty; every call returns the same backend
         for _ in 0..3 {
-            assert_eq!(
-                table.get_backend("app.example.com").unwrap().port,
-                3000
-            );
+            assert_eq!(table.get_backend("app.example.com").unwrap().port, 3000);
         }
     }
 

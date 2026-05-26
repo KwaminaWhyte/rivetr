@@ -131,10 +131,12 @@ export default function AppGeneralTab() {
                 <div className="text-sm text-muted-foreground">Port</div>
                 <div className="font-medium">{app.port}</div>
               </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Dockerfile</div>
-                <div className="font-medium">{app.dockerfile}</div>
-              </div>
+              {app.build_type === "dockerfile" && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Dockerfile</div>
+                  <div className="font-medium">{app.dockerfile}</div>
+                </div>
+              )}
               <div>
                 <div className="text-sm text-muted-foreground">Domain</div>
                 <div className="font-medium">{getPrimaryDomain(app) || "-"}</div>

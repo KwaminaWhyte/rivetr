@@ -28,6 +28,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::api::rate_limit::RateLimiter;
+use crate::api::start_logs::StartLogRegistry;
 use crate::db::App;
 use crate::engine::updater::UpdateChecker;
 use crate::proxy::RouteTable;
@@ -47,6 +48,10 @@ pub struct AppState {
     /// Optional AI client — configured from instance settings (dashboard) or [ai] in rivetr.toml.
     /// Wrapped in RwLock so it can be hot-swapped when the API key changes at runtime.
     pub ai_client: parking_lot::RwLock<Option<Arc<crate::ai::AiClient>>>,
+    /// Live broadcast channels for service/database start log streams.
+    /// Used by the deploy side panel to surface image-pull and container-start
+    /// progress without persisting to the deployment_logs table.
+    pub start_log_streams: Arc<StartLogRegistry>,
 }
 
 impl AppState {
@@ -70,6 +75,7 @@ impl AppState {
             update_checker,
             deployment_cancel_tokens: dashmap::DashMap::new(),
             ai_client: parking_lot::RwLock::new(None),
+            start_log_streams: Arc::new(StartLogRegistry::new()),
         }
     }
 

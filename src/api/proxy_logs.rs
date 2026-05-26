@@ -63,7 +63,7 @@ pub async fn list_proxy_logs(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListProxyLogsParams>,
 ) -> Result<Json<ProxyLogListResponse>, ApiError> {
-    let per_page = params.per_page.unwrap_or(100).min(1000).max(1);
+    let per_page = params.per_page.unwrap_or(100).clamp(1, 1000);
     let page = params.page.unwrap_or(1).max(1);
     let offset = (page - 1) * per_page;
 

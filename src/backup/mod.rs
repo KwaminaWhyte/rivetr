@@ -488,10 +488,7 @@ async fn dump_mysql(container: &str) -> Result<Vec<u8>> {
         }
     }
 
-    anyhow::bail!(
-        "mysqldump failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    )
+    anyhow::bail!("mysqldump failed: {}", String::from_utf8_lossy(&out.stderr))
 }
 
 /// Trigger a Redis `BGSAVE` then read the dump file from the container.
@@ -533,10 +530,7 @@ async fn dump_mongo(container: &str) -> Result<Vec<u8>> {
     if out.status.success() {
         Ok(out.stdout)
     } else {
-        anyhow::bail!(
-            "mongodump failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        )
+        anyhow::bail!("mongodump failed: {}", String::from_utf8_lossy(&out.stderr))
     }
 }
 
@@ -656,11 +650,7 @@ async fn backup_service_databases<W: IoWrite>(
                     header.set_mode(0o644);
                     header.set_cksum();
 
-                    match archive.append_data(
-                        &mut header,
-                        &archive_path,
-                        dump_data.as_slice(),
-                    ) {
+                    match archive.append_data(&mut header, &archive_path, dump_data.as_slice()) {
                         Ok(()) => {
                             info!(
                                 service = %service_name,

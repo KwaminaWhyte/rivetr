@@ -30,6 +30,10 @@ const DATA_PATHS: Record<string, { path: string; description: string }> = {
     path: "/var/lib/mysql",
     description: "MySQL data directory containing database files and logs",
   },
+  mariadb: {
+    path: "/var/lib/mysql",
+    description: "MariaDB data directory containing database files and logs",
+  },
   mongodb: {
     path: "/data/db",
     description: "MongoDB data directory containing database files",
@@ -37,6 +41,18 @@ const DATA_PATHS: Record<string, { path: string; description: string }> = {
   redis: {
     path: "/data",
     description: "Redis data directory for RDB snapshots and AOF files",
+  },
+  dragonfly: {
+    path: "/data",
+    description: "DragonflyDB data directory for snapshots",
+  },
+  keydb: {
+    path: "/data",
+    description: "KeyDB data directory for RDB snapshots and AOF files",
+  },
+  clickhouse: {
+    path: "/var/lib/clickhouse",
+    description: "ClickHouse data directory containing tables and parts",
   },
 };
 
@@ -237,10 +253,12 @@ export default function DatabaseStorageTab() {
             <pre className="mt-2 rounded-md bg-muted p-3 font-mono text-xs overflow-x-auto">
               {database.db_type === "postgres"
                 ? `docker exec ${database.container_id || "CONTAINER_ID"} du -sh /var/lib/postgresql/data`
-                : database.db_type === "mysql"
+                : database.db_type === "mysql" || database.db_type === "mariadb"
                 ? `docker exec ${database.container_id || "CONTAINER_ID"} du -sh /var/lib/mysql`
                 : database.db_type === "mongodb"
                 ? `docker exec ${database.container_id || "CONTAINER_ID"} du -sh /data/db`
+                : database.db_type === "clickhouse"
+                ? `docker exec ${database.container_id || "CONTAINER_ID"} du -sh /var/lib/clickhouse`
                 : `docker exec ${database.container_id || "CONTAINER_ID"} du -sh /data`}
             </pre>
           </div>
@@ -286,6 +304,18 @@ function BackupInstructions({ database }: { database: ManagedDatabase }) {
       {
         label: "Restore",
         command: `docker exec -i ${containerName} mysql -u ${username} -p ${dbName || ""} < backup.sql`,
+        description: "Restore from a SQL dump",
+      },
+    ],
+    mariadb: [
+      {
+        label: "Backup (mariadb-dump)",
+        command: `docker exec ${containerName} mariadb-dump -u ${username} -p ${dbName || ""} > backup.sql`,
+        description: "Create a SQL dump of your database",
+      },
+      {
+        label: "Restore",
+        command: `docker exec -i ${containerName} mariadb -u ${username} -p ${dbName || ""} < backup.sql`,
         description: "Restore from a SQL dump",
       },
     ],

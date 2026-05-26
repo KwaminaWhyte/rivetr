@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - list [ref=e7]
+      - generic [ref=e17]
+      - generic [ref=e128]
+      - button "Toggle Sidebar" [ref=e157]
+    - main [ref=e158]:
+      - generic [ref=e159]
+      - generic [ref=e171]
+  - region "Notifications alt+T"
+  - generic [ref=e307]: 05:43

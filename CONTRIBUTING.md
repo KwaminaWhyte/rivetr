@@ -72,7 +72,7 @@ npm run build         # ensure production build compiles
 
 ## Code Organization
 
-The backend follows a **subdirectory module pattern** documented in [`docs/REFACTORING.md`](docs/REFACTORING.md). Any file that grows beyond ~1000 lines is split into a subdirectory:
+The backend follows a **subdirectory module pattern** documented in [`docs/architecture/code-organization.md`](docs/architecture/code-organization.md). Any file that grows beyond ~1000 lines is split into a subdirectory:
 
 ```
 src/api/apps.rs   →   src/api/apps/
@@ -113,7 +113,7 @@ frontend/app/
 └── lib/          # API client, React Query hooks, and utilities
 ```
 
-See [docs/REFACTORING.md](docs/REFACTORING.md) for the complete split log and rules for new files.
+See [docs/architecture/code-organization.md](docs/architecture/code-organization.md) for the complete split log and rules for new files.
 
 ## Adding New Features
 
@@ -209,8 +209,8 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 ## Getting Help
 
 - Search [existing issues](https://github.com/KwaminaWhyte/rivetr/issues) before opening a new one.
-- For architecture questions, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-- For tech stack decisions, see [docs/TECH_STACK.md](docs/TECH_STACK.md).
+- For architecture questions, see [docs/architecture/architecture.md](docs/architecture/architecture.md).
+- For tech stack decisions, see [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md).
 
 ## License
 

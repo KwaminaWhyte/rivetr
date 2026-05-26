@@ -233,7 +233,7 @@ export default function AppNetworkTab() {
 
           <div className="space-y-2">
             <Label>Network</Label>
-            <Input value="rivetr-network" readOnly className="font-mono" />
+            <Input value="rivetr" readOnly className="font-mono" />
             <p className="text-xs text-muted-foreground">
               All Rivetr apps share this Docker network for internal communication
             </p>

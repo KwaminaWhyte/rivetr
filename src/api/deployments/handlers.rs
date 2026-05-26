@@ -1,6 +1,6 @@
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use crate::engine::{detect_build_type, extract_zip_and_find_root, BuildDetection
 use crate::runtime::ContainerStats;
 use crate::AppState;
 
-use crate::api::audit::{audit_log, extract_client_ip};
+use crate::api::audit::{audit_log, ClientIp};
 use crate::api::error::ApiError;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
@@ -108,7 +108,7 @@ pub struct TagInfo {
 pub async fn trigger_deploy(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(app_id): Path<String>,
     body: Option<Json<TriggerDeployRequest>>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
@@ -282,7 +282,6 @@ pub async fn trigger_deploy(
         .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DEPLOYMENT_TRIGGER,
@@ -290,7 +289,7 @@ pub async fn trigger_deploy(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "deployment_id": deployment.id,
         })),
@@ -494,7 +493,7 @@ pub async fn get_app_stats(
 pub async fn upload_deploy(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(app_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<UploadDeployResponse>), ApiError> {
@@ -670,7 +669,6 @@ pub async fn upload_deploy(
         .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DEPLOYMENT_TRIGGER,
@@ -678,7 +676,7 @@ pub async fn upload_deploy(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "deployment_id": deployment.id,
             "source": "upload",
@@ -1113,6 +1111,8 @@ pub async fn get_deployment_diff(
 /// POST /api/apps/:app_id/deployments/:id/cancel
 pub async fn cancel_deployment(
     State(state): State<Arc<AppState>>,
+    user: User,
+    client_ip: ClientIp,
     Path((app_id, deployment_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID formats
@@ -1143,11 +1143,36 @@ pub async fn cancel_deployment(
     .rows_affected();
 
     if rows_affected == 0 {
-        // Deployment not found or not in a cancellable state
-        return Err(ApiError::not_found(
-            "Deployment not found or is not in a cancellable state",
-        ));
+        // Differentiate between "deployment doesn't exist" (404) and "exists but not
+        // in a cancellable state" (409 Conflict — semantically a state conflict, not
+        // a missing resource).
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT status FROM deployments WHERE id = ? AND app_id = ?")
+                .bind(&deployment_id)
+                .bind(&app_id)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| ApiError::database(e.to_string()))?;
+
+        return match exists {
+            Some(status) => Err(ApiError::conflict(format!(
+                "Deployment is in state '{status}' which is not cancellable"
+            ))),
+            None => Err(ApiError::not_found("Deployment not found")),
+        };
     }
+
+    audit_log(
+        &state,
+        actions::DEPLOYMENT_CANCEL,
+        resource_types::DEPLOYMENT,
+        Some(&deployment_id),
+        None,
+        Some(&user.id),
+        client_ip.as_deref(),
+        Some(serde_json::json!({ "app_id": app_id })),
+    )
+    .await;
 
     Ok(StatusCode::OK)
 }

@@ -55,9 +55,10 @@ export function NavUser() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              aria-label="Open user menu"
+              className="group/user-trigger gap-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="h-8 w-8 rounded-lg">
+              <Avatar className="h-8 w-8 shrink-0 rounded-lg">
                 <AvatarFallback className="rounded-lg bg-primary text-primary-foreground">
                   {initials}
                 </AvatarFallback>
@@ -68,7 +69,7 @@ export function NavUser() {
                   {displayRole}
                 </span>
               </div>
-              <ChevronsUpDown className="ml-auto size-4" />
+              <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]/user-trigger:rotate-180" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent

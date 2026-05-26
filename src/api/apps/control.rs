@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
     Json,
 };
 use std::sync::Arc;
@@ -13,7 +12,7 @@ use crate::db::{
 use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
 use super::AppStatusResponse;
@@ -242,7 +241,7 @@ pub async fn get_app_status(
 pub async fn start_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -320,7 +319,6 @@ pub async fn start_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_START,
@@ -328,7 +326,7 @@ pub async fn start_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -349,7 +347,7 @@ pub async fn start_app(
 pub async fn stop_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -413,7 +411,6 @@ pub async fn stop_app(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_STOP,
@@ -421,7 +418,7 @@ pub async fn stop_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -530,7 +527,7 @@ async fn finish_restart_deployment(
 pub async fn restart_app(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<AppStatusResponse>, ApiError> {
     // Validate ID format
@@ -658,7 +655,6 @@ pub async fn restart_app(
             )
             .await;
 
-            let ip = extract_client_ip(&headers, None);
             audit_log(
                 &state,
                 actions::APP_RESTART,
@@ -666,7 +662,7 @@ pub async fn restart_app(
                 Some(&app.id),
                 Some(&app.name),
                 Some(&user.id),
-                ip.as_deref(),
+                client_ip.as_deref(),
                 None,
             )
             .await;
@@ -1049,11 +1045,21 @@ pub async fn restart_app(
     )
     .await;
 
-    // 8. Stop and remove the OLD container (traffic already switched).
+    // 8. Stop and remove the OLD container (traffic already switched), then rename
+    //    the NEW container to the canonical `rivetr-<app-name>` so `docker ps`
+    //    reports a stable name across restarts.  We can't rename earlier because
+    //    Docker forbids two containers sharing a name on the same daemon.
+    let canonical_name = app
+        .custom_container_name
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("rivetr-{}", app.name));
     {
         let app_name_log = app.name.clone();
         let old_cid = old_container_id.clone();
+        let new_cid = new_container_id.clone();
         let runtime = state.runtime.clone();
+        let canonical = canonical_name.clone();
         tokio::spawn(async move {
             if let Err(e) = runtime.stop(&old_cid).await {
                 tracing::warn!(
@@ -1069,6 +1075,26 @@ pub async fn restart_app(
                     container = %old_cid,
                     error = %e,
                     "Zero-downtime restart: failed to remove old container"
+                );
+            }
+            // Now that the old container is gone, rename the new one to the canonical
+            // name.  Best-effort — if Docker rejects the rename for any reason the
+            // app keeps working under its `rivetr-<app>-restart-<hash>` name, just
+            // less prettily.
+            if let Err(e) = runtime.rename_container(&new_cid, &canonical).await {
+                tracing::warn!(
+                    app = %app_name_log,
+                    container = %new_cid,
+                    target = %canonical,
+                    error = %e,
+                    "Zero-downtime restart: failed to rename new container to canonical name"
+                );
+            } else {
+                tracing::info!(
+                    app = %app_name_log,
+                    container = %new_cid,
+                    new_name = %canonical,
+                    "Zero-downtime restart: renamed new container to canonical name"
                 );
             }
         });
@@ -1111,7 +1137,6 @@ pub async fn restart_app(
     .await;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::APP_RESTART,
@@ -1119,7 +1144,7 @@ pub async fn restart_app(
         Some(&app.id),
         Some(&app.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

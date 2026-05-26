@@ -152,42 +152,12 @@ Skills in `.claude/skills/` provide domain-specific knowledge and workflows:
 | `deployment-pipeline` | Reference | Pipeline stages, build types, rollbacks, debugging |
 | `frontend-patterns` | Reference | React Router v7, React Query, shadcn/ui patterns for the dashboard |
 | `/prd` | Workflow | Generate Product Requirements Documents for new features |
-| `/ralph` | Workflow | Convert PRDs to prd.json format for Ralph autonomous agent execution |
 
 Reference skills are auto-loaded by Claude when relevant. Workflow skills (prefixed with `/`) are invoked manually.
 
-## Ralph (Autonomous Agent Loop)
-
-Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all PRD items are complete. Located in `scripts/ralph/`.
-
-### Workflow
-
-1. **Create PRD**: Use the `/prd` command to generate requirements
-   ```
-   /prd [feature description]
-   ```
-
-2. **Convert to JSON**: Use the `/ralph` command to create prd.json
-   ```
-   /ralph tasks/prd-[feature].md
-   ```
-
-3. **Run Ralph**:
-   - Linux/macOS: `./scripts/ralph/ralph.sh [max_iterations]`
-   - Windows: `.\scripts\ralph\ralph.ps1 [max_iterations]`
-
-### Key Concepts
-
-- Each iteration spawns a fresh Claude Code instance
-- Memory persists via git history, `progress.txt`, and `prd.json`
-- Stories should be small (completable in one context window)
-- All commits must pass: `cargo fmt --check && cargo clippy && cargo test`
-
-See `scripts/ralph/README.md` for detailed documentation.
-
 ## Development Status
 
-See `docs/TASKS.md` for detailed task tracking, `docs/IMPLEMENTATION_PLAN.md` for the parallel execution plan.
+See `docs/planning/tasks.md` for detailed task tracking and `docs/archive/implementation-plan.md` for the archived parallel execution plan.
 
 - **Phase 0 (Foundation)**: Complete (93%)
 - **Phase 1 (MVP)**: Complete (100%)

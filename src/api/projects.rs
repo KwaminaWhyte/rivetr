@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use super::error::{ApiError, ValidationErrorBuilder};
 
 // -------------------------------------------------------------------------
@@ -264,7 +264,7 @@ pub async fn get_project(
 pub async fn create_project(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<Project>), ApiError> {
     // Validate request
@@ -308,7 +308,6 @@ pub async fn create_project(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::PROJECT_CREATE,
@@ -316,7 +315,7 @@ pub async fn create_project(
         Some(&project.id),
         Some(&project.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -347,7 +346,7 @@ pub async fn create_project(
 pub async fn update_project(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> Result<Json<Project>, ApiError> {
@@ -399,7 +398,6 @@ pub async fn update_project(
         .await?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::PROJECT_UPDATE,
@@ -407,7 +405,7 @@ pub async fn update_project(
         Some(&project.id),
         Some(&project.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -419,7 +417,7 @@ pub async fn update_project(
 pub async fn delete_project(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     // Validate ID format
@@ -445,7 +443,6 @@ pub async fn delete_project(
     }
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::PROJECT_DELETE,
@@ -453,7 +450,7 @@ pub async fn delete_project(
         Some(&project.id),
         Some(&project.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

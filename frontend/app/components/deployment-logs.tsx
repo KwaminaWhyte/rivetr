@@ -13,6 +13,14 @@ interface LogEntry {
   timestamp: string;
 }
 
+// Strip ANSI escape sequences (color/style codes) from log messages so they
+// render as plain text instead of leaking sequences like `\x1b[33m` into the
+// UI (U10). Catches the common SGR set: \x1b[<digits;digits>m.
+const ANSI_ESCAPE_RE = /\x1b\[[0-9;?]*[a-zA-Z]/g;
+function stripAnsi(message: string): string {
+  return message.replace(ANSI_ESCAPE_RE, "");
+}
+
 interface DeploymentLogsProps {
   deploymentId: string;
   isActive: boolean;
@@ -230,7 +238,7 @@ export function DeploymentLogs({
                     {log.level.toUpperCase()}
                   </span>
                   <span className="whitespace-pre-wrap break-all">
-                    {log.message}
+                    {stripAnsi(log.message)}
                   </span>
                 </div>
               ))}

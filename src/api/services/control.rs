@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::sse::{Event, Sse},
     Json,
 };
@@ -19,10 +19,10 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::compose::{
     get_compose_dir, get_service_compose_dir, inject_public_ports, run_compose_command,
-    substitute_magic_vars, write_compose_file_with_options,
+    run_compose_command_streaming, substitute_magic_vars, write_compose_file_with_options,
 };
 
 /// Service log entry
@@ -49,9 +49,17 @@ fn default_lines() -> u32 {
 pub async fn start_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
+    // Reset and seed the live start-log stream so the dashboard side panel
+    // shows progress for this start cycle.
+    let resource_key = format!("service:{}", id);
+    state.start_log_streams.clear(&resource_key);
+    state
+        .start_log_streams
+        .info(&resource_key, "info", "Starting service…");
+
     // Get the service
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(&id)
@@ -59,9 +67,23 @@ pub async fn start_service(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get service: {}", e);
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", format!("DB error: {}", e));
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Start aborted");
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", "Service not found");
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Start aborted");
+            StatusCode::NOT_FOUND
+        })?;
 
     let data_dir = &state.config.server.data_dir;
     let compose_dir = get_compose_dir(data_dir, &service.name);
@@ -171,8 +193,36 @@ pub async fn start_service(
         tracing::debug!("Compose down (cleanup) result: {}", e);
     }
 
-    // Run docker compose up -d
-    match run_compose_command(&compose_dir, &project_name, &["up", "-d"]).await {
+    // Run docker compose up -d, streaming each line of output to the live
+    // start-log channel so the deploy side panel can show pull/start progress.
+    let stream_handle = state.start_log_streams.clone();
+    let stream_key_for_up = resource_key.clone();
+    state
+        .start_log_streams
+        .info(&resource_key, "pulling", "Running docker compose up -d");
+    let up_result = run_compose_command_streaming(
+        &compose_dir,
+        &project_name,
+        &["up", "-d"],
+        |line, is_stderr| {
+            // Heuristic: docker streams pull progress on stderr, but it's not
+            // really an error — show it as info with a "pulling" phase.
+            let phase = classify_compose_line(line);
+            stream_handle.emit(
+                &stream_key_for_up,
+                if is_stderr && line.to_lowercase().contains("error") {
+                    "error"
+                } else {
+                    "info"
+                },
+                phase,
+                line,
+            );
+        },
+    )
+    .await;
+
+    match up_result {
         Ok(_) => {
             // Update status to running
             sqlx::query("UPDATE services SET status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?")
@@ -203,6 +253,14 @@ pub async fn start_service(
             }
 
             tracing::info!("Started Docker Compose service: {}", service.name);
+            state.start_log_streams.info(
+                &resource_key,
+                "running",
+                format!("Service {} is running", service.name),
+            );
+            state
+                .start_log_streams
+                .end(&resource_key, "running", "Service started successfully");
         }
         Err(e) => {
             // Update status to failed with error message
@@ -222,6 +280,14 @@ pub async fn start_service(
                 service.name,
                 e
             );
+            state.start_log_streams.error(
+                &resource_key,
+                "failed",
+                format!("docker compose up failed: {}", e),
+            );
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Start failed");
         }
     }
 
@@ -233,7 +299,6 @@ pub async fn start_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_START,
@@ -241,7 +306,7 @@ pub async fn start_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -253,7 +318,7 @@ pub async fn start_service(
 pub async fn stop_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
     // Get the service
@@ -326,7 +391,6 @@ pub async fn stop_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_STOP,
@@ -334,7 +398,7 @@ pub async fn stop_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -346,9 +410,15 @@ pub async fn stop_service(
 pub async fn restart_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ServiceResponse>, StatusCode> {
+    let resource_key = format!("service:{}", id);
+    state.start_log_streams.clear(&resource_key);
+    state
+        .start_log_streams
+        .info(&resource_key, "info", "Restarting service…");
+
     // Get the service
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(&id)
@@ -356,9 +426,23 @@ pub async fn restart_service(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get service: {}", e);
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", format!("DB error: {}", e));
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Restart aborted");
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| {
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", "Service not found");
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Restart aborted");
+            StatusCode::NOT_FOUND
+        })?;
 
     let data_dir = &state.config.server.data_dir;
     let compose_dir = get_compose_dir(data_dir, &service.name);
@@ -460,8 +544,33 @@ pub async fn restart_service(
         }
     }
 
-    // Run docker compose restart
-    match run_compose_command(&compose_dir, &project_name, &["restart"]).await {
+    // Run docker compose restart, streaming each line to the live panel.
+    let stream_handle = state.start_log_streams.clone();
+    let stream_key_for_restart = resource_key.clone();
+    state
+        .start_log_streams
+        .info(&resource_key, "starting", "Running docker compose restart");
+    let restart_result = run_compose_command_streaming(
+        &compose_dir,
+        &project_name,
+        &["restart"],
+        |line, is_stderr| {
+            let phase = classify_compose_line(line);
+            stream_handle.emit(
+                &stream_key_for_restart,
+                if is_stderr && line.to_lowercase().contains("error") {
+                    "error"
+                } else {
+                    "info"
+                },
+                phase,
+                line,
+            );
+        },
+    )
+    .await;
+
+    match restart_result {
         Ok(_) => {
             // Update status to running
             sqlx::query("UPDATE services SET status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?")
@@ -492,6 +601,9 @@ pub async fn restart_service(
             }
 
             tracing::info!("Restarted Docker Compose service: {}", service.name);
+            state
+                .start_log_streams
+                .end(&resource_key, "running", "Service restarted successfully");
         }
         Err(e) => {
             // Update status to failed with error message
@@ -511,6 +623,14 @@ pub async fn restart_service(
                 service.name,
                 e
             );
+            state.start_log_streams.error(
+                &resource_key,
+                "failed",
+                format!("docker compose restart failed: {}", e),
+            );
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Restart failed");
         }
     }
 
@@ -522,7 +642,6 @@ pub async fn restart_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_START,
@@ -530,7 +649,7 @@ pub async fn restart_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -542,10 +661,7 @@ pub async fn restart_service(
 ///
 /// Used by the update handler when `public_access` changes on a running service
 /// so that Docker picks up the new port binding without requiring manual restart.
-pub async fn restart_service_internal(
-    state: &Arc<AppState>,
-    id: &str,
-) -> Result<(), String> {
+pub async fn restart_service_internal(state: &Arc<AppState>, id: &str) -> Result<(), String> {
     let service = sqlx::query_as::<_, Service>("SELECT * FROM services WHERE id = ?")
         .bind(id)
         .fetch_optional(&state.db)
@@ -624,8 +740,7 @@ pub async fn restart_service_internal(
     .map_err(|e| format!("Failed to write compose file: {}", e))?;
 
     // Stop (ignore errors — containers may already be down)
-    let _ =
-        run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await;
+    let _ = run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await;
 
     // Start
     run_compose_command(&compose_dir, &project_name, &["up", "-d"])
@@ -1193,4 +1308,20 @@ pub async fn preview_compose(
     let final_yaml = inject_rivetr_network(&substituted).unwrap_or(substituted);
 
     Ok(Json(serde_json::json!({ "compose_yaml": final_yaml })))
+}
+
+/// Classify a `docker compose up` output line into a coarse phase so the
+/// dashboard can render an appropriate status badge.
+fn classify_compose_line(line: &str) -> &'static str {
+    let lower = line.to_lowercase();
+    if lower.contains("pull") || lower.contains("download") || lower.contains("extract") {
+        "pulling"
+    } else if lower.contains("creating") || lower.contains("created") || lower.contains("starting")
+    {
+        "starting"
+    } else if lower.contains("started") || lower.contains("running") || lower.contains("healthy") {
+        "running"
+    } else {
+        "info"
+    }
 }

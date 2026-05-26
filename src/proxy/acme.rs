@@ -695,7 +695,9 @@ impl AcmeClient {
         // Fallback: parse SANs from the PEM directly so we never confuse the DB
         // domain list (which includes new, not-yet-covered apps) with the cert's
         // actual SANs.
-        let pem_str = fs::read_to_string(&cert_dir.join("fullchain.pem")).await.ok()?;
+        let pem_str = fs::read_to_string(&cert_dir.join("fullchain.pem"))
+            .await
+            .ok()?;
         let sans = extract_sans_from_pem(&pem_str);
         if !sans.is_empty() {
             // Persist so we don't re-parse on the next startup
@@ -707,7 +709,6 @@ impl AcmeClient {
             None
         }
     }
-
 
     /// Load a saved certificate and create TLS config
     pub async fn load_certificate(cert_dir: &Path) -> Result<TlsConfig> {
@@ -903,7 +904,10 @@ impl CertificateRenewalManager {
 
         match self.client.request_certificate(&all_domains).await {
             Ok(result) => {
-                let _ = self.client.save_certificate(&result, &self.instance_domain).await;
+                let _ = self
+                    .client
+                    .save_certificate(&result, &self.instance_domain)
+                    .await;
                 if let Some(ref reload) = self.tls_reload {
                     match TlsConfig::from_pem(
                         &result.certificate_chain_pem,
@@ -971,7 +975,9 @@ impl CertificateRenewalManager {
                     self.domains.clone()
                 };
                 let result = self.client.request_certificate(&renewal_domains).await?;
-                self.client.save_certificate(&result, &self.instance_domain).await?;
+                self.client
+                    .save_certificate(&result, &self.instance_domain)
+                    .await?;
 
                 // Hot-reload the new cert into the running HTTPS server
                 if let Some(ref reload) = self.tls_reload {

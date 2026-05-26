@@ -303,18 +303,17 @@ pub(super) async fn reconcile_databases(db: &DbPool, runtime: &Arc<dyn Container
 pub(super) async fn reconcile_services(db: &DbPool, runtime: &Arc<dyn ContainerRuntime>) -> usize {
     use super::stats::check_compose_running;
 
-    let running_services: Vec<Service> = match sqlx::query_as(
-        "SELECT * FROM services WHERE status = 'running'",
-    )
-    .fetch_all(db)
-    .await
-    {
-        Ok(services) => services,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to fetch running services for reconciliation");
-            return 0;
-        }
-    };
+    let running_services: Vec<Service> =
+        match sqlx::query_as("SELECT * FROM services WHERE status = 'running'")
+            .fetch_all(db)
+            .await
+        {
+            Ok(services) => services,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to fetch running services for reconciliation");
+                return 0;
+            }
+        };
 
     let mut updated = 0;
 

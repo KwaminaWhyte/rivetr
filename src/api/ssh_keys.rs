@@ -1,12 +1,12 @@
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use crate::db::{
     actions, resource_types, CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest, User,
 };
@@ -50,7 +50,7 @@ pub async fn get_ssh_key(
 pub async fn create_ssh_key(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateSshKeyRequest>,
 ) -> Result<(StatusCode, Json<SshKeyResponse>), StatusCode> {
     // Validate the private key format
@@ -102,7 +102,6 @@ pub async fn create_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SSH_KEY_CREATE,
@@ -110,7 +109,7 @@ pub async fn create_ssh_key(
         Some(&id),
         Some(&req.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -123,7 +122,7 @@ pub async fn update_ssh_key(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<UpdateSshKeyRequest>,
 ) -> Result<Json<SshKeyResponse>, StatusCode> {
     // Check if key exists
@@ -175,7 +174,6 @@ pub async fn update_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SSH_KEY_UPDATE,
@@ -183,7 +181,7 @@ pub async fn update_ssh_key(
         Some(&id),
         Some(&id),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -196,7 +194,7 @@ pub async fn delete_ssh_key(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
 ) -> Result<StatusCode, StatusCode> {
     // Fetch key name before deleting so audit log can use it
     let key_name: Option<String> = sqlx::query_scalar("SELECT name FROM ssh_keys WHERE id = ?")
@@ -219,7 +217,6 @@ pub async fn delete_ssh_key(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let ip = extract_client_ip(&headers, None);
     let name_ref = key_name.as_deref().unwrap_or(&id);
     audit_log(
         &state,
@@ -228,7 +225,7 @@ pub async fn delete_ssh_key(
         Some(&id),
         Some(name_ref),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

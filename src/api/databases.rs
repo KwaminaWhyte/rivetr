@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Deserialize;
@@ -21,7 +21,7 @@ use crate::engine::database_config::{
 use crate::runtime::{ContainerStats, PortMapping, RunConfig};
 use crate::AppState;
 
-use super::audit::{audit_log, extract_client_ip};
+use super::audit::{audit_log, ClientIp};
 use super::teams::log_team_audit;
 
 #[derive(Debug, Deserialize)]
@@ -100,7 +100,7 @@ pub async fn get_database(
 pub async fn create_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateManagedDatabaseRequest>,
 ) -> Result<(StatusCode, Json<ManagedDatabaseResponse>), StatusCode> {
     // Validate name
@@ -243,7 +243,6 @@ pub async fn create_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_CREATE,
@@ -251,7 +250,7 @@ pub async fn create_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "db_type": req.db_type.to_string(),
             "version": version,
@@ -289,7 +288,7 @@ pub async fn create_database(
 pub async fn delete_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Get the database record
@@ -324,7 +323,6 @@ pub async fn delete_database(
         })?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_DELETE,
@@ -332,7 +330,7 @@ pub async fn delete_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -364,7 +362,7 @@ pub async fn delete_database(
 pub async fn start_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     // Check if database exists
@@ -394,7 +392,6 @@ pub async fn start_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_START,
@@ -402,7 +399,7 @@ pub async fn start_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -416,7 +413,7 @@ pub async fn start_database(
 pub async fn stop_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
@@ -447,7 +444,6 @@ pub async fn stop_database(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_STOP,
@@ -455,7 +451,7 @@ pub async fn stop_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -597,8 +593,42 @@ pub async fn get_database_logs(
     Ok(Json(logs))
 }
 
-/// Internal function to start a database container
+/// Internal function to start a database container.
+///
+/// Emits live "start log" events through `state.start_log_streams` so the
+/// dashboard side panel can show image-pull / container-create / running
+/// progress without persisting a synthetic deployment row.
 async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Result<()> {
+    let resource_key = format!("database:{}", id);
+    state.start_log_streams.clear(&resource_key);
+    state
+        .start_log_streams
+        .info(&resource_key, "info", "Starting database…");
+
+    let result = start_database_container_inner(state, id, &resource_key).await;
+    match &result {
+        Ok(_) => {
+            state
+                .start_log_streams
+                .end(&resource_key, "running", "Database is running");
+        }
+        Err(e) => {
+            state
+                .start_log_streams
+                .error(&resource_key, "failed", format!("Failed: {}", e));
+            state
+                .start_log_streams
+                .end(&resource_key, "failed", "Start aborted");
+        }
+    }
+    result
+}
+
+async fn start_database_container_inner(
+    state: &Arc<AppState>,
+    id: &str,
+    resource_key: &str,
+) -> anyhow::Result<()> {
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
         .bind(id)
         .fetch_one(&state.db)
@@ -616,6 +646,12 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             tracing::info!(
                 "Starting existing database container: {}",
                 existing_container_id
+            );
+            let short = &existing_container_id[..12.min(existing_container_id.len())];
+            state.start_log_streams.info(
+                resource_key,
+                "starting",
+                format!("Starting existing container {}", short),
             );
 
             // Update status to starting
@@ -643,35 +679,34 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
                 .await?;
                 // Fall through to create a new container below
             } else {
-
-            // For MySQL/MariaDB: ensure the app user exists even if the data directory
-            // was pre-initialized (Docker only creates MYSQL_USER on first boot).
-            if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
-                if let Some(ref db_name) = credentials.database {
-                    let runtime = state.runtime.clone();
-                    let cid = existing_container_id.clone();
-                    let creds = credentials.clone();
-                    let db_nm = db_name.clone();
-                    let dt = db_type.clone();
-                    tokio::spawn(async move {
-                        ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
-                    });
+                // For MySQL/MariaDB: ensure the app user exists even if the data directory
+                // was pre-initialized (Docker only creates MYSQL_USER on first boot).
+                if matches!(db_type, DatabaseType::Mysql | DatabaseType::Mariadb) {
+                    if let Some(ref db_name) = credentials.database {
+                        let runtime = state.runtime.clone();
+                        let cid = existing_container_id.clone();
+                        let creds = credentials.clone();
+                        let db_nm = db_name.clone();
+                        let dt = db_type.clone();
+                        tokio::spawn(async move {
+                            ensure_mysql_user(&runtime, &cid, &creds, &db_nm, &dt).await;
+                        });
+                    }
                 }
-            }
 
-            // Get the assigned host port if public access is enabled
-            let external_port = if database.is_public() {
-                if database.external_port > 0 {
-                    database.external_port
+                // Get the assigned host port if public access is enabled
+                let external_port = if database.is_public() {
+                    if database.external_port > 0 {
+                        database.external_port
+                    } else {
+                        let info = state.runtime.inspect(existing_container_id).await?;
+                        info.host_port.unwrap_or(0) as i32
+                    }
                 } else {
-                    let info = state.runtime.inspect(existing_container_id).await?;
-                    info.host_port.unwrap_or(0) as i32
-                }
-            } else {
-                0
-            };
+                    0
+                };
 
-            sqlx::query(
+                sqlx::query(
                 "UPDATE databases SET external_port = ?, status = ?, error_message = NULL, updated_at = datetime('now') WHERE id = ?",
             )
             .bind(external_port)
@@ -680,13 +715,21 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
             .execute(&state.db)
             .await?;
 
-            tracing::info!(
-                "Database {} started successfully (existing container: {})",
-                database.name,
-                existing_container_id
-            );
+                tracing::info!(
+                    "Database {} started successfully (existing container: {})",
+                    database.name,
+                    existing_container_id
+                );
+                state.start_log_streams.info(
+                    resource_key,
+                    "running",
+                    format!(
+                        "Container {} started",
+                        &existing_container_id[..12.min(existing_container_id.len())]
+                    ),
+                );
 
-            return Ok(());
+                return Ok(());
             } // end else (start succeeded)
         }
     }
@@ -706,7 +749,13 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         format!("{}:{}", config.image, database.version)
     };
     tracing::info!("Pulling database image: {}", image);
+    state
+        .start_log_streams
+        .info(resource_key, "pulling", format!("Pulling image {}", image));
     state.runtime.pull_image(&image, None).await?;
+    state
+        .start_log_streams
+        .info(resource_key, "pulling", format!("Image {} ready", image));
 
     // Update status to starting
     sqlx::query("UPDATE databases SET status = ?, updated_at = datetime('now') WHERE id = ?")
@@ -772,9 +821,32 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         custom_labels: vec![],
     };
 
+    // Apply database-specific CMD args (e.g. `--skip-ssl` for MySQL 8 to avoid
+    // self-signed-cert TLS errors when clients connect over the private network).
+    let run_config = if !config.cmd_args.is_empty() {
+        let mut rc = run_config;
+        rc.cmd = Some(config.cmd_args.iter().map(|s| s.to_string()).collect());
+        rc
+    } else {
+        run_config
+    };
+
     // Start the container
     tracing::info!("Starting database container: {}", container_name);
+    state.start_log_streams.info(
+        resource_key,
+        "starting",
+        format!("Creating container {}", container_name),
+    );
     let container_id = state.runtime.run(&run_config).await?;
+    state.start_log_streams.info(
+        resource_key,
+        "starting",
+        format!(
+            "Container {} created",
+            &container_id[..12.min(container_id.len())]
+        ),
+    );
 
     // Get the assigned host port if public access is enabled
     let external_port = if database.is_public() {
@@ -805,6 +877,11 @@ async fn start_database_container(state: &Arc<AppState>, id: &str) -> anyhow::Re
         "Database {} started successfully (container: {})",
         database.name,
         container_id
+    );
+    state.start_log_streams.info(
+        resource_key,
+        "running",
+        format!("Database {} started successfully", database.name),
     );
 
     // For MySQL/MariaDB: ensure the app user exists. Docker only runs its init scripts
@@ -998,11 +1075,17 @@ async fn ensure_mysql_user(
         }
     }
 
-    tracing::warn!(
+    // The warning is intentionally low-severity (debug, not warn) because the
+    // official MySQL/MariaDB entrypoint already creates the user from `MYSQL_USER` /
+    // `MARIADB_USER` env vars on first boot.  This redundant CREATE USER is only
+    // needed when the data dir was pre-populated by an earlier container.  Failing
+    // here usually means "user already exists" or "still initializing", neither of
+    // which is actually a problem the user should worry about.
+    tracing::debug!(
         user = %credentials.username,
         database = %db_name,
-        "Could not provision MySQL/MariaDB user after 30 s — \
-         the app may fail to connect until the database container is restarted"
+        "MySQL/MariaDB redundant user provisioning timed out after 30 s — \
+         the entrypoint should have created the user via env vars; ignoring."
     );
 }
 
@@ -1069,7 +1152,7 @@ fn build_init_exec_cmd(
 pub async fn update_database(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
     Json(req): Json<crate::db::UpdateManagedDatabaseRequest>,
 ) -> Result<Json<ManagedDatabaseResponse>, (StatusCode, Json<serde_json::Value>)> {
@@ -1305,7 +1388,6 @@ pub async fn update_database(
         })?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::DATABASE_UPDATE,
@@ -1313,7 +1395,7 @@ pub async fn update_database(
         Some(&database.id),
         Some(&database.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         Some(serde_json::json!({
             "public_access_changed": public_access_changed,
             "needs_restart": needs_restart,

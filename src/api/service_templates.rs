@@ -2,7 +2,8 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
@@ -11,7 +12,7 @@ use uuid::Uuid;
 
 use crate::db::{
     DeployTemplateRequest, DeployTemplateResponse, ServiceStatus, ServiceTemplate,
-    ServiceTemplateResponse,
+    ServiceTemplateResponse, ServiceTemplateSummary,
 };
 use crate::AppState;
 
@@ -56,11 +57,19 @@ pub struct ListQuery {
     pub search: Option<String>,
 }
 
-/// List all service templates
+/// List all service templates.
+///
+/// Returns lightweight summaries (no `compose_template` / `env_schema`).  Clients
+/// fetch the full body from `GET /api/templates/:id`.  This keeps the list payload
+/// small (~30 KB instead of ~500 KB for 322 templates).
+///
+/// Sets `Cache-Control: public, max-age=300, stale-while-revalidate=900` to override
+/// the global `no-store` API default — templates are effectively immutable for the
+/// life of a Rivetr install.
 pub async fn list_templates(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListQuery>,
-) -> Result<Json<Vec<ServiceTemplateResponse>>, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     let search_pattern = query
         .search
         .as_ref()
@@ -86,10 +95,16 @@ pub async fn list_templates(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let responses: Vec<ServiceTemplateResponse> =
-        templates.into_iter().map(|t| t.to_response()).collect();
+    let responses: Vec<ServiceTemplateSummary> =
+        templates.into_iter().map(|t| t.to_summary()).collect();
 
-    Ok(Json(responses))
+    Ok((
+        [(
+            header::CACHE_CONTROL,
+            "public, max-age=300, stale-while-revalidate=900",
+        )],
+        Json(responses),
+    ))
 }
 
 /// Get a single service template by ID

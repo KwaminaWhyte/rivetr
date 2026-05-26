@@ -36,11 +36,9 @@ pub async fn list_ca_certificates(
         .fetch_all(&state.db)
         .await
     } else {
-        sqlx::query_as::<_, CaCertificate>(
-            "SELECT * FROM ca_certificates ORDER BY created_at DESC",
-        )
-        .fetch_all(&state.db)
-        .await
+        sqlx::query_as::<_, CaCertificate>("SELECT * FROM ca_certificates ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await
     }
     .map_err(|e| {
         tracing::error!("Failed to list CA certificates: {}", e);
@@ -59,7 +57,10 @@ pub async fn create_ca_certificate(
 ) -> Result<(StatusCode, Json<CaCertificate>), ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(ApiError::validation_field("name", "Certificate name cannot be empty"));
+        return Err(ApiError::validation_field(
+            "name",
+            "Certificate name cannot be empty",
+        ));
     }
 
     let certificate = req.certificate.trim().to_string();

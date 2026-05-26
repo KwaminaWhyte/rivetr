@@ -42,11 +42,9 @@ pub async fn list(
         .fetch_all(&state.db)
         .await?
     } else {
-        sqlx::query_as::<_, Destination>(
-            "SELECT * FROM destinations ORDER BY created_at DESC",
-        )
-        .fetch_all(&state.db)
-        .await?
+        sqlx::query_as::<_, Destination>("SELECT * FROM destinations ORDER BY created_at DESC")
+            .fetch_all(&state.db)
+            .await?
     };
 
     Ok(Json(destinations))
@@ -59,13 +57,11 @@ pub async fn get_one(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Destination>, ApiError> {
-    let destination = sqlx::query_as::<_, Destination>(
-        "SELECT * FROM destinations WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Destination not found"))?;
+    let destination = sqlx::query_as::<_, Destination>("SELECT * FROM destinations WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Destination not found"))?;
 
     Ok(Json(destination))
 }
@@ -79,7 +75,10 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<Destination>), ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
-        return Err(ApiError::validation_field("name", "Destination name cannot be empty"));
+        return Err(ApiError::validation_field(
+            "name",
+            "Destination name cannot be empty",
+        ));
     }
 
     let network_name = req.network_name.trim().to_string();
@@ -103,10 +102,7 @@ pub async fn create(
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             if stderr.contains("already exists") {
-                tracing::debug!(
-                    "Docker network '{}' already exists — reusing",
-                    network_name
-                );
+                tracing::debug!("Docker network '{}' already exists — reusing", network_name);
             } else {
                 tracing::warn!(
                     "docker network create '{}' exited non-zero: {}",
@@ -158,13 +154,11 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let destination = sqlx::query_as::<_, Destination>(
-        "SELECT * FROM destinations WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("Destination not found"))?;
+    let destination = sqlx::query_as::<_, Destination>("SELECT * FROM destinations WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Destination not found"))?;
 
     // Clear destination_id on any apps using this destination
     sqlx::query("UPDATE apps SET destination_id = NULL WHERE destination_id = ?")
@@ -183,5 +177,7 @@ pub async fn delete(
         .output()
         .await;
 
-    Ok(Json(serde_json::json!({ "message": "Destination deleted" })))
+    Ok(Json(
+        serde_json::json!({ "message": "Destination deleted" }),
+    ))
 }

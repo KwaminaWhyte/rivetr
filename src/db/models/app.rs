@@ -301,12 +301,20 @@ pub struct AppResponse {
     pub destination_id: Option<String>,
     /// Custom container labels (JSON array: [{key, value}]) applied at deployment time
     pub custom_labels: Option<String>,
+    /// Stable internal Docker network hostname for this app (derived).
+    /// Other containers on the shared `rivetr` network can reach this app at this
+    /// hostname.  Always equal to `custom_container_name` or `rivetr-<app-name>`.
+    pub internal_hostname: String,
     pub created_at: String,
     pub updated_at: String,
 }
 
 impl From<App> for AppResponse {
     fn from(app: App) -> Self {
+        let internal_hostname = match app.custom_container_name.as_deref() {
+            Some(name) if !name.is_empty() => name.to_string(),
+            _ => format!("rivetr-{}", app.name),
+        };
         Self {
             id: app.id,
             name: app.name,
@@ -381,6 +389,7 @@ impl From<App> for AppResponse {
             inline_dockerfile: app.inline_dockerfile,
             destination_id: app.destination_id,
             custom_labels: app.custom_labels,
+            internal_hostname,
             created_at: app.created_at,
             updated_at: app.updated_at,
         }
@@ -527,12 +536,40 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// Parse network aliases from JSON string
+    /// Parse network aliases from JSON string.
+    ///
+    /// Always includes a stable canonical alias `rivetr-<app-name>` so that other
+    /// containers on the shared `rivetr` Docker network can resolve this app by a
+    /// hostname that does NOT change across redeploys / restarts.  Without this,
+    /// containers got `-restart-<hash>` suffixed names whose alias would shift on
+    /// every zero-downtime restart, breaking inter-service connections.
     pub fn get_network_aliases(&self) -> Vec<String> {
-        self.network_aliases
+        let mut aliases: Vec<String> = self
+            .network_aliases
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        let canonical = self.internal_hostname();
+        if !aliases.iter().any(|a| a == &canonical) {
+            aliases.push(canonical);
+        }
+
+        aliases
+    }
+
+    /// Canonical internal hostname for service-to-service discovery on the
+    /// rivetr Docker network.  Stable across deploys, restarts, and rollbacks.
+    /// Surfaced in the API response so the frontend can render it in the
+    /// "Network" tab connection example.
+    pub fn internal_hostname(&self) -> String {
+        // If the user set a custom container name, use that as the hostname
+        // (matches the actual container name).  Otherwise default to
+        // `rivetr-<app-name>`.
+        match self.custom_container_name.as_ref() {
+            Some(name) if !name.is_empty() => name.clone(),
+            _ => format!("rivetr-{}", self.name),
+        }
     }
 
     /// Parse extra hosts from JSON string

@@ -12,6 +12,8 @@ import type { Route } from "./+types/root";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { WhiteLabelProvider } from "@/lib/white-label-context";
+import { DeployPanelProvider } from "@/lib/deploy-panel-context";
+import { DeploySidePanel } from "@/components/deploy-side-panel";
 import "./app.css";
 
 const queryClient = new QueryClient({
@@ -47,7 +49,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
             <WhiteLabelProvider>
-              {children}
+              <DeployPanelProvider>
+                {children}
+                <DeploySidePanel />
+              </DeployPanelProvider>
             </WhiteLabelProvider>
             <Toaster position="top-right" richColors />
           </ThemeProvider>

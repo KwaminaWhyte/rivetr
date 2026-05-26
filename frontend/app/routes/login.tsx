@@ -95,6 +95,10 @@ export default function LoginPage() {
   const [oauthProviders, setOauthProviders] = useState<OAuthProviderPublic[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
 
+  // Track field values so the submit button can be disabled when empty (U2)
+  const [emailValue, setEmailValue] = useState("");
+  const [passwordValue, setPasswordValue] = useState("");
+
   // 2FA state
   const [requires2FA, setRequires2FA] = useState(false);
   const [tempToken, setTempToken] = useState<string | null>(null);
@@ -478,8 +482,11 @@ export default function LoginPage() {
                       name="email"
                       type="email"
                       placeholder="admin@example.com"
+                      autoComplete="email"
                       required
                       autoFocus={!hasOAuthProviders}
+                      value={emailValue}
+                      onChange={(e) => setEmailValue(e.target.value)}
                     />
                   </Field>
                   <Field>
@@ -490,11 +497,22 @@ export default function LoginPage() {
                       id="password"
                       name="password"
                       type="password"
+                      autoComplete="current-password"
                       required
+                      value={passwordValue}
+                      onChange={(e) => setPasswordValue(e.target.value)}
                     />
                   </Field>
                   <Field>
-                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={
+                        isSubmitting ||
+                        emailValue.trim().length === 0 ||
+                        passwordValue.length === 0
+                      }
+                    >
                       {isSubmitting ? "Signing in..." : "Login"}
                     </Button>
                   </Field>

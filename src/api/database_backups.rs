@@ -215,9 +215,23 @@ pub async fn download_backup(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    // Build response with appropriate headers
+    // Build response with appropriate headers.
+    // Backups are SQL plaintext dumps — use `application/sql` so browsers and
+    // tools recognise the type.  Falls back to a generic octet-stream for
+    // non-SQL files (e.g. binary MongoDB dumps), which we detect by extension.
+    let content_type = match std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("sql") => "application/sql",
+        Some("gz") | Some("tgz") => "application/gzip",
+        Some("zip") => "application/zip",
+        _ => "application/octet-stream",
+    };
     let response = axum::response::Response::builder()
-        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),

@@ -12,6 +12,13 @@ export { projectsApi } from "./projects";
 export { bulkApi } from "./bulk";
 export { appsApi } from "./apps";
 export { databasesApi } from "./databases";
+export { databaseLinksApi } from "./database-links";
+export type {
+  DatabaseAppLink,
+  CreateDatabaseLinkRequest,
+  LinkedEnvVarPreview,
+  LinkedEnvVarsForDatabase,
+} from "./database-links";
 export { servicesApi } from "./services";
 export { teamsApi } from "./teams";
 export { notificationsApi } from "./notifications";
@@ -66,6 +73,7 @@ import { projectsApi } from "./projects";
 import { bulkApi } from "./bulk";
 import { appsApi } from "./apps";
 import { databasesApi } from "./databases";
+import { databaseLinksApi } from "./database-links";
 import { servicesApi } from "./services";
 import { teamsApi } from "./teams";
 import { notificationsApi } from "./notifications";
@@ -258,6 +266,12 @@ export const api = {
   importDatabaseDump: databasesApi.importDatabaseDump,
   listDatabaseExtensions: databasesApi.listDatabaseExtensions,
   installDatabaseExtension: databasesApi.installDatabaseExtension,
+
+  // Database ↔ App env-var injection links
+  listDatabaseLinks: databaseLinksApi.listLinks,
+  createDatabaseLink: databaseLinksApi.createLink,
+  deleteDatabaseLink: databaseLinksApi.deleteLink,
+  previewLinkedEnvVars: databaseLinksApi.previewLinkedEnvVars,
 
   // Services
   getServices: servicesApi.getServices,

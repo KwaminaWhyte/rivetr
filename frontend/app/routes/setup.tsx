@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,7 +10,20 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Rocket, CheckCircle } from "lucide-react";
-import { validateAuth, checkSetupStatus } from "@/lib/auth";
+import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
+
+// Matches server-side validation in src/api/auth/* (min 12 characters)
+const setupSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required"),
+    email: z.string().trim().email("Enter a valid email"),
+    password: z.string().min(12, "Password must be at least 12 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export function meta() {
   return [
@@ -50,29 +64,20 @@ export default function SetupPage() {
     setError(null);
 
     const formData = new FormData(event.currentTarget);
-    const name = formData.get("name") as string;
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const confirmPassword = formData.get("confirmPassword") as string;
+    const parsed = setupSchema.safeParse({
+      name: formData.get("name"),
+      email: formData.get("email"),
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
+    });
 
-    // Validation
-    if (!name || !email || !password) {
-      setError("All fields are required");
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Invalid input");
       setIsSubmitting(false);
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      setIsSubmitting(false);
-      return;
-    }
+    const { name, email, password } = parsed.data;
 
     try {
       const response = await fetch("/api/auth/setup", {
@@ -87,8 +92,21 @@ export default function SetupPage() {
         throw new Error(errorText || "Setup failed");
       }
 
-      // Successful setup - navigate to dashboard
-      navigate("/", { replace: true });
+      // If the backend returns a session token, persist it and skip the
+      // login screen. If not, fall back to /login (B21 — backend may need
+      // to be patched separately to return a token).
+      let authedDirectly = false;
+      try {
+        const data = await response.clone().json();
+        if (data && typeof data.token === "string" && data.token.length > 0) {
+          setAuthToken(data.token);
+          authedDirectly = true;
+        }
+      } catch {
+        // Response wasn't JSON — fall back to /login
+      }
+
+      navigate(authedDirectly ? "/" : "/login", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed");
       setIsSubmitting(false);
@@ -136,6 +154,7 @@ export default function SetupPage() {
                     name="name"
                     type="text"
                     placeholder="John Doe"
+                    autoComplete="name"
                     required
                     autoFocus
                   />
@@ -147,6 +166,7 @@ export default function SetupPage() {
                     name="email"
                     type="email"
                     placeholder="admin@example.com"
+                    autoComplete="email"
                     required
                   />
                   <FieldDescription>
@@ -159,9 +179,10 @@ export default function SetupPage() {
                     id="password"
                     name="password"
                     type="password"
-                    placeholder="Min 8 characters"
+                    placeholder="Min 12 characters"
+                    autoComplete="new-password"
                     required
-                    minLength={8}
+                    minLength={12}
                   />
                 </Field>
                 <Field>
@@ -170,7 +191,9 @@ export default function SetupPage() {
                     id="confirmPassword"
                     name="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     required
+                    minLength={12}
                   />
                 </Field>
                 <Field>

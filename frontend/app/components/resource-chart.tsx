@@ -145,8 +145,11 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
         </div>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+        {/* min-height/min-width prevents Recharts width(-1) warning before
+            the container has laid out (B19) */}
+        <div className="w-full min-w-[200px] min-h-[220px] h-[220px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="gradCpu" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
@@ -205,8 +208,9 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
               dot={false}
               activeDot={{ r: 4, strokeWidth: 0, fill: "#3b82f6" }}
             />
-          </AreaChart>
-        </ResponsiveContainer>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );

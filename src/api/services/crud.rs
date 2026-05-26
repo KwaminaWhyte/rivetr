@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     Json,
 };
 use serde::Serialize;
@@ -15,7 +15,7 @@ use crate::db::{
 };
 use crate::AppState;
 
-use super::super::audit::{audit_log, extract_client_ip};
+use super::super::audit::{audit_log, ClientIp};
 use super::super::teams::log_team_audit;
 use super::compose::{
     get_compose_dir, run_compose_command, validate_compose_content, write_compose_file,
@@ -91,7 +91,7 @@ pub async fn get_service(
 pub async fn create_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Json(req): Json<CreateServiceRequest>,
 ) -> Result<(StatusCode, Json<ServiceResponse>), StatusCode> {
     // Validate name
@@ -152,10 +152,31 @@ pub async fn create_service(
         }
     }
 
-    // Auto-generate domain if not provided
+    // Auto-generate domain if not provided.
+    //
+    // Priority:
+    //   1. Caller-supplied domain (anything truthy).
+    //   2. ProxyConfig::generate_auto_domain (uses base_domain or server_ip).
+    //   3. Fallback to `<name>.<instance_domain>` if instance_domain is set.
+    //   4. Final fallback: `<name>.local` so the user always has *some* hostname
+    //      they can plug into /etc/hosts or a local DNS resolver.  The previous
+    //      behaviour (returning None) made compose services reachable only on raw
+    //      host ports.
     let domain = match &req.domain {
         Some(d) if !d.is_empty() => req.domain.clone(),
-        _ => state.config.proxy.generate_auto_domain(&req.name),
+        _ => state
+            .config
+            .proxy
+            .generate_auto_domain(&req.name)
+            .or_else(|| {
+                state
+                    .config
+                    .proxy
+                    .instance_domain
+                    .as_ref()
+                    .map(|d| format!("{}.{}", req.name, d))
+            })
+            .or_else(|| Some(format!("{}.local", req.name))),
     };
 
     // Create service record
@@ -209,7 +230,6 @@ pub async fn create_service(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_CREATE,
@@ -217,7 +237,7 @@ pub async fn create_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;
@@ -424,10 +444,7 @@ pub async fn update_service(
             .fetch_optional(&state.db)
             .await
             .map_err(|e| {
-                tracing::error!(
-                    "Failed to check external port conflict in databases: {}",
-                    e
-                );
+                tracing::error!("Failed to check external port conflict in databases: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
@@ -494,7 +511,7 @@ pub async fn update_service(
 pub async fn delete_service(
     State(state): State<Arc<AppState>>,
     user: User,
-    headers: HeaderMap,
+    client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Get the service
@@ -550,7 +567,6 @@ pub async fn delete_service(
         })?;
 
     // Log audit event
-    let ip = extract_client_ip(&headers, None);
     audit_log(
         &state,
         actions::SERVICE_DELETE,
@@ -558,7 +574,7 @@ pub async fn delete_service(
         Some(&service.id),
         Some(&service.name),
         Some(&user.id),
-        ip.as_deref(),
+        client_ip.as_deref(),
         None,
     )
     .await;

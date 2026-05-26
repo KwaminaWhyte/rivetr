@@ -24,8 +24,11 @@ interface OutletContext {
 const DEFAULT_PORTS: Record<string, number> = {
   postgres: 5432,
   mysql: 3306,
+  mariadb: 3306,
   mongodb: 27017,
   redis: 6379,
+  dragonfly: 6379,
+  keydb: 6379,
   clickhouse: 8123,
 };
 
@@ -377,6 +380,22 @@ function ConnectionExamples({ database }: { database: ManagedDatabase }) {
         label: "mysql (external)",
         command: database.public_access && externalPort
           ? `mysql -h localhost -P ${externalPort} -u ${username} -p ${dbName || ""}`
+          : "Enable public access for external connection",
+      },
+      {
+        label: "Node.js",
+        command: `const mysql = require('mysql2/promise');\nconst conn = await mysql.createConnection('${database.internal_connection_string || "mysql://..."}');`,
+      },
+    ],
+    mariadb: [
+      {
+        label: "mariadb (internal)",
+        command: `mariadb -h ${containerName} -P ${port} -u ${username} -p ${dbName || ""}`,
+      },
+      {
+        label: "mariadb (external)",
+        command: database.public_access && externalPort
+          ? `mariadb -h localhost -P ${externalPort} -u ${username} -p ${dbName || ""}`
           : "Enable public access for external connection",
       },
       {
