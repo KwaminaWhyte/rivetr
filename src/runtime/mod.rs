@@ -15,6 +15,36 @@ use tokio::sync::mpsc;
 
 use crate::config::RuntimeType;
 
+/// Host-protection defaults applied to every container at run time when the
+/// per-resource config does not specify its own value. Shared by the Docker and
+/// Podman runtimes. See `RuntimeConfig`.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeDefaults {
+    /// Fallback memory cap as a human-readable string (e.g. "512m"); None = no
+    /// fallback (container runs unbounded). Docker parses this to bytes; Podman
+    /// passes it straight to `-m`.
+    pub default_memory: Option<String>,
+    /// Fallback PID limit (None = no limit) — fork-bomb protection.
+    pub pids_limit: Option<i64>,
+    /// OOM score adjustment for containers (None = leave at runtime default) so
+    /// the kernel kills a runaway container before host daemons.
+    pub oom_score_adj: Option<i64>,
+}
+
+impl RuntimeDefaults {
+    /// Build host-protection defaults from the runtime config. An empty
+    /// `default_memory_limit` or non-positive `default_pids_limit` disables that
+    /// fallback. `oom_score_adj` is clamped to the valid range.
+    pub fn from_config(config: &crate::config::RuntimeConfig) -> Self {
+        let mem = config.default_memory_limit.trim();
+        Self {
+            default_memory: (!mem.is_empty()).then(|| mem.to_string()),
+            pids_limit: (config.default_pids_limit > 0).then_some(config.default_pids_limit),
+            oom_score_adj: Some(config.default_oom_score_adj.clamp(-1000, 1000)),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct BuildContext {
     pub path: String,
@@ -383,7 +413,9 @@ pub async fn detect_runtime(
 ) -> Result<Arc<dyn ContainerRuntime>> {
     match config.runtime_type {
         RuntimeType::Docker => match DockerRuntime::new(&config.docker_socket) {
-            Ok(runtime) => Ok(Arc::new(runtime)),
+            Ok(runtime) => Ok(Arc::new(
+                runtime.with_defaults(RuntimeDefaults::from_config(config)),
+            )),
             Err(e) => {
                 tracing::warn!(
                     "Failed to connect to Docker: {}. Deployments will not work.",
@@ -393,7 +425,7 @@ pub async fn detect_runtime(
             }
         },
         RuntimeType::Podman => {
-            let runtime = PodmanRuntime::new();
+            let runtime = PodmanRuntime::new().with_defaults(RuntimeDefaults::from_config(config));
             Ok(Arc::new(runtime))
         }
         RuntimeType::Auto => {
@@ -401,7 +433,9 @@ pub async fn detect_runtime(
             if let Ok(docker) = DockerRuntime::new(&config.docker_socket) {
                 if docker.is_available().await {
                     tracing::info!("Auto-detected Docker runtime");
-                    return Ok(Arc::new(docker));
+                    return Ok(Arc::new(
+                        docker.with_defaults(RuntimeDefaults::from_config(config)),
+                    ));
                 }
             }
 
@@ -409,11 +443,52 @@ pub async fn detect_runtime(
             let podman = PodmanRuntime::new();
             if podman.is_available().await {
                 tracing::info!("Auto-detected Podman runtime");
-                return Ok(Arc::new(podman));
+                return Ok(Arc::new(
+                    podman.with_defaults(RuntimeDefaults::from_config(config)),
+                ));
             }
 
             tracing::warn!("No container runtime available. Deployments will not work until Docker or Podman is installed.");
             Ok(Arc::new(NoopRuntime))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RuntimeConfig;
+
+    #[test]
+    fn defaults_from_config_applies_protection() {
+        let cfg = RuntimeConfig::default();
+        let d = RuntimeDefaults::from_config(&cfg);
+        assert_eq!(d.default_memory.as_deref(), Some("512m"));
+        assert_eq!(d.pids_limit, Some(512));
+        assert_eq!(d.oom_score_adj, Some(500));
+    }
+
+    #[test]
+    fn empty_memory_and_zero_pids_disable_fallback() {
+        let cfg = RuntimeConfig {
+            default_memory_limit: "  ".to_string(),
+            default_pids_limit: 0,
+            ..RuntimeConfig::default()
+        };
+        let d = RuntimeDefaults::from_config(&cfg);
+        assert_eq!(d.default_memory, None);
+        assert_eq!(d.pids_limit, None);
+    }
+
+    #[test]
+    fn oom_score_adj_is_clamped() {
+        let cfg = RuntimeConfig {
+            default_oom_score_adj: 9999,
+            ..RuntimeConfig::default()
+        };
+        assert_eq!(
+            RuntimeDefaults::from_config(&cfg).oom_score_adj,
+            Some(1000)
+        );
     }
 }

@@ -15,8 +15,11 @@ use super::{
     ExecHandle, LogLine, RegistryAuth, RunConfig,
 };
 
+use super::RuntimeDefaults;
+
 pub struct DockerRuntime {
     pub(super) client: Docker,
+    pub(super) defaults: RuntimeDefaults,
 }
 
 impl DockerRuntime {
@@ -30,7 +33,16 @@ impl DockerRuntime {
                 Docker::connect_with_socket(socket, 120, bollard::API_DEFAULT_VERSION)?
             };
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            defaults: RuntimeDefaults::default(),
+        })
+    }
+
+    /// Set the host-protection defaults applied to every container at run time.
+    pub fn with_defaults(mut self, defaults: RuntimeDefaults) -> Self {
+        self.defaults = defaults;
+        self
     }
 }
 

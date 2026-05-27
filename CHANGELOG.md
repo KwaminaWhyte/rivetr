@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Host-protection resource defaults — a runaway container can no longer hang the host** — Previously per-container memory/CPU limits were applied only when a user set them explicitly; an app/service/database with no limit ran unbounded and could exhaust host RAM (the same failure mode that takes down unprotected Coolify hosts). Every running container now inherits configurable safety defaults when it sets no limit of its own (per-resource limits still override):
+  - `runtime.default_memory_limit` (default `512m`) — Docker/Podman OOM-kills the container at this cap; swap is disabled at the cap (`memory_swap = memory`) so a container cannot escape it via swap.
+  - `runtime.default_pids_limit` (default `512`) — fork-bomb protection.
+  - `runtime.default_oom_score_adj` (default `500`) — biases the kernel OOM killer toward the offending container and away from host daemons (Rivetr, dockerd), so the platform survives and can restart the casualty.
+  - Applied at the single `runtime.run()` chokepoint, so apps, services, managed databases, preview deployments, and rollbacks all inherit it. Implemented for both the Docker (`HostConfig`) and Podman (CLI flags) runtimes. Set `default_memory_limit = ""` to opt out.
+
 ## [0.10.22] - 2026-05-27
 
 ### Fixed

@@ -130,6 +130,22 @@ pub struct RuntimeConfig {
     /// Memory limit for builds (e.g., "2g" for 2GB). Default: 2g
     #[serde(default = "default_build_memory_limit")]
     pub build_memory_limit: String,
+    /// Fallback memory limit applied to every app/service/database container that
+    /// does not set its own limit (e.g. "512m", "1g"). Docker OOM-kills the
+    /// container at this cap instead of letting it exhaust host RAM. Set to an
+    /// empty string to disable the fallback (containers run unbounded — not
+    /// recommended). Per-resource limits always override this. Default: 512m
+    #[serde(default = "default_run_memory_limit")]
+    pub default_memory_limit: String,
+    /// Fallback PID limit applied to every container (fork-bomb protection).
+    /// 0 disables. Default: 512
+    #[serde(default = "default_run_pids_limit")]
+    pub default_pids_limit: i64,
+    /// OOM score adjustment applied to every container so the kernel kills a
+    /// runaway container before host daemons (Rivetr, dockerd). Range -1000..1000;
+    /// higher = killed sooner. Default: 500
+    #[serde(default = "default_run_oom_score_adj")]
+    pub default_oom_score_adj: i64,
 }
 
 impl Default for RuntimeConfig {
@@ -139,8 +155,23 @@ impl Default for RuntimeConfig {
             docker_socket: default_docker_socket(),
             build_cpu_limit: default_build_cpu_limit(),
             build_memory_limit: default_build_memory_limit(),
+            default_memory_limit: default_run_memory_limit(),
+            default_pids_limit: default_run_pids_limit(),
+            default_oom_score_adj: default_run_oom_score_adj(),
         }
     }
+}
+
+fn default_run_memory_limit() -> String {
+    "512m".to_string()
+}
+
+fn default_run_pids_limit() -> i64 {
+    512
+}
+
+fn default_run_oom_score_adj() -> i64 {
+    500
 }
 
 fn default_build_cpu_limit() -> String {

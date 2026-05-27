@@ -30,6 +30,19 @@ build_cpu_limit = "2"
 # Memory limit for builds (e.g., "2g" for 2GB, "512m" for 512MB). Default: "2g"
 build_memory_limit = "2g"
 
+# Host-protection defaults for RUNNING containers (apps, services, databases).
+# Applied automatically when a resource sets no limit of its own; per-resource
+# limits always override these. Protects the host from a runaway container.
+# Fallback memory cap — container is OOM-killed at this cap instead of eating all
+# host RAM. Swap is disabled at this cap (no escape). Empty string = no fallback
+# (unbounded; not recommended). Default: "512m"
+default_memory_limit = "512m"
+# Fallback PID limit (fork-bomb protection). 0 disables. Default: 512
+default_pids_limit = 512
+# OOM score adjustment so the kernel kills a runaway container before host
+# daemons (Rivetr, dockerd). Range -1000..1000; higher = killed sooner. Default: 500
+default_oom_score_adj = 500
+
 [proxy]
 # Enable automatic HTTPS with Let's Encrypt
 acme_enabled = false

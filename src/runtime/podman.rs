@@ -13,17 +13,20 @@ use super::{
     ExecHandle, LogLine, LogStream, RegistryAuth, RunConfig, TtySize,
 };
 
-pub struct PodmanRuntime;
-
-impl Default for PodmanRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Default)]
+pub struct PodmanRuntime {
+    defaults: super::RuntimeDefaults,
 }
 
 impl PodmanRuntime {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// Set the host-protection defaults applied to every container at run time.
+    pub fn with_defaults(mut self, defaults: super::RuntimeDefaults) -> Self {
+        self.defaults = defaults;
+        self
     }
 
     async fn run_command(&self, args: &[String]) -> Result<String> {
@@ -205,9 +208,27 @@ impl ContainerRuntime for PodmanRuntime {
             args.push(format!("{}={}", key, value));
         }
 
-        if let Some(mem) = &config.memory_limit {
+        // Host-protection: fall back to the runtime-wide default memory cap when
+        // this container sets none, disable swap (--memory-swap = limit), and
+        // apply the default PID limit + OOM score adjustment so a runaway
+        // container is killed before it can hang the host.
+        let mem_limit = config
+            .memory_limit
+            .clone()
+            .or_else(|| self.defaults.default_memory.clone());
+        if let Some(mem) = mem_limit {
             args.push("-m".to_string());
             args.push(mem.clone());
+            args.push("--memory-swap".to_string());
+            args.push(mem);
+        }
+        if let Some(pids) = self.defaults.pids_limit {
+            args.push("--pids-limit".to_string());
+            args.push(pids.to_string());
+        }
+        if let Some(oom) = self.defaults.oom_score_adj {
+            args.push("--oom-score-adj".to_string());
+            args.push(oom.to_string());
         }
 
         if let Some(cpu) = &config.cpu_limit {

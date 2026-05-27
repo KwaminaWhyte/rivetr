@@ -21,7 +21,7 @@ use crate::runtime::{
 
 use super::DockerRuntime;
 
-fn parse_memory(s: &str) -> Option<i64> {
+pub(super) fn parse_memory(s: &str) -> Option<i64> {
     let s = s.to_lowercase();
     if s.ends_with("gb") {
         s.trim_end_matches("gb")
@@ -231,10 +231,30 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
             }
         });
 
+    // Host-protection: fall back to the runtime-wide default memory cap when this
+    // container sets none, so a runaway container is OOM-killed at the cap instead
+    // of exhausting host RAM. memory_swap = memory disables swap (no escape past
+    // the cap). pids_limit guards against fork bombs; oom_score_adj biases the
+    // kernel OOM killer toward the container and away from Rivetr/dockerd.
+    let memory = config
+        .memory_limit
+        .as_ref()
+        .and_then(|m| parse_memory(m))
+        .or_else(|| {
+            runtime
+                .defaults
+                .default_memory
+                .as_deref()
+                .and_then(parse_memory)
+        });
+
     let host_config = bollard::service::HostConfig {
         port_bindings: Some(port_bindings),
-        memory: config.memory_limit.as_ref().and_then(|m| parse_memory(m)),
+        memory,
+        memory_swap: memory, // equal to memory => swap disabled for this container
         nano_cpus: config.cpu_limit.as_ref().and_then(|c| parse_cpu(c)),
+        pids_limit: runtime.defaults.pids_limit,
+        oom_score_adj: runtime.defaults.oom_score_adj,
         extra_hosts,
         binds,
         restart_policy: Some(restart_policy),
