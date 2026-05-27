@@ -1002,4 +1002,337 @@ export default defineConfig({});
         assert_eq!(result.build_type, BuildType::Nixpacks);
         assert!(result.confidence < 1.0);
     }
+
+    #[test]
+    fn test_build_type_as_str_roundtrip() {
+        // Every variant's as_str() must parse back to itself via from_str()
+        let all = [
+            BuildType::Dockerfile,
+            BuildType::Nixpacks,
+            BuildType::Railpack,
+            BuildType::Cnb,
+            BuildType::StaticSite,
+            BuildType::DockerCompose,
+            BuildType::DockerImage,
+        ];
+        for bt in all {
+            assert_eq!(BuildType::from_str(bt.as_str()), Some(bt));
+        }
+    }
+
+    #[test]
+    fn test_build_type_from_str_aliases_and_case() {
+        // CNB aliases
+        assert_eq!(BuildType::from_str("buildpack"), Some(BuildType::Cnb));
+        assert_eq!(BuildType::from_str("heroku-cnb"), Some(BuildType::Cnb));
+        // Static aliases
+        assert_eq!(
+            BuildType::from_str("staticsite"),
+            Some(BuildType::StaticSite)
+        );
+        assert_eq!(
+            BuildType::from_str("static-site"),
+            Some(BuildType::StaticSite)
+        );
+        // Compose aliases
+        assert_eq!(
+            BuildType::from_str("compose"),
+            Some(BuildType::DockerCompose)
+        );
+        // Image aliases
+        assert_eq!(BuildType::from_str("image"), Some(BuildType::DockerImage));
+        // Case insensitivity
+        assert_eq!(
+            BuildType::from_str("DOCKERFILE"),
+            Some(BuildType::Dockerfile)
+        );
+        assert_eq!(BuildType::from_str("NixPacks"), Some(BuildType::Nixpacks));
+        // Unknown
+        assert_eq!(BuildType::from_str(""), None);
+        assert_eq!(BuildType::from_str("magic"), None);
+    }
+
+    #[tokio::test]
+    async fn test_detect_containerfile() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(temp_path.join("Containerfile"), "FROM alpine").unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Dockerfile);
+        assert!(result.detected_from.contains("Containerfile"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_dockerfile_in_subdir() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::create_dir(temp_path.join("docker")).unwrap();
+        std::fs::write(temp_path.join("docker").join("Dockerfile"), "FROM alpine").unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Dockerfile);
+        assert!(result.detected_from.contains("docker/Dockerfile"));
+    }
+
+    #[tokio::test]
+    async fn test_detect_compose_variants() {
+        for name in ["compose.yml", "compose.yaml", "docker-compose.yaml"] {
+            let temp_dir = TempDir::new().unwrap();
+            let temp_path = temp_dir.path();
+            std::fs::write(temp_path.join(name), "services: {}").unwrap();
+
+            let result = detect_build_type(temp_path).await.unwrap();
+            assert_eq!(
+                result.build_type,
+                BuildType::DockerCompose,
+                "failed for {}",
+                name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compose_takes_priority_over_railpack() {
+        // docker-compose (priority 2) beats railpack.toml (priority 3)
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(temp_path.join("docker-compose.yml"), "services: {}").unwrap();
+        std::fs::write(temp_path.join("railpack.toml"), "build_cmd = \"x\"").unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::DockerCompose);
+    }
+
+    #[tokio::test]
+    async fn test_dockerfile_beats_compose() {
+        // Dockerfile (priority 1) beats docker-compose (priority 2)
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(temp_path.join("Dockerfile"), "FROM alpine").unwrap();
+        std::fs::write(temp_path.join("docker-compose.yml"), "services: {}").unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Dockerfile);
+    }
+
+    #[tokio::test]
+    async fn test_detect_astro_ssr_uses_nixpacks() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(
+            temp_path.join("astro.config.mjs"),
+            r#"
+import node from '@astrojs/node';
+export default { adapter: node(), output: 'server' };
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+        assert!(result.confidence < 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_detect_vite_ssr_uses_nixpacks() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(
+            temp_path.join("vite.config.ts"),
+            r#"
+export default { ssr: true };
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+    }
+
+    #[tokio::test]
+    async fn test_detect_vite_custom_outdir() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(
+            temp_path.join("vite.config.ts"),
+            r#"
+export default { build: { outDir: 'build' } };
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::StaticSite);
+        assert_eq!(result.publish_directory, Some("build".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_detect_sveltekit_static_adapter() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(
+            temp_path.join("svelte.config.js"),
+            r#"
+import adapter from '@sveltejs/adapter-static';
+export default { kit: { adapter: adapter() } };
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::StaticSite);
+        assert_eq!(result.publish_directory, Some("build".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_detect_sveltekit_node_adapter_uses_nixpacks() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        std::fs::write(
+            temp_path.join("svelte.config.js"),
+            r#"
+import adapter from '@sveltejs/adapter-node';
+export default { kit: { adapter: adapter() } };
+"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+        assert!(result.confidence < 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_nextjs_without_export_falls_through_to_nixpacks() {
+        // next.config.js without static export => not StaticSite; package.json => Nixpacks
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(
+            temp_path.join("next.config.js"),
+            "module.exports = { reactStrictMode: true };",
+        )
+        .unwrap();
+        std::fs::write(temp_path.join("package.json"), r#"{"name":"x"}"#).unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+    }
+
+    #[tokio::test]
+    async fn test_index_html_with_package_json_not_plain_html() {
+        // index.html + package.json => NOT plain HTML static; goes to Nixpacks
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(temp_path.join("index.html"), "<html></html>").unwrap();
+        std::fs::write(temp_path.join("package.json"), r#"{"name":"x"}"#).unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+    }
+
+    #[tokio::test]
+    async fn test_detect_other_languages() {
+        // Each language indicator should resolve to Nixpacks
+        let cases = [
+            ("Gemfile", "source 'https://rubygems.org'"),
+            ("composer.json", r#"{"name":"x/y"}"#),
+            ("pom.xml", "<project></project>"),
+            ("build.gradle", "plugins {}"),
+            ("mix.exs", "defmodule X do\nend"),
+            ("pyproject.toml", "[project]\nname='x'"),
+            ("go.mod", "module x"),
+        ];
+        for (file, body) in cases {
+            let temp_dir = TempDir::new().unwrap();
+            let temp_path = temp_dir.path();
+            std::fs::write(temp_path.join(file), body).unwrap();
+
+            let result = detect_build_type(temp_path).await.unwrap();
+            assert_eq!(
+                result.build_type,
+                BuildType::Nixpacks,
+                "failed for {}",
+                file
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_dotnet_glob() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(temp_path.join("MyApp.csproj"), "<Project></Project>").unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+        assert!(result.detected_from.contains(".NET"));
+    }
+
+    #[tokio::test]
+    async fn test_nodejs_publish_dir_from_build_script() {
+        // package.json build script hinting outDir=build => publish dir "build"
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(
+            temp_path.join("package.json"),
+            r#"{"name":"x","scripts":{"build":"vite build --outDir=build"}}"#,
+        )
+        .unwrap();
+
+        let result = detect_build_type(temp_path).await.unwrap();
+        assert_eq!(result.build_type, BuildType::Nixpacks);
+        assert_eq!(result.publish_directory, Some("build".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_detect_publish_directory_fn() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // No build output dirs and no index.html => None
+        assert_eq!(detect_publish_directory(temp_path).await.unwrap(), None);
+
+        // dist dir present => "dist" (default_check = true, no index needed)
+        std::fs::create_dir(temp_path.join("dist")).unwrap();
+        assert_eq!(
+            detect_publish_directory(temp_path).await.unwrap(),
+            Some("dist".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_publish_directory_public_needs_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+
+        // "public" only counts when it contains index.html (default_check = false)
+        std::fs::create_dir(temp_path.join("public")).unwrap();
+        assert_eq!(detect_publish_directory(temp_path).await.unwrap(), None);
+
+        std::fs::write(temp_path.join("public").join("index.html"), "<html>").unwrap();
+        assert_eq!(
+            detect_publish_directory(temp_path).await.unwrap(),
+            Some("public".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_detect_publish_directory_root_index() {
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        std::fs::write(temp_path.join("index.html"), "<html>").unwrap();
+
+        assert_eq!(
+            detect_publish_directory(temp_path).await.unwrap(),
+            Some(".".to_string())
+        );
+    }
 }

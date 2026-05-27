@@ -285,7 +285,11 @@ async fn main() -> Result<()> {
     spawn_deployment_cleanup_task(db.clone(), runtime.clone(), config.cleanup.clone());
 
     // Start disk space monitoring task
-    spawn_disk_monitor_task(config.server.data_dir.clone(), config.disk_monitor.clone());
+    spawn_disk_monitor_task(
+        config.server.data_dir.clone(),
+        config.disk_monitor.clone(),
+        runtime.clone(),
+    );
 
     // Start container stats collection task
     spawn_stats_collector_task(runtime.clone());

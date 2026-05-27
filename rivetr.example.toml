@@ -42,6 +42,13 @@ default_pids_limit = 512
 # OOM score adjustment so the kernel kills a runaway container before host
 # daemons (Rivetr, dockerd). Range -1000..1000; higher = killed sooner. Default: 500
 default_oom_score_adj = 500
+# Max size of a single container log file before rotation (e.g. "10m", "1g").
+# Caps unbounded json-file log growth that can otherwise fill the host disk and
+# hang it. Empty string = no rotation (unbounded; not recommended). Default: "10m"
+default_log_max_size = "10m"
+# Max number of rotated log files to retain per container. Docker only; Podman
+# applies max-size but not max-file. 0 or negative disables. Default: 3
+default_log_max_file = 3
 
 [proxy]
 # Enable automatic HTTPS with Let's Encrypt

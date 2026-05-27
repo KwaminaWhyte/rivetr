@@ -29,18 +29,30 @@ pub struct RuntimeDefaults {
     /// OOM score adjustment for containers (None = leave at runtime default) so
     /// the kernel kills a runaway container before host daemons.
     pub oom_score_adj: Option<i64>,
+    /// Max size of a single container log file before rotation (e.g. "10m");
+    /// None = no rotation (logs grow unbounded). Caps json-file log growth that
+    /// could otherwise fill the host disk.
+    pub log_max_size: Option<String>,
+    /// Max number of rotated log files to retain per container (Docker only).
+    /// None = unset.
+    pub log_max_file: Option<i64>,
 }
 
 impl RuntimeDefaults {
     /// Build host-protection defaults from the runtime config. An empty
     /// `default_memory_limit` or non-positive `default_pids_limit` disables that
-    /// fallback. `oom_score_adj` is clamped to the valid range.
+    /// fallback. `oom_score_adj` is clamped to the valid range. An empty
+    /// `default_log_max_size` or non-positive `default_log_max_file` disables that
+    /// part of log rotation.
     pub fn from_config(config: &crate::config::RuntimeConfig) -> Self {
         let mem = config.default_memory_limit.trim();
+        let log_size = config.default_log_max_size.trim();
         Self {
             default_memory: (!mem.is_empty()).then(|| mem.to_string()),
             pids_limit: (config.default_pids_limit > 0).then_some(config.default_pids_limit),
             oom_score_adj: Some(config.default_oom_score_adj.clamp(-1000, 1000)),
+            log_max_size: (!log_size.is_empty()).then(|| log_size.to_string()),
+            log_max_file: (config.default_log_max_file > 0).then_some(config.default_log_max_file),
         }
     }
 }
@@ -466,6 +478,20 @@ mod tests {
         assert_eq!(d.default_memory.as_deref(), Some("512m"));
         assert_eq!(d.pids_limit, Some(512));
         assert_eq!(d.oom_score_adj, Some(500));
+        assert_eq!(d.log_max_size.as_deref(), Some("10m"));
+        assert_eq!(d.log_max_file, Some(3));
+    }
+
+    #[test]
+    fn empty_log_size_and_zero_log_file_disable_rotation() {
+        let cfg = RuntimeConfig {
+            default_log_max_size: "  ".to_string(),
+            default_log_max_file: 0,
+            ..RuntimeConfig::default()
+        };
+        let d = RuntimeDefaults::from_config(&cfg);
+        assert_eq!(d.log_max_size, None);
+        assert_eq!(d.log_max_file, None);
     }
 
     #[test]
@@ -486,9 +512,6 @@ mod tests {
             default_oom_score_adj: 9999,
             ..RuntimeConfig::default()
         };
-        assert_eq!(
-            RuntimeDefaults::from_config(&cfg).oom_score_adj,
-            Some(1000)
-        );
+        assert_eq!(RuntimeDefaults::from_config(&cfg).oom_score_adj, Some(1000));
     }
 }

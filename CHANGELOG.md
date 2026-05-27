@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `runtime.default_pids_limit` (default `512`) — fork-bomb protection.
   - `runtime.default_oom_score_adj` (default `500`) — biases the kernel OOM killer toward the offending container and away from host daemons (Rivetr, dockerd), so the platform survives and can restart the casualty.
   - Applied at the single `runtime.run()` chokepoint, so apps, services, managed databases, preview deployments, and rollbacks all inherit it. Implemented for both the Docker (`HostConfig`) and Podman (CLI flags) runtimes. Set `default_memory_limit = ""` to opt out.
+- **Container log rotation + critical-disk auto-reclaim — a full disk can no longer hang the host** — Container logs were unbounded (Docker's default `json-file` driver grows forever) and `disk_monitor` only logged warnings, taking no action. Now every container gets log rotation defaults (`runtime.default_log_max_size` = `10m`, `runtime.default_log_max_file` = `3`; Docker `HostConfig.log_config`, Podman `--log-opt max-size`), and when disk usage crosses the critical threshold the monitor automatically reclaims space by pruning images + build cache. Closes the second host-hang vector (disk) after RAM.
+- **Database integrity check on startup** — Startup self-check now runs a SQLite `PRAGMA quick_check`; corruption (e.g. from a prior power loss or full disk) is surfaced loudly in the startup report. Non-critical — the server still starts — but the problem is no longer silent. New `db::integrity_check()` helper.
+- **Tooling & reference docs** — Added `rustfmt.toml` (stable-only formatting config), a `[lints]` table in `Cargo.toml` (codified clippy/rustc lint levels), `docs/reference/configuration.md` (every `rivetr.toml` field with type/default/description), and `docs/reference/api.md` (full REST endpoint catalog).
+
+### Tests
+- Expanded unit coverage for core pure-logic modules: build-type auto-detection (`src/engine/build_detect.rs`) and API input validation (`src/api/validation/apps.rs`) — +33 tests covering build-type precedence, SSR-vs-static framework detection, and security-relevant input validation (shell-metacharacter/command-injection blocking, path traversal, oversized/empty input). Suite now 246 passing.
 
 ## [0.10.22] - 2026-05-27
 

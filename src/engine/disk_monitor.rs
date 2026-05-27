@@ -7,8 +7,10 @@
 //! - Logs warnings when disk usage exceeds configurable thresholds
 
 use crate::config::DiskMonitorConfig;
+use crate::runtime::ContainerRuntime;
 use anyhow::Result;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 /// Disk space statistics
@@ -147,27 +149,34 @@ pub struct DiskMonitor {
     config: DiskMonitorConfig,
     /// Last logged warning threshold (to avoid spamming logs)
     last_warning_threshold: std::sync::atomic::AtomicU8,
+    /// Container runtime used to reclaim disk space when usage is critical
+    runtime: Arc<dyn ContainerRuntime>,
 }
 
 impl DiskMonitor {
     /// Create a new disk monitor
-    pub fn new(path: std::path::PathBuf, config: DiskMonitorConfig) -> Self {
+    pub fn new(
+        path: std::path::PathBuf,
+        config: DiskMonitorConfig,
+        runtime: Arc<dyn ContainerRuntime>,
+    ) -> Self {
         Self {
             path,
             config,
             last_warning_threshold: std::sync::atomic::AtomicU8::new(0),
+            runtime,
         }
     }
 
     /// Run a single check cycle
-    pub fn check(&self) -> Result<DiskStats> {
+    pub async fn check(&self) -> Result<DiskStats> {
         let stats = DiskStats::for_path(&self.path)?;
 
         // Update Prometheus metrics
         self.update_metrics(&stats);
 
-        // Check thresholds and log warnings
-        self.check_thresholds(&stats);
+        // Check thresholds, log warnings, and auto-reclaim when critical
+        self.check_thresholds(&stats).await;
 
         Ok(stats)
     }
@@ -182,8 +191,9 @@ impl DiskMonitor {
         gauge!(crate::api::metrics::DISK_USAGE_PERCENT).set(stats.usage_percent);
     }
 
-    /// Check disk usage thresholds and log warnings
-    fn check_thresholds(&self, stats: &DiskStats) {
+    /// Check disk usage thresholds, log warnings, and auto-reclaim space when
+    /// usage crosses into the critical threshold.
+    async fn check_thresholds(&self, stats: &DiskStats) {
         use std::sync::atomic::Ordering;
 
         let usage = stats.usage_percent;
@@ -209,6 +219,12 @@ impl DiskMonitor {
                     path = %self.path.display(),
                     "CRITICAL: Disk usage exceeds critical threshold!"
                 );
+                // Store the new threshold before reclaiming so the dedupe holds
+                // even if reclaim is slow or fails.
+                self.last_warning_threshold
+                    .store(current_threshold, Ordering::Relaxed);
+                self.reclaim_disk_space().await;
+                return;
             } else if current_threshold >= self.config.warning_threshold {
                 tracing::warn!(
                     usage_percent = format!("{:.1}", usage),
@@ -232,10 +248,41 @@ impl DiskMonitor {
                 .store(current_threshold, Ordering::Relaxed);
         }
     }
+
+    /// Reclaim disk space by pruning unused images and the build cache.
+    /// Failures are logged, not fatal — the host stays running.
+    async fn reclaim_disk_space(&self) {
+        tracing::warn!("Critical disk usage: reclaiming space (pruning images + build cache)");
+
+        let mut reclaimed: u64 = 0;
+        match self.runtime.prune_images().await {
+            Ok(bytes) => reclaimed = reclaimed.saturating_add(bytes),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to prune images during critical disk reclaim")
+            }
+        }
+        match self.runtime.prune_build_cache().await {
+            Ok(bytes) => reclaimed = reclaimed.saturating_add(bytes),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to prune build cache during critical disk reclaim")
+            }
+        }
+
+        let reclaimed_mb = reclaimed as f64 / (1024.0 * 1024.0);
+        tracing::warn!(
+            reclaimed_bytes = reclaimed,
+            reclaimed_mb = format!("{:.1}", reclaimed_mb),
+            "Critical disk reclaim complete"
+        );
+    }
 }
 
 /// Spawn the background disk monitoring task
-pub fn spawn_disk_monitor_task(path: std::path::PathBuf, config: DiskMonitorConfig) {
+pub fn spawn_disk_monitor_task(
+    path: std::path::PathBuf,
+    config: DiskMonitorConfig,
+    runtime: Arc<dyn ContainerRuntime>,
+) {
     if !config.enabled {
         tracing::info!("Disk monitoring is disabled");
         return;
@@ -250,11 +297,11 @@ pub fn spawn_disk_monitor_task(path: std::path::PathBuf, config: DiskMonitorConf
         "Starting disk space monitoring task"
     );
 
-    let monitor = DiskMonitor::new(path, config);
+    let monitor = DiskMonitor::new(path, config, runtime);
 
     tokio::spawn(async move {
         // Run an initial check immediately
-        if let Err(e) = monitor.check() {
+        if let Err(e) = monitor.check().await {
             tracing::warn!(error = %e, "Initial disk check failed");
         }
 
@@ -264,7 +311,7 @@ pub fn spawn_disk_monitor_task(path: std::path::PathBuf, config: DiskMonitorConf
         loop {
             tick.tick().await;
             if let Some(Err(e)) =
-                crate::utils::supervise::guarded("disk_monitor", async { monitor.check() }).await
+                crate::utils::supervise::guarded("disk_monitor", monitor.check()).await
             {
                 tracing::error!(error = %e, "Disk monitoring check failed");
             }

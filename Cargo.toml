@@ -131,6 +131,19 @@ tui = ["ratatui", "crossterm"]
 [dev-dependencies]
 tokio-test = "0.4"
 
+# Lint levels codified in the manifest so `cargo clippy`/`cargo build` apply them
+# consistently in local dev and CI without extra flags. These all pass clean on
+# the current tree — they document existing conventions rather than introduce new
+# errors. Tighten to "deny" in CI via `cargo clippy -- -D warnings` if desired.
+[lints.rust]
+unused_imports = "warn"
+unused_must_use = "warn"
+
+[lints.clippy]
+# Catch debug leftovers and obvious foot-guns at warn level.
+dbg_macro = "warn"
+todo = "warn"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

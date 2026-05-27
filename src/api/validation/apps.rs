@@ -727,4 +727,306 @@ mod tests {
         assert!(validate_custom_docker_options(&Some("--network=host".to_string())).is_err());
         assert!(validate_custom_docker_options(&Some("-v /:/mnt".to_string())).is_err());
     }
+
+    #[test]
+    fn test_validate_app_name_oversized() {
+        // 63 chars is the max allowed
+        let max_name = "a".repeat(63);
+        assert!(validate_app_name(&max_name).is_ok());
+
+        // 64 chars must be rejected
+        let too_long = "a".repeat(64);
+        assert!(validate_app_name(&too_long).is_err());
+    }
+
+    #[test]
+    fn test_validate_app_name_metacharacters() {
+        // Shell metacharacters / spaces / path separators must be rejected
+        assert!(validate_app_name("my app").is_err());
+        assert!(validate_app_name("app;rm").is_err());
+        assert!(validate_app_name("app/sub").is_err());
+        assert!(validate_app_name("app$(id)").is_err());
+        assert!(validate_app_name("app.name").is_err()); // dot not allowed
+    }
+
+    #[test]
+    fn test_validate_dockerfile() {
+        // Valid relative paths
+        assert!(validate_dockerfile("Dockerfile").is_ok());
+        assert!(validate_dockerfile("./Dockerfile").is_ok());
+        assert!(validate_dockerfile("docker/Dockerfile").is_ok());
+        assert!(validate_dockerfile("./build/Dockerfile.prod").is_ok());
+
+        // Empty rejected
+        assert!(validate_dockerfile("").is_err());
+
+        // Path traversal rejected
+        assert!(validate_dockerfile("../Dockerfile").is_err());
+        assert!(validate_dockerfile("docker/../../etc/passwd").is_err());
+
+        // Absolute path (not ./) rejected
+        assert!(validate_dockerfile("/etc/Dockerfile").is_err());
+
+        // Oversized rejected (>512)
+        assert!(validate_dockerfile(&"a".repeat(513)).is_err());
+        assert!(validate_dockerfile(&"a".repeat(512)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_healthcheck() {
+        // None and empty treated as no healthcheck
+        assert!(validate_healthcheck(&None).is_ok());
+        assert!(validate_healthcheck(&Some("".to_string())).is_ok());
+
+        // Valid absolute paths
+        assert!(validate_healthcheck(&Some("/".to_string())).is_ok());
+        assert!(validate_healthcheck(&Some("/health".to_string())).is_ok());
+        assert!(validate_healthcheck(&Some("/api/v1/healthz".to_string())).is_ok());
+
+        // Must start with '/'
+        assert!(validate_healthcheck(&Some("health".to_string())).is_err());
+
+        // Oversized rejected (>512)
+        assert!(validate_healthcheck(&Some(format!("/{}", "a".repeat(512)))).is_err());
+    }
+
+    #[test]
+    fn test_validate_cpu_limit_range() {
+        // Upper bound: 128 ok, >128 rejected
+        assert!(validate_cpu_limit(&Some("128".to_string())).is_ok());
+        assert!(validate_cpu_limit(&Some("128.0".to_string())).is_ok());
+        assert!(validate_cpu_limit(&Some("129".to_string())).is_err());
+        assert!(validate_cpu_limit(&Some("1000".to_string())).is_err());
+
+        // Zero rejected (must be > 0)
+        assert!(validate_cpu_limit(&Some("0".to_string())).is_err());
+        assert!(validate_cpu_limit(&Some("0.0".to_string())).is_err());
+
+        // Empty treated as no limit
+        assert!(validate_cpu_limit(&Some("".to_string())).is_ok());
+    }
+
+    #[test]
+    fn test_validate_base_directory_null_byte() {
+        // Null byte must be rejected
+        assert!(validate_base_directory(&Some("src\0app".to_string())).is_err());
+
+        // Oversized rejected (>512)
+        assert!(validate_base_directory(&Some("a".repeat(513))).is_err());
+    }
+
+    #[test]
+    fn test_validate_watch_paths_oversized() {
+        // Oversized JSON rejected (>4096)
+        let big = format!("[\"{}\"]", "a".repeat(4100));
+        assert!(validate_watch_paths(&Some(big)).is_err());
+    }
+
+    #[test]
+    fn test_validate_custom_docker_options_oversized_and_more() {
+        // Oversized rejected (>2048)
+        assert!(validate_custom_docker_options(&Some("a".repeat(2049))).is_err());
+
+        // Additional dangerous flags (case-insensitive match)
+        assert!(validate_custom_docker_options(&Some("--PID=host".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("--device /dev/sda".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("--ipc=host".to_string())).is_err());
+        assert!(validate_custom_docker_options(&Some("--volume /:/host".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_deployment_commands_valid() {
+        assert!(validate_deployment_commands(&None, "pre_deploy").is_ok());
+        assert!(validate_deployment_commands(&Some(vec![]), "pre_deploy").is_ok());
+        assert!(validate_deployment_commands(
+            &Some(vec!["npm run migrate".to_string(), "echo done".to_string(),]),
+            "pre_deploy",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_validate_deployment_commands_shell_metacharacters() {
+        // Each dangerous shell metacharacter must be blocked (command injection)
+        let injections = [
+            "echo $(whoami)", // command substitution
+            "echo `id`",      // backtick substitution
+            "ls && rm file",  // command chaining (and)
+            "ls || rm file",  // command chaining (or)
+            "ls; rm file",    // command separator
+            "cat file | sh",  // pipe
+            "echo x > out",   // output redirect
+            "echo x >> out",  // append redirect
+            "sh < input",     // input redirect
+            "run &",          // background execution
+            "line1\nline2",   // newline injection
+            "line1\rline2",   // carriage return injection
+        ];
+        for inj in injections {
+            assert!(
+                validate_deployment_commands(&Some(vec![inj.to_string()]), "pre_deploy").is_err(),
+                "expected rejection for: {:?}",
+                inj
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_deployment_commands_dangerous_patterns() {
+        // Destructive / RCE patterns must be blocked (case-insensitive)
+        let patterns = [
+            "rm -rf /",
+            "RM -RF /*",
+            "mkfs.ext4 /dev/sdb",
+            "dd if=/dev/zero of=disk",
+            "chmod 777 secrets",
+        ];
+        for p in patterns {
+            assert!(
+                validate_deployment_commands(&Some(vec![p.to_string()]), "post_deploy").is_err(),
+                "expected rejection for: {:?}",
+                p
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_deployment_commands_edge_cases() {
+        // Empty command rejected
+        assert!(validate_deployment_commands(&Some(vec!["".to_string()]), "pre_deploy").is_err());
+
+        // Null byte rejected
+        assert!(
+            validate_deployment_commands(&Some(vec!["echo\0x".to_string()]), "pre_deploy").is_err()
+        );
+
+        // Oversized single command rejected (>4096)
+        assert!(validate_deployment_commands(&Some(vec!["a".repeat(4097)]), "pre_deploy").is_err());
+
+        // Too many commands rejected (>50)
+        let many: Vec<String> = (0..51).map(|i| format!("echo {}", i)).collect();
+        assert!(validate_deployment_commands(&Some(many), "pre_deploy").is_err());
+
+        // Exactly 50 commands allowed
+        let fifty: Vec<String> = (0..50).map(|i| format!("echo {}", i)).collect();
+        assert!(validate_deployment_commands(&Some(fifty), "pre_deploy").is_ok());
+    }
+
+    #[test]
+    fn test_validate_docker_image_valid() {
+        assert!(validate_docker_image(None).is_ok());
+        assert!(validate_docker_image(Some("")).is_ok()); // empty = clear
+        assert!(validate_docker_image(Some("nginx")).is_ok());
+        assert!(validate_docker_image(Some("nginx:1.19")).is_ok());
+        assert!(validate_docker_image(Some("user/image")).is_ok());
+        assert!(validate_docker_image(Some("ghcr.io/user/image")).is_ok());
+        assert!(validate_docker_image(Some("registry.example.com/path/image:tag")).is_ok());
+        assert!(validate_docker_image(Some("nginx@sha256:abc123")).is_ok());
+    }
+
+    #[test]
+    fn test_validate_docker_image_invalid() {
+        // Whitespace / injection attempts rejected
+        assert!(validate_docker_image(Some("nginx; rm -rf /")).is_err());
+        assert!(validate_docker_image(Some("nginx latest")).is_err());
+        assert!(validate_docker_image(Some("nginx$(id)")).is_err());
+
+        // Empty path component
+        assert!(validate_docker_image(Some("user//image")).is_err());
+
+        // Empty tag after colon
+        assert!(validate_docker_image(Some("nginx:")).is_err());
+
+        // Oversized image ref (>1024)
+        assert!(validate_docker_image(Some(&"a".repeat(1025))).is_err());
+
+        // Oversized tag (>128)
+        let long_tag = format!("nginx:{}", "a".repeat(129));
+        assert!(validate_docker_image(Some(&long_tag)).is_err());
+    }
+
+    #[test]
+    fn test_validate_network_aliases() {
+        // Valid
+        assert!(validate_network_aliases(&None).is_ok());
+        assert!(validate_network_aliases(&Some(vec!["db".to_string()])).is_ok());
+        assert!(validate_network_aliases(&Some(vec!["my-svc_1".to_string()])).is_ok());
+
+        // Empty alias rejected
+        assert!(validate_network_aliases(&Some(vec!["".to_string()])).is_err());
+
+        // Invalid char rejected
+        assert!(validate_network_aliases(&Some(vec!["bad alias".to_string()])).is_err());
+        assert!(validate_network_aliases(&Some(vec!["a.b".to_string()])).is_err());
+
+        // Leading/trailing dash rejected
+        assert!(validate_network_aliases(&Some(vec!["-svc".to_string()])).is_err());
+        assert!(validate_network_aliases(&Some(vec!["svc-".to_string()])).is_err());
+
+        // Too many (>20) rejected
+        let many: Vec<String> = (0..21).map(|i| format!("svc{}", i)).collect();
+        assert!(validate_network_aliases(&Some(many)).is_err());
+
+        // Oversized alias (>63) rejected
+        assert!(validate_network_aliases(&Some(vec!["a".repeat(64)])).is_err());
+    }
+
+    #[test]
+    fn test_validate_extra_hosts() {
+        // Valid
+        assert!(validate_extra_hosts(&None).is_ok());
+        assert!(validate_extra_hosts(&Some(vec!["myhost:192.168.1.1".to_string()])).is_ok());
+        assert!(validate_extra_hosts(&Some(vec!["host:host-gateway".to_string()])).is_ok());
+        assert!(validate_extra_hosts(&Some(vec!["host:::1".to_string()])).is_ok()); // ipv6
+
+        // Missing colon / wrong format rejected
+        assert!(validate_extra_hosts(&Some(vec!["nohostsep".to_string()])).is_err());
+
+        // Empty entry rejected
+        assert!(validate_extra_hosts(&Some(vec!["".to_string()])).is_err());
+
+        // Invalid IP rejected
+        assert!(validate_extra_hosts(&Some(vec!["host:not-an-ip".to_string()])).is_err());
+
+        // Empty hostname rejected
+        assert!(validate_extra_hosts(&Some(vec![":192.168.1.1".to_string()])).is_err());
+
+        // Too many (>50) rejected
+        let many: Vec<String> = (0..51).map(|i| format!("h{}:127.0.0.1", i)).collect();
+        assert!(validate_extra_hosts(&Some(many)).is_err());
+    }
+
+    #[test]
+    fn test_validate_port_mappings() {
+        use crate::db::PortMapping;
+
+        let mk = |host: u16, container: u16, proto: &str| PortMapping {
+            host_port: host,
+            container_port: container,
+            protocol: proto.to_string(),
+        };
+
+        // Valid
+        assert!(validate_port_mappings(&None).is_ok());
+        assert!(validate_port_mappings(&Some(vec![mk(8080, 80, "tcp")])).is_ok());
+        assert!(validate_port_mappings(&Some(vec![mk(0, 80, "udp")])).is_ok()); // host 0 = auto
+
+        // Container port 0 rejected
+        assert!(validate_port_mappings(&Some(vec![mk(8080, 0, "tcp")])).is_err());
+
+        // Privileged host port rejected
+        assert!(validate_port_mappings(&Some(vec![mk(80, 80, "tcp")])).is_err());
+
+        // Duplicate host ports rejected
+        assert!(
+            validate_port_mappings(&Some(vec![mk(8080, 80, "tcp"), mk(8080, 81, "tcp")])).is_err()
+        );
+
+        // Invalid protocol rejected
+        assert!(validate_port_mappings(&Some(vec![mk(8080, 80, "sctp")])).is_err());
+
+        // Too many (>50) rejected
+        let many: Vec<PortMapping> = (0..51).map(|i| mk(0, (i + 1) as u16, "tcp")).collect();
+        assert!(validate_port_mappings(&Some(many)).is_err());
+    }
 }

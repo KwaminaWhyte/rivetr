@@ -230,6 +230,13 @@ impl ContainerRuntime for PodmanRuntime {
             args.push("--oom-score-adj".to_string());
             args.push(oom.to_string());
         }
+        // Cap log growth so unbounded container logs cannot fill the host disk.
+        // Podman supports `--log-opt max-size` but not max-file reliably, so only
+        // pass max-size here.
+        if let Some(size) = &self.defaults.log_max_size {
+            args.push("--log-opt".to_string());
+            args.push(format!("max-size={}", size));
+        }
 
         if let Some(cpu) = &config.cpu_limit {
             args.push("--cpus".to_string());

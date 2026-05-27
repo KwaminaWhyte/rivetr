@@ -146,6 +146,17 @@ pub struct RuntimeConfig {
     /// higher = killed sooner. Default: 500
     #[serde(default = "default_run_oom_score_adj")]
     pub default_oom_score_adj: i64,
+    /// Max size of a single container log file before rotation (e.g. "10m", "1g").
+    /// Caps unbounded json-file log growth that can fill the host disk and hang it.
+    /// Set to an empty string to disable rotation (logs grow unbounded — not
+    /// recommended). Default: 10m
+    #[serde(default = "default_run_log_max_size")]
+    pub default_log_max_size: String,
+    /// Max number of rotated log files to retain per container. Docker only;
+    /// Podman applies max-size but not max-file. 0 or negative disables.
+    /// Default: 3
+    #[serde(default = "default_run_log_max_file")]
+    pub default_log_max_file: i64,
 }
 
 impl Default for RuntimeConfig {
@@ -158,12 +169,22 @@ impl Default for RuntimeConfig {
             default_memory_limit: default_run_memory_limit(),
             default_pids_limit: default_run_pids_limit(),
             default_oom_score_adj: default_run_oom_score_adj(),
+            default_log_max_size: default_run_log_max_size(),
+            default_log_max_file: default_run_log_max_file(),
         }
     }
 }
 
 fn default_run_memory_limit() -> String {
     "512m".to_string()
+}
+
+fn default_run_log_max_size() -> String {
+    "10m".to_string()
+}
+
+fn default_run_log_max_file() -> i64 {
+    3
 }
 
 fn default_run_pids_limit() -> i64 {

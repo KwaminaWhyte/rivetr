@@ -248,6 +248,25 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
                 .and_then(parse_memory)
         });
 
+    // Host-protection: cap container log growth via the json-file driver's
+    // max-size/max-file so unbounded logs cannot fill the host disk. Left unset
+    // (Docker default = unbounded) when either default is disabled.
+    let log_config = match (
+        runtime.defaults.log_max_size.as_deref(),
+        runtime.defaults.log_max_file,
+    ) {
+        (Some(size), Some(file)) => {
+            let mut opts = HashMap::new();
+            opts.insert("max-size".to_string(), size.to_string());
+            opts.insert("max-file".to_string(), file.to_string());
+            Some(bollard::service::HostConfigLogConfig {
+                typ: Some("json-file".into()),
+                config: Some(opts),
+            })
+        }
+        _ => None,
+    };
+
     let host_config = bollard::service::HostConfig {
         port_bindings: Some(port_bindings),
         memory,
@@ -255,6 +274,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         nano_cpus: config.cpu_limit.as_ref().and_then(|c| parse_cpu(c)),
         pids_limit: runtime.defaults.pids_limit,
         oom_score_adj: runtime.defaults.oom_score_adj,
+        log_config,
         extra_hosts,
         binds,
         restart_policy: Some(restart_policy),

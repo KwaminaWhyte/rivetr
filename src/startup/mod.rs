@@ -121,6 +121,9 @@ pub async fn run_startup_checks(config: &Config, db: &DbPool) -> StartupCheckRep
     // 2. Database schema version check
     checks.push(check_database_schema(db).await);
 
+    // 2b. Database integrity check (SQLite quick_check)
+    checks.push(check_database_integrity(db).await);
+
     // 3. Container runtime check
     checks.push(check_container_runtime(config).await);
 
@@ -217,6 +220,29 @@ async fn check_database_schema(db: &DbPool) -> CheckResult {
         }
         Err(e) => CheckResult::fail("database_schema", "Failed to query database schema", true)
             .with_details(e.to_string()),
+    }
+}
+
+/// Check database integrity via SQLite `PRAGMA quick_check`.
+///
+/// A healthy database returns the single row `"ok"`. Any other result indicates
+/// corruption (e.g. from power loss or disk-full). Reported as non-critical so the
+/// server still starts, but the failure is surfaced loudly in the startup report.
+async fn check_database_integrity(db: &DbPool) -> CheckResult {
+    match crate::db::integrity_check(db).await {
+        Ok(None) => CheckResult::pass("database_integrity", "Database integrity OK"),
+        Ok(Some(detail)) => CheckResult::fail(
+            "database_integrity",
+            "Database integrity check failed",
+            false,
+        )
+        .with_details(detail),
+        Err(e) => CheckResult::fail(
+            "database_integrity",
+            "Failed to run database integrity check",
+            false,
+        )
+        .with_details(e.to_string()),
     }
 }
 

@@ -87,6 +87,27 @@ pub async fn init(data_dir: &Path) -> Result<DbPool> {
     Ok(pool)
 }
 
+/// Run a SQLite integrity check on the database.
+///
+/// Uses `PRAGMA quick_check` (faster than `integrity_check`, suitable for startup).
+/// Returns `Ok(None)` if the database is healthy (first row is `"ok"`), or
+/// `Ok(Some(detail))` with the reported problem(s) if corruption is detected.
+pub async fn integrity_check(pool: &SqlitePool) -> Result<Option<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as("PRAGMA quick_check").fetch_all(pool).await?;
+
+    let healthy = rows.len() == 1 && rows[0].0 == "ok";
+    if healthy {
+        Ok(None)
+    } else {
+        let detail = rows
+            .iter()
+            .map(|(r,)| r.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        Ok(Some(detail))
+    }
+}
+
 async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     info!("Running database migrations...");
 

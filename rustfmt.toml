@@ -1,0 +1,13 @@
+# Rustfmt configuration for Rivetr.
+#
+# Only stable-channel options are used here so `cargo fmt` works on a stable
+# toolchain. Nightly-only options (imports_granularity, group_imports,
+# wrap_comments, etc.) are intentionally omitted — they error out on stable and
+# would break `cargo fmt` / CI.
+#
+# These values codify the conventions the codebase already follows (rustfmt
+# defaults), so running `cargo fmt` produces no churn.
+
+edition = "2021"
+max_width = 100
+newline_style = "Unix"
