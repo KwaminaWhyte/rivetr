@@ -257,6 +257,13 @@ Features required for enterprise adoption and high availability.
 
 ## Recent Bug Fixes (Unreleased)
 
+### Reliability Hardening (Unreleased — production-readiness pass)
+- **Panic isolation** ✅ — Release profile switched `panic = "abort"` → `"unwind"`; a panic in any spawned task no longer kills the whole process. `utils::supervise::guarded()` wraps all 16 background loops + the deploy-engine consumer; 8 reverse-proxy hot-path `Response::builder().unwrap()` calls hardened against control-char header injection.
+- **Host-protection resource defaults** ✅ — Every container inherits `runtime.default_memory_limit` (512m, swap disabled), `default_pids_limit` (512), `default_oom_score_adj` (500) when it sets no limit. A runaway app/db/service is OOM-killed instead of hanging the host. Docker + Podman.
+- **Disk host-hang protection** ✅ — Container log rotation (`default_log_max_size` 10m / `default_log_max_file` 3) + `disk_monitor` auto-reclaims (prune images/build cache) at the critical threshold instead of only logging.
+- **Database integrity check on startup** ✅ — SQLite `PRAGMA quick_check` in the startup self-check; corruption surfaced loudly (non-critical).
+- **Tooling & reference docs** ✅ — `rustfmt.toml`, `Cargo.toml [lints]`, `docs/reference/configuration.md` + `docs/reference/api.md`. Expanded unit tests (build_detect, api/validation); suite at 246.
+
 - **v0.10.21 — Database-to-app linking with auto env injection (B25)** ✅ — New "Linked Databases" section on the App Env Vars tab one-clicks Postgres/MySQL/MariaDB/Redis/Mongo into an app; deployment auto-receives `DATABASE_URL`/`HOST`/`PORT`/`USER`/`PASSWORD`/`DB` (or `REDIS_URL`/`MONGODB_URL`). Optional prefix lets one app link multiple DBs. Migration `106_database_app_links.sql`; new module `src/api/database_links.rs`
 - **v0.10.21 — Inline credentials display on project DB list (U6)** ✅ — Each DB card now has a "Show credentials" toggle revealing the connection string + user/pass with copy buttons and a password reveal toggle
 - **v0.10.21 — MySQL 8 client connection broken via published string (B6)** ✅ — Container starts with `--skip-ssl` so `mysql://user:pass@host:3306/db` works without TLS errors
