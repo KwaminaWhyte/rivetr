@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.22] - 2026-05-27
+
+### Fixed
+- **Panic isolation — one failure can no longer crash the whole server** — The release profile used `panic = "abort"`, which turned a panic in *any* of the ~79 spawned Tokio tasks into a full-process kill (dropping the proxy and every routed app). Switched to `panic = "unwind"` so a panic unwinds only the task that hit it. Combined with `parking_lot` (no mutex poisoning) and the existing per-connection proxy tasks, panics are now isolated: a bad request, a failing deploy, or a panicking background tick fails alone while the proxy and other apps keep serving.
+  - New `utils::supervise::guarded()` helper wraps periodic loop bodies in `catch_unwind` so a panicking tick logs and the loop continues instead of the background task silently dying. Applied to all 16 background loops (stats collection/history/retention, scheduler ×4, resource-metrics collector, container monitor, uptime checker, log cleaner, deployment cleanup, cost calculator, disk monitor, database backups, update checker, rate-limit cleanup) and the deployment-engine queue consumer.
+  - Hardened the 8 reverse-proxy hot-path `Response::builder().unwrap()` calls. Header values built from untrusted input (Host, request path, redirect target, HTTP Basic auth realm) could contain control characters that make the builder error and panic; they now fall back to a header-less `empty_response(status)` (built via `Response::new`, which cannot fail).
+
+### Changed
+- Release builds now unwind on panic (slightly larger binary, negligible runtime cost) in exchange for process-level resilience.
+
+[0.10.22]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.21...v0.10.22
+
 ## [0.10.21] - 2026-05-02
 
 ### Added
