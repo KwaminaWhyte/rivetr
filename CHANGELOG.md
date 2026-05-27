@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.23] - 2026-05-27
+
 ### Added
 - **Host-protection resource defaults — a runaway container can no longer hang the host** — Previously per-container memory/CPU limits were applied only when a user set them explicitly; an app/service/database with no limit ran unbounded and could exhaust host RAM (the same failure mode that takes down unprotected Coolify hosts). Every running container now inherits configurable safety defaults when it sets no limit of its own (per-resource limits still override):
   - `runtime.default_memory_limit` (default `512m`) — Docker/Podman OOM-kills the container at this cap; swap is disabled at the cap (`memory_swap = memory`) so a container cannot escape it via swap.
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Release builds now unwind on panic (slightly larger binary, negligible runtime cost) in exchange for process-level resilience.
 
+[0.10.23]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.22...v0.10.23
 [0.10.22]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.21...v0.10.22
 
 ## [0.10.21] - 2026-05-02
