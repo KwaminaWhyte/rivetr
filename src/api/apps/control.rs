@@ -374,11 +374,15 @@ pub async fn stop_app(
         .and_then(|(cid,)| if cid.is_empty() { None } else { Some(cid) })
         .ok_or_else(|| ApiError::bad_request("No running deployment found"))?;
 
-    // Stop the container
-    state.runtime.stop(&container_id).await.map_err(|e| {
-        tracing::error!(container = %container_id, error = %e, "Failed to stop container");
-        ApiError::internal(format!("Failed to stop container: {}", e))
-    })?;
+    // Stop the container, honoring the app's configured graceful-shutdown window.
+    state
+        .runtime
+        .stop_timeout(&container_id, app.stop_grace_period)
+        .await
+        .map_err(|e| {
+            tracing::error!(container = %container_id, error = %e, "Failed to stop container");
+            ApiError::internal(format!("Failed to stop container: {}", e))
+        })?;
 
     tracing::info!(app = %app.name, container = %container_id, "App container stopped");
 

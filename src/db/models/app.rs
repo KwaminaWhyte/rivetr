@@ -140,6 +140,9 @@ pub struct App {
     pub docker_ulimits: Option<String>,
     /// JSON array of security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<String>,
+    /// Seconds to wait for graceful shutdown before SIGKILL on stop.
+    /// NULL uses the runtime default (Docker's 10s).
+    pub stop_grace_period: Option<i64>,
     // Git clone options
     /// Pass --recurse-submodules to git clone
     #[serde(default)]
@@ -276,6 +279,8 @@ pub struct AppResponse {
     pub docker_ulimits: Option<String>,
     /// JSON array of security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<String>,
+    /// Seconds to wait for graceful shutdown before SIGKILL on stop (NULL = runtime default)
+    pub stop_grace_period: Option<i64>,
     // Git clone options
     /// Pass --recurse-submodules to git clone
     pub git_submodules: bool,
@@ -378,6 +383,7 @@ impl From<App> for AppResponse {
             docker_gpus: app.docker_gpus,
             docker_ulimits: app.docker_ulimits,
             docker_security_opt: app.docker_security_opt,
+            stop_grace_period: app.stop_grace_period,
             git_submodules: app.git_submodules != 0,
             git_lfs: app.git_lfs != 0,
             shallow_clone: app.shallow_clone != 0,
@@ -950,6 +956,8 @@ pub struct UpdateAppRequest {
     pub docker_ulimits: Option<Vec<String>>,
     /// Security options (e.g. ["seccomp=unconfined"])
     pub docker_security_opt: Option<Vec<String>>,
+    /// Seconds to wait for graceful shutdown before SIGKILL on stop (0/negative clears to default)
+    pub stop_grace_period: Option<i64>,
     // Git clone options
     /// Pass --recurse-submodules to git clone
     pub git_submodules: Option<bool>,

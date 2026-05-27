@@ -1145,6 +1145,10 @@ fn build_init_exec_cmd(
                 sql.to_string(),
             ]
         }
+        // LibSQL has no in-container SQL client shipped in the image; SQL init
+        // commands are not supported. Return a harmless no-op so the caller's
+        // exec succeeds without applying anything.
+        DatabaseType::Libsql => vec!["true".to_string()],
     }
 }
 

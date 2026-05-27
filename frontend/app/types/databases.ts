@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 /** Supported database types for managed databases */
-export type DatabaseType = "postgres" | "mysql" | "mariadb" | "mongodb" | "redis" | "dragonfly" | "keydb" | "clickhouse";
+export type DatabaseType = "postgres" | "mysql" | "mariadb" | "mongodb" | "redis" | "dragonfly" | "keydb" | "clickhouse" | "libsql";
 
 /** Database deployment status */
 export type DatabaseStatus =
@@ -232,6 +232,14 @@ export const DATABASE_TYPES: DatabaseTypeInfo[] = [
     description: "A high-performance column-oriented database for real-time analytics",
     defaultPort: 8123,
     versions: ["latest", "24", "23"],
+    defaultVersion: "latest",
+  },
+  {
+    type: "libsql",
+    name: "LibSQL",
+    description: "Server-side SQLite (Turso's sqld) — auth-less HTTP/HRANA API on port 8080",
+    defaultPort: 8080,
+    versions: ["latest"],
     defaultVersion: "latest",
   },
 ];

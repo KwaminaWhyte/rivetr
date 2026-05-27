@@ -512,7 +512,19 @@ pub async fn start(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
 }
 
 pub async fn stop(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
-    let options = StopContainerOptions { t: 10 };
+    stop_timeout(runtime, container_id, None).await
+}
+
+/// Stop a container, waiting up to `timeout_secs` for graceful shutdown before
+/// SIGKILL. Defaults to Docker's conventional 10s when `None`.
+pub async fn stop_timeout(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    timeout_secs: Option<i64>,
+) -> Result<()> {
+    let options = StopContainerOptions {
+        t: timeout_secs.unwrap_or(10),
+    };
     runtime
         .client
         .stop_container(container_id, Some(options))

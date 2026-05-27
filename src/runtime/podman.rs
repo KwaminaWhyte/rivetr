@@ -309,6 +309,25 @@ impl ContainerRuntime for PodmanRuntime {
         Ok(())
     }
 
+    async fn stop_timeout(&self, container_id: &str, timeout_secs: Option<i64>) -> Result<()> {
+        match timeout_secs {
+            Some(t) => {
+                self.run_command(&[
+                    "stop".to_string(),
+                    "--time".to_string(),
+                    t.to_string(),
+                    container_id.to_string(),
+                ])
+                .await?;
+            }
+            None => {
+                self.run_command(&["stop".to_string(), container_id.to_string()])
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     async fn remove(&self, container_id: &str) -> Result<()> {
         self.run_command(&["rm".to_string(), "-f".to_string(), container_id.to_string()])
             .await?;

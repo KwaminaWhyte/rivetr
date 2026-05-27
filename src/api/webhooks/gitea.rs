@@ -162,6 +162,16 @@ async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCo
         branch
     );
 
+    // Honor [skip ci] / [skip cd] markers in the head commit message.
+    if super::commit_skips_deploy(payload.commits.first().map(|c| c.message.as_str())) {
+        tracing::info!(
+            repo = %payload.repository.full_name,
+            branch,
+            "Push carries a skip-deploy marker ([skip ci]/[skip cd]) — ignoring"
+        );
+        return Ok(StatusCode::OK);
+    }
+
     let apps = sqlx::query_as::<_, App>(
         "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
     )

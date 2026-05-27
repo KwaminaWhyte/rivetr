@@ -307,6 +307,8 @@ export interface App {
   docker_ulimits: string | null;
   /** Security options (stored as JSON array, e.g. ["seccomp=unconfined"]) */
   docker_security_opt: string | null;
+  /** Seconds to wait for graceful shutdown before SIGKILL on stop (null = runtime default, 10s) */
+  stop_grace_period: number | null;
   // Git clone options
   /** Pass --recurse-submodules to git clone */
   git_submodules: boolean;
@@ -595,6 +597,8 @@ export interface UpdateAppRequest {
   docker_ulimits?: string[];
   /** Security options (e.g. ["seccomp=unconfined"]) */
   docker_security_opt?: string[];
+  /** Seconds to wait for graceful shutdown before SIGKILL (0 clears to runtime default) */
+  stop_grace_period?: number;
   // Git clone options
   /** Pass --recurse-submodules to git clone */
   git_submodules?: boolean;

@@ -32,7 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import { useSetBreadcrumbs } from "@/lib/breadcrumb-context";
 import type { FileEntry } from "@/lib/api/filesystem";
 
 export function meta() {
@@ -62,7 +62,7 @@ export default function ServerFilesPage() {
   const { id: serverId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
 
-  useBreadcrumb([
+  useSetBreadcrumbs([
     { label: "Servers", href: "/servers" },
     { label: "File Browser" },
   ]);

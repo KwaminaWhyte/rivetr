@@ -31,8 +31,8 @@ pub struct DatabaseTypeConfig {
 pub struct DatabaseEnvVars {
     /// Username env var (None for Redis)
     pub username: Option<&'static str>,
-    /// Password env var
-    pub password: &'static str,
+    /// Password env var (None for auth-less engines like LibSQL)
+    pub password: Option<&'static str>,
     /// Database name env var (None for Redis)
     pub database: Option<&'static str>,
     /// Root password env var (MySQL only)
@@ -43,12 +43,12 @@ pub struct DatabaseEnvVars {
 pub fn postgres_config() -> DatabaseTypeConfig {
     DatabaseTypeConfig {
         image: "postgres",
-        default_version: "16",
-        versions: &["16", "15", "14", "13", "12"],
+        default_version: "17",
+        versions: &["18", "17", "16", "15", "14", "13", "12"],
         port: 5432,
         env_vars: DatabaseEnvVars {
             username: Some("POSTGRES_USER"),
-            password: "POSTGRES_PASSWORD",
+            password: Some("POSTGRES_PASSWORD"),
             database: Some("POSTGRES_DB"),
             root_password: None,
         },
@@ -67,7 +67,7 @@ pub fn mysql_config() -> DatabaseTypeConfig {
         port: 3306,
         env_vars: DatabaseEnvVars {
             username: Some("MYSQL_USER"),
-            password: "MYSQL_PASSWORD",
+            password: Some("MYSQL_PASSWORD"),
             database: Some("MYSQL_DATABASE"),
             root_password: Some("MYSQL_ROOT_PASSWORD"),
         },
@@ -93,7 +93,7 @@ pub fn mongodb_config() -> DatabaseTypeConfig {
         port: 27017,
         env_vars: DatabaseEnvVars {
             username: Some("MONGO_INITDB_ROOT_USERNAME"),
-            password: "MONGO_INITDB_ROOT_PASSWORD",
+            password: Some("MONGO_INITDB_ROOT_PASSWORD"),
             database: Some("MONGO_INITDB_DATABASE"),
             root_password: None,
         },
@@ -112,7 +112,7 @@ pub fn redis_config() -> DatabaseTypeConfig {
         port: 6379,
         env_vars: DatabaseEnvVars {
             username: None,
-            password: "REDIS_PASSWORD", // Note: Redis uses --requirepass flag
+            password: Some("REDIS_PASSWORD"), // Note: Redis uses --requirepass flag
             database: None,
             root_password: None,
         },
@@ -131,7 +131,7 @@ pub fn mariadb_config() -> DatabaseTypeConfig {
         port: 3306,
         env_vars: DatabaseEnvVars {
             username: Some("MARIADB_USER"),
-            password: "MARIADB_PASSWORD",
+            password: Some("MARIADB_PASSWORD"),
             database: Some("MARIADB_DATABASE"),
             root_password: Some("MARIADB_ROOT_PASSWORD"),
         },
@@ -150,7 +150,7 @@ pub fn dragonfly_config() -> DatabaseTypeConfig {
         port: 6379,
         env_vars: DatabaseEnvVars {
             username: None,
-            password: "DRAGONFLY_requirepass",
+            password: Some("DRAGONFLY_requirepass"),
             database: None,
             root_password: None,
         },
@@ -169,7 +169,7 @@ pub fn keydb_config() -> DatabaseTypeConfig {
         port: 6379,
         env_vars: DatabaseEnvVars {
             username: None,
-            password: "KEYDB_PASSWORD",
+            password: Some("KEYDB_PASSWORD"),
             database: None,
             root_password: None,
         },
@@ -188,12 +188,35 @@ pub fn clickhouse_config() -> DatabaseTypeConfig {
         port: 8123,
         env_vars: DatabaseEnvVars {
             username: Some("CLICKHOUSE_USER"),
-            password: "CLICKHOUSE_PASSWORD",
+            password: Some("CLICKHOUSE_PASSWORD"),
             database: Some("CLICKHOUSE_DB"),
             root_password: None,
         },
         data_path: "/var/lib/clickhouse",
         extra_env: &[("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")],
+        cmd_args: &[],
+    }
+}
+
+/// Get configuration for LibSQL (server-side SQLite, Turso's `sqld`)
+pub fn libsql_config() -> DatabaseTypeConfig {
+    DatabaseTypeConfig {
+        image: "ghcr.io/tursodatabase/libsql-server",
+        default_version: "latest",
+        versions: &["latest"],
+        // sqld serves the HTTP/HRANA API on 8080 by default.
+        port: 8080,
+        env_vars: DatabaseEnvVars {
+            // LibSQL is auth-less by default (a private network database). It has
+            // no username/database env vars; clients connect over HTTP and may
+            // optionally use a JWT key, which is out of scope for the managed default.
+            username: None,
+            password: None,
+            database: None,
+            root_password: None,
+        },
+        data_path: "/var/lib/sqld",
+        extra_env: &[],
         cmd_args: &[],
     }
 }
@@ -209,6 +232,7 @@ pub fn get_config(db_type: &DatabaseType) -> DatabaseTypeConfig {
         DatabaseType::Dragonfly => dragonfly_config(),
         DatabaseType::Keydb => keydb_config(),
         DatabaseType::ClickHouse => clickhouse_config(),
+        DatabaseType::Libsql => libsql_config(),
     }
 }
 
@@ -225,11 +249,10 @@ pub fn generate_env_vars(
         env.push((user_var.to_string(), credentials.username.clone()));
     }
 
-    // Add password env var
-    env.push((
-        config.env_vars.password.to_string(),
-        credentials.password.clone(),
-    ));
+    // Add password env var if applicable (auth-less engines like LibSQL have none)
+    if let Some(pass_var) = config.env_vars.password {
+        env.push((pass_var.to_string(), credentials.password.clone()));
+    }
 
     // Add database name env var if applicable
     if let Some(db_var) = config.env_vars.database {
@@ -294,7 +317,7 @@ mod tests {
         let config = postgres_config();
         assert_eq!(config.image, "postgres");
         assert_eq!(config.port, 5432);
-        assert_eq!(config.default_version, "16");
+        assert_eq!(config.default_version, "17");
     }
 
     #[test]
@@ -337,7 +360,7 @@ mod tests {
         assert!(config.versions.contains(&"11"));
         assert!(config.versions.contains(&"10.11"));
         assert!(config.env_vars.root_password.is_some());
-        assert_eq!(config.env_vars.password, "MARIADB_PASSWORD");
+        assert_eq!(config.env_vars.password, Some("MARIADB_PASSWORD"));
         assert_eq!(config.env_vars.username, Some("MARIADB_USER"));
         assert_eq!(config.env_vars.database, Some("MARIADB_DATABASE"));
         assert_eq!(config.env_vars.root_password, Some("MARIADB_ROOT_PASSWORD"));
@@ -372,6 +395,41 @@ mod tests {
         assert_eq!(config.image, "redis");
         assert_eq!(config.port, 6379);
         assert!(config.env_vars.username.is_none());
+    }
+
+    #[test]
+    fn test_postgres_supports_v17_and_v18() {
+        let config = postgres_config();
+        assert!(config.versions.contains(&"17"));
+        assert!(config.versions.contains(&"18"));
+        assert_eq!(config.default_version, "17");
+    }
+
+    #[test]
+    fn test_libsql_config() {
+        let config = libsql_config();
+        assert_eq!(config.image, "ghcr.io/tursodatabase/libsql-server");
+        assert_eq!(config.port, 8080);
+        // Auth-less by default — no username/password/database env vars.
+        assert!(config.env_vars.username.is_none());
+        assert!(config.env_vars.password.is_none());
+        assert!(config.env_vars.database.is_none());
+    }
+
+    #[test]
+    fn test_libsql_generates_no_credential_env() {
+        let creds = DatabaseCredentials {
+            username: "u".to_string(),
+            password: "p".to_string(),
+            database: Some("d".to_string()),
+            root_password: None,
+        };
+        let env = generate_env_vars(&DatabaseType::Libsql, &creds);
+        // No POSTGRES_*/MYSQL_*-style credential vars leak into an auth-less engine.
+        assert!(
+            env.is_empty(),
+            "LibSQL must emit no credential env vars, got {env:?}"
+        );
     }
 
     #[test]

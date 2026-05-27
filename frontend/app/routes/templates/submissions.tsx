@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import { useSetBreadcrumbs } from "@/lib/breadcrumb-context";
 import type { CommunityTemplateSubmission } from "@/lib/api/community-templates";
 
 export function meta() {
@@ -82,7 +82,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function TemplateSubmissionsPage() {
-  useBreadcrumb([
+  useSetBreadcrumbs([
     { label: "Templates", href: "/templates" },
     { label: "My Submissions" },
   ]);

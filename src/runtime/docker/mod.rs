@@ -68,6 +68,10 @@ impl ContainerRuntime for DockerRuntime {
         container::stop(self, container_id).await
     }
 
+    async fn stop_timeout(&self, container_id: &str, timeout_secs: Option<i64>) -> Result<()> {
+        container::stop_timeout(self, container_id, timeout_secs).await
+    }
+
     async fn remove(&self, container_id: &str) -> Result<()> {
         container::remove(self, container_id).await
     }

@@ -490,6 +490,12 @@ pub async fn update_app(
         Some(v) => serde_json::to_string(v).ok(),
         None => existing.docker_security_opt.clone(),
     };
+    // 0 or negative clears the override back to the runtime default.
+    let update_stop_grace = match req.stop_grace_period {
+        Some(n) if n <= 0 => None,
+        Some(n) => Some(n),
+        None => existing.stop_grace_period,
+    };
 
     sqlx::query(
         r#"
@@ -548,6 +554,7 @@ pub async fn update_app(
             docker_gpus = ?,
             docker_ulimits = ?,
             docker_security_opt = ?,
+            stop_grace_period = ?,
             git_submodules = ?,
             git_lfs = ?,
             shallow_clone = ?,
@@ -617,6 +624,7 @@ pub async fn update_app(
     .bind(&update_gpus)
     .bind(&update_ulimits)
     .bind(&update_security_opt)
+    .bind(update_stop_grace)
     .bind(git_submodules)
     .bind(git_lfs)
     .bind(shallow_clone)

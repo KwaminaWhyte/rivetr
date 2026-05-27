@@ -219,6 +219,16 @@ async fn handle_github_push(
         branch
     );
 
+    // Honor [skip ci] / [skip cd] markers in the head commit message.
+    if super::commit_skips_deploy(payload.head_commit.as_ref().map(|c| c.message.as_str())) {
+        tracing::info!(
+            repo = %payload.repository.full_name,
+            branch,
+            "Push carries a skip-deploy marker ([skip ci]/[skip cd]) — ignoring"
+        );
+        return Ok(StatusCode::OK);
+    }
+
     let apps = sqlx::query_as::<_, App>(
         "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
     )

@@ -161,6 +161,16 @@ async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
         branch
     );
 
+    // Honor [skip ci] / [skip cd] markers in the tip commit message.
+    if super::commit_skips_deploy(payload.commits.last().map(|c| c.message.as_str())) {
+        tracing::info!(
+            project = %payload.project.path_with_namespace,
+            branch,
+            "Push carries a skip-deploy marker ([skip ci]/[skip cd]) — ignoring"
+        );
+        return Ok(StatusCode::OK);
+    }
+
     let apps = sqlx::query_as::<_, App>(
         "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
     )

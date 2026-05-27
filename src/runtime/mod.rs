@@ -302,6 +302,13 @@ pub trait ContainerRuntime: Send + Sync {
     /// Start a stopped container
     async fn start(&self, container_id: &str) -> Result<()>;
     async fn stop(&self, container_id: &str) -> Result<()>;
+    /// Stop a container, waiting up to `timeout_secs` for graceful shutdown before
+    /// SIGKILL. `None` uses the runtime/engine default (Docker's is 10s).
+    /// Default implementation ignores the timeout and delegates to `stop`; runtimes
+    /// that support a configurable grace period override this.
+    async fn stop_timeout(&self, container_id: &str, _timeout_secs: Option<i64>) -> Result<()> {
+        self.stop(container_id).await
+    }
     async fn remove(&self, container_id: &str) -> Result<()>;
     async fn logs(&self, container_id: &str)
         -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Competitive-parity sweep (Coolify v4.1.0 / Dokploy v0.29.x)** — Closed five gaps surfaced by a fresh re-research of both competitors. See `docs/research/competitive-gap-analysis.md` (§ "Re-research 2026-05-27").
+  - **`[skip ci]` / `[skip cd]` commit markers** — A push whose tip commit message contains `[skip ci]`, `[ci skip]`, `[skip cd]`, `[cd skip]`, `[skip deploy]`, or `[no deploy]` (case-insensitive) no longer triggers a deployment. Honored across the GitHub, GitLab, Gitea, and Bitbucket webhook handlers via the shared `commit_skips_deploy()` helper.
+  - **Configurable stop grace period** — New per-app `stop_grace_period` (seconds) controls how long a container gets to shut down gracefully (SIGTERM) before SIGKILL on stop/replace. NULL/empty uses the runtime default (Docker's 10s). New `ContainerRuntime::stop_timeout()` (Docker `StopContainerOptions.t`, Podman `--time`); editable in the app's Docker Options settings. Migration 107.
+  - **PostgreSQL 17 & 18** — Added to the managed-Postgres version list (pgvector already supported); default bumped 16 → 17 to match the dashboard.
+  - **LibSQL managed database** — New `DatabaseType::Libsql` (Turso's server-side SQLite `sqld`, `ghcr.io/tursodatabase/libsql-server`). Auth-less HTTP/HRANA API on port 8080; `http://` connection string; appears in the new-database picker.
+  - **Expanded MCP tool surface** — The `/mcp` endpoint grew from 4 tools to 9: added `list_deployments`, `get_deployment_status`, `list_services`, `list_databases`, `list_projects`, and `restart_app` (database credentials are masked in `list_databases`).
+
+### Tests
+- +5 unit tests: commit skip-marker detection (case-insensitivity + non-matches), LibSQL config / no-credential-env, and Postgres 17/18 availability. Suite now 251 passing.
+
 ## [0.10.23] - 2026-05-27
 
 ### Added

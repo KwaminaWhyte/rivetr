@@ -188,6 +188,16 @@ async fn handle_bitbucket_push(
             branch
         );
 
+        // Honor [skip ci] / [skip cd] markers in the tip commit message.
+        if super::commit_skips_deploy(new_ref.target.message.as_deref()) {
+            tracing::info!(
+                repo = %payload.repository.full_name,
+                branch = %branch,
+                "Push carries a skip-deploy marker ([skip ci]/[skip cd]) — ignoring"
+            );
+            continue;
+        }
+
         let apps = sqlx::query_as::<_, App>(
             "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
         )

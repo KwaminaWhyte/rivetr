@@ -55,6 +55,9 @@ export default function AppSettingsDocker() {
   const [securityOpt, setSecurityOpt] = useState(
     parseJsonArray(app.docker_security_opt).join("\n")
   );
+  const [stopGracePeriod, setStopGracePeriod] = useState(
+    app.stop_grace_period != null ? String(app.stop_grace_period) : ""
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +101,8 @@ export default function AppSettingsDocker() {
         docker_gpus: gpus.trim() || "",
         docker_ulimits: parsedUlimits,
         docker_security_opt: parsedSecurityOpt,
+        // Empty or 0 clears the override back to the runtime default (10s).
+        stop_grace_period: stopGracePeriod.trim() === "" ? 0 : Number(stopGracePeriod),
       };
 
       await api.updateApp(app.id, updates);
@@ -263,6 +268,24 @@ export default function AppSettingsDocker() {
                 Size of <code className="font-mono">/dev/shm</code> (e.g.{" "}
                 <code className="font-mono">128m</code>,{" "}
                 <code className="font-mono">1g</code>). Leave empty for the Docker default.
+              </p>
+            </div>
+
+            {/* Stop grace period */}
+            <div className="space-y-2">
+              <Label htmlFor="stop_grace_period">Stop Grace Period (seconds)</Label>
+              <Input
+                id="stop_grace_period"
+                type="number"
+                min={0}
+                placeholder="10"
+                value={stopGracePeriod}
+                onChange={(e) => setStopGracePeriod(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Seconds to wait for graceful shutdown (SIGTERM) before forcing SIGKILL when the
+                container is stopped or replaced. Leave empty for the runtime default (
+                <code className="font-mono">10s</code>).
               </p>
             </div>
 

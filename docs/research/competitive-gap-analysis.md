@@ -9,6 +9,56 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 
 ---
 
+## Re-research 2026-05-27 (Coolify v4.1.0 · Dokploy v0.29.x)
+
+Fresh sweep of both competitors' late-2025→2026 releases, cross-checked against the Rivetr codebase. Anchors: **Coolify v4.1.0** (2026-05-18; v4.0.0 GA 2026-04-27, v5 clustering in dev) and **Dokploy v0.29.5** (2026-05-22, relicensed Apache-2.0).
+
+### Genuinely missing / partial in Rivetr (new findings)
+
+> **Update 2026-05-27 (Unreleased):** items #1, #2, #3, #4, #6 below have since been **implemented** (see CHANGELOG `[Unreleased]`). Remaining open: #5, #7, #8, #9, #10.
+
+| # | Feature | Competitor | Rivetr status | Effort | Notes |
+|---|---------|------------|---------------|--------|-------|
+| 1 | `[skip ci]` / `[skip cd]` commit-message markers | Coolify (2026) | ✅ Done | **Low** | `commit_skips_deploy()` shared across GitHub/GitLab/Gitea/Bitbucket handlers. |
+| 2 | Configurable stop grace period (`stop_timeout` before SIGKILL) | Coolify (2026) | ✅ Done | **Low** | Per-app `stop_grace_period`; `ContainerRuntime::stop_timeout()` (Docker `t`, Podman `--time`); migration 107; Docker Options UI. |
+| 3 | PostgreSQL 18 + pgvector 18 | Coolify (2026) | ✅ Done | **Low** | Added 17/18 to version list; default bumped to 17. |
+| 4 | LibSQL / Turso DB engine | Dokploy v0.29 | ✅ Done | Medium | `DatabaseType::Libsql`; `ghcr.io/tursodatabase/libsql-server`; auth-less HTTP API on 8080. |
+| 5 | AI-generated Docker Compose from NL prompt | Dokploy v0.19 | 🔴 Missing | Medium | Rivetr already has AI infra (`ai_features.rs` diagnose) — extend with a compose-gen endpoint. |
+| 6 | MCP tool coverage | Coolify (read-only set), Dokploy (508 tools) | ✅ Done | Medium | Expanded 4 → 9 tools (added list_deployments, get_deployment_status, list_services, list_databases, list_projects, restart_app). Credentials masked. |
+| 7 | HTTP/3 (QUIC) in proxy | Dokploy (default, Traefik v3.5) | 🔴 Missing | **High** | Custom Axum proxy is HTTP/1.1+2 only. QUIC = significant work; low user-impact. Defer. |
+| 8 | First-class Tailscale integration | Coolify + Dokploy (documented) | 🟡 Partial | Low | Rivetr ships Tailscale only as a deployable template, not a managed connectivity backend. Competitors' support is also doc-only patterns — minor gap. |
+| 9 | Non-root multi-server (passwordless sudo) | Dokploy v0.29 | 🟡 Partial | Low | SSH supports configurable non-root user; passwordless-sudo provisioning path unverified. Confirm + document. |
+| 10 | Advanced Swarm service spec | Dokploy | 🟡 Partial | Medium | Constraints/placement/update+rollback config/reservations still not in UI (carried over from prior analysis). |
+
+### Stale entries corrected (Rivetr now HAS these — earlier doc was wrong/outdated)
+
+| Feature | Old doc said | Actual (2026-05-27) | Evidence |
+|---------|--------------|---------------------|----------|
+| Custom DB image override + init commands | 🔴 Missing (§1) | 🟢 **Implemented** | `migrations/087_database_custom_image.sql` (`custom_image`, `init_commands`) |
+| Notification per-event/per-channel granularity | 🟡 Review needed (§7) | 🟢 **Implemented** | `migrations/016_notifications.sql` `notification_subscriptions` (event_type + channel_id + optional app_id); 7-variant `NotificationEventType` |
+| Preview / PR environments | (not listed) | 🟢 **Implemented** | `src/api/previews.rs`, `src/engine/preview.rs`, `migrations/027`; `pr-{n}.{app}.{domain}` + auto-teardown on PR close |
+| Deployment config / diff tracking | 🔴 Missing (§5) | 🟢 **Implemented** | `get_deployment_diff()` in `src/api/deployments/handlers.rs` (SHA range, commit msgs, files changed) |
+| Watch paths (monorepo selective deploy) | (not listed) | 🟢 **Implemented** | `apps.watch_paths`, `migrations/009_build_options.sql` |
+| Railpack build pack | (Coolify "new" 2026) | 🟢 **Already shipped** | Rivetr has Railpack builder; Coolify only added it in v4.1.0 (beta), Dokploy in v0.29 — Rivetr at parity/ahead |
+
+### Not a competitive gap (clarification)
+
+- **Kubernetes** — Rivetr lacks it, but so do both competitors: Coolify K8s is "planned/future only", Dokploy uses Docker Swarm. Not a parity gap. Out of scope for a lightweight single-binary PaaS.
+- **AI log/build-error analysis** — Dokploy added in v0.29; Rivetr already has `diagnose_deployment()`. Parity, not a gap.
+- **Audit logging** — Rivetr has 30+ audit actions (`src/db/models/audit.rs`); Dokploy gates audit logs behind Enterprise. Rivetr is ahead for self-hosted.
+
+### Recommended near-term backlog (cheap, high-signal)
+
+1. ~~`[skip ci]`/`[skip cd]` parsing (Low) — #1~~ ✅ done (Unreleased).
+2. ~~Configurable stop grace period (Low) — #2~~ ✅ done (Unreleased).
+3. ~~PostgreSQL 17/18 in version list (Low) — #3~~ ✅ done (Unreleased).
+4. ~~Expand MCP tool surface (Medium) — #6~~ ✅ done (Unreleased, 4 → 9 tools).
+5. ~~LibSQL engine (Medium) — #4~~ ✅ done (Unreleased).
+
+Deferred / low-priority (still open): AI compose-gen (#5), HTTP/3 (#7), first-class Tailscale (#8), non-root sudo verification (#9), advanced Swarm spec (#10).
+
+---
+
 ## Recently Completed
 
 | Feature | Status | Notes |
@@ -649,4 +699,4 @@ For completeness, features Rivetr has that competitors lack:
 
 ---
 
-*Last updated: 2026-03-13*
+*Last updated: 2026-05-27 (re-research vs Coolify v4.1.0 + Dokploy v0.29.x)*

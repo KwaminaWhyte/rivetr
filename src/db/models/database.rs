@@ -15,6 +15,7 @@ pub enum DatabaseType {
     Dragonfly,
     Keydb,
     ClickHouse,
+    Libsql,
 }
 
 impl std::fmt::Display for DatabaseType {
@@ -28,6 +29,7 @@ impl std::fmt::Display for DatabaseType {
             Self::Dragonfly => write!(f, "dragonfly"),
             Self::Keydb => write!(f, "keydb"),
             Self::ClickHouse => write!(f, "clickhouse"),
+            Self::Libsql => write!(f, "libsql"),
         }
     }
 }
@@ -45,6 +47,7 @@ impl std::str::FromStr for DatabaseType {
             "dragonfly" | "dragonflydb" => Ok(Self::Dragonfly),
             "keydb" => Ok(Self::Keydb),
             "clickhouse" => Ok(Self::ClickHouse),
+            "libsql" | "turso" | "sqld" => Ok(Self::Libsql),
             _ => Err(format!("Unknown database type: {}", s)),
         }
     }
@@ -246,6 +249,10 @@ impl ManagedDatabase {
                 self.internal_port,
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
+            // LibSQL is auth-less and speaks the HTTP/HRANA protocol.
+            DatabaseType::Libsql => {
+                Some(format!("http://{}:{}", container_name, self.internal_port))
+            }
         }
     }
 
@@ -300,6 +307,7 @@ impl ManagedDatabase {
                 self.external_port,
                 creds.database.unwrap_or_else(|| creds.username.clone())
             )),
+            DatabaseType::Libsql => Some(format!("http://{}:{}", host, self.external_port)),
         }
     }
 }

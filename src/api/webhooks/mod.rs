@@ -121,6 +121,27 @@ pub(super) fn should_deploy_for_changed_files(app: &App, changed_files: &[String
     false
 }
 
+/// Check whether a commit message asks the deploy to be skipped.
+///
+/// Honors the common CI conventions (case-insensitive): `[skip ci]`, `[ci skip]`,
+/// `[skip cd]`, `[cd skip]`, `[skip deploy]`, `[no deploy]`. Returns true when any
+/// marker is present, in which case the push should NOT trigger a deployment.
+pub(super) fn commit_skips_deploy(message: Option<&str>) -> bool {
+    let Some(msg) = message else {
+        return false;
+    };
+    let lower = msg.to_lowercase();
+    const MARKERS: &[&str] = &[
+        "[skip ci]",
+        "[ci skip]",
+        "[skip cd]",
+        "[cd skip]",
+        "[skip deploy]",
+        "[no deploy]",
+    ];
+    MARKERS.iter().any(|m| lower.contains(m))
+}
+
 /// Collect all changed files from a list of commits with added/modified/removed arrays
 pub(super) fn collect_changed_files(
     commits: impl IntoIterator<Item = impl ChangedFiles>,
@@ -141,6 +162,34 @@ pub(super) trait ChangedFiles {
     fn added_files(&self) -> &[String];
     fn modified_files(&self) -> &[String];
     fn removed_files(&self) -> &[String];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commit_skips_deploy;
+
+    #[test]
+    fn skip_markers_are_detected_case_insensitively() {
+        for msg in [
+            "fix typo [skip ci]",
+            "WIP [CI SKIP]",
+            "docs only [skip cd]",
+            "release [CD Skip]",
+            "chore [skip deploy]",
+            "wip [no deploy] more text",
+        ] {
+            assert!(commit_skips_deploy(Some(msg)), "should skip: {msg}");
+        }
+    }
+
+    #[test]
+    fn normal_messages_do_not_skip() {
+        assert!(!commit_skips_deploy(Some("add feature")));
+        assert!(!commit_skips_deploy(Some(
+            "mention skip ci without brackets"
+        )));
+        assert!(!commit_skips_deploy(None));
+    }
 }
 
 /// Generic preview cleanup shared between GitLab and Gitea handlers
