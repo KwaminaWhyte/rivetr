@@ -100,7 +100,7 @@ export default function DashboardPage() {
   const { currentTeamId } = useTeamContext();
 
   // Use React Query for real-time updates
-  // Note: system stats are always fetched — teamId is optional server-side scoping,
+  // Note: system stats are always fetched, teamId is optional server-side scoping,
   // not a required parameter. Passing null means "all resources" (personal workspace).
   const { data: stats, isLoading: statsLoading } = useQuery<SystemStats | null>({
     queryKey: ["system-stats", currentTeamId],

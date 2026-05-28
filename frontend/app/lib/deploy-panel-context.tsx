@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 export type DeployTargetKind = "deployment" | "service" | "database";
 
 export interface DeployPanelTarget {
-  /** Discriminator — what this stream is for. */
+  /** Discriminator: what this stream is for. */
   kind: DeployTargetKind;
   /**
    * Resource id:
@@ -23,10 +23,10 @@ export interface DeployPanelTarget {
   id: string;
   /** Display name shown in the panel header (e.g. "myapp", "redis-cache"). */
   title: string;
-  /** Optional subtitle — usually a short kind label like "App", "Service". */
+  /** Optional subtitle: usually a short kind label like "App", "Service". */
   subtitle?: string;
   /**
-   * For app deployments only — link to the full deployment detail page so the
+   * For app deployments only: link to the full deployment detail page so the
    * user can jump from the panel into the dedicated logs view.
    */
   href?: string;

@@ -542,7 +542,7 @@ export default function AppDetailLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Links dropdown — shows all app URLs */}
+          {/* Links dropdown, shows all app URLs */}
           {(() => {
             const parsedDomains: Array<{ domain: string; primary: boolean; redirect_www: boolean }> = (() => {
               try { return app.domains ? JSON.parse(app.domains) : []; } catch { return []; }
@@ -608,7 +608,7 @@ export default function AppDetailLayout() {
               const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
               return (
                 <Button variant="outline" asChild className="gap-2">
-                  <a href={`http://${host}:${appStatus.host_port}`} target="_blank" rel="noopener noreferrer" title="No domain configured — accessing via host port">
+                  <a href={`http://${host}:${appStatus.host_port}`} target="_blank" rel="noopener noreferrer" title="No domain configured, accessing via host port">
                     <ExternalLink className="h-4 w-4" />
                     Open App
                     <span className="text-xs text-muted-foreground ml-1">

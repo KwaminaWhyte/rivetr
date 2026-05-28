@@ -409,7 +409,7 @@ export default function TemplatesPage() {
         </Card>
       ) : activeCategory === "all" ? (
         // Grouped by category when showing all. To keep the initial paint
-        // light (B18 — was rendering ~1300 cards), cap each category to a
+        // light (B18, was rendering ~1300 cards), cap each category to a
         // small preview when the user hasn't searched. Users click into a
         // specific category tab to see the full list.
         <div className="space-y-8">

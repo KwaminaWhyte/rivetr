@@ -190,11 +190,11 @@ export default function AppSettingsBuild() {
         // Build options
         disable_build_cache: disableBuildCache,
         include_source_commit: includeSourceCommit,
-        // Container naming — empty string clears it
+        // Container naming, empty string clears it
         custom_container_name: buildForm.custom_container_name || "",
         // Static site flag
         is_static_site: isStaticSite,
-        // Inline Dockerfile — empty string clears it
+        // Inline Dockerfile, empty string clears it
         inline_dockerfile: inlineDockerfile || undefined,
       };
       await api.updateApp(app.id, updates);
@@ -505,7 +505,7 @@ export default function AppSettingsBuild() {
                     className="font-mono text-sm min-h-[200px]"
                   />
                   <p className="text-xs text-muted-foreground">
-                    If set, this Dockerfile is used directly — no git repository needed. Leave blank to build from your git repo.
+                    If set, this Dockerfile is used directly, no git repository needed. Leave blank to build from your git repo.
                   </p>
                 </div>
               </>
@@ -576,7 +576,7 @@ export default function AppSettingsBuild() {
               </p>
               <div className="flex flex-col gap-2">
                 {[
-                  { value: "linux/amd64", label: "linux/amd64", description: "x86-64 (Intel/AMD) — default" },
+                  { value: "linux/amd64", label: "linux/amd64", description: "x86-64 (Intel/AMD), default" },
                   { value: "linux/arm64", label: "linux/arm64", description: "ARM 64-bit (Apple Silicon, AWS Graviton)" },
                   { value: "linux/arm/v7", label: "linux/arm/v7", description: "ARM 32-bit v7 (Raspberry Pi)" },
                 ].map(({ value, label, description }) => (

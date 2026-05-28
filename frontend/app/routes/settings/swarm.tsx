@@ -306,7 +306,7 @@ export default function SwarmPage() {
       <div>
         <h1 className="text-3xl font-bold">Docker Swarm</h1>
         <p className="text-muted-foreground">
-          Manage your Docker Swarm cluster — nodes and services.
+          Manage your Docker Swarm cluster: nodes and services.
         </p>
       </div>
 
@@ -379,7 +379,7 @@ export default function SwarmPage() {
               <div>
                 <div className="text-sm text-muted-foreground">State</div>
                 <div className="font-medium capitalize">
-                  {status?.local_node_state ?? "—"}
+                  {status?.local_node_state ?? "-"}
                 </div>
               </div>
               <div>
@@ -517,7 +517,7 @@ export default function SwarmPage() {
                       <NodeAvailabilityBadge availability={node.availability} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {node.last_seen_at ? formatDate(node.last_seen_at) : "—"}
+                      {node.last_seen_at ? formatDate(node.last_seen_at) : "-"}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">

@@ -254,7 +254,7 @@ function TeamCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.cpu_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right">
@@ -263,7 +263,7 @@ function TeamCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.memory_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right">
@@ -272,7 +272,7 @@ function TeamCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.disk_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right font-medium">
@@ -281,7 +281,7 @@ function TeamCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.total_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
       </TableRow>
@@ -368,7 +368,7 @@ function ProjectCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.cpu_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right">
@@ -377,7 +377,7 @@ function ProjectCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.memory_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right">
@@ -386,7 +386,7 @@ function ProjectCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.disk_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
         <TableCell className="text-right font-medium">
@@ -395,7 +395,7 @@ function ProjectCostRow({
           ) : isExpanded && costs ? (
             formatCurrency(costs.summary.total_cost)
           ) : (
-            "—"
+            "-"
           )}
         </TableCell>
       </TableRow>

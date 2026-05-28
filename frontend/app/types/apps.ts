@@ -202,12 +202,12 @@ export interface Domain {
   domain: string;
   /** Whether this is the primary domain for the app */
   primary: boolean;
-  /** Whether to redirect www to non-www (or vice versa) — legacy field */
+  /** Whether to redirect www to non-www (or vice versa), legacy field */
   redirect_www: boolean;
   /**
    * 3-way www redirect mode (takes precedence over redirect_www):
-   * "both" — serve both www and non-www, "to_www" — redirect non-www → www,
-   * "to_non_www" — redirect www → non-www.
+   * "both" serves both www and non-www, "to_www" redirects non-www → www,
+   * "to_non_www" redirects www → non-www.
    */
   www_redirect_mode?: "both" | "to_www" | "to_non_www";
 }
@@ -614,11 +614,11 @@ export interface UpdateAppRequest {
   is_static_site?: boolean;
   /** URL prefix to strip from incoming requests before forwarding to the container */
   strip_prefix?: string;
-  /** Inline Dockerfile content — set to empty string to clear */
+  /** Inline Dockerfile content, set to empty string to clear */
   inline_dockerfile?: string;
-  /** Docker destination (named network) — set to empty string to clear */
+  /** Docker destination (named network), set to empty string to clear */
   destination_id?: string;
-  /** Custom container labels (JSON string: [{key, value}]) — set to empty string to clear */
+  /** Custom container labels (JSON string: [{key, value}]), set to empty string to clear */
   custom_labels?: string;
 }
 

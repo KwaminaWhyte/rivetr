@@ -88,7 +88,7 @@ export default function DatabaseSettingsTab() {
       const arr = JSON.parse(json);
       if (Array.isArray(arr)) return arr.join("\n");
     } catch {
-      // Not valid JSON — show as-is
+      // Not valid JSON, show as-is
     }
     return json;
   };

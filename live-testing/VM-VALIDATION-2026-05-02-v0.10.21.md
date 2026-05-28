@@ -10,7 +10,7 @@
 | ID | Bug | Result | Evidence |
 |---|---|---|---|
 | B6 | MySQL 8 SSL breaks published connection string | ✅ PASS | `docker inspect rivetr-db-65601774 --format '{{.Config.Cmd}}'` → `[--skip-ssl]` |
-| B8 | Audit `ip_address` always null | ✅ PASS | `database.create` audit entry now shows `ip_address: 10.211.55.2` (Mac host IP). Older entries still null — only future writes capture. |
+| B8 | Audit `ip_address` always null | ✅ PASS | `database.create` audit entry now shows `ip_address: 10.211.55.2` (Mac host IP). Older entries still null, only future writes capture. |
 | B20 | Disk path inconsistency | ✅ PASS | `GET /api/system/disk` → `path: "/var/lib/rivetr"` (canonicalized) |
 | B25 | DB-to-app env injection UI | ✅ PASS | `POST /apps/:id/links` with `{database_id}` returns 200; `GET /apps/:id/linked-env-vars` returns 6 keys: DATABASE_URL, HOST, PORT, USER, PASSWORD, DB; `DELETE /apps/:id/links/:link_id` returns 204 |
 
@@ -35,9 +35,9 @@
 
 ## What's still open
 
-- **B12/B13** — rollback flow needs a live multi-deploy app to validate (carried since v0.10.20).
-- **8 frontend fixes from v0.10.20** — B2, B18, B19, B21, B22, B23, B24, U10 — built into the bundle but not browser-tested.
-- **5 frontend fixes from v0.10.21** — U1, U3, U5, U6, U9 — same status.
+- **B12/B13**: rollback flow needs a live multi-deploy app to validate (carried since v0.10.20).
+- **8 frontend fixes from v0.10.20**: B2, B18, B19, B21, B22, B23, B24, U10, built into the bundle but not browser-tested.
+- **5 frontend fixes from v0.10.21**: U1, U3, U5, U6, U9, same status.
 
 Playwright MCP wasn't available in this session due to subscription access being toggled mid-run; carrying the browser-validation pass forward.
 

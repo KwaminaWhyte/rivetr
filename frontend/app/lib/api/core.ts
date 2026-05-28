@@ -63,7 +63,7 @@ export async function apiRequest<T>(
         json?.error?.message || json?.message || text || `API error: ${response.status}`;
       throw new Error(message);
     } catch (parseErr) {
-      // If JSON.parse threw a SyntaxError, the body isn't JSON — use text as-is
+      // If JSON.parse threw a SyntaxError, the body isn't JSON, use text as-is
       if (parseErr instanceof SyntaxError) {
         throw new Error(text || `API error: ${response.status}`);
       }

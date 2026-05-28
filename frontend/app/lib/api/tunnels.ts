@@ -17,7 +17,7 @@ export interface CloudflareTunnelRoute {
 export interface CloudflareTunnel {
   id: string;
   name: string;
-  /** Always "***" — token is never returned in full. */
+  /** Always "***", token is never returned in full. */
   tunnel_token: string;
   container_id?: string;
   status: "stopped" | "starting" | "running" | "error";

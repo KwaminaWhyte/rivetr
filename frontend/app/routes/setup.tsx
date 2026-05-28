@@ -93,7 +93,7 @@ export default function SetupPage() {
       }
 
       // If the backend returns a session token, persist it and skip the
-      // login screen. If not, fall back to /login (B21 — backend may need
+      // login screen. If not, fall back to /login (B21, backend may need
       // to be patched separately to return a token).
       let authedDirectly = false;
       try {
@@ -103,7 +103,7 @@ export default function SetupPage() {
           authedDirectly = true;
         }
       } catch {
-        // Response wasn't JSON — fall back to /login
+        // Response wasn't JSON, fall back to /login
       }
 
       navigate(authedDirectly ? "/" : "/login", { replace: true });

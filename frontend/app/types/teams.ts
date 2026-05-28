@@ -108,7 +108,7 @@ export interface TeamInvitation {
   team_name: string | null;
   /** Inviter name (for display purposes) */
   inviter_name: string | null;
-  /** Invitation token — use to construct copy-link URL */
+  /** Invitation token: use to construct copy-link URL */
   token: string;
 }
 
@@ -203,7 +203,7 @@ export interface TeamAuditLogQuery {
 }
 
 // -------------------------------------------------------------------------
-// Fine-grained RBAC — per-resource permission overrides
+// Fine-grained RBAC: per-resource permission overrides
 // -------------------------------------------------------------------------
 
 /** A per-member, per-resource permission override */

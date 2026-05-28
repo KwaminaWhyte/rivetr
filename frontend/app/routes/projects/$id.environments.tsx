@@ -705,7 +705,7 @@ export default function ProjectEnvironmentsPage() {
               Create a new environment as a copy of "{selectedEnv?.name}". All
               apps, environment variables, volumes, databases, and services will
               be duplicated with fresh IDs. Domains are cleared and containers
-              are not started — the new environment starts clean.
+              are not started, the new environment starts clean.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

@@ -117,7 +117,7 @@ export default function MonitoringPage() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  // Query for disk stats with polling — same key as dashboard so both pages share one cache entry
+  // Query for disk stats with polling, same key as dashboard so both pages share one cache entry
   const { data: disk, isLoading: diskLoading, refetch: refetchDisk } = useQuery<DiskStats | null>({
     queryKey: ["diskStats"],
     queryFn: () => api.getDiskStats().catch(() => null),

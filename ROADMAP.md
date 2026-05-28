@@ -34,7 +34,7 @@ This document outlines the planned development roadmap for Rivetr. For detailed 
 ### Platform Services
 - One-click managed databases (PostgreSQL, MySQL, MariaDB, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse)
 - Docker Compose multi-container deployments with raw mode, preview, and magic variables
-- 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more — see [docs/reference/service-templates.md](./docs/reference/service-templates.md))
+- 285 pre-configured service templates (Grafana, Portainer, Uptime Kuma, Gitea, n8n, Memos, Beszel, AnythingLLM, Pi-hole, Nextcloud, Plex, PocketBase, Appwrite, Directus, Authentik, MinIO, and many more, see [docs/reference/service-templates.md](./docs/reference/service-templates.md))
 - Port conflict validation across services and databases (real-time frontend checks + server-side enforcement)
 - Auto-subdomain assignment for template-deployed services
 - Automated database backup scheduling with retention policies
@@ -257,34 +257,34 @@ Features required for enterprise adoption and high availability.
 
 ## Recent Bug Fixes (Unreleased)
 
-### Reliability Hardening (Unreleased — production-readiness pass)
-- **Panic isolation** ✅ — Release profile switched `panic = "abort"` → `"unwind"`; a panic in any spawned task no longer kills the whole process. `utils::supervise::guarded()` wraps all 16 background loops + the deploy-engine consumer; 8 reverse-proxy hot-path `Response::builder().unwrap()` calls hardened against control-char header injection.
-- **Host-protection resource defaults** ✅ — Every container inherits `runtime.default_memory_limit` (512m, swap disabled), `default_pids_limit` (512), `default_oom_score_adj` (500) when it sets no limit. A runaway app/db/service is OOM-killed instead of hanging the host. Docker + Podman.
-- **Disk host-hang protection** ✅ — Container log rotation (`default_log_max_size` 10m / `default_log_max_file` 3) + `disk_monitor` auto-reclaims (prune images/build cache) at the critical threshold instead of only logging.
-- **Database integrity check on startup** ✅ — SQLite `PRAGMA quick_check` in the startup self-check; corruption surfaced loudly (non-critical).
-- **Tooling & reference docs** ✅ — `rustfmt.toml`, `Cargo.toml [lints]`, `docs/reference/configuration.md` + `docs/reference/api.md`. Expanded unit tests (build_detect, api/validation); suite at 246.
+### Reliability Hardening (Unreleased: production-readiness pass)
+- **Panic isolation** ✅: Release profile switched `panic = "abort"` → `"unwind"`; a panic in any spawned task no longer kills the whole process. `utils::supervise::guarded()` wraps all 16 background loops + the deploy-engine consumer; 8 reverse-proxy hot-path `Response::builder().unwrap()` calls hardened against control-char header injection.
+- **Host-protection resource defaults** ✅: Every container inherits `runtime.default_memory_limit` (512m, swap disabled), `default_pids_limit` (512), `default_oom_score_adj` (500) when it sets no limit. A runaway app/db/service is OOM-killed instead of hanging the host. Docker + Podman.
+- **Disk host-hang protection** ✅: Container log rotation (`default_log_max_size` 10m / `default_log_max_file` 3) + `disk_monitor` auto-reclaims (prune images/build cache) at the critical threshold instead of only logging.
+- **Database integrity check on startup** ✅: SQLite `PRAGMA quick_check` in the startup self-check; corruption surfaced loudly (non-critical).
+- **Tooling & reference docs** ✅: `rustfmt.toml`, `Cargo.toml [lints]`, `docs/reference/configuration.md` + `docs/reference/api.md`. Expanded unit tests (build_detect, api/validation); suite at 246.
 
-- **v0.10.21 — Database-to-app linking with auto env injection (B25)** ✅ — New "Linked Databases" section on the App Env Vars tab one-clicks Postgres/MySQL/MariaDB/Redis/Mongo into an app; deployment auto-receives `DATABASE_URL`/`HOST`/`PORT`/`USER`/`PASSWORD`/`DB` (or `REDIS_URL`/`MONGODB_URL`). Optional prefix lets one app link multiple DBs. Migration `106_database_app_links.sql`; new module `src/api/database_links.rs`
-- **v0.10.21 — Inline credentials display on project DB list (U6)** ✅ — Each DB card now has a "Show credentials" toggle revealing the connection string + user/pass with copy buttons and a password reveal toggle
-- **v0.10.21 — MySQL 8 client connection broken via published string (B6)** ✅ — Container starts with `--skip-ssl` so `mysql://user:pass@host:3306/db` works without TLS errors
-- **v0.10.21 — Audit `ip_address` always null (B8)** ✅ — `ClientIp` extractor wired into 30+ audit-emitting handlers; both direct socket IPs and proxied `X-Forwarded-For` recorded
-- **v0.10.21 — Disk-stats path inconsistency (B20)** ✅ — `data_dir` canonicalized via `fs::canonicalize`; Dashboard + Monitoring page report identical numbers
-- **v0.10.21 — Sidebar user menu UX (U1)** ✅ — Spacing, hover/focus states, rotating chevron
-- **v0.10.21 — Deploy commit/tag + ZIP modals (U3)** ✅ — Radix dropdown→dialog focus race fixed
-- **v0.10.21 — Template category anchors (U5)** ✅ — Category sections have anchor IDs; "View all N" smooth-scrolls and expands inline
-- **v0.10.21 — Resource Limits live-apply (U9)** ✅ — Save now calls `POST /api/apps/:id/apply-limits` when running, applying via `docker update` without redeploy
-- **v0.10.20 — Coolify-style deploy log side panel** ✅ — A dockable side panel auto-opens on Deploy/Start/Restart and live-streams image-pull + container-start logs for apps, services, and managed databases (new `StartLogRegistry` + WS/REST routes; `DeployPanelProvider` mounted at the dashboard root)
-- **v0.10.20 — MariaDB managed database type** ✅ — Frontend now wires MariaDB through the `mariadb://...` MySQL scheme, `/var/lib/mysql` data path, and `mariadb-dump` backups; supports versions 11 (default), 10.11, 10.6, 10.5; backend covered by `test_mariadb_config` and `test_generate_env_vars_mariadb`
-- **v0.10.20 — Container monitor service health check broken since v0.10.18 (HIGH)** ✅ — `check_services` SELECT was missing migration-105 columns (`public_access`, `external_port`, `expose_container_port`); compose service crash detection was silently disabled. SELECT now lists the full column set
-- **v0.10.20 — `/api/apps/:id/insights` 503 noise** ✅ — Endpoint now returns 404 when no AI provider is configured (was 503), eliminating misleading browser console errors and `tower_http` warn spam
-- **Stale `container_id` on destroyed database container** ✅ — Engine now detects when a database's recorded container no longer exists, clears the stale ID, resets status to `stopped`, and provisions a fresh container instead of getting stuck in `starting`
-- **Reconciliation queries break on new migrations** ✅ — `reconcile_databases` / `reconcile_services` now use `SELECT *` to avoid `no column found` errors when new columns are added
-- **5-field cron expressions for scheduled restarts** ✅ — Standard Unix cron strings (5 fields) now normalized to 6-field format required by the cron crate
-- **Deployment cleanup settings configurable from UI** ✅ — `max_deployments_per_app` and `prune_images` settable from Settings page without editing `rivetr.toml`
-- **MySQL/MariaDB user provisioning on reused data directories** ✅ — Rivetr now idempotently creates the app user via Unix socket after every container start, preventing SQLSTATE[1130] when a bind-mount data directory was pre-initialized
-- **New subdomain SSL coverage** ✅ — Hot-reloadable TLS cert (`TlsReloadHandle`) + renewal manager DB queries for new subdomains; cert reissued immediately when new apps are deployed, no restart needed
-- **Orphaned restart containers** ✅ — Startup reconciliation removes all `rivetr-*-restart-*` containers not associated with an active deployment
-- **Swap not configured warning** ✅ — Startup warns if no swap is present; `install.sh` now automatically creates a 2–4 GB swapfile during installation
+- **v0.10.21: Database-to-app linking with auto env injection (B25)** ✅: New "Linked Databases" section on the App Env Vars tab one-clicks Postgres/MySQL/MariaDB/Redis/Mongo into an app; deployment auto-receives `DATABASE_URL`/`HOST`/`PORT`/`USER`/`PASSWORD`/`DB` (or `REDIS_URL`/`MONGODB_URL`). Optional prefix lets one app link multiple DBs. Migration `106_database_app_links.sql`; new module `src/api/database_links.rs`
+- **v0.10.21: Inline credentials display on project DB list (U6)** ✅: Each DB card now has a "Show credentials" toggle revealing the connection string + user/pass with copy buttons and a password reveal toggle
+- **v0.10.21: MySQL 8 client connection broken via published string (B6)** ✅: Container starts with `--skip-ssl` so `mysql://user:pass@host:3306/db` works without TLS errors
+- **v0.10.21: Audit `ip_address` always null (B8)** ✅: `ClientIp` extractor wired into 30+ audit-emitting handlers; both direct socket IPs and proxied `X-Forwarded-For` recorded
+- **v0.10.21: Disk-stats path inconsistency (B20)** ✅: `data_dir` canonicalized via `fs::canonicalize`; Dashboard + Monitoring page report identical numbers
+- **v0.10.21: Sidebar user menu UX (U1)** ✅: Spacing, hover/focus states, rotating chevron
+- **v0.10.21: Deploy commit/tag + ZIP modals (U3)** ✅: Radix dropdown→dialog focus race fixed
+- **v0.10.21: Template category anchors (U5)** ✅: Category sections have anchor IDs; "View all N" smooth-scrolls and expands inline
+- **v0.10.21: Resource Limits live-apply (U9)** ✅: Save now calls `POST /api/apps/:id/apply-limits` when running, applying via `docker update` without redeploy
+- **v0.10.20: Coolify-style deploy log side panel** ✅: A dockable side panel auto-opens on Deploy/Start/Restart and live-streams image-pull + container-start logs for apps, services, and managed databases (new `StartLogRegistry` + WS/REST routes; `DeployPanelProvider` mounted at the dashboard root)
+- **v0.10.20: MariaDB managed database type** ✅: Frontend now wires MariaDB through the `mariadb://...` MySQL scheme, `/var/lib/mysql` data path, and `mariadb-dump` backups; supports versions 11 (default), 10.11, 10.6, 10.5; backend covered by `test_mariadb_config` and `test_generate_env_vars_mariadb`
+- **v0.10.20: Container monitor service health check broken since v0.10.18 (HIGH)** ✅: `check_services` SELECT was missing migration-105 columns (`public_access`, `external_port`, `expose_container_port`); compose service crash detection was silently disabled. SELECT now lists the full column set
+- **v0.10.20: `/api/apps/:id/insights` 503 noise** ✅: Endpoint now returns 404 when no AI provider is configured (was 503), eliminating misleading browser console errors and `tower_http` warn spam
+- **Stale `container_id` on destroyed database container** ✅: Engine now detects when a database's recorded container no longer exists, clears the stale ID, resets status to `stopped`, and provisions a fresh container instead of getting stuck in `starting`
+- **Reconciliation queries break on new migrations** ✅: `reconcile_databases` / `reconcile_services` now use `SELECT *` to avoid `no column found` errors when new columns are added
+- **5-field cron expressions for scheduled restarts** ✅: Standard Unix cron strings (5 fields) now normalized to 6-field format required by the cron crate
+- **Deployment cleanup settings configurable from UI** ✅: `max_deployments_per_app` and `prune_images` settable from Settings page without editing `rivetr.toml`
+- **MySQL/MariaDB user provisioning on reused data directories** ✅: Rivetr now idempotently creates the app user via Unix socket after every container start, preventing SQLSTATE[1130] when a bind-mount data directory was pre-initialized
+- **New subdomain SSL coverage** ✅: Hot-reloadable TLS cert (`TlsReloadHandle`) + renewal manager DB queries for new subdomains; cert reissued immediately when new apps are deployed, no restart needed
+- **Orphaned restart containers** ✅: Startup reconciliation removes all `rivetr-*-restart-*` containers not associated with an active deployment
+- **Swap not configured warning** ✅: Startup warns if no swap is present; `install.sh` now automatically creates a 2–4 GB swapfile during installation
 
 ## Future Considerations
 

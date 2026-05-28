@@ -40,7 +40,7 @@ export const environmentsApi = {
       method: "DELETE",
     }),
 
-  /** Clone an environment — duplicates all apps, env vars, volumes, databases, and services */
+  /** Clone an environment: duplicates all apps, env vars, volumes, databases, and services */
   cloneEnvironment: (
     projectId: string,
     envId: string,

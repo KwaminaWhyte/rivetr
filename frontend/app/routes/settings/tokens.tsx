@@ -102,7 +102,7 @@ export default function SettingsTokensPage() {
   };
 
   const formatDate = (iso: string | null) => {
-    if (!iso) return "—";
+    if (!iso) return "-";
     return new Date(iso).toLocaleDateString();
   };
 
@@ -138,7 +138,7 @@ export default function SettingsTokensPage() {
               Token Created
             </CardTitle>
             <CardDescription>
-              Copy this token now — it will not be shown again.
+              Copy this token now, it will not be shown again.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">

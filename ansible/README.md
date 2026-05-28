@@ -37,7 +37,7 @@ cp inventory.example inventory
 
 ```bash
 cp group_vars/rivetr.yml.example group_vars/rivetr.yml
-# Edit group_vars/rivetr.yml — at minimum change:
+# Edit group_vars/rivetr.yml - at minimum change:
 #   rivetr_domain, rivetr_admin_email, rivetr_admin_password, rivetr_jwt_secret
 ```
 
@@ -53,7 +53,7 @@ openssl rand -hex 32
 ansible-playbook -i inventory rivetr.yml
 ```
 
-The playbook is **idempotent** — safe to re-run after upgrades or config changes.
+The playbook is **idempotent**: safe to re-run after upgrades or config changes.
 
 ## Targeting specific tasks
 

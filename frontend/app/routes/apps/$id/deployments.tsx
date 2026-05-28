@@ -616,11 +616,11 @@ export default function AppDeploymentsTab() {
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Commit Range</p>
                   <div className="flex items-center gap-2 text-sm font-mono">
                     <span className="text-muted-foreground">
-                      {diffData.previous_sha ? diffData.previous_sha.slice(0, 7) : "—"}
+                      {diffData.previous_sha ? diffData.previous_sha.slice(0, 7) : "-"}
                     </span>
                     <span className="text-muted-foreground">→</span>
                     <span className="font-medium">
-                      {diffData.current_sha ? diffData.current_sha.slice(0, 7) : "—"}
+                      {diffData.current_sha ? diffData.current_sha.slice(0, 7) : "-"}
                     </span>
                   </div>
                 </div>

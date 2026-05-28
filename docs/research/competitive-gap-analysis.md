@@ -16,11 +16,11 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | MariaDB managed database | ✅ Implemented | `mariadb:11` image, MARIADB_* env vars, mariadb-dump backups, separate `Mariadb` enum variant |
 | Database SSL/TLS configuration | ✅ Implemented | Per-database `ssl_enabled`/`ssl_mode` fields; Postgres (allow/prefer/require/verify-ca/verify-full) and MySQL/MariaDB (preferred/required/verify-ca/verify-identity) modes; Settings tab UI |
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
-| GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab` — full authorize + callback flow with read_user scope |
+| GitLab OAuth login | ✅ Implemented | `/api/auth/oauth-login/gitlab`, full authorize + callback flow with read_user scope |
 | Azure AD OAuth login | ✅ Implemented | Configurable tenant_id via `extra_config` JSON; uses Microsoft login.microsoftonline.com endpoints |
 | Bitbucket OAuth login | ✅ Implemented | full authorize + callback + user info flow; email fetched from `/user/emails` endpoint |
 | Instance backup to S3 | ✅ Implemented | after local backup creation, uploads to S3 with `instance-backups/` prefix if default S3 config exists |
-| Test backup button | ✅ Implemented | `POST /api/backups/schedules/:id/run` — triggers immediate backup run; "Run Now" button in backup settings UI |
+| Test backup button | ✅ Implemented | `POST /api/backups/schedules/:id/run`, triggers immediate backup run; "Run Now" button in backup settings UI |
 | Mattermost notifications | ✅ Implemented | Incoming webhook channel type; configurable URL + username + icon |
 | Lark/Feishu notifications | ✅ Implemented | Webhook-based; supports custom sign secret for verification |
 | Gotify notifications | ✅ Implemented | Self-hosted push server; configurable URL, token, priority |
@@ -49,11 +49,11 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 | DragonFlyDB (Redis-compatible) | ✅ Implemented | Port 6379, redis:// connection string, RDB backup format, same interface as Redis |
 | KeyDB (Redis-compatible) | ✅ Implemented | Port 6379, redis:// connection string, RDB backup format, same interface as Redis |
 | ClickHouse analytics database | ✅ Implemented | Port 8123, clickhouse:// connection string, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1, post-start DB init |
-| Docker Compose raw mode | ✅ Implemented | Migration 088; per-service toggle skips all Rivetr network injection/namespacing — deploys verbatim |
+| Docker Compose raw mode | ✅ Implemented | Migration 088; per-service toggle skips all Rivetr network injection/namespacing, deploys verbatim |
 | Docker Compose preview before deploy | ✅ Implemented | GET /api/services/:id/preview-compose with dry-run mode; "Preview" button in service settings |
-| Docker Compose magic variables | ✅ Implemented | SERVICE_PASSWORD, SERVICE_BASE64, SERVICE_FQDN, SERVICE_URL, VAR:?message — all implemented |
+| Docker Compose magic variables | ✅ Implemented | SERVICE_PASSWORD, SERVICE_BASE64, SERVICE_FQDN, SERVICE_URL, VAR:?message, all implemented |
 | Container resource limits UI + live apply | ✅ Implemented | Memory/CPU limit fields in Docker settings; "Apply Now" button calls POST /api/apps/:id/apply-limits (docker update, no redeploy) |
-| Ansible playbook | ✅ Implemented | `ansible/rivetr.yml` — idempotent playbook for Ubuntu/Debian; installs Docker, binary, systemd service, UFW rules |
+| Ansible playbook | ✅ Implemented | `ansible/rivetr.yml`, idempotent playbook for Ubuntu/Debian; installs Docker, binary, systemd service, UFW rules |
 | +18 service templates (sprint 20) | ✅ Implemented | PocketBase, Appwrite, Directus, Strapi, Outline, Authentik, Authelia, Zitadel, Rocket.Chat, Jitsi, Mautic, Twenty CRM, VictoriaMetrics, Netdata, MinIO, Photoprism, Infisical, Checkmk |
 | Fine-grained RBAC (per-resource permissions) | ✅ Implemented | Migration 089; `team_resource_permissions` table; GET/PUT `/teams/:id/members/:user_id/permissions`, DELETE per-entry; admin dialog in team member settings |
 | Deployment queue cancellation | ✅ Implemented | Migration 090 adds `cancelled_at`; CancellationToken per deployment in AppState DashMap; Cancel button in deployment detail UI |
@@ -86,10 +86,10 @@ This document identifies features present in Coolify and/or Dokploy that Rivetr 
 ### Missing database engines
 | Feature | Coolify | Dokploy | Rivetr |
 |---------|---------|---------|--------|
-| MariaDB | ✅ | ✅ | ✅ (implemented — separate engine, mariadb:11 default) |
-| DragonFly (Redis-compatible) | ✅ | ❌ | ✅ (implemented — port 6379, redis:// connection string, RDB backup format) |
-| KeyDB (Redis-compatible) | ✅ | ❌ | ✅ (implemented — port 6379, redis:// connection string, RDB backup format) |
-| ClickHouse | ✅ | ❌ | ✅ (implemented — port 8123, clickhouse:// connection string, post-start DB init) |
+| MariaDB | ✅ | ✅ | ✅ (implemented, separate engine, mariadb:11 default) |
+| DragonFly (Redis-compatible) | ✅ | ❌ | ✅ (implemented, port 6379, redis:// connection string, RDB backup format) |
+| KeyDB (Redis-compatible) | ✅ | ❌ | ✅ (implemented, port 6379, redis:// connection string, RDB backup format) |
+| ClickHouse | ✅ | ❌ | ✅ (implemented, port 8123, clickhouse:// connection string, post-start DB init) |
 
 ### Database SSL/TLS
 ✅ **Implemented in Rivetr**
@@ -141,13 +141,13 @@ Coolify supports switching between Traefik and Caddy as the reverse proxy backen
 🔴 **Missing in Rivetr** (Rivetr uses a custom proxy, not Traefik)
 
 Features available via Traefik that Rivetr's proxy does not expose:
-- **Basic auth middleware** — ✅ Rivetr now supports proxy-level basic auth (Argon2 hashed, per-app toggle)
-- **Authentik/Keycloak SSO middleware** — single-sign-on gateway transparently protecting any deployed service
-- **www ↔ non-www redirects** — ✅ Rivetr now supports regex redirect rules (301/302, per-app, capture group substitution)
-- **Cross-domain redirects** — redirect from one domain to another via Traefik labels (regex rules in Rivetr partially support this)
-- **Custom Traefik labels** — advanced users can add arbitrary Traefik configuration to any container
-- **Traefik dashboard** — live route/service inspection UI secured with basic auth
-- **Custom dynamic config files** — drop YAML files into `/data/coolify/proxy/certs` or dynamic config dir
+- **Basic auth middleware**: ✅ Rivetr now supports proxy-level basic auth (Argon2 hashed, per-app toggle)
+- **Authentik/Keycloak SSO middleware**: single-sign-on gateway transparently protecting any deployed service
+- **www ↔ non-www redirects**: ✅ Rivetr now supports regex redirect rules (301/302, per-app, capture group substitution)
+- **Cross-domain redirects**: redirect from one domain to another via Traefik labels (regex rules in Rivetr partially support this)
+- **Custom Traefik labels**: advanced users can add arbitrary Traefik configuration to any container
+- **Traefik dashboard**: live route/service inspection UI secured with basic auth
+- **Custom dynamic config files**: drop YAML files into `/data/coolify/proxy/certs` or dynamic config dir
 
 ### Path-based routing with priority
 🟡 **Partial in Rivetr**
@@ -162,7 +162,7 @@ Coolify validates DNS by querying `1.1.1.1` when a user adds a custom domain, sh
 ### URL redirect rules (regex-based)
 ✅ **Implemented in Rivetr**
 
-Both Coolify and Dokploy support defining regex-based URL redirect rules per application (e.g., `^/old-path(.*)` → `/new-path$1`, with optional 301 permanent flag). Rivetr now supports this via per-app redirect rules enforced at the proxy level — CRUD API at `/api/apps/:id/redirects`, with a UI card on the Network settings tab. Rules support capture group substitution (`$1`, `$2`), enable/disable toggles, sort order priority, and 301/302 selection.
+Both Coolify and Dokploy support defining regex-based URL redirect rules per application (e.g., `^/old-path(.*)` → `/new-path$1`, with optional 301 permanent flag). Rivetr now supports this via per-app redirect rules enforced at the proxy level, CRUD API at `/api/apps/:id/redirects`, with a UI card on the Network settings tab. Rules support capture group substitution (`$1`, `$2`), enable/disable toggles, sort order priority, and 301/302 selection.
 
 ### Per-app isolated Docker networks
 ✅ **Implemented in Rivetr**
@@ -199,23 +199,23 @@ Dokploy supports injecting build-time secrets (SSH keys, API tokens) via Docker'
 ### Docker Compose "preview before deploy"
 ✅ **Implemented in Rivetr**
 
-`GET /api/services/:id/preview-compose` returns the final rendered compose YAML with all magic variables substituted (dry-run mode — no DB writes). A "Preview Compose" button is available in the service settings page.
+`GET /api/services/:id/preview-compose` returns the final rendered compose YAML with all magic variables substituted (dry-run mode, no DB writes). A "Preview Compose" button is available in the service settings page.
 
 ### Docker Compose magic variables
 ✅ **Implemented in Rivetr**
 
 Rivetr supports all major Coolify compose magic variables via `substitute_magic_vars()`:
-- `${SERVICE_PASSWORD_<NAME>}` — auto-generated 32-char alphanumeric, persisted to DB
-- `${SERVICE_BASE64_<NAME>}` — 32-byte random base64-encoded, persisted
-- `${SERVICE_BASE64_64_<NAME>}` — 64-byte random base64-encoded, persisted
-- `${SERVICE_FQDN_<NAME>}` — the service's assigned domain
-- `${SERVICE_URL_<NAME>}` — `https://` + domain
-- `${VAR:?message}` — required variable (blocks deploy with error if unset)
+- `${SERVICE_PASSWORD_<NAME>}`, auto-generated 32-char alphanumeric, persisted to DB
+- `${SERVICE_BASE64_<NAME>}`, 32-byte random base64-encoded, persisted
+- `${SERVICE_BASE64_64_<NAME>}`, 64-byte random base64-encoded, persisted
+- `${SERVICE_FQDN_<NAME>}`, the service's assigned domain
+- `${SERVICE_URL_<NAME>}`, `https://` + domain
+- `${VAR:?message}`, required variable (blocks deploy with error if unset)
 
 ### Docker Compose "raw mode"
 ✅ **Implemented in Rivetr**
 
-A "Raw Compose Mode" toggle is available on the service settings page (migration 088). When enabled, the compose file is deployed exactly as written — no container name namespacing, no isolated network injection, and no `rivetr` external network injection. Essential for services with opinionated internal networking.
+A "Raw Compose Mode" toggle is available on the service settings page (migration 088). When enabled, the compose file is deployed exactly as written, no container name namespacing, no isolated network injection, and no `rivetr` external network injection. Essential for services with opinionated internal networking.
 
 ### Restart policy configuration
 ✅ **Implemented in Rivetr**
@@ -230,12 +230,12 @@ Both competitors auto-inject useful variables into every container at runtime:
 - Dokploy: `DOKPLOY_DEPLOY_URL` (set to the deployment domain, useful in preview envs)
 
 Rivetr now injects the following into every container at runtime (without overriding user-defined values):
-- `RIVETR_FQDN` — bare hostname of the app's primary domain
-- `RIVETR_URL` — full `https://` URL
-- `SOURCE_COMMIT` — git commit SHA for the deployment
-- `PORT` — container port
-- `RIVETR_ENV` — environment name
-- `RIVETR_APP_NAME` — application name
+- `RIVETR_FQDN`, bare hostname of the app's primary domain
+- `RIVETR_URL`, full `https://` URL
+- `SOURCE_COMMIT`, git commit SHA for the deployment
+- `PORT`, container port
+- `RIVETR_ENV`, environment name
+- `RIVETR_APP_NAME`, application name
 - `RIVETR_APP_ID`, `RIVETR_DEPLOYMENT_ID` also injected
 
 ---
@@ -247,7 +247,7 @@ Rivetr now injects the following into every container at runtime (without overri
 |----------|-----------|
 | Coolify | 400+ |
 | Dokploy | 388+ |
-| **Rivetr** | **~250** *(sprint 16: +39 new templates — KeyDB, DragonflyDB, ClickHouse, CockroachDB, TimescaleDB, SurrealDB, Cassandra, Neo4j, QuestDB, Uptime Kuma, Prometheus, Jaeger, OpenTelemetry, Graylog, Concourse, Argo CD, Tekton, GitLab Runner, Woodpecker Server/Agent, Revolt, HumHub, Zulip, Chatwoot, Chroma, AnythingLLM, Langfuse, LocalAI, Wazuh, Passbolt, CrowdSec Dashboard, Dolibarr, Taiga, Twenty CRM, Plane, Monica, Listmonk, Cal.com, Restic)* |
+| **Rivetr** | **~250** *(sprint 16: +39 new templates: KeyDB, DragonflyDB, ClickHouse, CockroachDB, TimescaleDB, SurrealDB, Cassandra, Neo4j, QuestDB, Uptime Kuma, Prometheus, Jaeger, OpenTelemetry, Graylog, Concourse, Argo CD, Tekton, GitLab Runner, Woodpecker Server/Agent, Revolt, HumHub, Zulip, Chatwoot, Chroma, AnythingLLM, Langfuse, LocalAI, Wazuh, Passbolt, CrowdSec Dashboard, Dolibarr, Taiga, Twenty CRM, Plane, Monica, Listmonk, Cal.com, Restic)* |
 
 Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
@@ -266,7 +266,7 @@ Based on gap analysis of Coolify's 400+ and Dokploy's 388+ vs Rivetr's ~250:
 - Invoice Ninja (invoicing)
 - Odoo (ERP)
 - Plane (GitHub Issues alternative)
-- Outline (wiki — knowledge base)
+- Outline (wiki, knowledge base)
 - Mautic (marketing automation)
 - Listmonk (newsletter/mailing list)
 - Limesurvey (surveys)
@@ -370,9 +370,9 @@ Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't
 |----------------|---------|---------|--------|
 | GitHub | ✅ | ❌ | ✅ |
 | Google | ✅ | ❌ | ✅ |
-| GitLab | ✅ | ❌ | ✅ (implemented — `/api/auth/oauth-login/gitlab`) |
-| Bitbucket | ✅ | ❌ | ✅ (implemented — full authorize + callback + `/user/emails` for primary email) |
-| Azure AD / Microsoft | ✅ | ❌ | ✅ (implemented — configurable tenant_id via extra_config) |
+| GitLab | ✅ | ❌ | ✅ (implemented, `/api/auth/oauth-login/gitlab`) |
+| Bitbucket | ✅ | ❌ | ✅ (implemented, full authorize + callback + `/user/emails` for primary email) |
+| Azure AD / Microsoft | ✅ | ❌ | ✅ (implemented, configurable tenant_id via extra_config) |
 
 Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 
@@ -391,7 +391,7 @@ Rivetr has 4 roles (owner/admin/developer/viewer) plus per-resource permission o
 ### Basic auth on deployed apps (proxy-level)
 ✅ **Implemented in Rivetr**
 
-Coolify and Dokploy both support adding HTTP Basic Authentication to any deployed application via a single toggle in the UI — enforced at the proxy level without touching the application code. Rivetr supports proxy-level basic auth with Argon2-hashed passwords, a toggle UI on the Security settings tab, and a dedicated `/api/apps/:id/basic-auth` API.
+Coolify and Dokploy both support adding HTTP Basic Authentication to any deployed application via a single toggle in the UI, enforced at the proxy level without touching the application code. Rivetr supports proxy-level basic auth with Argon2-hashed passwords, a toggle UI on the Security settings tab, and a dedicated `/api/apps/:id/basic-auth` API.
 
 ---
 
@@ -407,10 +407,10 @@ Coolify and Dokploy both support adding HTTP Basic Authentication to any deploye
 | Microsoft Teams | ❌ | ❌ | ✅ |
 | Pushover | ✅ | ✅ | ✅ |
 | Ntfy | ❌ | ✅ | ✅ |
-| Mattermost | ✅ | ❌ | ✅ (implemented — incoming webhook) |
-| Lark / Feishu | ❌ | ✅ | ✅ (implemented — webhook-based) |
-| Gotify | ❌ | ✅ | ✅ (implemented — self-hosted push) |
-| Resend (email API) | ✅ | ✅ | ✅ (implemented — transactional email API) |
+| Mattermost | ✅ | ❌ | ✅ (implemented, incoming webhook) |
+| Lark / Feishu | ❌ | ✅ | ✅ (implemented, webhook-based) |
+| Gotify | ❌ | ✅ | ✅ (implemented, self-hosted push) |
+| Resend (email API) | ✅ | ✅ | ✅ (implemented, transactional email API) |
 | Custom Webhook | ✅ | ✅ | 🟡 (partial) |
 
 All notification channels are now implemented. Discord and Slack support full deployment event notifications via `NotificationChannelType::Discord/Slack` in the main notification service (`src/notifications/mod.rs`).
@@ -446,7 +446,7 @@ Coolify watches for unexpected container stop/restart events (outside of normal 
 ### Instance backup to S3
 ✅ **Implemented in Rivetr**
 
-When `POST /api/system/backup` creates a local `.tar.gz` archive, it performs a best-effort upload to the default S3 storage config (if one is configured) using the key prefix `instance-backups/`. The upload failure is non-fatal — the backup is still returned as a download. Existing backups can also be manually uploaded via `POST /api/system/backups/:name/upload-to-s3`.
+When `POST /api/system/backup` creates a local `.tar.gz` archive, it performs a best-effort upload to the default S3 storage config (if one is configured) using the key prefix `instance-backups/`. The upload failure is non-fatal, the backup is still returned as a download. Existing backups can also be manually uploaded via `POST /api/system/backups/:name/upload-to-s3`.
 
 ### S3 destinations supported
 | Provider | Coolify | Dokploy | Rivetr |
@@ -502,7 +502,7 @@ Rivetr now supports multi-platform Docker builds via `docker buildx --platform`.
 ### Multiple organizations
 🔴 **Missing in Rivetr**
 
-Dokploy supports **multiple organizations** within a single instance (Startup: 3, Enterprise: unlimited), each with separate user bases, resources, and billing. Rivetr has teams but all teams exist within a single organizational context — there's no tenant isolation at the organization level.
+Dokploy supports **multiple organizations** within a single instance (Startup: 3, Enterprise: unlimited), each with separate user bases, resources, and billing. Rivetr has teams but all teams exist within a single organizational context: there's no tenant isolation at the organization level.
 
 ### Hierarchical variable scoping (Coolify style)
 🟡 **Partial in Rivetr**
@@ -539,7 +539,7 @@ Coolify has Cloudflare API integration for tunnel management and DNS validation.
 Coolify has a Hetzner Cloud integration (create/delete/manage Hetzner servers from within Coolify). Neither Rivetr nor Dokploy have cloud provider API integrations for server provisioning.
 
 ### Terminal UI (TUI)
-✅ **Implemented** — `rivetr tui` command; tabbed interface (Apps/Deployments/Servers/Logs); keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling; connects to any instance via --url/--token · ✅ **Live-tested 2026-03-14**
+✅ **Implemented**: `rivetr tui` command; tabbed interface (Apps/Deployments/Servers/Logs); keyboard navigation (d=deploy, s=stop, r=restart, ?=help); live log polling; connects to any instance via --url/--token · ✅ **Live-tested 2026-03-14**
 
 Built with ratatui + crossterm, enabled via `--features tui`. The Dokploy community built **Dokli** as a separate tool; Rivetr ships the TUI as a first-party built-in subcommand.
 

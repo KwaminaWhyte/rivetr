@@ -112,7 +112,7 @@ function SidebarFooterInfo() {
               href={`https://github.com/KwaminaWhyte/rivetr/releases/tag/${version}`}
               target="_blank"
               rel="noopener noreferrer"
-              title={`Rivetr ${version} — view release notes`}
+              title={`Rivetr ${version}: view release notes`}
             >
               <span className="font-mono">{version}</span>
               <ExternalLink className="ml-auto h-3 w-3 opacity-50" />

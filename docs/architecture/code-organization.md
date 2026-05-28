@@ -20,7 +20,7 @@ src/api/apps.rs          →   src/api/apps/
 ```
 
 In Rust, `mod apps;` in `src/api/mod.rs` transparently resolves to either
-`src/api/apps.rs` **or** `src/api/apps/mod.rs` — no change to the caller required.
+`src/api/apps.rs` **or** `src/api/apps/mod.rs`, no change to the caller required.
 
 ### Frontend Pattern
 
@@ -92,86 +92,86 @@ frontend/app/types/api.ts   →   frontend/app/types/
 ### `src/db/seeders/` ✅
 
 ```
-mod.rs          — seed_service_templates() entry point, orchestrates sub-seeder calls
-infrastructure.rs — Portainer, Gitea, n8n, Grafana, Prometheus, Uptime Kuma, etc. (original 26)
-ai_ml.rs        — Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB
-analytics.rs    — Plausible, Umami, PostHog, Matomo
-automation.rs   — Activepieces, Windmill, Trigger.dev
-cms.rs          — WordPress, Ghost, Strapi, Directus, Payload CMS
-communication.rs— Rocket.Chat, Mattermost, Matrix/Synapse
-devtools.rs     — Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo
-documentation.rs— BookStack, Wiki.js, Docmost, Outline
-media.rs        — Immich, Jellyfin, Navidrome, Seafile
-monitoring.rs   — SigNoz, Beszel, Checkmate
-security.rs     — Authentik, Keycloak, Vaultwarden, Infisical
-search.rs       — Meilisearch, Typesense
-project_mgmt.rs — Plane, Vikunja, Leantime, Cal.com
-other.rs        — Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF
+mod.rs          - seed_service_templates() entry point, orchestrates sub-seeder calls
+infrastructure.rs - Portainer, Gitea, n8n, Grafana, Prometheus, Uptime Kuma, etc. (original 26)
+ai_ml.rs        - Ollama, Open WebUI, LiteLLM, Langflow, Flowise, ChromaDB
+analytics.rs    - Plausible, Umami, PostHog, Matomo
+automation.rs   - Activepieces, Windmill, Trigger.dev
+cms.rs          - WordPress, Ghost, Strapi, Directus, Payload CMS
+communication.rs- Rocket.Chat, Mattermost, Matrix/Synapse
+devtools.rs     - Code Server, Supabase, Appwrite, Pocketbase, Hoppscotch, Forgejo
+documentation.rs- BookStack, Wiki.js, Docmost, Outline
+media.rs        - Immich, Jellyfin, Navidrome, Seafile
+monitoring.rs   - SigNoz, Beszel, Checkmate
+security.rs     - Authentik, Keycloak, Vaultwarden, Infisical
+search.rs       - Meilisearch, Typesense
+project_mgmt.rs - Plane, Vikunja, Leantime, Cal.com
+other.rs        - Paperless-ngx, Trilium, Linkwarden, Tandoor, Stirling-PDF
 ```
 
 ### `src/api/webhooks/` ✅
 
 ```
-mod.rs          — route registration, shared types, signature verification utils
-github.rs       — github_webhook handler, handle_github_push, handle_github_pull_request
-gitlab.rs       — gitlab_webhook handler, handle_gitlab_push, handle_gitlab_merge_request
-gitea.rs        — gitea_webhook handler, handle_gitea_push, handle_gitea_pull_request
-bitbucket.rs    — bitbucket_webhook handler, handle_bitbucket_push, handle_bitbucket_pr
+mod.rs          - route registration, shared types, signature verification utils
+github.rs       - github_webhook handler, handle_github_push, handle_github_pull_request
+gitlab.rs       - gitlab_webhook handler, handle_gitlab_push, handle_gitlab_merge_request
+gitea.rs        - gitea_webhook handler, handle_gitea_push, handle_gitea_pull_request
+bitbucket.rs    - bitbucket_webhook handler, handle_bitbucket_push, handle_bitbucket_pr
 ```
 
 ### `src/api/apps/`
 
 ```
-mod.rs          — route registration, re-exports
-crud.rs         — list_apps, get_app, create_app, update_app, delete_app, validation
-control.rs      — start_app, stop_app, restart_app, get_app_status
-sharing.rs      — list_app_shares, create_app_share, delete_app_share, list_apps_with_sharing
-upload.rs       — upload_create_app (ZIP upload flow)
-logs.rs         — stream_app_logs (SSE log streaming)
+mod.rs          - route registration, re-exports
+crud.rs         - list_apps, get_app, create_app, update_app, delete_app, validation
+control.rs      - start_app, stop_app, restart_app, get_app_status
+sharing.rs      - list_app_shares, create_app_share, delete_app_share, list_apps_with_sharing
+upload.rs       - upload_create_app (ZIP upload flow)
+logs.rs         - stream_app_logs (SSE log streaming)
 ```
 
 ### `src/engine/pipeline/`
 
 ```
-mod.rs          — run_deployment, run_rollback, public types (DeploymentStage, etc.)
-clone.rs        — clone_repository, clone_with_ssh_key, git_checkout helpers
-build.rs        — execute_deployment_commands (Dockerfile/Nixpacks/Railpack/etc.)
-start.rs        — container start, health check, proxy route switch
-rollback.rs     — run_rollback, trigger_auto_rollback, AutoRollbackTriggered
+mod.rs          - run_deployment, run_rollback, public types (DeploymentStage, etc.)
+clone.rs        - clone_repository, clone_with_ssh_key, git_checkout helpers
+build.rs        - execute_deployment_commands (Dockerfile/Nixpacks/Railpack/etc.)
+start.rs        - container start, health check, proxy route switch
+rollback.rs     - run_rollback, trigger_auto_rollback, AutoRollbackTriggered
 ```
 
 ### `src/api/teams/`
 
 ```
-mod.rs          — route registration, re-exports, shared helpers (validate_team_role, etc.)
-crud.rs         — list_teams, get_team, create_team, update_team, delete_team
-members.rs      — list_members, invite_member, update_member_role, remove_member
-invitations.rs  — list_invitations, create_invitation, delete_invitation, resend_invitation,
+mod.rs          - route registration, re-exports, shared helpers (validate_team_role, etc.)
+crud.rs         - list_teams, get_team, create_team, update_team, delete_team
+members.rs      - list_members, invite_member, update_member_role, remove_member
+invitations.rs  - list_invitations, create_invitation, delete_invitation, resend_invitation,
                    validate_invitation, accept_invitation
-audit.rs        — list_audit_logs, log_team_audit
+audit.rs        - list_audit_logs, log_team_audit
 ```
 
 ### `src/runtime/docker/`
 
 ```
-mod.rs          — DockerRuntime struct, ContainerRuntime trait impl (delegates to submodules)
-build.rs        — build() implementation
-container.rs    — run(), stop(), remove(), exec(), inspect()
-logs.rs         — logs() streaming implementation
+mod.rs          - DockerRuntime struct, ContainerRuntime trait impl (delegates to submodules)
+build.rs        - build() implementation
+container.rs    - run(), stop(), remove(), exec(), inspect()
+logs.rs         - logs() streaming implementation
 ```
 
 ### `frontend/app/types/`
 
 ```
-index.ts        — re-exports: export * from './apps'; export * from './deployments'; etc.
-apps.ts         — App, CreateAppRequest, UpdateAppRequest, AppStatus, AppShare
-deployments.ts  — Deployment, DeploymentLog, TriggerDeployRequest, RollbackRequest
-databases.ts    — Database, CreateDatabaseRequest, DatabaseBackup
-services.ts     — Service, ServiceTemplate, CreateServiceRequest
-teams.ts        — Team, TeamMember, TeamInvitation, AuditLog, TeamRole
-notifications.ts— NotificationChannel, CreateChannelRequest, NotificationEvent
-system.ts       — SystemHealth, BackupFile, S3Config, OAuthProvider
-costs.ts        — CostSummary, CostSnapshot, ResourceAlert
+index.ts        - re-exports: export * from './apps'; export * from './deployments'; etc.
+apps.ts         - App, CreateAppRequest, UpdateAppRequest, AppStatus, AppShare
+deployments.ts  - Deployment, DeploymentLog, TriggerDeployRequest, RollbackRequest
+databases.ts    - Database, CreateDatabaseRequest, DatabaseBackup
+services.ts     - Service, ServiceTemplate, CreateServiceRequest
+teams.ts        - Team, TeamMember, TeamInvitation, AuditLog, TeamRole
+notifications.ts- NotificationChannel, CreateChannelRequest, NotificationEvent
+system.ts       - SystemHealth, BackupFile, S3Config, OAuthProvider
+costs.ts        - CostSummary, CostSnapshot, ResourceAlert
 ```
 
 ---

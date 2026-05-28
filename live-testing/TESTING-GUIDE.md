@@ -16,8 +16,8 @@ export TOKEN="your-api-token-here"
 2. [Authentication](#2-authentication)
 3. [Team Management](#3-team-management)
 4. [Project Management](#4-project-management)
-5. [App Deployment — Git](#5-app-deployment--git)
-6. [App Deployment — Other Sources](#6-app-deployment--other-sources)
+5. [App Deployment, Git](#5-app-deployment--git)
+6. [App Deployment, Other Sources](#6-app-deployment--other-sources)
 7. [Webhooks](#7-webhooks)
 8. [App Settings & Control](#8-app-settings--control)
 9. [Deployment Management](#9-deployment-management)
@@ -41,7 +41,7 @@ export TOKEN="your-api-token-here"
 ## 1. Installation & Startup
 
 ### 1.1 Fresh Install via Curl Script
-- [ ] **Clean state** — Remove any prior installation before testing
+- [ ] **Clean state**: Remove any prior installation before testing
   ```bash
   systemctl stop rivetr 2>/dev/null
   rm -rf /opt/rivetr /var/lib/rivetr /etc/systemd/system/rivetr.service
@@ -149,10 +149,10 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `401`
 
-- [ ] **Session persists on page refresh** — reload dashboard in browser
+- [ ] **Session persists on page refresh**: reload dashboard in browser
   **Expected:** Still logged in, no redirect to login page
 
-- [ ] **Logout clears session** — click logout, refresh
+- [ ] **Logout clears session**: click logout, refresh
   **Expected:** Redirected to login page
 
 ### 2.2 GitHub OAuth Login
@@ -177,7 +177,7 @@ export TOKEN="your-api-token-here"
   **Expected:** Logged in as SSO user
 
 ### 2.5 Two-Factor Authentication (TOTP)
-- [ ] **2FA setup — get QR code**
+- [ ] **2FA setup, get QR code**
   ```bash
   curl -X POST -H "Authorization: Bearer $TOKEN" \
     $SERVER/api/auth/2fa/setup
@@ -194,7 +194,7 @@ export TOKEN="your-api-token-here"
     -d '{"code":"123456"}' \
     $SERVER/api/auth/2fa/verify
   ```
-  **Expected:** `{ "recovery_codes": [...] }` — save these codes
+  **Expected:** `{ "recovery_codes": [...] }`: save these codes
 
 - [ ] **2FA status shows enabled**
   ```bash
@@ -202,10 +202,10 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `{ "enabled": true }`
 
-- [ ] **Login flow requires TOTP after enabling** — log out, log back in, enter TOTP code
+- [ ] **Login flow requires TOTP after enabling**: log out, log back in, enter TOTP code
   **Expected:** Login blocked until correct TOTP entered
 
-- [ ] **Recovery codes work** — use a recovery code instead of TOTP
+- [ ] **Recovery codes work**: use a recovery code instead of TOTP
   ```bash
   curl -X POST -H "Content-Type: application/json" \
     -d '{"temp_token":"<from_login>","code":"RECOVERY-CODE"}' \
@@ -271,7 +271,7 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** Updated team returned
 
-- [ ] **Team appears in team switcher** — check dashboard UI
+- [ ] **Team appears in team switcher**: check dashboard UI
   **Expected:** Dropdown lists both Personal and new team
 
 ### 3.2 Invite Member via Email
@@ -345,7 +345,7 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `200 OK`
 
-- [ ] **Non-owner cannot toggle enforcement** — test with admin or developer token
+- [ ] **Non-owner cannot toggle enforcement**: test with admin or developer token
   **Expected:** `403 Forbidden`
 
 ### 3.7 Team Switching
@@ -392,7 +392,7 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `201 Created`
 
-- [ ] **Create staging and dev environments** — repeat above with `staging` and `development`
+- [ ] **Create staging and dev environments**: repeat above with `staging` and `development`
   **Expected:** Three environments listed
 
 - [ ] **Add env vars to environment**
@@ -463,7 +463,7 @@ export TOKEN="your-api-token-here"
 
 ---
 
-## 5. App Deployment — Git
+## 5. App Deployment: Git
 
 ### 5.1 GitHub Repo with Dockerfile
 - [ ] **Create and deploy app**
@@ -539,7 +539,7 @@ export TOKEN="your-api-token-here"
 
 ---
 
-## 6. App Deployment — Other Sources
+## 6. App Deployment: Other Sources
 
 ### 6.1 ZIP Upload Deployment
 - [ ] **Upload a ZIP and deploy**
@@ -626,7 +626,7 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `200 OK`, deployment triggered for matching app
 
-- [ ] **Push to connected GitHub repo triggers auto-deploy** — make a real push
+- [ ] **Push to connected GitHub repo triggers auto-deploy**: make a real push
   **Expected:** New deployment appears in app's deployment list within seconds
 
 ### 7.2 GitLab Push Webhook
@@ -769,7 +769,7 @@ export TOKEN="your-api-token-here"
   **Expected:** App response
 
 ### 8.5 Watch Paths
-- [ ] **Configure watch paths on app** — set `watch_paths` to `["src/", "Dockerfile"]` in app settings
+- [ ] **Configure watch paths on app**: set `watch_paths` to `["src/", "Dockerfile"]` in app settings
   **Expected:** Setting saved
 
 - [ ] **Push change outside watch path** (e.g., only change `README.md`)
@@ -779,20 +779,20 @@ export TOKEN="your-api-token-here"
   **Expected:** Deployment triggered
 
 ### 8.6 Maintenance Mode
-- [ ] **Enable maintenance mode** — toggle in app settings UI
+- [ ] **Enable maintenance mode**: toggle in app settings UI
   **Expected:** App URL returns maintenance page instead of app
 
-- [ ] **Custom maintenance page** — if configured, verify custom message displayed
+- [ ] **Custom maintenance page**: if configured, verify custom message displayed
 
 - [ ] **Disable maintenance mode**
   **Expected:** App serves normally again
 
 ### 8.7 App Cloning
-- [ ] **Clone an app** — use "Clone App" option in dashboard UI
+- [ ] **Clone an app**: use "Clone App" option in dashboard UI
   **Expected:** New app created with same settings, git URL, env vars
 
 ### 8.8 Config Snapshot (Save / Restore)
-- [ ] **Save a config snapshot** — use snapshot option in app settings
+- [ ] **Save a config snapshot**: use snapshot option in app settings
   **Expected:** Snapshot stored with timestamp
 
 - [ ] **Modify app config** (change port or build type)
@@ -811,7 +811,7 @@ export TOKEN="your-api-token-here"
   ```
   **Expected:** `200 OK`
 
-- [ ] **Access app in browser — auth prompt appears**
+- [ ] **Access app in browser, auth prompt appears**
   **Expected:** Browser shows HTTP Basic Auth dialog
 
 - [ ] **Correct credentials grant access**
@@ -853,7 +853,7 @@ export TOKEN="your-api-token-here"
   **Expected:** Previous container image started, status switches to `running`
 
 ### 9.3 Approval Workflow
-- [ ] **Set app to require deployment approval** — update app with `require_approval: true`
+- [ ] **Set app to require deployment approval**: update app with `require_approval: true`
   **Expected:** Next deploy goes into `pending_approval` state
 
 - [ ] **Trigger a new deploy**
@@ -921,7 +921,7 @@ export TOKEN="your-api-token-here"
   **Expected:** Shortly after the scheduled time, deployment status changes to `building`
 
 ### 9.6 Deployment Retention
-- [ ] **Configure rollback retention count** — set `rollback_retention_count` in app settings (e.g. 5)
+- [ ] **Configure rollback retention count**: set `rollback_retention_count` in app settings (e.g. 5)
   **Expected:** Only last 5 completed deployments kept, older ones cleaned up
 
 ### 9.7 Zero-Downtime Deploy
@@ -1022,17 +1022,17 @@ export TOKEN="your-api-token-here"
 ## 11. Container Terminal & Logs
 
 ### 11.1 Container Terminal
-- [ ] **Open terminal via dashboard** — navigate to App > Terminal
+- [ ] **Open terminal via dashboard**: navigate to App > Terminal
   **Expected:** WebSocket connects to `/api/apps/APP_ID/terminal`, shell prompt appears
 
 - [ ] **Run commands in terminal**
-  - `ls /app` — directory listing
-  - `echo $PORT` — environment variable
-  - `cat /etc/os-release` — OS info
+  - `ls /app`, directory listing
+  - `echo $PORT`, environment variable
+  - `cat /etc/os-release`, OS info
   **Expected:** Each command outputs results in terminal
 
 ### 11.2 Live Log Streaming
-- [ ] **View live logs in dashboard** — open App > Logs
+- [ ] **View live logs in dashboard**: open App > Logs
   **Expected:** Logs stream in real-time via SSE at `/api/apps/APP_ID/logs/stream`
 
 - [ ] **Build log streaming during deploy**
@@ -1596,7 +1596,7 @@ export TOKEN="your-api-token-here"
   **Expected:** `200 OK` with CPU %, memory %, disk % stats
 
 ### 18.3 Remote Server Terminal
-- [ ] **Open SSH terminal in browser** — navigate to Servers > SERVER_NAME > Terminal
+- [ ] **Open SSH terminal in browser**: navigate to Servers > SERVER_NAME > Terminal
   **Expected:** WebSocket connects to `/api/servers/SERVER_ID/terminal`, remote shell prompt appears
 
 ### 18.4 Assign App to Server
@@ -1977,56 +1977,56 @@ echo $TOKEN
 | Issue | Fixed In |
 |-------|----------|
 | `byte index 8 is out of bounds` panic in teams.rs when user.id short | v0.2.13 |
-| Stats history chart 401 — wrong localStorage key | v0.2.12 |
+| Stats history chart 401, wrong localStorage key | v0.2.12 |
 | Container monitor: `no column found for name: team_id` | v0.2.14 |
 | Notification channels: CHECK constraint missing 'webhook' type | v0.2.14 |
 | Auto-update page missing route registration | v0.2.13 |
 | Migration 038 needs `PRAGMA foreign_keys=OFF` for table recreation | v0.2.14 |
 
-### Known fixed issues (v0.10.20 — Parallels VM sweep)
+### Known fixed issues (v0.10.20: Parallels VM sweep)
 | Issue | Fixed In |
 |-------|----------|
 | `/api/apps/:id/insights` returned 503 polluting tower_http logs | v0.10.20 (B3) |
-| Container monitor `check_services` SELECT missing migration-105 columns — service crash detection silently broken | v0.10.20 (B4) |
+| Container monitor `check_services` SELECT missing migration-105 columns, service crash detection silently broken | v0.10.20 (B4) |
 | MySQL/MariaDB user provisioning warning even though entrypoint succeeded | v0.10.20 (B5) |
 | Audit log missing event types (token, deployment.cancel, env_var.*, app.update, etc.) | v0.10.20 (B7) |
 | `?limit=N` query alias on `/api/audit` ignored | v0.10.20 (B9) |
 | POST/DELETE returning 415 without `Content-Type: application/json` even when no body needed | v0.10.20 (B10) |
 | Cancel deployment in non-cancellable state returned 404 instead of 409 | v0.10.20 (B11) |
-| Templates list endpoint 500KB no-gzip with no-store cache | v0.10.20 (B17) — gzip + cache-control + slim list |
-| Database SQL backup downloaded as `application/octet-stream` | v0.10.20 (B26) — now `application/sql` |
-| Compose service has null domain when `instance_domain` unset | v0.10.20 (B27) — falls back to `<name>.local` |
+| Templates list endpoint 500KB no-gzip with no-store cache | v0.10.20 (B17), gzip + cache-control + slim list |
+| Database SQL backup downloaded as `application/octet-stream` | v0.10.20 (B26), now `application/sql` |
+| Compose service has null domain when `instance_domain` unset | v0.10.20 (B27), falls back to `<name>.local` |
 | App `internal_hostname` derived field for stable network alias | v0.10.20 (B14/B15) |
 | Docker network "endpoint already exists" 403 warning every restart | v0.10.20 (B28) |
 
 ### Open in v0.10.20 (move to v0.10.21 backlog)
-- B6 — MySQL 8 default SSL breaks published connection string
-- B8 — Audit `ip_address` extractor staged but unwired into handlers
-- B12/B13 — Rollback flow needs live multi-deploy validation (code merged)
-- B20 — Disk usage path inconsistency (Dashboard vs Monitoring page)
-- B25 — DB-to-app env-var auto-injection UI
+- B6, MySQL 8 default SSL breaks published connection string
+- B8, Audit `ip_address` extractor staged but unwired into handlers
+- B12/B13, Rollback flow needs live multi-deploy validation (code merged)
+- B20, Disk usage path inconsistency (Dashboard vs Monitoring page)
+- B25, DB-to-app env-var auto-injection UI
 - 8 frontend fixes need browser-driven validation pass
 
-### Known fixed issues (v0.10.21 — carry-forward sprint, 2026-05-02 evening)
+### Known fixed issues (v0.10.21: carry-forward sprint, 2026-05-02 evening)
 | Issue | Fixed In |
 |-------|----------|
-| MySQL 8 self-signed TLS broke published `mysql://` connection string | v0.10.21 (B6) — `--skip-ssl` server-side flag |
-| Audit `ip_address` always null even with extractor present | v0.10.21 (B8) — wired into 30+ handlers |
-| Disk usage card vs Monitoring page used different paths | v0.10.21 (B20) — canonicalized `data_dir` |
-| No DB-to-app linking UI; users had to manually copy connection strings | v0.10.21 (B25) — new migration 106 + `/apps/:id/links` endpoints + UI |
+| MySQL 8 self-signed TLS broke published `mysql://` connection string | v0.10.21 (B6), `--skip-ssl` server-side flag |
+| Audit `ip_address` always null even with extractor present | v0.10.21 (B8), wired into 30+ handlers |
+| Disk usage card vs Monitoring page used different paths | v0.10.21 (B20), canonicalized `data_dir` |
+| No DB-to-app linking UI; users had to manually copy connection strings | v0.10.21 (B25), new migration 106 + `/apps/:id/links` endpoints + UI |
 | Sidebar user menu cramped + caret didn't rotate | v0.10.21 (U1) |
-| Deploy menu "commit/tag" + "ZIP file" items did nothing on click | v0.10.21 (U3) — Radix dropdown→dialog focus race |
-| Template category headings not anchored; "View all N" had no destination | v0.10.21 (U5) — anchor IDs + expand-inline |
-| Project DB list had no inline credentials display | v0.10.21 (U6) — Show credentials toggle with copy buttons |
-| Resource Limits Save said "next deployment" even though `/apply-limits` exists | v0.10.21 (U9) — calls `/apply-limits` when running |
+| Deploy menu "commit/tag" + "ZIP file" items did nothing on click | v0.10.21 (U3), Radix dropdown→dialog focus race |
+| Template category headings not anchored; "View all N" had no destination | v0.10.21 (U5), anchor IDs + expand-inline |
+| Project DB list had no inline credentials display | v0.10.21 (U6), Show credentials toggle with copy buttons |
+| Resource Limits Save said "next deployment" even though `/apply-limits` exists | v0.10.21 (U9), calls `/apply-limits` when running |
 
 ### Open in v0.10.21 (move to v0.10.22 backlog)
-- B12/B13 — Rollback flow live multi-deploy validation (code in place since v0.10.20)
+- B12/B13, Rollback flow live multi-deploy validation (code in place since v0.10.20)
 - 8 frontend fixes from v0.10.20 still need a Playwright pass
 - 5 v0.10.21 frontend fixes (U1/U3/U5/U6/U9) need browser confirmation
 
 ### Validation reports
-- `live-testing/VM-SWEEP-2026-05-02.md` — original 27-bug sweep + post-fix status table
-- `live-testing/VM-VALIDATION-2026-05-02.md` — MariaDB + side panel browser session
-- `live-testing/VM-VALIDATION-2026-05-02-backend.md` — curl-based API validation (13/15 PASS)
-- `live-testing/VM-VALIDATION-2026-05-02-frontend.md` — static-bundle frontend validation (4/12 confirmed)
+- `live-testing/VM-SWEEP-2026-05-02.md`, original 27-bug sweep + post-fix status table
+- `live-testing/VM-VALIDATION-2026-05-02.md`, MariaDB + side panel browser session
+- `live-testing/VM-VALIDATION-2026-05-02-backend.md`, curl-based API validation (13/15 PASS)
+- `live-testing/VM-VALIDATION-2026-05-02-frontend.md`, static-bundle frontend validation (4/12 confirmed)

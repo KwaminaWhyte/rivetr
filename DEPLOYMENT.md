@@ -191,14 +191,14 @@ The full annotated reference is [`rivetr.example.toml`](rivetr.example.toml). Be
 | `proxy_port` | `80` | HTTP proxy port |
 | `proxy_https_port` | `443` | HTTPS proxy port |
 | `data_dir` | `./data` | SQLite database, certs, volumes |
-| `external_url` | — | Public URL for OAuth callbacks (required when behind a tunnel) |
+| `external_url` | - | Public URL for OAuth callbacks (required when behind a tunnel) |
 
 ### `[auth]`
 
 | Key | Default | Description |
 |---|---|---|
 | `admin_token` | (required) | API token for programmatic access |
-| `encryption_key` | — | AES-256-GCM key for encrypting env vars at rest (recommended) |
+| `encryption_key` | - | AES-256-GCM key for encrypting env vars at rest (recommended) |
 
 ### `[runtime]`
 
@@ -214,13 +214,13 @@ The full annotated reference is [`rivetr.example.toml`](rivetr.example.toml). Be
 | Key | Default | Description |
 |---|---|---|
 | `acme_enabled` | `false` | Enable Let's Encrypt |
-| `acme_email` | — | Email for ACME account (required if enabled) |
+| `acme_email` | - | Email for ACME account (required if enabled) |
 | `acme_staging` | `true` | Use Let's Encrypt staging (set false for production) |
 | `acme_cache_dir` | `./data/acme` | Directory for certs and account key |
-| `base_domain` | — | Base domain for `app.base_domain` auto-subdomains |
+| `base_domain` | - | Base domain for `app.base_domain` auto-subdomains |
 | `auto_subdomain_enabled` | `false` | Auto-generate subdomains for new apps |
 | `sslip_enabled` | `true` | Generate `hash.ip.sslip.io` domains per app |
-| `server_ip` | — | Public IP for sslip.io domain generation |
+| `server_ip` | - | Public IP for sslip.io domain generation |
 | `health_check_interval` | `30` | Proxy health check interval (seconds) |
 | `health_check_timeout` | `5` | Health check timeout (seconds) |
 
@@ -282,12 +282,12 @@ The full annotated reference is [`rivetr.example.toml`](rivetr.example.toml). Be
 | Key | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Enable SMTP email |
-| `smtp_host` | — | SMTP server hostname |
+| `smtp_host` | - | SMTP server hostname |
 | `smtp_port` | `587` | SMTP port |
-| `smtp_username` | — | SMTP auth username |
-| `smtp_password` | — | SMTP auth password |
+| `smtp_username` | - | SMTP auth username |
+| `smtp_password` | - | SMTP auth password |
 | `smtp_tls` | `true` | Use TLS for SMTP |
-| `from_address` | — | Sender email address |
+| `from_address` | - | Sender email address |
 | `from_name` | `Rivetr` | Sender display name |
 
 ## Upgrading

@@ -345,7 +345,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <p className="font-medium">How to configure domain settings</p>
               <p className="text-muted-foreground">
-                The <strong className="text-foreground">instance_domain</strong> can be changed live using the Instance form above —
+                The <strong className="text-foreground">instance_domain</strong> can be changed live using the Instance form above,
                 no restart needed. Other proxy settings such as <code className="bg-background px-1 rounded font-mono">base_domain</code> and{" "}
                 <code className="bg-background px-1 rounded font-mono">acme_email</code> still live in{" "}
                 <code className="bg-background px-1 rounded font-mono">rivetr.toml</code> and require a restart to apply.
@@ -361,12 +361,12 @@ acme_email = "you@yourdomain.com"`}
               </pre>
               <div className="space-y-1.5 text-muted-foreground">
                 <p>
-                  <strong className="text-foreground">base_domain</strong> — when set, new apps automatically receive a subdomain
+                  <strong className="text-foreground">base_domain</strong>: when set, new apps automatically receive a subdomain
                   like <code className="bg-background px-1 rounded font-mono">myapp.apps.yourdomain.com</code>. Requires a wildcard DNS record
                   (<code className="bg-background px-1 rounded font-mono">*.apps.yourdomain.com → server IP</code>).
                 </p>
                 <p>
-                  <strong className="text-foreground">acme_email</strong> — email used by Let's Encrypt for certificate expiry notices.
+                  <strong className="text-foreground">acme_email</strong>: email used by Let's Encrypt for certificate expiry notices.
                   Required to enable automatic TLS for the instance domain.
                 </p>
               </div>
@@ -457,7 +457,7 @@ acme_email = "you@yourdomain.com"`}
                       onCheckedChange={setPruneImages}
                     />
                     <Label htmlFor="prune-images" className="font-normal text-sm text-muted-foreground">
-                      {pruneImages ? "Enabled — dangling images removed after each cycle" : "Disabled"}
+                      {pruneImages ? "Enabled: dangling images removed after each cycle" : "Disabled"}
                     </Label>
                   </div>
                 </div>

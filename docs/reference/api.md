@@ -1,6 +1,6 @@
 # REST API Reference
 
-Rivetr exposes a REST API (Axum) defined in `src/api/mod.rs` (`create_router`). This is a complete endpoint catalog grouped by resource. Request/response schemas are intentionally omitted — see the handler modules in `src/api/` for payload details.
+Rivetr exposes a REST API (Axum) defined in `src/api/mod.rs` (`create_router`). This is a complete endpoint catalog grouped by resource. Request/response schemas are intentionally omitted, see the handler modules in `src/api/` for payload details.
 
 ## Authentication
 

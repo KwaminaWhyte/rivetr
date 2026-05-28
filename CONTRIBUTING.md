@@ -138,7 +138,7 @@ Service templates (the 74 one-click services in the gallery) are defined in `src
 
 ```
 src/db/seeders/
-├── mod.rs           # Entry point — calls all sub-seeders
+├── mod.rs           # Entry point, calls all sub-seeders
 ├── ai_ml.rs         # Ollama, Open WebUI, LiteLLM, etc.
 ├── analytics.rs     # Plausible, Umami, PostHog, etc.
 ├── cms.rs           # WordPress, Ghost, Strapi, etc.
@@ -189,7 +189,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 
 | Label | Meaning |
 |---|---|
-| `good first issue` | Self-contained, well-scoped — good starting point |
+| `good first issue` | Self-contained, well-scoped: good starting point |
 | `help wanted` | Maintainer could use community input |
 | `bug` | Something is not working as documented |
 | `enhancement` | New feature or improvement to an existing one |

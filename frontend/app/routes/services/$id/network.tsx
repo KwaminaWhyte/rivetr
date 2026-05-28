@@ -136,7 +136,7 @@ export default function ServiceNetworkTab() {
   const queryClient = useQueryClient();
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Public access form state — seeded from current service values
+  // Public access form state, seeded from current service values
   const [publicAccess, setPublicAccess] = useState(() => service.public_access ?? false);
   const [externalPort, setExternalPort] = useState(() =>
     service.external_port > 0 ? String(service.external_port) : ""
@@ -155,7 +155,7 @@ export default function ServiceNetworkTab() {
     onError: (err) => {
       const msg = err instanceof Error ? err.message : "Failed to save";
       if (msg.includes("409") || msg.toLowerCase().includes("conflict")) {
-        toast.error("Port conflict — that port is already in use by another service or database.");
+        toast.error("Port conflict: that port is already in use by another service or database.");
       } else {
         toast.error(msg);
       }

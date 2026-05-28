@@ -162,7 +162,7 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
                 URL Redirect Rules
               </CardTitle>
               <CardDescription className="mt-1">
-                Regex-based HTTP redirects enforced at the proxy level — no
+                Regex-based HTTP redirects enforced at the proxy level, no
                 application code changes required. Rules are evaluated in order
                 before the request is forwarded.
               </CardDescription>

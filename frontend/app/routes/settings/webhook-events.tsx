@@ -195,7 +195,7 @@ export default function SettingsWebhookEventsPage() {
           <CardTitle>Recent Events</CardTitle>
           <CardDescription>
             {total > 0
-              ? `Showing ${events.length} of ${total} events — auto-refreshes every 30s`
+              ? `Showing ${events.length} of ${total} events, auto-refreshes every 30s`
               : "Auto-refreshes every 30s"}
           </CardDescription>
         </CardHeader>

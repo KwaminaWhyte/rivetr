@@ -1,6 +1,6 @@
 # Rivetr
 
-Deploy applications from Git with a single binary — ~30MB RAM idle, no external dependencies.
+Deploy applications from Git with a single binary, ~30MB RAM idle, no external dependencies.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
@@ -8,7 +8,7 @@ Deploy applications from Git with a single binary — ~30MB RAM idle, no externa
 
 ## What is Rivetr?
 
-Rivetr is a self-hosted PaaS (Platform as a Service) that deploys applications from Git with minimal resource usage. It ships as a single binary with an embedded SQLite database, an embedded reverse proxy with automatic HTTPS, and a full-featured React dashboard — no Redis, no PostgreSQL, no Traefik required.
+Rivetr is a self-hosted PaaS (Platform as a Service) that deploys applications from Git with minimal resource usage. It ships as a single binary with an embedded SQLite database, an embedded reverse proxy with automatic HTTPS, and a full-featured React dashboard, no Redis, no PostgreSQL, no Traefik required.
 
 It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gitea, and Bitbucket, and provides zero-downtime deployments with health checks and automatic rollback.
 
@@ -123,13 +123,13 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 
 ## Terminal UI (TUI)
 
-Rivetr ships with an optional keyboard-driven terminal dashboard built with [ratatui](https://ratatui.rs/). It connects to any running Rivetr instance — local or remote — without opening a browser.
+Rivetr ships with an optional keyboard-driven terminal dashboard built with [ratatui](https://ratatui.rs/). It connects to any running Rivetr instance, local or remote, without opening a browser.
 
 ### Using the TUI from your local machine
 
 **Prerequisites:** A running Rivetr instance (e.g. `https://rivetr.site`) and an API token from **Settings → API Tokens**.
 
-**Option 1 — Download the pre-built binary (macOS/Linux):**
+**Option 1: Download the pre-built binary (macOS/Linux):**
 
 ```bash
 # Download the TUI-enabled binary for macOS (Apple Silicon)
@@ -140,7 +140,7 @@ chmod +x rivetr
 ./rivetr tui --url https://rivetr.site --token rvt_your_token_here
 ```
 
-**Option 2 — Build from source:**
+**Option 2: Build from source:**
 
 ```bash
 git clone https://github.com/KwaminaWhyte/rivetr.git
@@ -244,7 +244,7 @@ cargo build --release
 
 ## Configuration
 
-### `rivetr.toml` — Server Configuration
+### `rivetr.toml`: Server Configuration
 
 ```toml
 [server]
@@ -314,7 +314,7 @@ stable_duration_secs = 120
 
 See [`rivetr.example.toml`](rivetr.example.toml) for the full reference with all options documented.
 
-### `deploy.toml` — Per-App Configuration
+### `deploy.toml`: Per-App Configuration
 
 Place this file in your repository root:
 
@@ -448,7 +448,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT, see [LICENSE](LICENSE) for details.
 
 
 ----

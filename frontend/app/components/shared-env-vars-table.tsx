@@ -1,5 +1,5 @@
 /**
- * SharedEnvVarsTable — reusable component for managing team-level or
+ * SharedEnvVarsTable: reusable component for managing team-level or
  * project-level shared environment variables.
  */
 import { useState } from "react";
@@ -369,7 +369,7 @@ export function SharedEnvVarsTable({
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-[140px]">
-                      {v.description ?? "—"}
+                      {v.description ?? "-"}
                     </TableCell>
                     <TableCell>
                       {v.is_secret ? (

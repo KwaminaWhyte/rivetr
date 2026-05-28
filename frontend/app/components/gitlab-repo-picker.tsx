@@ -170,7 +170,7 @@ export function GitLabRepoPicker({
 
   return (
     <div className="space-y-4">
-      {/* Provider selector — only shown when there are multiple GitLab providers */}
+      {/* Provider selector, only shown when there are multiple GitLab providers */}
       {gitlabProviders.length > 1 && (
         <div className="space-y-2">
           <Label>GitLab Account</Label>

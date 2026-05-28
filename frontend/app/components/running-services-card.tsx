@@ -72,7 +72,7 @@ export function RunningServicesCard() {
               url: `/apps/${app.id}`,
             };
           } catch {
-            // Unexpected error — omit from list
+            // Unexpected error, omit from list
             return null;
           }
         })

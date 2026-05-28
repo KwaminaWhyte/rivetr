@@ -276,7 +276,7 @@ export default function ProxyLogsPage() {
                           {log.response_ms}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground font-mono">
-                          {log.client_ip ?? "—"}
+                          {log.client_ip ?? "-"}
                         </TableCell>
                       </TableRow>
                     ))}

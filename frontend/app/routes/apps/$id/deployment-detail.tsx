@@ -96,12 +96,12 @@ const STATUS_CONFIG: Record<
 const ACTIVE_STATUSES = ["pending", "cloning", "building", "starting", "checking"];
 
 function formatDateTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
+  if (!dateStr) return "-";
   return new Date(dateStr).toLocaleString();
 }
 
 function durationSeconds(start: string | null | undefined, end: string | null | undefined): string {
-  if (!start || !end) return "—";
+  if (!start || !end) return "-";
   const diff = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
   if (diff < 60) return `${diff}s`;
   return `${Math.floor(diff / 60)}m ${diff % 60}s`;

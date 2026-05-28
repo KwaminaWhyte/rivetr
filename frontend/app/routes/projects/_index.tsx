@@ -288,7 +288,7 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
-      {/* Filter Tabs — hidden until there are apps to filter (U4) */}
+      {/* Filter Tabs, hidden until there are apps to filter (U4) */}
       {apps.length > 0 && (
         <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
           <TabsList>

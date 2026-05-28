@@ -103,7 +103,7 @@ export function ServicesTab({ project, projectId }: ServicesTabProps) {
           setPortConflict(null);
         }
       } catch {
-        // Silently ignore check errors — don't block deployment
+        // Silently ignore check errors, don't block deployment
         setPortConflict(null);
       } finally {
         setIsCheckingPort(false);

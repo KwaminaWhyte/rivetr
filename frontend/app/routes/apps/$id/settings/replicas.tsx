@@ -190,7 +190,7 @@ export default function AppSettingsReplicas() {
                     <tr key={replica.id} className="border-b last:border-0">
                       <td className="px-4 py-2 font-mono">{replica.replica_index}</td>
                       <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
-                        {replica.container_id ? replica.container_id.slice(0, 12) : "—"}
+                        {replica.container_id ? replica.container_id.slice(0, 12) : "-"}
                       </td>
                       <td className="px-4 py-2">
                         <Badge
@@ -209,7 +209,7 @@ export default function AppSettingsReplicas() {
                       <td className="px-4 py-2 text-xs text-muted-foreground">
                         {replica.started_at
                           ? new Date(replica.started_at).toLocaleString()
-                          : "—"}
+                          : "-"}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <Button

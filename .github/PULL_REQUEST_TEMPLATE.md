@@ -9,12 +9,12 @@ See CONTRIBUTING.md for the full process.
 
 ## Type of change
 
-- [ ] `feat` — new feature
-- [ ] `fix` — bug fix
-- [ ] `refactor` — code reorganization (no behavior change)
-- [ ] `docs` — documentation only
-- [ ] `test` — adding or fixing tests
-- [ ] `chore` — build, tooling, dependencies
+- [ ] `feat`: new feature
+- [ ] `fix`: bug fix
+- [ ] `refactor`: code reorganization (no behavior change)
+- [ ] `docs`: documentation only
+- [ ] `test`: adding or fixing tests
+- [ ] `chore`: build, tooling, dependencies
 
 ## Related issues
 

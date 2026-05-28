@@ -324,7 +324,7 @@ export default function ServiceStatsPage() {
       {isStopped && !isLoading && (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground text-sm">
-            No live metrics available — start the service to begin monitoring.
+            No live metrics available, start the service to begin monitoring.
           </CardContent>
         </Card>
       )}

@@ -1,6 +1,6 @@
 # Configuration Reference (`rivetr.toml`)
 
-Rivetr reads its server configuration from a TOML file (default: `rivetr.toml`, override with `--config <path>`). If the file is missing, Rivetr starts with all defaults. Every table and field is optional — omit anything and the documented default applies.
+Rivetr reads its server configuration from a TOML file (default: `rivetr.toml`, override with `--config <path>`). If the file is missing, Rivetr starts with all defaults. Every table and field is optional, omit anything and the documented default applies.
 
 Source of truth: `src/config/mod.rs`. A copyable starter is in `rivetr.example.toml`.
 
@@ -42,7 +42,7 @@ Network bind addresses and data location.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `admin_token` | string | random 256-bit hex | Bearer token for programmatic API access. **Auto-generated per start if unset** — set explicitly in production so it is stable. |
+| `admin_token` | string | random 256-bit hex | Bearer token for programmatic API access. **Auto-generated per start if unset**: set explicitly in production so it is stable. |
 | `encryption_key` | string? | _none_ | Secret used to encrypt env vars at rest in the DB. If unset, env vars are stored in plaintext (backwards compatible). Use a strong, random 32+ char string. |
 
 ## `[runtime]`
@@ -55,7 +55,7 @@ Container runtime selection and host-protection defaults applied to every contai
 | `docker_socket` | string | `/var/run/docker.sock` (unix) / `npipe:////./pipe/docker_engine` (windows) | Path/URL to the Docker daemon socket. |
 | `build_cpu_limit` | string | `"2"` | CPU limit applied during builds (e.g. `"2"`, `"0.5"`). |
 | `build_memory_limit` | string | `"2g"` | Memory limit applied during builds (e.g. `"2g"`, `"512m"`). |
-| `default_memory_limit` | string | `"512m"` | Fallback memory cap for any app/service/database container without its own limit. Container is OOM-killed at this cap. Empty string disables the fallback (unbounded — not recommended). Per-resource limits override. |
+| `default_memory_limit` | string | `"512m"` | Fallback memory cap for any app/service/database container without its own limit. Container is OOM-killed at this cap. Empty string disables the fallback (unbounded, not recommended). Per-resource limits override. |
 | `default_pids_limit` | i64 | `512` | Fallback PID limit per container (fork-bomb protection). `0` disables. |
 | `default_oom_score_adj` | i64 | `500` | OOM score adjustment so the kernel kills a runaway container before host daemons. Range `-1000..1000`; higher = killed sooner. |
 

@@ -83,7 +83,7 @@ export interface DeploymentLog {
   timestamp: string;
 }
 
-/** Deployment freeze window — prevents deployments during a specified time range */
+/** Deployment freeze window: prevents deployments during a specified time range */
 export interface DeploymentFreezeWindow {
   id: string;
   app_id: string | null;

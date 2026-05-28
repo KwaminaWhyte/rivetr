@@ -170,10 +170,10 @@ export default function SettingsPreferencesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="relative">
-                  Relative — "2 hours ago"
+                  Relative: "2 hours ago"
                 </SelectItem>
                 <SelectItem value="absolute">
-                  Absolute — "Mar 18, 2026 5:30 PM"
+                  Absolute: "Mar 18, 2026 5:30 PM"
                 </SelectItem>
               </SelectContent>
             </Select>

@@ -223,7 +223,7 @@ export default function ServiceDetailLayout() {
           )}
         </div>
         <div className="flex gap-2">
-          {/* Open button — shown when running and domain or port is configured */}
+          {/* Open button, shown when running and domain or port is configured */}
           {service.status === "running" && (service.domain || service.port > 0) && (() => {
             const url = service.domain
               ? `https://${service.domain}`

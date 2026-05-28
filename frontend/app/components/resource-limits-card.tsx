@@ -97,7 +97,7 @@ export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
         try {
           await api.applyResourceLimits(app.id, token);
         } catch (err) {
-          // Don't fail the whole save — values are persisted; the user can
+          // Don't fail the whole save, values are persisted; the user can
           // redeploy if the live apply hit a runtime-specific limitation.
           toast.warning(
             err instanceof Error

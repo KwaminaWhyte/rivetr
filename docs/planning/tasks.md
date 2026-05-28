@@ -13,7 +13,7 @@
 - [x] **T0.1.3** Create directory structure
 - [x] **T0.1.4** Create `.gitignore`
 - [x] **T0.1.5** Create `rustfmt.toml` with project conventions ✅ (stable-only: edition 2021, max_width 100, Unix newlines)
-- [x] **T0.1.6** Create `clippy.toml` or configure in Cargo.toml ✅ (`[lints]` table in Cargo.toml — clippy/rustc lint levels)
+- [x] **T0.1.6** Create `clippy.toml` or configure in Cargo.toml ✅ (`[lints]` table in Cargo.toml: clippy/rustc lint levels)
 - [x] **T0.1.7** Verify `cargo build` succeeds
 
 ### 0.2 Database Foundation
@@ -272,7 +272,7 @@
 
 ### 2.6 Testing
 
-- [~] **T2.6.1** Add unit tests for core modules 🟡 PARTIAL (build_detect + api/validation covered; runtime defaults, crypto, config done; full coverage of all modules ongoing — suite at 246 tests)
+- [~] **T2.6.1** Add unit tests for core modules 🟡 PARTIAL (build_detect + api/validation covered; runtime defaults, crypto, config done; full coverage of all modules ongoing, suite at 246 tests)
 - [ ] **T2.6.2** Add integration tests for API
 - [ ] **T2.6.3** Add E2E deployment tests
 - [x] **T2.6.4** Set up CI pipeline (.github/workflows/ci.yml, release.yml)
@@ -281,8 +281,8 @@
 ### 2.7 Documentation
 
 - [x] **T2.7.1** Write README with quickstart
-- [x] **T2.7.2** Document configuration options ✅ (`docs/reference/configuration.md` — every `rivetr.toml` field with type/default/description)
-- [x] **T2.7.3** Document API endpoints ✅ (`docs/reference/api.md` — full REST endpoint catalog grouped by resource)
+- [x] **T2.7.2** Document configuration options ✅ (`docs/reference/configuration.md`: every `rivetr.toml` field with type/default/description)
+- [x] **T2.7.3** Document API endpoints ✅ (`docs/reference/api.md`: full REST endpoint catalog grouped by resource)
 - [x] **T2.7.4** Write deployment guide (DEPLOYMENT.md with install script, systemd service, SSL, backup/restore, troubleshooting)
 - [x] **T2.7.5** Write troubleshooting guide (included in DEPLOYMENT.md)
 - [x] **T2.7.6** Create one-liner install script (install.sh - auto-installs Docker, Rivetr, systemd service)

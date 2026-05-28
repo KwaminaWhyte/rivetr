@@ -108,7 +108,7 @@ export default function ServicesPage() {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       toast.success(
         created.domain
-          ? `Service created — domain: ${created.domain}`
+          ? `Service created, domain: ${created.domain}`
           : "Service created"
       );
       setIsCreateDialogOpen(false);

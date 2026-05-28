@@ -459,7 +459,7 @@ export default function ServiceSettingsTab() {
         </CardContent>
       </Card>
 
-      {/* Auto-Generated Magic Variables — shown only if there are any */}
+      {/* Auto-Generated Magic Variables, shown only if there are any */}
       {generatedVars.length > 0 && (
         <Card>
           <CardHeader>
@@ -501,7 +501,7 @@ export default function ServiceSettingsTab() {
         </Card>
       )}
 
-      {/* Database Import/Export — only shown for services with database containers */}
+      {/* Database Import/Export, only shown for services with database containers */}
       {showImportSection && (
         <Card>
           <CardHeader>

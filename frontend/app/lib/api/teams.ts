@@ -205,7 +205,7 @@ export const teamsApi = {
   // -------------------------------------------------------------------------
 
   // -------------------------------------------------------------------------
-  // Fine-grained RBAC — per-resource permission overrides
+  // Fine-grained RBAC: per-resource permission overrides
   // -------------------------------------------------------------------------
 
   /** List all resource permission overrides for a specific team member */

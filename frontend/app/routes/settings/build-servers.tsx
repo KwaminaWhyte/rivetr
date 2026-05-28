@@ -267,7 +267,7 @@ export default function BuildServersPage() {
                     <TableCell className="text-sm text-muted-foreground">
                       {server.docker_version
                         ? /^\d/.test(server.docker_version) ? `v${server.docker_version}` : server.docker_version
-                        : "—"}
+                        : "-"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {server.last_seen_at ? formatDate(server.last_seen_at) : "Never"}

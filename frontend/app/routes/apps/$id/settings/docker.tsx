@@ -187,7 +187,7 @@ export default function AppSettingsDocker() {
           <CardTitle>Advanced Docker Options</CardTitle>
           <CardDescription>
             Configure custom Docker container run options. Changes take effect on the next
-            deployment. Use these settings with caution — privileged mode and capability
+            deployment. Use these settings with caution: privileged mode and capability
             additions can reduce container isolation.
           </CardDescription>
         </CardHeader>

@@ -16,7 +16,7 @@ cargo watch -x "run -- --config rivetr.toml"
 # Development build and run (manual)
 cargo run -- --config rivetr.toml
 
-# Release build (local macOS only — NOT suitable for server deploy)
+# Release build (local macOS only, NOT suitable for server deploy)
 cargo build --release
 
 # Check compilation without building
@@ -35,7 +35,7 @@ cargo clippy
 
 ## Deploying to the Dev Server
 
-**ALWAYS use the deploy script** — never scp a locally-built macOS binary to the Linux server (Exec format error).
+**ALWAYS use the deploy script**: never scp a locally-built macOS binary to the Linux server (Exec format error).
 
 ```bash
 # Full deploy (frontend + backend): cross-compiles for Linux x86_64 via cargo-zigbuild
@@ -44,7 +44,7 @@ cargo clippy
 # Backend only (skip frontend rebuild)
 ./scripts/deploy-dev.sh --backend-only
 
-# Frontend only (rare — frontend is embedded in binary, so this flag is mostly a no-op)
+# Frontend only (rare, frontend is embedded in binary, so this flag is mostly a no-op)
 ./scripts/deploy-dev.sh --frontend-only
 ```
 

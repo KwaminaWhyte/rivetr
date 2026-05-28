@@ -145,7 +145,7 @@ function ServerTerminal({ server }: ServerTerminalProps) {
   const wsUrl = serversApi.getTerminalWsUrl(server.id);
   // Re-use the xterm logic from ContainerTerminal but connect to the server WS.
   // We pass a synthetic "appId"-style prop by piggybacking on the existing
-  // ContainerTerminal component's URL builder — instead we inline a minimal
+  // ContainerTerminal component's URL builder, instead we inline a minimal
   // version that accepts an explicit wsUrl.
   return <ServerTerminalInner wsUrl={wsUrl} label={`SSH: ${server.username}@${server.host}`} />;
 }
@@ -467,7 +467,7 @@ function PatchesDialogContent({ serverId }: { serverId: string }) {
       {data && data.packages.length === 0 && !isLoading && (
         <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 px-4 py-3 text-sm text-green-700 dark:text-green-400">
           <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-          System is up to date — no pending packages.
+          System is up to date, no pending packages.
         </div>
       )}
 
@@ -906,7 +906,7 @@ export default function ServersPage() {
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -1168,7 +1168,7 @@ export default function ServersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Terminal className="h-5 w-5" />
-              SSH Terminal — {terminalServer?.name}
+              SSH Terminal - {terminalServer?.name}
             </DialogTitle>
             <DialogDescription>
               Interactive SSH session to {terminalServer?.username}@{terminalServer?.host}
@@ -1189,7 +1189,7 @@ export default function ServersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackageSearch className="h-5 w-5" />
-              OS Updates — {patchesServer?.name}
+              OS Updates - {patchesServer?.name}
             </DialogTitle>
             <DialogDescription>
               Pending package upgrades on {patchesServer?.host}
@@ -1208,7 +1208,7 @@ export default function ServersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5" />
-              Security Checklist — {securityServer?.name}
+              Security Checklist - {securityServer?.name}
             </DialogTitle>
             <DialogDescription>
               Security best-practice audit for {securityServer?.host}
@@ -1227,7 +1227,7 @@ export default function ServersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Cpu className="h-5 w-5" />
-              Server Details — {detailsServer?.name}
+              Server Details - {detailsServer?.name}
             </DialogTitle>
             <DialogDescription>
               System information fetched via SSH from {detailsServer?.host}
@@ -1284,7 +1284,7 @@ export default function ServersPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
-              Edit Server — {editServer?.name}
+              Edit Server - {editServer?.name}
             </DialogTitle>
             <DialogDescription>
               Update configuration settings for this server.

@@ -58,7 +58,7 @@ interface DatabasesTabProps {
 }
 
 /**
- * Inline credentials block (U6) — rendered below a database card when the user
+ * Inline credentials block (U6), rendered below a database card when the user
  * clicks "Show credentials". Pops the connection string + user/password/db,
  * each with a copy-to-clipboard button.
  */
@@ -292,7 +292,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
   // U6: toggle inline credentials display for a database card.
   const toggleInlineCredentials = async (database: ManagedDatabase) => {
     if (inlineCredentials[database.id]) {
-      // Already shown — hide.
+      // Already shown, hide.
       setInlineCredentials((prev) => {
         const next = { ...prev };
         delete next[database.id];

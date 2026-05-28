@@ -43,7 +43,7 @@ Out of scope:
 When contributing code, follow these rules (also summarized in `CONTRIBUTING.md`):
 
 - Never commit secrets, credentials, or API keys.
-- Use parameterized queries for all database operations — no string-interpolated SQL.
+- Use parameterized queries for all database operations, no string-interpolated SQL.
 - Validate all user input through the validation layer in `src/api/validation/`.
 - Encrypt sensitive data at rest using the utilities in `src/crypto/` (AES-256-GCM).
 - Follow OWASP guidelines for new authentication or session-related code.

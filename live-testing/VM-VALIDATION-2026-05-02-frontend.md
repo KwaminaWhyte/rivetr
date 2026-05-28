@@ -1,9 +1,9 @@
-# Frontend Bug Fix Validation — v0.10.20
+# Frontend Bug Fix Validation: v0.10.20
 
 - **Date:** 2026-05-02
 - **Target:** http://10.211.55.5:8080 (Parallels VM)
 - **Build under test:** rivetr 0.10.20 (frontend embedded via rust_embed)
-- **Tester:** claude (sub-agent rate-limited; done inline via static bundle inspection — no live browser session this round)
+- **Tester:** claude (sub-agent rate-limited; done inline via static bundle inspection, no live browser session this round)
 
 ## Approach
 Without Playwright access this pass, validation falls back to source-code review + grep'ing the embedded build artifacts in `frontend/build/client/assets/*.js` to confirm the fixes shipped. Marked "PASS (artifact)" when source + bundle confirmed but not exercised in a browser; "PASS (live)" when the change is observable via HTTP from the host.
@@ -29,15 +29,15 @@ Without Playwright access this pass, validation falls back to source-code review
 
 | Surface | Status |
 |---|---|
-| Database start | ✅ PASS — verified earlier this session via 11 screenshots in `live-testing/screenshots/` (MariaDB end-to-end) |
-| App deploy | ⏸ NOT VALIDATED LIVE — needs browser |
-| Service start/restart | ⏸ NOT VALIDATED LIVE — needs browser |
+| Database start | ✅ PASS: verified earlier this session via 11 screenshots in `live-testing/screenshots/` (MariaDB end-to-end) |
+| App deploy | ⏸ NOT VALIDATED LIVE: needs browser |
+| Service start/restart | ⏸ NOT VALIDATED LIVE: needs browser |
 | Persistence across navigation | ⏸ NOT VALIDATED LIVE |
 | Copy / Download buttons | ⏸ NOT VALIDATED LIVE |
 
 ## Summary
-- **4/12 frontend fixes PASS (source + artifact)** — B1, B2, B16, B24.
-- **8 NOT VALIDATED LIVE** — code review confirms shipped, but a full browser session is needed to confirm the user-facing behavior matches.
+- **4/12 frontend fixes PASS (source + artifact)**: B1, B2, B16, B24.
+- **8 NOT VALIDATED LIVE**: code review confirms shipped, but a full browser session is needed to confirm the user-facing behavior matches.
 - **0 regressions found** in static analysis.
 
 ## What's next

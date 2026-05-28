@@ -65,7 +65,7 @@ export function DeploySidePanel() {
         side="right"
         // Wider than the default sm:max-w-sm so logs are readable.
         className="w-full sm:max-w-2xl flex flex-col gap-0 p-0"
-        // Keep the page interactive underneath — user can navigate while
+        // Keep the page interactive underneath, user can navigate while
         // logs continue to stream.
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -172,7 +172,7 @@ function PanelContent({ target }: { target: DeployPanelTarget }) {
         }));
         mergeLogs(normalized);
       } else {
-        // Plain fetch — we keep the api object lean and don't need a typed wrapper here.
+        // Plain fetch, we keep the api object lean and don't need a typed wrapper here.
         const headers: Record<string, string> = {};
         if (token) headers.Authorization = `Bearer ${token}`;
         const res = await fetch(restPath, { headers });
@@ -196,7 +196,7 @@ function PanelContent({ target }: { target: DeployPanelTarget }) {
         mergeLogs(normalized);
       }
     } catch {
-      // ignore — snapshot is best effort
+      // ignore, snapshot is best effort
     }
   }, [restPath, target, token, mergeLogs]);
 
@@ -236,7 +236,7 @@ function PanelContent({ target }: { target: DeployPanelTarget }) {
           return;
         }
         if (data.type === "lag") {
-          // server-side broadcast lag notice — ignore in UI, snapshot will catch up
+          // server-side broadcast lag notice, ignore in UI, snapshot will catch up
           return;
         }
 
@@ -264,7 +264,7 @@ function PanelContent({ target }: { target: DeployPanelTarget }) {
           // If the server signals a terminal phase, auto-mark ended after a
           // short delay so the user still sees the last few lines flow.
           if (data.phase === "running" || data.phase === "failed") {
-            // Soft-end: don't actually close the socket — server sends an
+            // Soft-end: don't actually close the socket, server sends an
             // explicit `end` event; but flip the phase badge immediately.
             setPhase(data.phase);
           }

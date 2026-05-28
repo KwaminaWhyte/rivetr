@@ -177,7 +177,7 @@ export default function ServiceDetailPage() {
     onError: (err) => {
       const msg = err instanceof Error ? err.message : "Failed to save public access settings";
       if (msg.includes("409") || msg.toLowerCase().includes("conflict")) {
-        toast.error("Port conflict — that port is already in use by another service or database.");
+        toast.error("Port conflict: that port is already in use by another service or database.");
       } else {
         toast.error(msg);
       }
