@@ -120,7 +120,7 @@ See [docs/architecture/code-organization.md](docs/architecture/code-organization
 ### Backend
 
 1. **Database changes first**: Add a migration in `migrations/`. Follow the existing numbered format.
-2. **Add or update models**: Update `src/db/models.rs` with new structs and SQLx queries.
+2. **Add or update models**: Add or edit the relevant file under `src/db/models/` with new structs and SQLx queries, and re-export it from `src/db/models/mod.rs`.
 3. **Add route handlers**: Create or extend the relevant module under `src/api/`. Register the route in the module's `mod.rs` and in `src/api/mod.rs`.
 4. **Wire up state**: If the feature needs shared state, add it to `AppState` in `src/lib.rs`.
 5. **Follow the `ContainerRuntime` trait**: If adding container operations, implement them for both `DockerRuntime` and `PodmanRuntime`.
@@ -199,6 +199,8 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 | `security` | Security-related issue (see below for reporting) |
 
 ## Security
+
+See [`SECURITY.md`](SECURITY.md) for the full vulnerability disclosure policy.
 
 - Never commit secrets, credentials, or API keys.
 - Report security vulnerabilities **privately** via [GitHub Security Advisories](https://github.com/KwaminaWhyte/rivetr/security/advisories/new), not as public issues.
