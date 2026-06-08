@@ -23,6 +23,9 @@ pub struct InstanceSettings {
     pub instance_name: Option<String>,
     /// How many old deployments to keep per app before pruning (default: 5).
     pub max_deployments_per_app: Option<u32>,
+    /// Max deployments that build concurrently (deploy-engine semaphore).
+    /// None = use the configured default (runtime.max_concurrent_deployments).
+    pub max_concurrent_deployments: Option<u32>,
     /// Whether to prune unused Docker images after each cleanup cycle (default: true).
     pub prune_images: Option<bool>,
     /// IANA timezone for this Rivetr instance (e.g. "UTC", "America/New_York").
@@ -47,6 +50,7 @@ pub struct UpdateInstanceSettingsRequest {
     pub instance_domain: Option<String>,
     pub instance_name: Option<String>,
     pub max_deployments_per_app: Option<u32>,
+    pub max_concurrent_deployments: Option<u32>,
     pub prune_images: Option<bool>,
     pub instance_timezone: Option<String>,
     /// AI provider: "claude" | "openai" | "gemini" | "moonshot"
@@ -69,6 +73,7 @@ impl InstanceSettings {
             instance_domain: None,
             instance_name: None,
             max_deployments_per_app: None,
+            max_concurrent_deployments: None,
             prune_images: None,
             instance_timezone: None,
             ai_provider: None,
@@ -84,6 +89,10 @@ impl InstanceSettings {
                 "instance_name" => settings.instance_name = row.value,
                 "max_deployments_per_app" => {
                     settings.max_deployments_per_app =
+                        row.value.as_deref().and_then(|v| v.parse().ok())
+                }
+                "max_concurrent_deployments" => {
+                    settings.max_concurrent_deployments =
                         row.value.as_deref().and_then(|v| v.parse().ok())
                 }
                 "prune_images" => {
@@ -151,6 +160,20 @@ impl InstanceSettings {
                 "#,
             )
             .bind(max.to_string())
+            .bind(&now)
+            .execute(db)
+            .await?;
+        }
+
+        if let Some(max) = req.max_concurrent_deployments {
+            sqlx::query(
+                r#"
+                INSERT INTO instance_settings (key, value, updated_at)
+                VALUES ('max_concurrent_deployments', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                "#,
+            )
+            .bind(max.max(1).to_string())
             .bind(&now)
             .execute(db)
             .await?;

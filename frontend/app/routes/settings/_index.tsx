@@ -72,6 +72,7 @@ export default function SettingsPage() {
   const [instanceName, setInstanceName] = useState("");
   const [instanceTimezone, setInstanceTimezone] = useState("");
   const [maxDeployments, setMaxDeployments] = useState(5);
+  const [maxConcurrent, setMaxConcurrent] = useState(2);
   const [pruneImages, setPruneImages] = useState(true);
 
   // AI provider state
@@ -88,6 +89,7 @@ export default function SettingsPage() {
       setInstanceName(instanceSettings.instance_name ?? "");
       setInstanceTimezone(instanceSettings.instance_timezone ?? "");
       setMaxDeployments(instanceSettings.max_deployments_per_app ?? 5);
+      setMaxConcurrent(instanceSettings.max_concurrent_deployments ?? 2);
       setPruneImages(instanceSettings.prune_images ?? true);
       setAiProvider(instanceSettings.ai_provider ?? "claude");
       setAiModel(instanceSettings.ai_model ?? "");
@@ -118,6 +120,7 @@ export default function SettingsPage() {
     mutationFn: () =>
       api.updateInstanceSettings({
         max_deployments_per_app: maxDeployments,
+        max_concurrent_deployments: maxConcurrent,
         prune_images: pruneImages,
       }),
     onSuccess: () => {
@@ -446,6 +449,23 @@ acme_email = "you@yourdomain.com"`}
                   <p className="text-xs text-muted-foreground">
                     Old stopped deployments beyond this count are deleted along with their images.
                     Rollback always uses the most recent kept deployment.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="max-concurrent">Max concurrent deployments</Label>
+                  <Input
+                    id="max-concurrent"
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={maxConcurrent}
+                    onChange={(e) => setMaxConcurrent(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    How many deployments build at the same time. Extra deploys queue,
+                    so a multi-app push (e.g. a monorepo) can't exhaust the server.
+                    Applies immediately, no restart.
                   </p>
                 </div>
                 <div className="space-y-3">

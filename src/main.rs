@@ -233,6 +233,20 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Deployment concurrency limit: a saved instance setting overrides the toml
+    // default. The semaphore is shared with the engine and live-adjusted by the
+    // instance-settings API.
+    let deploy_limit = rivetr::db::InstanceSettings::load(&db)
+        .await
+        .ok()
+        .and_then(|s| s.max_concurrent_deployments)
+        .map(|v| v as usize)
+        .filter(|&v| v > 0)
+        .unwrap_or(config.runtime.max_concurrent_deployments)
+        .max(1);
+    let deploy_semaphore = Arc::new(tokio::sync::Semaphore::new(deploy_limit));
+    let deploy_concurrency = Arc::new(std::sync::atomic::AtomicUsize::new(deploy_limit));
+
     // Create app state (now includes routes for rollback functionality)
     let state = Arc::new(
         AppState::new(
@@ -244,7 +258,8 @@ async fn main() -> Result<()> {
             update_checker,
         )
         .with_metrics(metrics_handle)
-        .with_ai_client(ai_client),
+        .with_ai_client(ai_client)
+        .with_deploy_concurrency(deploy_semaphore.clone(), deploy_concurrency.clone()),
     );
 
     // Start rate limiter cleanup task
@@ -266,6 +281,7 @@ async fn main() -> Result<()> {
         config.runtime.build_cpu_limit,
         config.runtime.build_memory_limit
     );
+    tracing::info!("Max concurrent deployments: {}", deploy_limit);
     let engine = DeploymentEngine::new(
         db.clone(),
         runtime.clone(),
@@ -273,6 +289,7 @@ async fn main() -> Result<()> {
         deploy_rx,
         build_limits,
         &config.auth,
+        deploy_semaphore.clone(),
     );
     tokio::spawn(async move {
         // Each deployment already runs in its own isolated child task inside

@@ -47,10 +47,18 @@ pub struct UpdateInstanceSettingsResponse {
 pub async fn get_instance_settings(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<InstanceSettings>, StatusCode> {
-    let settings = InstanceSettings::load(&state.db).await.map_err(|e| {
+    let mut settings = InstanceSettings::load(&state.db).await.map_err(|e| {
         tracing::error!("Failed to load instance settings: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Always report the effective (live) deploy-concurrency limit, which falls
+    // back to the configured default when no instance setting was ever saved.
+    settings.max_concurrent_deployments = Some(
+        state
+            .deploy_concurrency
+            .load(std::sync::atomic::Ordering::SeqCst) as u32,
+    );
 
     Ok(Json(settings))
 }
@@ -81,6 +89,26 @@ pub async fn update_instance_settings(
         })?;
 
     tracing::info!("Updated instance settings");
+
+    // --- Live-adjust the deployment-concurrency semaphore ---
+    if let Some(new_limit) = req.max_concurrent_deployments {
+        let new_limit = (new_limit as usize).max(1);
+        let old_limit = state
+            .deploy_concurrency
+            .swap(new_limit, std::sync::atomic::Ordering::SeqCst);
+        if new_limit > old_limit {
+            state.deploy_semaphore.add_permits(new_limit - old_limit);
+        } else if new_limit < old_limit {
+            // Best-effort: forgets available permits immediately; the rest take
+            // effect as in-flight deployments release their permits.
+            state.deploy_semaphore.forget_permits(old_limit - new_limit);
+        }
+        tracing::info!(
+            old = old_limit,
+            new = new_limit,
+            "Adjusted max concurrent deployments"
+        );
+    }
 
     // --- Hot-reload the proxy route ---
     // Determine whether instance_domain actually changed.

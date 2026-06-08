@@ -52,6 +52,13 @@ pub struct AppState {
     /// Used by the deploy side panel to surface image-pull and container-start
     /// progress without persisting to the deployment_logs table.
     pub start_log_streams: Arc<StartLogRegistry>,
+    /// Semaphore that caps how many deployments build concurrently. Shared with
+    /// the deployment engine; the instance-settings handler adjusts its permits
+    /// live when `max_concurrent_deployments` changes (no restart).
+    pub deploy_semaphore: Arc<tokio::sync::Semaphore>,
+    /// The current concurrent-deployment limit (mirrors the semaphore's permit
+    /// count) so the API can compute add/remove deltas and report the value.
+    pub deploy_concurrency: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl AppState {
@@ -76,7 +83,23 @@ impl AppState {
             deployment_cancel_tokens: dashmap::DashMap::new(),
             ai_client: parking_lot::RwLock::new(None),
             start_log_streams: Arc::new(StartLogRegistry::new()),
+            // Placeholder; overridden at startup via with_deploy_concurrency so it
+            // shares the same semaphore instance as the deployment engine.
+            deploy_semaphore: Arc::new(tokio::sync::Semaphore::new(2)),
+            deploy_concurrency: Arc::new(std::sync::atomic::AtomicUsize::new(2)),
         }
+    }
+
+    /// Share the deployment-concurrency semaphore (and its current-limit mirror)
+    /// with the engine so the instance-settings API can live-adjust it.
+    pub fn with_deploy_concurrency(
+        mut self,
+        semaphore: Arc<tokio::sync::Semaphore>,
+        limit: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Self {
+        self.deploy_semaphore = semaphore;
+        self.deploy_concurrency = limit;
+        self
     }
 
     /// Set the initial AI client (called once at startup).

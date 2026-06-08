@@ -157,6 +157,12 @@ pub struct RuntimeConfig {
     /// Default: 3
     #[serde(default = "default_run_log_max_file")]
     pub default_log_max_file: i64,
+    /// Maximum number of deployments (builds) that run concurrently. Further
+    /// deploys queue until a slot frees, so many simultaneous builds can't
+    /// exhaust CPU/RAM and hang the host (e.g. a monorepo push that triggers
+    /// several apps at once). Clamped to a minimum of 1. Default: 2
+    #[serde(default = "default_max_concurrent_deployments")]
+    pub max_concurrent_deployments: usize,
 }
 
 impl Default for RuntimeConfig {
@@ -171,8 +177,13 @@ impl Default for RuntimeConfig {
             default_oom_score_adj: default_run_oom_score_adj(),
             default_log_max_size: default_run_log_max_size(),
             default_log_max_file: default_run_log_max_file(),
+            max_concurrent_deployments: default_max_concurrent_deployments(),
         }
     }
+}
+
+fn default_max_concurrent_deployments() -> usize {
+    2
 }
 
 fn default_run_memory_limit() -> String {

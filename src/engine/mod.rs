@@ -77,6 +77,8 @@ pub struct DeploymentEngine {
     rx: mpsc::Receiver<DeploymentJob>,
     build_limits: BuildLimits,
     encryption_key: Option<[u8; KEY_LENGTH]>,
+    /// Caps how many deployments build concurrently; extra deploys queue on it.
+    deploy_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 impl DeploymentEngine {
@@ -87,6 +89,7 @@ impl DeploymentEngine {
         rx: mpsc::Receiver<DeploymentJob>,
         build_limits: BuildLimits,
         auth_config: &AuthConfig,
+        deploy_semaphore: Arc<tokio::sync::Semaphore>,
     ) -> Self {
         // Derive encryption key from config if available
         let encryption_key = auth_config
@@ -101,6 +104,7 @@ impl DeploymentEngine {
             rx,
             build_limits,
             encryption_key,
+            deploy_semaphore,
         }
     }
 
@@ -119,8 +123,16 @@ impl DeploymentEngine {
             let routes = self.routes.clone();
             let build_limits = self.build_limits.clone();
             let encryption_key = self.encryption_key;
+            let deploy_semaphore = self.deploy_semaphore.clone();
 
             tokio::spawn(async move {
+                // Gate concurrent deployments. The task is spawned immediately so
+                // the channel keeps draining, but the heavy build work waits here
+                // until a slot is free (config: runtime.max_concurrent_deployments).
+                let _permit = match deploy_semaphore.acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => return, // semaphore closed — engine shutting down
+                };
                 let deploy_start = std::time::Instant::now();
                 let notification_service = NotificationService::new(db.clone());
 

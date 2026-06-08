@@ -265,6 +265,7 @@ export const systemApi = {
       instance_domain: string | null;
       instance_name: string | null;
       max_deployments_per_app: number | null;
+      max_concurrent_deployments: number | null;
       prune_images: boolean | null;
       instance_timezone: string | null;
       ai_provider: string | null;
@@ -283,6 +284,7 @@ export const systemApi = {
       instance_domain?: string | null;
       instance_name?: string | null;
       max_deployments_per_app?: number | null;
+      max_concurrent_deployments?: number | null;
       prune_images?: boolean | null;
       instance_timezone?: string | null;
       ai_provider?: string | null;
@@ -296,6 +298,7 @@ export const systemApi = {
       instance_domain: string | null;
       instance_name: string | null;
       max_deployments_per_app: number | null;
+      max_concurrent_deployments: number | null;
       prune_images: boolean | null;
       instance_timezone: string | null;
       ai_provider: string | null;
