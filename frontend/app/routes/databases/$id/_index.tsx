@@ -250,11 +250,11 @@ export default function DatabaseGeneralTab() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Memory Limit</Label>
-              <Input value={database.memory_limit || "512mb"} readOnly />
+              <Input value={database.memory_limit || "No limit"} readOnly />
             </div>
             <div className="space-y-2">
               <Label>CPU Limit</Label>
-              <Input value={database.cpu_limit || "0.5"} readOnly />
+              <Input value={database.cpu_limit || "No limit"} readOnly />
             </div>
           </div>
         </CardContent>
