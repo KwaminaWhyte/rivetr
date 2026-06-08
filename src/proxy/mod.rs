@@ -433,7 +433,7 @@ impl HttpsProxyServer {
         };
         info!("Proxy server listening on https://{}", self.bind_addr);
 
-        let mut handler = ProxyHandler::new(self.routes.clone());
+        let mut handler = ProxyHandler::new(self.routes.clone()).with_tls();
         if let Some(db) = self.db {
             handler = handler.with_db(db);
         }

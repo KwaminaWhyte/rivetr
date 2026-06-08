@@ -51,6 +51,10 @@ pub struct ProxyHandler {
     https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Optional database pool for proxy access logging
     db: Option<sqlx::SqlitePool>,
+    /// Scheme reported to backends via X-Forwarded-Proto ("http" or "https").
+    /// The HTTPS listener sets this to "https" so upstream apps (Laravel, Rails,
+    /// etc.) generate correct absolute URLs instead of insecure http:// ones.
+    forwarded_proto: &'static str,
 }
 
 impl ProxyHandler {
@@ -62,12 +66,20 @@ impl ProxyHandler {
             https_redirect_port: None,
             https_redirect_enabled: None,
             db: None,
+            forwarded_proto: "http",
         }
     }
 
     /// Enable proxy access logging by providing a database pool
     pub fn with_db(mut self, db: sqlx::SqlitePool) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    /// Mark this handler as serving TLS, so forwarded requests report
+    /// X-Forwarded-Proto: https to backends.
+    pub fn with_tls(mut self) -> Self {
+        self.forwarded_proto = "https";
         self
     }
 
@@ -336,7 +348,7 @@ impl ProxyHandler {
                         return self.handle_websocket_upgrade(req, &backend).await;
                     }
 
-                    match self.proxy_service.forward(req, &backend).await {
+                    match self.proxy_service.forward(req, &backend, self.forwarded_proto).await {
                         Ok(response) => response,
                         Err(e) => {
                             error!(error = %e, backend = %backend.addr(), "Backend request failed");
@@ -408,7 +420,7 @@ impl ProxyHandler {
         info!(backend = %backend.addr(), "Handling WebSocket upgrade");
 
         // Forward the WebSocket upgrade request to the backend
-        match self.proxy_service.forward_websocket(req, backend).await {
+        match self.proxy_service.forward_websocket(req, backend, self.forwarded_proto).await {
             Ok(response) => Ok(response),
             Err(e) => {
                 error!(error = %e, "WebSocket upgrade failed");

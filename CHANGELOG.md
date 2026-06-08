@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **PostgreSQL 17 & 18** — Added to the managed-Postgres version list (pgvector already supported); default bumped 16 → 17 to match the dashboard.
   - **LibSQL managed database** — New `DatabaseType::Libsql` (Turso's server-side SQLite `sqld`, `ghcr.io/tursodatabase/libsql-server`). Auth-less HTTP/HRANA API on port 8080; `http://` connection string; appears in the new-database picker.
   - **Expanded MCP tool surface** — The `/mcp` endpoint grew from 4 tools to 9: added `list_deployments`, `get_deployment_status`, `list_services`, `list_databases`, `list_projects`, and `restart_app` (database credentials are masked in `list_databases`).
+- **Move resources between projects from their settings page** — Each app, database, and service settings page now has a "Project" card to reassign (or unassign) the resource to any project, complementing the existing project-centric add/remove flow. `update_database` now accepts `project_id` (empty string clears the assignment).
+
+### Fixed
+- **Reverse proxy always sent `X-Forwarded-Proto: http`** — Even on the HTTPS listener (`:443`) the proxy hard-coded `X-Forwarded-Proto: http`, so upstream apps that build absolute URLs from the forwarded scheme (Laravel, Rails, Django, …) emitted insecure `http://` asset and redirect URLs that browsers block as mixed content (symptom: pages render unstyled because the CSS request is blocked). The HTTPS listener now reports `https`, the HTTP listener still reports `http`; applies to both request and WebSocket forwarding.
+- **Migration 107 (`stop_grace_period`) was never wired into `run_migrations()`** — The migration file and the `App.stop_grace_period` field shipped, but the matching `execute_sql` call was missing, so fresh installs never created the column and every `POST /api/apps` failed with `no column found for name: stop_grace_period`. Now wired with an idempotent `pragma_table_info` guard.
 
 ### Tests
 - +5 unit tests: commit skip-marker detection (case-insensitivity + non-matches), LibSQL config / no-credential-env, and Postgres 17/18 availability. Suite now 251 passing.

@@ -34,11 +34,14 @@ impl ProxyService {
         Self { client }
     }
 
-    /// Forward a request to the specified backend
+    /// Forward a request to the specified backend.
+    /// `scheme` is the scheme the client used to reach the proxy ("http" or
+    /// "https") and is reported to the backend via X-Forwarded-Proto.
     pub async fn forward(
         &self,
         mut req: Request<Incoming>,
         backend: &Backend,
+        scheme: &str,
     ) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
         // Compute path, stripping the prefix if configured
         let original_pq = req
@@ -84,10 +87,11 @@ impl ProxyService {
         // Note: In production, we'd extract the remote IP from the connection
         // For now, we just ensure the header structure is correct
 
-        // Set X-Forwarded-Proto
+        // Set X-Forwarded-Proto to the scheme the client actually used.
         headers.insert(
             "X-Forwarded-Proto",
-            hyper::header::HeaderValue::from_static("http"),
+            hyper::header::HeaderValue::from_str(scheme)
+                .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("http")),
         );
 
         // Set X-Forwarded-Host (original Host header) and preserve it.
@@ -116,6 +120,7 @@ impl ProxyService {
         &self,
         mut req: Request<Incoming>,
         backend: &Backend,
+        scheme: &str,
     ) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
         let backend_addr = backend.addr();
         let original_pq = req
@@ -157,7 +162,8 @@ impl ProxyService {
             let headers = req.headers_mut();
             headers.insert(
                 "X-Forwarded-Proto",
-                hyper::header::HeaderValue::from_static("http"),
+                hyper::header::HeaderValue::from_str(scheme)
+                    .unwrap_or_else(|_| hyper::header::HeaderValue::from_static("http")),
             );
             if let Some(host) = headers.get(hyper::header::HOST).cloned() {
                 headers.insert("X-Forwarded-Host", host);
