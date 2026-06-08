@@ -133,6 +133,17 @@ impl DeploymentEngine {
                     Ok(p) => p,
                     Err(_) => return, // semaphore closed — engine shutting down
                 };
+
+                // The deployment record's started_at was set when it was queued.
+                // Now that a build slot is free and work actually begins, reset it
+                // so the reported duration reflects build time rather than time
+                // spent waiting in the queue behind other deployments.
+                let _ = sqlx::query("UPDATE deployments SET started_at = ? WHERE id = ?")
+                    .bind(chrono::Utc::now().to_rfc3339())
+                    .bind(&deployment_id)
+                    .execute(&db)
+                    .await;
+
                 let deploy_start = std::time::Instant::now();
                 let notification_service = NotificationService::new(db.clone());
 

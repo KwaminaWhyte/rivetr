@@ -218,7 +218,13 @@ function TimelineItem({
   const isRestart = deployment.trigger === "restart";
   // For restart deployments use a distinctive icon on the timeline dot
   const StatusIcon = isRestart && !isActive ? RefreshCw : config.icon;
-  const duration = calculateDuration(deployment.started_at, deployment.finished_at);
+  // A pending deployment is queued behind the concurrency limit and hasn't
+  // started building yet — show "Queued" rather than a running clock (its
+  // started_at is reset to the real build start once a slot frees).
+  const duration =
+    deployment.status === "pending"
+      ? "Queued"
+      : calculateDuration(deployment.started_at, deployment.finished_at);
 
   return (
     <div className="relative flex gap-4">
