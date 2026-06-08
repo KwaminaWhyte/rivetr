@@ -18,7 +18,7 @@ use crate::db::{
 use crate::engine::database_config::{
     generate_env_vars, generate_password, generate_username, get_config,
 };
-use crate::runtime::{ContainerStats, PortMapping, RunConfig};
+use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
@@ -1354,6 +1354,38 @@ pub async fn update_database(
         )
     })?;
 
+    // Live-apply CPU/memory limit changes to the running container via
+    // `docker update` (cgroups), so a limit edit takes effect without a
+    // restart — matching how apps apply limits. New value wins, otherwise the
+    // existing one is kept.
+    if (req.cpu_limit.is_some() || req.memory_limit.is_some())
+        && database.get_status() == DatabaseStatus::Running
+    {
+        if let Some(ref container_id) = database.container_id {
+            let new_mem = req
+                .memory_limit
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| database.memory_limit.clone());
+            let new_cpu = req
+                .cpu_limit
+                .clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| database.cpu_limit.clone());
+            if let Err(e) = state
+                .runtime
+                .apply_resource_limits(container_id, new_mem.as_deref(), new_cpu.as_deref())
+                .await
+            {
+                tracing::warn!(
+                    "Failed to apply resource limits to database {} container: {}",
+                    database.name,
+                    e
+                );
+            }
+        }
+    }
+
     // If public_access changed and database is running, we need to restart it
     let needs_restart = public_access_changed && database.get_status() == DatabaseStatus::Running;
 
@@ -1429,7 +1461,7 @@ pub async fn update_database(
 pub async fn get_database_stats(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<ContainerStats>, StatusCode> {
+) -> Result<Json<serde_json::Value>, StatusCode> {
     // Get the database
     let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
         .bind(&id)
@@ -1451,8 +1483,8 @@ pub async fn get_database_stats(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Get container ID
-    let container_id = database.container_id.ok_or_else(|| {
+    // Get container ID (clone so `database` stays usable for db_type below)
+    let container_id = database.container_id.clone().ok_or_else(|| {
         tracing::warn!("Database {} has no container ID", id);
         StatusCode::NOT_FOUND
     })?;
@@ -1463,7 +1495,43 @@ pub async fn get_database_stats(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(stats))
+    // Best-effort actual on-disk size of the data directory (`du -sb`). We use
+    // the broad volume root per engine so it covers both Rivetr-created layouts
+    // and adopted ones (e.g. Postgres data under .../18/docker). Failures are
+    // non-fatal — storage_bytes just reports 0.
+    let db_type = database.get_db_type();
+    let data_path: &str = match db_type {
+        DatabaseType::Postgres => "/var/lib/postgresql",
+        DatabaseType::Mysql | DatabaseType::Mariadb => "/var/lib/mysql",
+        DatabaseType::Mongodb => "/data/db",
+        DatabaseType::Redis => "/data",
+        _ => get_config(&db_type).data_path,
+    };
+    let storage_bytes: u64 = match state
+        .runtime
+        .run_command(
+            &container_id,
+            vec!["du".to_string(), "-sb".to_string(), data_path.to_string()],
+        )
+        .await
+    {
+        Ok(r) if r.exit_code == 0 => r
+            .stdout
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0),
+        _ => 0,
+    };
+
+    Ok(Json(serde_json::json!({
+        "cpu_percent": stats.cpu_percent,
+        "memory_usage": stats.memory_usage,
+        "memory_limit": stats.memory_limit,
+        "network_rx": stats.network_rx,
+        "network_tx": stats.network_tx,
+        "storage_bytes": storage_bytes,
+    })))
 }
 
 /// Import a database dump into a running database container

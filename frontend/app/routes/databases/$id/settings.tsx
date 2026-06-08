@@ -82,6 +82,8 @@ export default function DatabaseSettingsTab() {
 
   // Custom image & init commands state
   const [customImage, setCustomImage] = useState(database.custom_image ?? "");
+  const [memoryLimit, setMemoryLimit] = useState(database.memory_limit ?? "");
+  const [cpuLimit, setCpuLimit] = useState(database.cpu_limit ?? "");
   // init_commands is stored as a JSON array; display one command per line for editing
   const parseInitCommands = (json: string | null): string => {
     if (!json) return "";
@@ -627,7 +629,8 @@ export default function DatabaseSettingsTab() {
             Resource Limits
           </CardTitle>
           <CardDescription>
-            Configure CPU and memory limits for this database
+            Cap CPU and memory for this database. Changes apply live to the
+            running container (no restart needed). Leave blank for no limit.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -636,8 +639,9 @@ export default function DatabaseSettingsTab() {
               <Label htmlFor="memory_limit">Memory Limit</Label>
               <Input
                 id="memory_limit"
-                value={database.memory_limit || "512mb"}
-                readOnly
+                value={memoryLimit}
+                onChange={(e) => setMemoryLimit(e.target.value)}
+                placeholder="e.g. 512mb, 1g"
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
@@ -648,8 +652,9 @@ export default function DatabaseSettingsTab() {
               <Label htmlFor="cpu_limit">CPU Limit</Label>
               <Input
                 id="cpu_limit"
-                value={database.cpu_limit || "0.5"}
-                readOnly
+                value={cpuLimit}
+                onChange={(e) => setCpuLimit(e.target.value)}
+                placeholder="e.g. 0.5, 1, 2"
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
@@ -657,12 +662,17 @@ export default function DatabaseSettingsTab() {
               </p>
             </div>
           </div>
-          <div className="rounded-md bg-muted p-3">
-            <p className="text-sm text-muted-foreground">
-              Resource limits are set at creation time. To change limits, delete and
-              recreate the database with new values.
-            </p>
-          </div>
+          <Button
+            onClick={() =>
+              updateMutation.mutate({
+                memory_limit: memoryLimit,
+                cpu_limit: cpuLimit,
+              })
+            }
+            disabled={updateMutation.isPending}
+          >
+            {updateMutation.isPending ? "Saving..." : "Save limits"}
+          </Button>
         </CardContent>
       </Card>
 

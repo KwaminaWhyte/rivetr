@@ -857,6 +857,8 @@ export interface ContainerStats {
   network_rx: number;
   /** Network bytes transmitted */
   network_tx: number;
+  /** Actual on-disk data size in bytes (databases only; undefined otherwise) */
+  storage_bytes?: number;
 }
 
 // App status for start/stop functionality

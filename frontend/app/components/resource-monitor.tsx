@@ -309,6 +309,30 @@ export function ResourceMonitor({ appId, databaseId, serviceId, token, pollInter
               </div>
             </div>
           </div>
+
+          {/* Storage Used (databases only) */}
+          {stats.storage_bytes != null && (
+            <div className="space-y-3">
+              <StatDisplay
+                label="Storage Used"
+                value={formatBytes(stats.storage_bytes)}
+                subValue="Data on disk"
+                icon={
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <ellipse cx="12" cy="6" rx="8" ry="3" />
+                    <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3" />
+                    <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+                  </svg>
+                }
+              />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

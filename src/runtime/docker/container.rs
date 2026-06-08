@@ -1094,6 +1094,12 @@ pub async fn update_container_limits(
 
     let options = UpdateContainerOptions::<String> {
         memory,
+        // Docker rejects a memory update that would leave a larger pre-existing
+        // memory-swap limit ("update the memoryswap at the same time"), which
+        // happens whenever a container started without a memory cap (unlimited
+        // swap). Set memory_swap == memory so the cap is hard (no extra swap)
+        // and the update is accepted. Only set it when capping memory.
+        memory_swap: memory,
         nano_cpus,
         ..Default::default()
     };
