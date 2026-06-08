@@ -455,4 +455,6 @@ pub struct UpdateManagedDatabaseRequest {
     pub custom_image: Option<String>,
     /// JSON array of SQL init command strings to run after first start
     pub init_commands: Option<String>,
+    /// Move the database to a project (empty string = unassign / no project)
+    pub project_id: Option<String>,
 }

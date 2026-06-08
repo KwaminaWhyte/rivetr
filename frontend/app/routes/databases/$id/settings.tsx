@@ -28,6 +28,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { api } from "@/lib/api";
 import {
   AlertTriangle,
@@ -202,6 +203,11 @@ export default function DatabaseSettingsTab() {
 
   return (
     <div className="space-y-6">
+      <MoveToProjectCard
+        resourceKind="database"
+        resourceId={database.id}
+        currentProjectId={database.project_id ?? null}
+      />
       {/* Network Settings Card */}
       <Card>
         <CardHeader>

@@ -96,6 +96,8 @@ export interface UpdateManagedDatabaseRequest {
   custom_image?: string;
   /** JSON array of SQL init command strings */
   init_commands?: string;
+  /** Move to a project (empty string = unassign / no project) */
+  project_id?: string;
 }
 
 /** Database type configuration (for UI) */

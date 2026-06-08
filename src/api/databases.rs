@@ -1292,6 +1292,11 @@ pub async fn update_database(
         // value tracked separately via req.init_commands below
     }
 
+    if req.project_id.is_some() {
+        updates.push("project_id = ?");
+        // value tracked separately via req.project_id below
+    }
+
     if updates.is_empty() {
         // No changes
         let hostname = state.config.public_hostname();
@@ -1330,6 +1335,14 @@ pub async fn update_database(
     }
     if let Some(ref init_commands) = req.init_commands {
         query = query.bind(init_commands.as_str());
+    }
+    if let Some(ref project_id) = req.project_id {
+        // Empty string clears the project assignment (binds SQL NULL).
+        if project_id.is_empty() {
+            query = query.bind(None::<String>);
+        } else {
+            query = query.bind(project_id.as_str());
+        }
     }
     query = query.bind(&id);
 

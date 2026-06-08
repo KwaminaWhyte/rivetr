@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GitHubSourceCard } from "@/components/github-source-card";
+import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { Zap, Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
@@ -171,6 +172,11 @@ export default function AppSettingsGeneral() {
     <div className="space-y-6">
       <GitHubSourceCard app={app} />
       <WebhookSetupCard app={app} />
+      <MoveToProjectCard
+        resourceKind="app"
+        resourceId={app.id}
+        currentProjectId={app.project_id ?? null}
+      />
       <Card>
         <CardHeader>
           <CardTitle>General Settings</CardTitle>

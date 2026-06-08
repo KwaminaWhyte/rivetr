@@ -10,6 +10,7 @@ export function meta() {
   ];
 }
 import { Button } from "@/components/ui/button";
+import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -238,6 +239,11 @@ export default function ServiceSettingsTab() {
 
   return (
     <div className="space-y-6">
+      <MoveToProjectCard
+        resourceKind="service"
+        resourceId={service.id}
+        currentProjectId={service.project_id ?? null}
+      />
       {/* Domain Configuration */}
       <Card>
         <CardHeader>
