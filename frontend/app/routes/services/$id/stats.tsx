@@ -200,6 +200,18 @@ export default function ServiceStatsPage() {
             </span>
           )}
         </p>
+        {(service.cpu_limit || service.memory_limit) && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Configured limits (per container):{" "}
+            <span className="font-medium text-foreground">
+              {service.cpu_limit ? `${service.cpu_limit} CPU` : "no CPU cap"}
+            </span>
+            {" · "}
+            <span className="font-medium text-foreground">
+              {service.memory_limit ?? "no memory cap"}
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Loading skeleton */}
