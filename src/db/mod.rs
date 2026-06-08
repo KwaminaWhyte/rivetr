@@ -1476,6 +1476,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 107: Add per-app stop_grace_period column
+    let has_stop_grace_period: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('apps') WHERE name = 'stop_grace_period'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_stop_grace_period {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/107_stop_grace_period.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
