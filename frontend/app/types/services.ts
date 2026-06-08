@@ -26,6 +26,10 @@ export interface Service {
   external_port: number;
   /** Container port exposed when public_access is true (e.g. 6379). */
   expose_container_port: number;
+  /** Optional CPU limit (e.g. "0.5") applied to each compose service. */
+  cpu_limit: string | null;
+  /** Optional memory limit (e.g. "512M") applied to each compose service. */
+  memory_limit: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,6 +60,10 @@ export interface UpdateServiceRequest {
   external_port?: number;
   /** Container port to expose when public_access is enabled */
   expose_container_port?: number;
+  /** CPU limit (e.g. "0.5"); empty string clears it */
+  cpu_limit?: string;
+  /** Memory limit (e.g. "512M"); empty string clears it */
+  memory_limit?: string;
 }
 
 /** Service log entry */

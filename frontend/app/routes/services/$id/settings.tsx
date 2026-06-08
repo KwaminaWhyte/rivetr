@@ -87,6 +87,8 @@ export default function ServiceSettingsTab() {
   const [port, setPort] = useState(service.port ?? 80);
   const [isolatedNetwork, setIsolatedNetwork] = useState(service.isolated_network ?? true);
   const [rawComposeMode, setRawComposeMode] = useState(service.raw_compose_mode ?? false);
+  const [cpuLimit, setCpuLimit] = useState(service.cpu_limit ?? "");
+  const [memoryLimit, setMemoryLimit] = useState(service.memory_limit ?? "");
 
   // Preview compose dialog state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -147,6 +149,21 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update Raw Compose Mode");
+    },
+  });
+
+  const updateLimitsMutation = useMutation({
+    mutationFn: (data: { cpu_limit: string; memory_limit: string }) =>
+      api.updateService(service.id, {
+        cpu_limit: data.cpu_limit,
+        memory_limit: data.memory_limit,
+      }),
+    onSuccess: () => {
+      toast.success("Resource limits saved. Restart the service to apply.");
+      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update resource limits");
     },
   });
 
@@ -333,6 +350,52 @@ export default function ServiceSettingsTab() {
               disabled={updateNetworkMutation.isPending}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Resource Limits */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Resource Limits</CardTitle>
+          <CardDescription>
+            Cap CPU and memory for every container in this service. Injected as
+            the <code>cpus</code> / <code>mem_limit</code> compose keys at deploy
+            time; a container that already sets its own value is left untouched.
+            Leave blank for no cap. Restart the service to apply.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 max-w-md">
+            <div className="space-y-2">
+              <Label htmlFor="cpu-limit">CPU limit</Label>
+              <Input
+                id="cpu-limit"
+                placeholder="e.g. 0.5"
+                value={cpuLimit}
+                onChange={(e) => setCpuLimit(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="memory-limit">Memory limit</Label>
+              <Input
+                id="memory-limit"
+                placeholder="e.g. 512M"
+                value={memoryLimit}
+                onChange={(e) => setMemoryLimit(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            onClick={() =>
+              updateLimitsMutation.mutate({
+                cpu_limit: cpuLimit,
+                memory_limit: memoryLimit,
+              })
+            }
+            disabled={updateLimitsMutation.isPending}
+          >
+            {updateLimitsMutation.isPending ? "Saving..." : "Save limits"}
+          </Button>
         </CardContent>
       </Card>
 

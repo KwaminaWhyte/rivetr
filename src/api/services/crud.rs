@@ -185,8 +185,8 @@ pub async fn create_service(
 
     sqlx::query(
         r#"
-        INSERT INTO services (id, name, project_id, team_id, compose_content, domain, port, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO services (id, name, project_id, team_id, compose_content, domain, port, status, cpu_limit, memory_limit, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -197,6 +197,8 @@ pub async fn create_service(
     .bind(&domain)
     .bind(req.port.unwrap_or(80))
     .bind(ServiceStatus::Pending.to_string())
+    .bind(req.cpu_limit.as_deref().filter(|s| !s.is_empty()))
+    .bind(req.memory_limit.as_deref().filter(|s| !s.is_empty()))
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -396,6 +398,44 @@ pub async fn update_service(
             .await
             .map_err(|e| {
                 tracing::error!("Failed to update service raw_compose_mode: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
+    // Update cpu_limit if provided (empty string clears the cap)
+    if let Some(ref cpu_limit) = req.cpu_limit {
+        let val: Option<&str> = if cpu_limit.is_empty() {
+            None
+        } else {
+            Some(cpu_limit.as_str())
+        };
+        sqlx::query("UPDATE services SET cpu_limit = ?, updated_at = ? WHERE id = ?")
+            .bind(val)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service cpu_limit: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
+
+    // Update memory_limit if provided (empty string clears the cap)
+    if let Some(ref memory_limit) = req.memory_limit {
+        let val: Option<&str> = if memory_limit.is_empty() {
+            None
+        } else {
+            Some(memory_limit.as_str())
+        };
+        sqlx::query("UPDATE services SET memory_limit = ?, updated_at = ? WHERE id = ?")
+            .bind(val)
+            .bind(&now)
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update service memory_limit: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
     }

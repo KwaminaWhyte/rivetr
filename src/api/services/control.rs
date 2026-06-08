@@ -21,8 +21,9 @@ use crate::AppState;
 
 use super::super::audit::{audit_log, ClientIp};
 use super::compose::{
-    get_compose_dir, get_service_compose_dir, inject_public_ports, run_compose_command,
-    run_compose_command_streaming, substitute_magic_vars, write_compose_file_with_options,
+    get_compose_dir, get_service_compose_dir, inject_public_ports, inject_resource_limits,
+    run_compose_command, run_compose_command_streaming, substitute_magic_vars,
+    write_compose_file_with_options,
 };
 
 /// Service log entry
@@ -165,6 +166,30 @@ pub async fn start_service(
         }
     } else {
         substituted_compose
+    };
+
+    // Inject per-service CPU/memory limits (deploy.resources.limits) unless in
+    // raw mode (which deploys the compose verbatim) or no limits are configured.
+    let compose_to_write = if !raw_mode
+        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
+    {
+        match inject_resource_limits(
+            &compose_to_write,
+            service.cpu_limit.as_deref(),
+            service.memory_limit.as_deref(),
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject resource limits for service {}: {}. Using compose without limit injection.",
+                    service.name,
+                    e
+                );
+                compose_to_write
+            }
+        }
+    } else {
+        compose_to_write
     };
 
     if let Err(e) = write_compose_file_with_options(
@@ -524,6 +549,30 @@ pub async fn restart_service(
         substituted_compose
     };
 
+    // Inject per-service CPU/memory limits (deploy.resources.limits) unless in
+    // raw mode (which deploys the compose verbatim) or no limits are configured.
+    let compose_to_write = if !raw_mode
+        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
+    {
+        match inject_resource_limits(
+            &compose_to_write,
+            service.cpu_limit.as_deref(),
+            service.memory_limit.as_deref(),
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject resource limits for service {}: {}. Using compose without limit injection.",
+                    service.name,
+                    e
+                );
+                compose_to_write
+            }
+        }
+    } else {
+        compose_to_write
+    };
+
     if let Err(e) = write_compose_file_with_options(
         data_dir,
         &service.name,
@@ -549,11 +598,16 @@ pub async fn restart_service(
     let stream_key_for_restart = resource_key.clone();
     state
         .start_log_streams
-        .info(&resource_key, "starting", "Running docker compose restart");
+        .info(&resource_key, "starting", "Running docker compose up -d --force-recreate");
+    // Use `up -d --force-recreate` rather than `compose restart`: a plain restart
+    // only restarts the existing container processes and does NOT re-read the
+    // compose file, so config changes made since the last start (resource limits,
+    // env, domain/port, compose edits) would never take effect. Force-recreate
+    // rebuilds the containers from the current compose so a restart applies them.
     let restart_result = run_compose_command_streaming(
         &compose_dir,
         &project_name,
-        &["restart"],
+        &["up", "-d", "--force-recreate"],
         |line, is_stderr| {
             let phase = classify_compose_line(line);
             stream_handle.emit(
@@ -727,6 +781,20 @@ pub async fn restart_service_internal(state: &Arc<AppState>, id: &str) -> Result
         }
     } else {
         substituted
+    };
+
+    // Inject per-service CPU/memory limits unless raw mode / no limits configured.
+    let compose_to_write = if !raw_mode
+        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
+    {
+        inject_resource_limits(
+            &compose_to_write,
+            service.cpu_limit.as_deref(),
+            service.memory_limit.as_deref(),
+        )
+        .unwrap_or(compose_to_write)
+    } else {
+        compose_to_write
     };
 
     write_compose_file_with_options(

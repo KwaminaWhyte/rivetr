@@ -205,6 +205,76 @@ pub fn inject_public_ports(
     serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
 }
 
+/// Inject top-level `cpus` / `mem_limit` keys into every service in the compose
+/// file, so the service-level CPU/memory caps configured in Rivetr are enforced
+/// by Docker's cgroups. These keys (unlike `deploy.resources.limits`, which is
+/// swarm-only) are honored by `docker compose up`. A service that already sets a
+/// key keeps its own value (explicit config wins).
+///
+/// `cpu_limit` (e.g. "0.5") and `memory_limit` (e.g. "512M") are optional; only
+/// the provided ones are injected. If neither is set the content is returned
+/// unchanged.
+pub fn inject_resource_limits(
+    content: &str,
+    cpu_limit: Option<&str>,
+    memory_limit: Option<&str>,
+) -> Result<String, String> {
+    let cpu = cpu_limit.map(|s| s.trim()).filter(|s| !s.is_empty());
+    let mem = memory_limit.map(|s| s.trim()).filter(|s| !s.is_empty());
+    if cpu.is_none() && mem.is_none() {
+        return Ok(content.to_string());
+    }
+
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+
+    let mapping = match yaml.as_mapping_mut() {
+        Some(m) => m,
+        None => return Ok(content.to_string()),
+    };
+
+    let services_key = serde_yaml::Value::String("services".to_string());
+    let Some(services_val) = mapping.get_mut(&services_key) else {
+        return Ok(content.to_string());
+    };
+    let Some(services_map) = services_val.as_mapping_mut() else {
+        return Ok(content.to_string());
+    };
+
+    let str_val = |s: &str| serde_yaml::Value::String(s.to_string());
+
+    for (_svc_key, svc_val) in services_map.iter_mut() {
+        let Some(svc_map) = svc_val.as_mapping_mut() else {
+            continue;
+        };
+
+        // Use the top-level `cpus` / `mem_limit` keys: unlike
+        // `deploy.resources.limits` (swarm-only), these are honored by
+        // `docker compose up` and map directly to container cgroup limits.
+        // A service that already sets a key keeps its own value.
+        if let Some(c) = cpu {
+            let cpus_key = str_val("cpus");
+            if !svc_map.contains_key(&cpus_key) {
+                // `cpus` is numeric in the Compose spec; fall back to a string
+                // if the value somehow doesn't parse as a float.
+                let val = match c.parse::<f64>() {
+                    Ok(f) => serde_yaml::Value::Number(serde_yaml::Number::from(f)),
+                    Err(_) => str_val(c),
+                };
+                svc_map.insert(cpus_key, val);
+            }
+        }
+        if let Some(m) = mem {
+            let mem_key = str_val("mem_limit");
+            if !svc_map.contains_key(&mem_key) {
+                svc_map.insert(mem_key, str_val(m));
+            }
+        }
+    }
+
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
+}
+
 /// Namespace container names in compose content to prevent global conflicts
 /// Prefixes all container_name values with "rivetr-{service_name}-"
 pub fn namespace_container_names(content: &str, service_name: &str) -> Result<String, String> {

@@ -73,6 +73,14 @@ pub struct Service {
     /// Container port to expose when public_access is enabled (e.g. 6379).
     #[serde(default)]
     pub expose_container_port: i32,
+    /// Optional CPU limit (e.g. "0.5") injected into each compose service's
+    /// `deploy.resources.limits` at compose-write time, unless that service
+    /// already declares its own limits. NULL/empty = no Rivetr-injected cap.
+    #[serde(default)]
+    pub cpu_limit: Option<String>,
+    /// Optional memory limit (e.g. "512M"), injected the same way.
+    #[serde(default)]
+    pub memory_limit: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -125,6 +133,10 @@ pub struct ServiceResponse {
     pub external_port: i32,
     /// Container port to expose when public_access is enabled.
     pub expose_container_port: i32,
+    /// Optional CPU limit injected into each compose service's deploy limits.
+    pub cpu_limit: Option<String>,
+    /// Optional memory limit injected into each compose service's deploy limits.
+    pub memory_limit: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -146,6 +158,8 @@ impl From<Service> for ServiceResponse {
             public_access: service.public_access != 0,
             external_port: service.external_port,
             expose_container_port: service.expose_container_port,
+            cpu_limit: service.cpu_limit,
+            memory_limit: service.memory_limit,
             created_at: service.created_at,
             updated_at: service.updated_at,
         }
@@ -166,6 +180,10 @@ pub struct CreateServiceRequest {
     pub domain: Option<String>,
     /// Port of the service to proxy to (defaults to 80)
     pub port: Option<i32>,
+    /// Optional CPU limit (e.g. "0.5") applied to each compose service.
+    pub cpu_limit: Option<String>,
+    /// Optional memory limit (e.g. "512M") applied to each compose service.
+    pub memory_limit: Option<String>,
 }
 
 /// Request to update a Docker Compose service
@@ -189,4 +207,8 @@ pub struct UpdateServiceRequest {
     pub external_port: Option<i32>,
     /// Container port to expose when public_access is enabled
     pub expose_container_port: Option<i32>,
+    /// CPU limit (e.g. "0.5"); empty string clears it
+    pub cpu_limit: Option<String>,
+    /// Memory limit (e.g. "512M"); empty string clears it
+    pub memory_limit: Option<String>,
 }

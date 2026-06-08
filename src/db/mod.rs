@@ -1491,6 +1491,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 108: Add per-service cpu_limit / memory_limit columns
+    let has_service_cpu_limit: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('services') WHERE name = 'cpu_limit'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_service_cpu_limit {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/108_service_resource_limits.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
