@@ -300,6 +300,10 @@ pub async fn update_app(
     let cpu_limit = merge_optional_string(&req.cpu_limit, &existing.cpu_limit);
     let ssh_key_id = merge_optional_string(&req.ssh_key_id, &existing.ssh_key_id);
     let project_id = merge_optional_string(&req.project_id, &existing.project_id);
+    let github_app_installation_id = merge_optional_string(
+        &req.github_app_installation_id,
+        &existing.github_app_installation_id,
+    );
     let dockerfile_path = merge_optional_string(&req.dockerfile_path, &existing.dockerfile_path);
     let base_directory = merge_optional_string(&req.base_directory, &existing.base_directory);
     let build_target = merge_optional_string(&req.build_target, &existing.build_target);
@@ -566,6 +570,7 @@ pub async fn update_app(
             inline_dockerfile = ?,
             destination_id = ?,
             custom_labels = ?,
+            github_app_installation_id = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -636,6 +641,7 @@ pub async fn update_app(
     .bind(&inline_dockerfile)
     .bind(&destination_id)
     .bind(&custom_labels)
+    .bind(&github_app_installation_id)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
