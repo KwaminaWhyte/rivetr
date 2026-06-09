@@ -11,6 +11,7 @@ pub mod mattermost;
 pub mod ntfy;
 pub mod pushover;
 pub mod resend;
+pub mod sendry;
 pub mod teams;
 pub mod telegram;
 
@@ -363,6 +364,16 @@ impl NotificationService {
                     tracing::warn!(
                         channel_id = %channel.id,
                         "Invalid Resend config"
+                    );
+                }
+            }
+            NotificationChannelType::Sendry => {
+                if let Some(config) = channel.get_sendry_config() {
+                    sendry::send_sendry(&self.http_client, &config, payload).await?;
+                } else {
+                    tracing::warn!(
+                        channel_id = %channel.id,
+                        "Invalid Sendry config"
                     );
                 }
             }

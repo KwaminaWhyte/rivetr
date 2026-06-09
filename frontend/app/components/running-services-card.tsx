@@ -153,6 +153,34 @@ export function RunningServicesCard() {
     }
   };
 
+  // Health dot: green = healthy/running, amber = running but reporting no
+  // resource usage (likely idle or stats unavailable), grey = unknown.
+  const getHealthDot = (service: RunningServiceInfo) => {
+    const healthy =
+      service.status === "running" &&
+      (service.type === "service" ||
+        service.cpu_percent > 0 ||
+        service.memory_usage > 0);
+    const color = service.status !== "running"
+      ? "bg-muted-foreground/40"
+      : healthy
+        ? "bg-green-500"
+        : "bg-amber-500";
+    const label = service.status !== "running"
+      ? service.status
+      : healthy
+        ? "Healthy"
+        : "Idle";
+    return (
+      <span className="relative flex h-2.5 w-2.5 shrink-0" title={label}>
+        {healthy && (
+          <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${color}`} />
+        )}
+        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${color}`} />
+      </span>
+    );
+  };
+
   const badgeClass = {
     app: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     database: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
@@ -165,7 +193,9 @@ export function RunningServicesCard() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">Running Services</CardTitle>
           {allRunning.length > 0 && (
-            <span className="text-xs text-muted-foreground">{allRunning.length} active</span>
+            <Badge variant="secondary" className="text-xs font-normal">
+              {allRunning.length} active
+            </Badge>
           )}
         </div>
       </CardHeader>
@@ -184,6 +214,7 @@ export function RunningServicesCard() {
               >
                 <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex items-center gap-2 min-w-0">
+                    {getHealthDot(service)}
                     {getIcon(service.type)}
                     <div className="min-w-0">
                       <div className="font-medium text-sm truncate">{service.name}</div>

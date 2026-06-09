@@ -116,6 +116,8 @@ function getChannelIcon(type: TeamNotificationChannelType) {
       return <BellRing className="h-4 w-4" />;
     case "resend":
       return <Mail className="h-4 w-4" />;
+    case "sendry":
+      return <Mail className="h-4 w-4" />;
   }
 }
 
@@ -146,6 +148,8 @@ function getChannelBadgeVariant(
     case "gotify":
       return "default";
     case "resend":
+      return "outline";
+    case "sendry":
       return "outline";
   }
 }

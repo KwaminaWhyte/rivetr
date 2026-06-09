@@ -39,6 +39,111 @@ pub struct SystemStats {
     pub uptime_seconds: u64,
     /// Uptime percentage based on successful health checks (simplified: 99.99% default)
     pub uptime_percent: f64,
+    /// Host-wide total physical memory in bytes
+    pub host_memory_total_bytes: u64,
+    /// Host-wide used physical memory in bytes (total - available)
+    pub host_memory_used_bytes: u64,
+    /// Host-wide available memory in bytes (reclaimable + free)
+    pub host_memory_available_bytes: u64,
+    /// Host-wide total swap in bytes
+    pub swap_total_bytes: u64,
+    /// Host-wide used swap in bytes
+    pub swap_used_bytes: u64,
+    /// Number of logical CPUs on the host
+    pub cpu_count: u32,
+    /// System load average over the last 1 minute
+    pub load_average_1m: f64,
+    /// System load average over the last 5 minutes
+    pub load_average_5m: f64,
+    /// System load average over the last 15 minutes
+    pub load_average_15m: f64,
+}
+
+/// Host-wide memory figures gathered from `/proc/meminfo` (Linux).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HostMemory {
+    pub total_bytes: u64,
+    pub available_bytes: u64,
+    pub used_bytes: u64,
+    pub swap_total_bytes: u64,
+    pub swap_used_bytes: u64,
+}
+
+/// Read host-wide memory usage from `/proc/meminfo` (Linux).
+///
+/// "Used" is computed as `MemTotal - MemAvailable`, the same definition `free`
+/// and most dashboards use, so it reflects memory actually unavailable to the
+/// host rather than just non-free pages. Swap used is `SwapTotal - SwapFree`.
+/// On non-Linux platforms only `total_bytes` is populated (via the existing
+/// fallback) and the rest are zero.
+pub fn get_host_memory() -> HostMemory {
+    #[cfg(target_os = "linux")]
+    {
+        use std::collections::HashMap;
+        if let Ok(content) = std::fs::read_to_string("/proc/meminfo") {
+            let mut fields: HashMap<&str, u64> = HashMap::new();
+            for line in content.lines() {
+                let mut parts = line.split_whitespace();
+                if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
+                    let key = key.trim_end_matches(':');
+                    if let Ok(kb) = val.parse::<u64>() {
+                        fields.insert(key, kb * 1024); // KB -> bytes
+                    }
+                }
+            }
+
+            let total = fields.get("MemTotal").copied().unwrap_or(0);
+            // MemAvailable is present on kernels >= 3.14; fall back to MemFree.
+            let available = fields
+                .get("MemAvailable")
+                .copied()
+                .or_else(|| fields.get("MemFree").copied())
+                .unwrap_or(0);
+            let swap_total = fields.get("SwapTotal").copied().unwrap_or(0);
+            let swap_free = fields.get("SwapFree").copied().unwrap_or(0);
+
+            return HostMemory {
+                total_bytes: total,
+                available_bytes: available,
+                used_bytes: total.saturating_sub(available),
+                swap_total_bytes: swap_total,
+                swap_used_bytes: swap_total.saturating_sub(swap_free),
+            };
+        }
+    }
+
+    // Non-Linux (or read failure): only the total is known.
+    let total = get_system_memory();
+    HostMemory {
+        total_bytes: total,
+        available_bytes: total,
+        used_bytes: 0,
+        swap_total_bytes: 0,
+        swap_used_bytes: 0,
+    }
+}
+
+/// Read the system load averages (1, 5, 15 minutes) from `/proc/loadavg`.
+/// Returns `(0.0, 0.0, 0.0)` on non-Linux platforms or read failure.
+pub fn get_load_average() -> (f64, f64, f64) {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = std::fs::read_to_string("/proc/loadavg") {
+            let mut parts = content.split_whitespace();
+            let one = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let five = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let fifteen = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            return (one, five, fifteen);
+        }
+    }
+    (0.0, 0.0, 0.0)
+}
+
+/// Number of logical CPUs available to the process.
+pub fn get_cpu_count() -> u32 {
+    std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1)
 }
 
 /// A recent event (deployment, failure, restart, etc.)
@@ -374,6 +479,11 @@ pub async fn get_system_stats(
     // For now, return a high value as placeholder
     let uptime_percent = 99.99;
 
+    // Host-wide memory, swap, CPU count, and load average gathered from /proc.
+    let host_mem = get_host_memory();
+    let cpu_count = get_cpu_count();
+    let (load_1m, load_5m, load_15m) = get_load_average();
+
     Ok(Json(SystemStats {
         running_apps_count,
         total_apps_count,
@@ -386,6 +496,15 @@ pub async fn get_system_stats(
         memory_total_bytes,
         uptime_seconds,
         uptime_percent,
+        host_memory_total_bytes: host_mem.total_bytes,
+        host_memory_used_bytes: host_mem.used_bytes,
+        host_memory_available_bytes: host_mem.available_bytes,
+        swap_total_bytes: host_mem.swap_total_bytes,
+        swap_used_bytes: host_mem.swap_used_bytes,
+        cpu_count,
+        load_average_1m: load_1m,
+        load_average_5m: load_5m,
+        load_average_15m: load_15m,
     }))
 }
 

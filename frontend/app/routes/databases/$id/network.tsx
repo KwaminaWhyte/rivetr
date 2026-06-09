@@ -120,48 +120,6 @@ export default function DatabaseNetworkTab() {
         </CardContent>
       </Card>
 
-      {/* Public Access Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {database.public_access ? (
-              <Globe className="h-5 w-5 text-green-500" />
-            ) : (
-              <Lock className="h-5 w-5 text-muted-foreground" />
-            )}
-            Public Access
-          </CardTitle>
-          <CardDescription>
-            Control whether this database is accessible from outside the Docker network
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label className="text-base">Enable Public Access</Label>
-              <p className="text-sm text-muted-foreground">
-                {database.public_access
-                  ? "Database is accessible from the host machine and external networks"
-                  : "Database is only accessible within the Docker network"}
-              </p>
-            </div>
-            <Badge
-              variant={database.public_access ? "default" : "secondary"}
-              className={database.public_access ? "bg-green-500" : ""}
-            >
-              {database.public_access ? "Enabled" : "Disabled"}
-            </Badge>
-          </div>
-
-          <div className="rounded-md bg-muted p-3">
-            <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> Public access settings can be modified in the Settings tab.
-              Changing this requires restarting the database container.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Connection URLs Card */}
       <Card>
         <CardHeader>

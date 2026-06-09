@@ -224,14 +224,14 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
         {error ? (
           <div className="text-sm text-red-500 py-4 text-center">{error}</div>
         ) : (
-          <div className="bg-gray-900 text-gray-100 rounded-md p-4 font-mono text-xs overflow-auto max-h-96">
+          <div className="bg-gray-900 text-gray-100 rounded-md p-4 font-mono text-xs overflow-auto max-h-96 min-w-0 max-w-full">
             {logs.length === 0 ? (
               <div className="text-gray-500">Waiting for logs...</div>
             ) : (
               logs.map((log, i) => (
                 <div
                   key={i}
-                  className={`${
+                  className={`whitespace-pre-wrap break-all ${
                     log.stream === "stderr"
                       ? "text-red-400"
                       : log.type === "connected" || log.type === "end"

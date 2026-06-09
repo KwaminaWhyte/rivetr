@@ -35,7 +35,6 @@ import {
   Trash2,
   Settings2,
   Cpu,
-  HardDrive,
   Globe,
   Lock,
   Shield,
@@ -673,51 +672,6 @@ export default function DatabaseSettingsTab() {
           >
             {updateMutation.isPending ? "Saving..." : "Save limits"}
           </Button>
-        </CardContent>
-      </Card>
-
-      {/* Database Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="h-5 w-5" />
-            Database Information
-          </CardTitle>
-          <CardDescription>
-            Read-only database configuration details
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Database ID</Label>
-              <Input value={database.id} readOnly className="font-mono text-xs" />
-            </div>
-            <div className="space-y-2">
-              <Label>Container ID</Label>
-              <Input
-                value={database.container_id || "Not running"}
-                readOnly
-                className="font-mono text-xs"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Input value={database.db_type.toUpperCase()} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Version</Label>
-              <Input value={database.version} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Created</Label>
-              <Input value={new Date(database.created_at).toLocaleString()} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Last Updated</Label>
-              <Input value={new Date(database.updated_at).toLocaleString()} readOnly />
-            </div>
-          </div>
         </CardContent>
       </Card>
 

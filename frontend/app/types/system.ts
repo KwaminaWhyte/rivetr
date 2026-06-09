@@ -26,6 +26,24 @@ export interface SystemStats {
   uptime_seconds: number;
   /** Uptime percentage based on health checks */
   uptime_percent: number;
+  /** Host-wide total physical memory in bytes */
+  host_memory_total_bytes: number;
+  /** Host-wide used physical memory in bytes (total - available) */
+  host_memory_used_bytes: number;
+  /** Host-wide available memory in bytes */
+  host_memory_available_bytes: number;
+  /** Host-wide total swap in bytes */
+  swap_total_bytes: number;
+  /** Host-wide used swap in bytes */
+  swap_used_bytes: number;
+  /** Number of logical CPUs on the host */
+  cpu_count: number;
+  /** System load average over the last 1 minute */
+  load_average_1m: number;
+  /** System load average over the last 5 minutes */
+  load_average_5m: number;
+  /** System load average over the last 15 minutes */
+  load_average_15m: number;
 }
 
 // Disk space statistics for system monitoring

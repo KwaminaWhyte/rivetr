@@ -1,12 +1,11 @@
 import { useState, useMemo } from "react";
 import { useOutletContext } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function meta() {
   return [
     { title: "Network - Rivetr" },
-    { name: "description", content: "Configure domains, ports, and network settings" },
+    { name: "description", content: "Domain, port, and network connection details" },
   ];
 }
 import { Button } from "@/components/ui/button";
@@ -14,10 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import type { App, Deployment, PortMapping, UpdateAppRequest } from "@/types/api";
+import type { App, Deployment, PortMapping } from "@/types/api";
 import { Copy, Check, Server, Network, Container, Lock } from "lucide-react";
-import { DomainManagementCard } from "@/components/domain-management-card";
-import { appsApi } from "@/lib/api/apps";
 
 interface OutletContext {
   app: App;
@@ -26,21 +23,8 @@ interface OutletContext {
 }
 
 export default function AppNetworkTab() {
-  const { app, deployments, token } = useOutletContext<OutletContext>();
+  const { app, deployments } = useOutletContext<OutletContext>();
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleDomainSave = async (updates: UpdateAppRequest) => {
-    setIsSaving(true);
-    try {
-      await appsApi.updateApp(app.id, updates, token);
-      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
-      toast.success("Domain configuration saved");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const runningDeployment = deployments.find((d) => d.status === "running");
 
@@ -94,13 +78,6 @@ export default function AppNetworkTab() {
 
   return (
     <div className="space-y-6">
-      {/* Domain Management */}
-      <DomainManagementCard
-        app={app}
-        onSave={handleDomainSave}
-        isSaving={isSaving}
-      />
-
       {/* Port Configuration */}
       <Card>
         <CardHeader>

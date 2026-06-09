@@ -6,6 +6,10 @@ import {
   Server,
   Database,
   HardDrive,
+  MemoryStick,
+  Gauge,
+  Clock,
+  Cpu,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -56,7 +60,42 @@ function CheckResultCard({ check }: { check: CheckResult }) {
   );
 }
 
-function DiskUsageGauge({ used, total, usedHuman, totalHuman }: { used: number; total: number; usedHuman: string; totalHuman: string }) {
+/** Format a byte count to a human-readable string (binary units). */
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${value.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+}
+
+/** Format an uptime duration (in seconds) to a compact human string. */
+function formatUptime(seconds: number): string {
+  if (!seconds || seconds <= 0) return "--";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/** Radial gauge showing a single "used vs total" percentage with a labelled breakdown. */
+function UsageGauge({
+  used,
+  total,
+  usedHuman,
+  totalHuman,
+  secondaryLabel,
+  secondaryHuman,
+}: {
+  used: number;
+  total: number;
+  usedHuman: string;
+  totalHuman: string;
+  secondaryLabel?: string;
+  secondaryHuman?: string;
+}) {
   const percentage = total > 0 ? (used / total) * 100 : 0;
   const color = percentage >= 90 ? "#ef4444" : percentage >= 75 ? "#eab308" : "#22c55e";
   const data = [{ value: Math.min(percentage, 100) }];
@@ -95,6 +134,12 @@ function DiskUsageGauge({ used, total, usedHuman, totalHuman }: { used: number; 
           <p className="text-muted-foreground text-xs">Total</p>
           <p className="font-semibold">{totalHuman}</p>
         </div>
+        {secondaryLabel && secondaryHuman && (
+          <div>
+            <p className="text-muted-foreground text-xs">{secondaryLabel}</p>
+            <p className="font-semibold">{secondaryHuman}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -130,10 +175,30 @@ export default function MonitoringPage() {
     refetchDisk();
   };
 
-  // Calculate memory percentage
-  const memoryPercent = stats && stats.memory_total_bytes > 0
-    ? (stats.memory_used_bytes / stats.memory_total_bytes) * 100
-    : 0;
+  // Host-wide memory: prefer the true host figures (total - available) from
+  // /proc/meminfo; fall back to the container-aggregate used bytes when the
+  // host figures are unavailable (e.g. non-Linux dev host).
+  const hostMemTotal = stats?.host_memory_total_bytes || stats?.memory_total_bytes || 0;
+  const hostMemUsed =
+    stats && stats.host_memory_total_bytes > 0
+      ? stats.host_memory_used_bytes
+      : stats?.memory_used_bytes || 0;
+  const hostMemAvailable =
+    stats && stats.host_memory_total_bytes > 0
+      ? stats.host_memory_available_bytes
+      : Math.max(hostMemTotal - hostMemUsed, 0);
+
+  // Memory percentage used by the resource chart / cards.
+  const memoryPercent = hostMemTotal > 0 ? (hostMemUsed / hostMemTotal) * 100 : 0;
+
+  const swapTotal = stats?.swap_total_bytes || 0;
+  const swapUsed = stats?.swap_used_bytes || 0;
+  const swapPercent = swapTotal > 0 ? (swapUsed / swapTotal) * 100 : 0;
+
+  // Load average relative to CPU count (1.0 per-core == fully loaded).
+  const cpuCount = stats?.cpu_count || 1;
+  const load1 = stats?.load_average_1m ?? 0;
+  const loadPerCore = cpuCount > 0 ? load1 / cpuCount : 0;
 
   return (
     <div className="space-y-6">
@@ -259,6 +324,86 @@ export default function MonitoringPage() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Memory Usage</CardTitle>
+            <MemoryStick className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {stats && hostMemTotal > 0 ? (
+              <>
+                <div className="text-2xl font-bold">{memoryPercent.toFixed(1)}% used</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatBytes(hostMemUsed)} / {formatBytes(hostMemTotal)}
+                </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">--</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">CPU Usage</CardTitle>
+            <Cpu className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {stats ? (
+              <>
+                <div className="text-2xl font-bold">
+                  {stats.total_cpu_percent.toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  across {cpuCount} {cpuCount === 1 ? "core" : "cores"}
+                </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">--</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Load Average</CardTitle>
+            <Gauge className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {stats && (stats.cpu_count > 0 || load1 > 0) ? (
+              <>
+                <div className="text-2xl font-bold">{load1.toFixed(2)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {(stats.load_average_5m ?? 0).toFixed(2)} (5m) ·{" "}
+                  {(stats.load_average_15m ?? 0).toFixed(2)} (15m) ·{" "}
+                  {(loadPerCore * 100).toFixed(0)}% / core
+                </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">--</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Host Uptime</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {stats && stats.uptime_seconds > 0 ? (
+              <>
+                <div className="text-2xl font-bold">{formatUptime(stats.uptime_seconds)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stats.uptime_percent.toFixed(2)}% availability
+                </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">--</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Resource Utilization Chart */}
@@ -266,6 +411,53 @@ export default function MonitoringPage() {
         cpuPercent={stats?.total_cpu_percent ?? 0}
         memoryPercent={memoryPercent}
       />
+
+      {/* Memory Usage Details */}
+      {stats && hostMemTotal > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Memory Usage</CardTitle>
+            <CardDescription>
+              Host RAM{swapTotal > 0 ? " and swap" : ""}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-8">
+              <UsageGauge
+                used={hostMemUsed}
+                total={hostMemTotal}
+                usedHuman={formatBytes(hostMemUsed)}
+                totalHuman={formatBytes(hostMemTotal)}
+                secondaryLabel="Available"
+                secondaryHuman={formatBytes(hostMemAvailable)}
+              />
+              <div className="flex-1 grid grid-cols-1 gap-3 text-sm">
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Used</span>
+                  <span className="font-semibold">{formatBytes(hostMemUsed)}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Available</span>
+                  <span className="font-semibold">{formatBytes(hostMemAvailable)}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold">{formatBytes(hostMemTotal)}</span>
+                </div>
+                {swapTotal > 0 && (
+                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
+                    <span className="text-muted-foreground">Swap</span>
+                    <span className="font-semibold">
+                      {formatBytes(swapUsed)} / {formatBytes(swapTotal)} (
+                      {swapPercent.toFixed(0)}%)
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Disk Usage Details */}
       {disk && (
@@ -276,11 +468,13 @@ export default function MonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between gap-8">
-              <DiskUsageGauge
+              <UsageGauge
                 used={disk.used_bytes}
                 total={disk.total_bytes}
                 usedHuman={disk.used_human}
                 totalHuman={disk.total_human}
+                secondaryLabel="Free"
+                secondaryHuman={disk.free_human}
               />
               <div className="flex-1 grid grid-cols-1 gap-3 text-sm">
                 <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">

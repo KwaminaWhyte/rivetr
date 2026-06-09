@@ -646,7 +646,7 @@ fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Re
                 ));
             }
         }
-        "resend" => {
+        "resend" | "sendry" => {
             let api_key = config
                 .get("api_key")
                 .and_then(|v| v.as_str())

@@ -20,6 +20,27 @@ function getStatusColor(status: RecentEvent["status"]) {
   }
 }
 
+const STATUS_LABEL: Record<RecentEvent["status"], string> = {
+  success: "Success",
+  error: "Failure",
+  warning: "Warning",
+  info: "Info",
+};
+
+/**
+ * Pick the most relevant destination for an event. Deploy/build-related events
+ * link to the app's deployments tab; everything else links to the app detail.
+ */
+function getEventLink(event: RecentEvent): string | null {
+  if (!event.app_id) return null;
+  const deployEvent = ["deployed", "failed", "building", "pending"].includes(
+    event.event_type
+  );
+  return deployEvent
+    ? `/apps/${event.app_id}/deployments`
+    : `/apps/${event.app_id}`;
+}
+
 function formatRelativeTime(timestamp: string): string {
   const now = new Date();
   const date = new Date(timestamp);
@@ -97,24 +118,40 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
           </div>
         ) : (
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-            {events.map((event) => (
-              <div key={event.id} className="flex items-start gap-3">
-                <div
-                  className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${getStatusColor(event.status)}`}
-                />
-                <div className="flex-1 min-w-0">
-                  <Link
-                    to={`/apps/${event.app_id}`}
-                    className="text-sm font-medium hover:underline truncate block"
-                  >
-                    {event.message}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">
-                    {formatRelativeTime(event.timestamp)}
-                  </p>
+            {events.map((event) => {
+              const link = getEventLink(event);
+              return (
+                <div key={event.id} className="flex items-start gap-3">
+                  <div
+                    className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${getStatusColor(event.status)}`}
+                    title={STATUS_LABEL[event.status]}
+                  />
+                  <div className="flex-1 min-w-0">
+                    {link ? (
+                      <Link
+                        to={link}
+                        className="text-sm font-medium hover:underline truncate block"
+                      >
+                        {event.message}
+                      </Link>
+                    ) : (
+                      <span className="text-sm font-medium truncate block">
+                        {event.message}
+                      </span>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {event.app_name && (
+                        <span className="font-medium text-foreground/70">
+                          {event.app_name}
+                        </span>
+                      )}
+                      {event.app_name && " · "}
+                      {formatRelativeTime(event.timestamp)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

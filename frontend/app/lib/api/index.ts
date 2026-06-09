@@ -58,12 +58,6 @@ export type {
   CreateTunnelRequest,
   CreateTunnelRouteRequest,
 } from "./tunnels";
-export { communityTemplatesApi } from "./community-templates";
-export type {
-  CommunityTemplateSubmission,
-  SubmitTemplateRequest,
-  ReviewSubmissionRequest,
-} from "./community-templates";
 export { filesystemApi } from "./filesystem";
 export type { FileEntry } from "./filesystem";
 export { aiApi } from "./ai";
@@ -91,7 +85,6 @@ import { sharedEnvVarsApi } from "./shared-env-vars";
 import { serversApi } from "./servers";
 import { whiteLabelApi } from "./white-label";
 import { tunnelsApi } from "./tunnels";
-import { communityTemplatesApi } from "./community-templates";
 import { filesystemApi } from "./filesystem";
 import { caCertificatesApi } from "./ca-certificates";
 import { destinationsApi } from "./destinations";
@@ -506,14 +499,6 @@ export const api = {
   // White Label
   getWhiteLabel: whiteLabelApi.get,
   updateWhiteLabel: whiteLabelApi.update,
-
-  // Community Template Submissions
-  submitTemplate: communityTemplatesApi.submit,
-  listAllSubmissions: communityTemplatesApi.listAll,
-  getSubmission: communityTemplatesApi.get,
-  reviewSubmission: communityTemplatesApi.review,
-  myTemplateSubmissions: communityTemplatesApi.mySubmissions,
-  deleteSubmission: communityTemplatesApi.delete,
 
   // Remote Filesystem Browser
   browseFiles: filesystemApi.browse,

@@ -79,8 +79,6 @@ export default [
 
     // Service Templates (browse templates for reference)
     route("templates", "routes/templates.tsx"),
-    // Community template submissions
-    route("templates/submissions", "routes/templates/submissions.tsx"),
 
     // Remote server filesystem browser
     route("servers/:id/files", "routes/servers/$id/files.tsx"),

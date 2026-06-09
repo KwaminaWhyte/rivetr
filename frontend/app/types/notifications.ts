@@ -3,7 +3,7 @@
 // -------------------------------------------------------------------------
 
 /** Notification channel types */
-export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams" | "pushover" | "ntfy" | "mattermost" | "lark" | "gotify" | "resend";
+export type NotificationChannelType = "slack" | "discord" | "email" | "telegram" | "teams" | "pushover" | "ntfy" | "mattermost" | "lark" | "gotify" | "resend" | "sendry";
 
 /** Notification event types */
 export type NotificationEventType =
@@ -96,12 +96,22 @@ export interface ResendConfig {
   to_addresses: string[];
 }
 
+/** Sendry email API configuration (Resend-compatible) */
+export interface SendryConfig {
+  /** Sendry API key */
+  api_key: string;
+  /** From address (must be a verified sender in Sendry) */
+  from_address: string;
+  /** List of recipient email addresses */
+  to_addresses: string[];
+}
+
 /** Notification channel */
 export interface NotificationChannel {
   id: string;
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | Record<string, unknown>;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -121,14 +131,14 @@ export interface NotificationSubscription {
 export interface CreateNotificationChannelRequest {
   name: string;
   channel_type: NotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
   enabled?: boolean;
 }
 
 /** Request to update a notification channel */
 export interface UpdateNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
   enabled?: boolean;
 }
 
@@ -168,7 +178,8 @@ export type TeamNotificationChannelType =
   | "mattermost"
   | "lark"
   | "gotify"
-  | "resend";
+  | "resend"
+  | "sendry";
 
 /** Team notification channel */
 export interface TeamNotificationChannel {
@@ -189,6 +200,7 @@ export interface TeamNotificationChannel {
     | LarkConfig
     | GotifyConfig
     | ResendConfig
+    | SendryConfig
     | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -199,14 +211,14 @@ export interface TeamNotificationChannel {
 export interface CreateTeamNotificationChannelRequest {
   name: string;
   channel_type: TeamNotificationChannelType;
-  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
+  config: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
   enabled?: boolean;
 }
 
 /** Request to update a team notification channel */
 export interface UpdateTeamNotificationChannelRequest {
   name?: string;
-  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
+  config?: SlackConfig | DiscordConfig | EmailConfig | WebhookConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
   enabled?: boolean;
 }
 

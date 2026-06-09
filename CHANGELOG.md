@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-09
+
 ### Added
 - **Competitive-parity sweep (Coolify v4.1.0 / Dokploy v0.29.x)** — Closed five gaps surfaced by a fresh re-research of both competitors. See `docs/research/competitive-gap-analysis.md` (§ "Re-research 2026-05-27").
   - **`[skip ci]` / `[skip cd]` commit markers** — A push whose tip commit message contains `[skip ci]`, `[ci skip]`, `[skip cd]`, `[cd skip]`, `[skip deploy]`, or `[no deploy]` (case-insensitive) no longer triggers a deployment. Honored across the GitHub, GitLab, Gitea, and Bitbucket webhook handlers via the shared `commit_skips_deploy()` helper.
@@ -18,8 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-service resource limits** — Services now have `cpu_limit` / `memory_limit` fields (Service settings → "Resource Limits"). Rivetr injects them as the top-level `cpus` / `mem_limit` compose keys (honored by `docker compose up`, unlike swarm-only `deploy.resources.limits`) on every service at deploy time — a service that already sets a key keeps its own value — so Docker enforces the caps via cgroups, bringing services in line with apps and managed databases. Applied across the start and both restart paths. The service stats page shows the configured caps alongside live usage. Migration 108.
 - **Database storage usage in stats** — the database stats endpoint now reports `storage_bytes`, the actual on-disk size of the data directory (measured with `du -sb` inside the container, using the engine's volume root so it covers adopted layouts too). Surfaced as a "Storage Used" tile in the resource monitor.
 - **Configurable deployment concurrency** — caps how many deployments build at once via a shared semaphore in the deploy engine; additional deploys queue until a slot frees. Previously every triggered deployment spawned immediately with no bound, so a monorepo push (one repo → several apps) or a burst of webhooks could start many simultaneous Docker builds and exhaust host CPU/RAM. Configurable from **Settings → "Max concurrent deployments"** (saved instance setting, applied **live** with no restart) or `runtime.max_concurrent_deployments` in `rivetr.toml`. Default 2.
+- **Host metrics on the Monitoring page** — the page now shows true host RAM (used / available / total + %), swap, load average (1/5/15m + per-core), CPU core count, and host uptime alongside the existing CPU and disk views (previously it showed no memory at all). `GET /api/system/stats` was extended to read host memory/swap/load from `/proc` — no new crates.
+- **Sendry email notifications** — new "Sendry" notification channel (a Resend-compatible HTTP email API, `https://docs.sendry.online`). Configure an API key + from/to addresses in Settings → Notifications; delivered via `reqwest` like the other providers (no new crate). Migration 109 extends the `notification_channels` type constraint.
+- **Dashboard polish** — System Overview stat values no longer wrap to two lines; the CPU / Memory / Disk cards link to `/monitoring`; the Running Services list shows a per-service health dot and links to each resource; Recent Events use meaning-coded dots (success / failure / info) with tooltips and link to the relevant app or deployment; added a live "updated N ago" indicator.
 
 ### Fixed
+- **Long log lines widened the whole page** — on the logs tab a single very long line (URL, base64, stack trace) stretched the layout horizontally instead of staying inside the log box. The log container is now width-constrained (`min-w-0` / `max-w-full`) and long lines wrap/scroll within it.
+- **Repeated sections across resource detail tabs** — the same control or info was rendered in multiple tabs of an app/database/service (restart policy in both General and Docker settings; the domain editor in both the Network tab and Settings → Network; database resource-limits and metadata in both Overview and Settings; service exposed-ports in both Overview and Network). Each is now shown in a single canonical tab.
 - **Queued deployments showed a running clock and inflated duration** — a deployment's `started_at` was stamped when it was created (queued), so a deploy waiting behind the concurrent-deployment limit displayed a growing timer and, once it finally built, a total duration that included the queue wait (looking as long as the deploy ahead of it — easily mistaken for the cap not working). `started_at` is now reset to the real build start when a slot frees, and pending deployments render as "Queued" instead of a running timer. The concurrency cap itself was already correct.
 - **App update ignored `github_app_installation_id`** — `PUT /api/apps/:id` accepted the field but never wrote it, so an existing app couldn't have a GitHub App installation attached or changed (e.g. converting an app from a registry image to a private git source left it with no clone auth). It's now merged and persisted like the other fields, so switching an app to a git source works entirely via the API/UI.
 - **Database CPU/memory limits couldn't be changed after creation** — the DB settings "Resource Limits" card was read-only ("delete and recreate to change limits"), and `update_database` ignored limit changes for the running container. The card is now editable with a Save button, and a limit change is applied **live** to the running container via `docker update` (cgroups) — no restart needed.
@@ -28,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Service restart didn't apply config changes** — `restart_service` ran `docker compose restart`, which only restarts the existing container processes and never re-reads the compose file, so changes made since the last start (resource limits, env, domain/port, compose edits) silently didn't take effect on a restart. It now runs `docker compose up -d --force-recreate`, rebuilding the containers from the current compose.
 - **Reverse proxy always sent `X-Forwarded-Proto: http`** — Even on the HTTPS listener (`:443`) the proxy hard-coded `X-Forwarded-Proto: http`, so upstream apps that build absolute URLs from the forwarded scheme (Laravel, Rails, Django, …) emitted insecure `http://` asset and redirect URLs that browsers block as mixed content (symptom: pages render unstyled because the CSS request is blocked). The HTTPS listener now reports `https`, the HTTP listener still reports `http`; applies to both request and WebSocket forwarding.
 - **Migration 107 (`stop_grace_period`) was never wired into `run_migrations()`** — The migration file and the `App.stop_grace_period` field shipped, but the matching `execute_sql` call was missing, so fresh installs never created the column and every `POST /api/apps` failed with `no column found for name: stop_grace_period`. Now wired with an idempotent `pragma_table_info` guard.
+
+### Removed
+- **Template suggestion / submission features** — removed the "My Suggestions", "Submit a template", and "Suggest a template" actions from `/templates` together with their pages, API-client methods, and backend endpoints/handlers/models (`template_suggestions` and `community_template_submissions` code paths). The core template catalog and one-click deploy are unchanged.
 
 ### Tests
 - +5 unit tests: commit skip-marker detection (case-insensitivity + non-matches), LibSQL config / no-credential-env, and Postgres 17/18 availability. Suite now 251 passing.
@@ -51,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Release builds now unwind on panic (slightly larger binary, negligible runtime cost) for process-level resilience.
 
+[0.11.0]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.23...v0.11.0
 [0.10.23]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.22...v0.10.23
 [0.10.22]: https://github.com/KwaminaWhyte/rivetr/compare/v0.10.21...v0.10.22
 

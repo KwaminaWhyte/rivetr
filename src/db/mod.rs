@@ -1506,6 +1506,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 109: Add 'sendry' to notification_channels channel_type CHECK constraint
+    let has_sendry_channel: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'notification_channels' AND sql LIKE '%''sendry''%'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !has_sendry_channel {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/109_notification_sendry.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

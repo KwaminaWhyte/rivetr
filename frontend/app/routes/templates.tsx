@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, Link } from "react-router";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { communityTemplatesApi } from "@/lib/api/community-templates";
 import {
   Activity,
   Database,
@@ -22,18 +21,14 @@ import {
   Zap,
   FileText,
   MessageCircle,
-  Lightbulb,
-  Send,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { servicesApi } from "@/lib/api/services";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -42,13 +37,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type {
   ServiceTemplate,
   TemplateCategory,
@@ -122,30 +110,6 @@ function getCategoryColor(category: TemplateCategory) {
   }
 }
 
-const SUGGEST_CATEGORIES = [
-  "monitoring",
-  "database",
-  "storage",
-  "development",
-  "analytics",
-  "networking",
-  "security",
-  "ai",
-  "automation",
-  "cms",
-  "communication",
-  "other",
-];
-
-interface SuggestForm {
-  name: string;
-  description: string;
-  docker_image: string;
-  category: string;
-  website_url: string;
-  notes: string;
-}
-
 export default function TemplatesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -160,85 +124,10 @@ export default function TemplatesPage() {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
-  // Submit Community Template state
-  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
-  const [submitForm, setSubmitForm] = useState({
-    name: "",
-    description: "",
-    category: "other",
-    icon: "",
-    compose_content: "",
-  });
-
-  const submitTemplateMutation = useMutation({
-    mutationFn: () =>
-      communityTemplatesApi.submit({
-        name: submitForm.name.trim(),
-        description: submitForm.description.trim(),
-        category: submitForm.category,
-        icon: submitForm.icon.trim() || undefined,
-        compose_content: submitForm.compose_content.trim(),
-      }),
-    onSuccess: () => {
-      toast.success("Template submitted for admin review!");
-      setShowSubmitDialog(false);
-      setSubmitForm({ name: "", description: "", category: "other", icon: "", compose_content: "" });
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Failed to submit template");
-    },
-  });
-
-  // Suggest Template state
-  const [showSuggestDialog, setShowSuggestDialog] = useState(false);
-  const [suggestForm, setSuggestForm] = useState<SuggestForm>({
-    name: "",
-    description: "",
-    docker_image: "",
-    category: "other",
-    website_url: "",
-    notes: "",
-  });
-
   const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
     queryKey: ["templates"],
     queryFn: () => api.getTemplates(),
   });
-
-  const suggestMutation = useMutation({
-    mutationFn: () =>
-      servicesApi.suggestTemplate({
-        name: suggestForm.name.trim(),
-        description: suggestForm.description.trim(),
-        docker_image: suggestForm.docker_image.trim(),
-        category: suggestForm.category,
-        website_url: suggestForm.website_url.trim() || undefined,
-        notes: suggestForm.notes.trim() || undefined,
-      }),
-    onSuccess: () => {
-      toast.success("Template suggestion submitted! We'll review it soon.");
-      setShowSuggestDialog(false);
-      setSuggestForm({
-        name: "",
-        description: "",
-        docker_image: "",
-        category: "other",
-        website_url: "",
-        notes: "",
-      });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to submit suggestion");
-    },
-  });
-
-  const handleSuggestSubmit = () => {
-    if (!suggestForm.name.trim() || !suggestForm.docker_image.trim()) {
-      toast.error("Name and Docker image are required");
-      return;
-    }
-    suggestMutation.mutate();
-  };
 
   const deployMutation = useMutation({
     mutationFn: (data: { templateId: string; request: DeployTemplateRequest }) =>
@@ -323,21 +212,6 @@ export default function TemplatesPage() {
           <p className="text-muted-foreground">
             Deploy pre-configured services with one click
           </p>
-        </div>
-        <div className="flex gap-2">
-          <Link to="/templates/submissions">
-            <Button variant="outline" size="sm">
-              My Submissions
-            </Button>
-          </Link>
-          <Button variant="outline" onClick={() => setShowSubmitDialog(true)}>
-            <Send className="mr-2 h-4 w-4" />
-            Submit Template
-          </Button>
-          <Button variant="outline" onClick={() => setShowSuggestDialog(true)}>
-            <Lightbulb className="mr-2 h-4 w-4" />
-            Suggest a Template
-          </Button>
         </div>
       </div>
 
@@ -497,195 +371,6 @@ export default function TemplatesPage() {
           ))}
         </div>
       )}
-
-      {/* Suggest Template Dialog */}
-      <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Suggest a Template</DialogTitle>
-            <DialogDescription>
-              Know a great Docker image that should be a template? Submit it for review and we'll add it to the library.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="suggest-name">
-                Template Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="suggest-name"
-                value={suggestForm.name}
-                onChange={(e) => setSuggestForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Minio, Grafana, n8n"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="suggest-docker-image">
-                Docker Image <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="suggest-docker-image"
-                value={suggestForm.docker_image}
-                onChange={(e) => setSuggestForm((f) => ({ ...f, docker_image: e.target.value }))}
-                placeholder="e.g. minio/minio:latest"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="suggest-description">Description</Label>
-              <Textarea
-                id="suggest-description"
-                value={suggestForm.description}
-                onChange={(e) => setSuggestForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="What does this service do?"
-                rows={2}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="suggest-category">Category</Label>
-              <Select
-                value={suggestForm.category}
-                onValueChange={(v) => setSuggestForm((f) => ({ ...f, category: v }))}
-              >
-                <SelectTrigger id="suggest-category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SUGGEST_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat} className="capitalize">
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="suggest-website">Website URL</Label>
-              <Input
-                id="suggest-website"
-                value={suggestForm.website_url}
-                onChange={(e) => setSuggestForm((f) => ({ ...f, website_url: e.target.value }))}
-                placeholder="https://example.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="suggest-notes">Additional Notes</Label>
-              <Textarea
-                id="suggest-notes"
-                value={suggestForm.notes}
-                onChange={(e) => setSuggestForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Any special configuration, ports, or environment variables we should know about?"
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSuggestDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSuggestSubmit}
-              disabled={suggestMutation.isPending || !suggestForm.name.trim() || !suggestForm.docker_image.trim()}
-            >
-              {suggestMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Lightbulb className="mr-2 h-4 w-4" />
-              )}
-              {suggestMutation.isPending ? "Submitting..." : "Submit Suggestion"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Submit Community Template Dialog */}
-      <Dialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Submit a Community Template</DialogTitle>
-            <DialogDescription>
-              Share a Docker Compose template with the community. Admins will review and approve it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name *</Label>
-                <Input
-                  placeholder="e.g. My App"
-                  value={submitForm.name}
-                  onChange={(e) => setSubmitForm((f) => ({ ...f, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select
-                  value={submitForm.category}
-                  onValueChange={(v) => setSubmitForm((f) => ({ ...f, category: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SUGGEST_CATEGORIES.map((cat) => (
-                      <SelectItem key={cat} value={cat} className="capitalize">
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Description *</Label>
-              <Input
-                placeholder="Brief description of what this template does"
-                value={submitForm.description}
-                onChange={(e) => setSubmitForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Icon (emoji, optional)</Label>
-              <Input
-                placeholder="e.g. 🚀"
-                value={submitForm.icon}
-                onChange={(e) => setSubmitForm((f) => ({ ...f, icon: e.target.value }))}
-                className="w-24"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Docker Compose Content *</Label>
-              <Textarea
-                placeholder={"services:\n  myapp:\n    image: myapp:latest\n    ports:\n      - '8080:8080'"}
-                value={submitForm.compose_content}
-                onChange={(e) => setSubmitForm((f) => ({ ...f, compose_content: e.target.value }))}
-                rows={8}
-                className="font-mono text-sm"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSubmitDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={
-                submitTemplateMutation.isPending ||
-                !submitForm.name.trim() ||
-                !submitForm.description.trim() ||
-                !submitForm.compose_content.trim()
-              }
-              onClick={() => submitTemplateMutation.mutate()}
-            >
-              {submitTemplateMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4 mr-2" />
-              )}
-              Submit for Review
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Deploy Dialog */}
       <Dialog

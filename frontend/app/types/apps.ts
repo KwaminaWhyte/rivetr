@@ -655,34 +655,6 @@ export interface CreateAutoscalingRuleRequest {
 }
 
 // -------------------------------------------------------------------------
-// Template Suggestion types
-// -------------------------------------------------------------------------
-
-export interface TemplateSuggestion {
-  id: string;
-  name: string;
-  description: string;
-  docker_image: string;
-  category: string;
-  website_url: string | null;
-  notes: string | null;
-  status: "pending" | "approved" | "rejected";
-  submitted_by: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  created_at: string;
-}
-
-export interface TemplateSuggestionRequest {
-  name: string;
-  description: string;
-  docker_image: string;
-  category: string;
-  website_url?: string;
-  notes?: string;
-}
-
-// -------------------------------------------------------------------------
 // SSH Key types
 // -------------------------------------------------------------------------
 

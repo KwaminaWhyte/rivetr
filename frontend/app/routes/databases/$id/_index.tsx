@@ -240,26 +240,6 @@ export default function DatabaseGeneralTab() {
         </CardContent>
       </Card>
 
-      {/* Resource Limits Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resource Limits</CardTitle>
-          <CardDescription>CPU and memory allocation</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Memory Limit</Label>
-              <Input value={database.memory_limit || "No limit"} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>CPU Limit</Label>
-              <Input value={database.cpu_limit || "No limit"} readOnly />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Metadata Card */}
       <Card>
         <CardHeader>

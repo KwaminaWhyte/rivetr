@@ -19,6 +19,7 @@ pub enum NotificationChannelType {
     Lark,
     Gotify,
     Resend,
+    Sendry,
 }
 
 impl std::fmt::Display for NotificationChannelType {
@@ -36,6 +37,7 @@ impl std::fmt::Display for NotificationChannelType {
             Self::Lark => write!(f, "lark"),
             Self::Gotify => write!(f, "gotify"),
             Self::Resend => write!(f, "resend"),
+            Self::Sendry => write!(f, "sendry"),
         }
     }
 }
@@ -57,6 +59,7 @@ impl std::str::FromStr for NotificationChannelType {
             "lark" => Ok(Self::Lark),
             "gotify" => Ok(Self::Gotify),
             "resend" => Ok(Self::Resend),
+            "sendry" => Ok(Self::Sendry),
             _ => Err(format!("Unknown channel type: {}", s)),
         }
     }
@@ -219,6 +222,20 @@ pub struct ResendConfig {
     pub to_addresses: Vec<String>,
 }
 
+/// Sendry email API configuration.
+///
+/// Sendry exposes a Resend-compatible HTTP API, so the config fields mirror
+/// `ResendConfig`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendryConfig {
+    /// Sendry API key
+    pub api_key: String,
+    /// From address (must be a verified sender in Sendry)
+    pub from_address: String,
+    /// List of recipient email addresses
+    pub to_addresses: Vec<String>,
+}
+
 /// Generic webhook configuration with headers and payload template
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookConfig {
@@ -330,6 +347,11 @@ impl NotificationChannel {
     pub fn get_resend_config(&self) -> Option<ResendConfig> {
         serde_json::from_str(&self.config).ok()
     }
+
+    /// Parse the config as SendryConfig
+    pub fn get_sendry_config(&self) -> Option<SendryConfig> {
+        serde_json::from_str(&self.config).ok()
+    }
 }
 
 /// Response DTO for NotificationChannel (masks sensitive config data)
@@ -420,7 +442,7 @@ impl From<NotificationChannel> for NotificationChannelResponse {
                     config
                 }
             }
-            "resend" => {
+            "resend" | "sendry" => {
                 if let serde_json::Value::Object(mut obj) = config {
                     if obj.contains_key("api_key") {
                         obj.insert("api_key".to_string(), serde_json::json!("********"));

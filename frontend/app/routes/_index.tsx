@@ -12,6 +12,16 @@ import { RunningServicesCard } from "@/components/running-services-card";
 import type { SystemStats, DiskStats } from "@/types/api";
 import { Activity, Cpu, HardDrive, Database, Clock, Plus } from "lucide-react";
 
+function formatRelativeTime(date: Date): string {
+  const diffSecs = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSecs < 5) return "just now";
+  if (diffSecs < 60) return `${diffSecs}s ago`;
+  const diffMins = Math.floor(diffSecs / 60);
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  return `${diffHours}h ago`;
+}
+
 export function meta() {
   return [
     { title: "Dashboard - Rivetr" },
@@ -25,6 +35,18 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+/**
+ * Format a used/total byte pair sharing a single unit so the value stays on one
+ * line, e.g. "8.0 / 16.0 GB" instead of "8.0 GB / 16.0 GB" (which wraps).
+ */
+function formatBytesPair(used: number, total: number): string {
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = total > 0 ? Math.floor(Math.log(total) / Math.log(k)) : 0;
+  const fmt = (b: number) => parseFloat((b / Math.pow(k, i)).toFixed(1));
+  return `${fmt(used)} / ${fmt(total)} ${sizes[i]}`;
 }
 
 function formatUptime(seconds: number): string {
@@ -49,6 +71,10 @@ interface StatCardProps {
   iconBgColor: string;
   trend?: string;
   trendPositive?: boolean;
+  /** Optional destination — renders the card as a clickable link */
+  to?: string;
+  /** Shrink the value font for long composite strings (e.g. "8.0 GB / 16.0 GB") */
+  compactValue?: boolean;
 }
 
 function StatCard({
@@ -59,15 +85,29 @@ function StatCard({
   iconBgColor,
   trend,
   trendPositive,
+  to,
+  compactValue,
 }: StatCardProps) {
-  return (
-    <Card>
+  const card = (
+    <Card
+      className={
+        to
+          ? "h-full transition-colors hover:border-primary/40 hover:bg-muted/30"
+          : "h-full"
+      }
+    >
       <CardContent className="pt-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
             <p className="text-sm text-muted-foreground">{title}</p>
             <div className="flex items-baseline gap-2">
-              <p className="text-2xl font-bold">{value}</p>
+              <p
+                className={`font-bold leading-none whitespace-nowrap ${
+                  compactValue ? "text-xl" : "text-2xl"
+                }`}
+              >
+                {value}
+              </p>
               {subtitle && (
                 <span className="text-sm text-muted-foreground">{subtitle}</span>
               )}
@@ -85,15 +125,22 @@ function StatCard({
               </Badge>
             )}
           </div>
-          <div
-            className={`rounded-lg p-2.5 ${iconBgColor}`}
-          >
+          <div className={`shrink-0 rounded-lg p-2.5 ${iconBgColor}`}>
             {icon}
           </div>
         </div>
       </CardContent>
     </Card>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="block">
+        {card}
+      </Link>
+    );
+  }
+  return card;
 }
 
 export default function DashboardPage() {
@@ -115,16 +162,17 @@ export default function DashboardPage() {
     refetchInterval: 30000, // Refresh every 30 seconds (disk stats change less frequently)
   });
 
-  const { data: events = [] } = useQuery({
+  const { data: events = [], dataUpdatedAt } = useQuery({
     queryKey: ["recent-events"],
     queryFn: () => api.getRecentEvents(),
     refetchInterval: 15000,
     retry: 1,
   });
 
-  // Calculate memory display values - use formatBytes for accurate display
+  // Compact memory display: render both used and total in the same (larger) unit
+  // so the value stays on a single line instead of wrapping (e.g. "8.0 / 16.0 GB").
   const memoryDisplay = stats && stats.memory_total_bytes > 0
-    ? `${formatBytes(stats.memory_used_bytes)} / ${formatBytes(stats.memory_total_bytes)}`
+    ? formatBytesPair(stats.memory_used_bytes, stats.memory_total_bytes)
     : formatBytes(stats?.memory_used_bytes || 0);
 
   const memoryPercent = stats && stats.memory_total_bytes > 0
@@ -148,12 +196,26 @@ export default function DashboardPage() {
             Real-time health and performance across your services
           </p>
         </div>
-        <Button asChild>
-          <Link to="/projects">
-            <Plus className="mr-2 h-4 w-4" />
-            Quick Deploy
-          </Link>
-        </Button>
+        <div className="flex items-center gap-4">
+          {dataUpdatedAt > 0 && (
+            <span
+              className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex"
+              title={new Date(dataUpdatedAt).toLocaleString()}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              Updated {formatRelativeTime(new Date(dataUpdatedAt))}
+            </span>
+          )}
+          <Button asChild>
+            <Link to="/projects">
+              <Plus className="mr-2 h-4 w-4" />
+              Quick Deploy
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -171,20 +233,27 @@ export default function DashboardPage() {
           value={isLoading ? "..." : `${stats?.total_cpu_percent?.toFixed(1) ?? 0}%`}
           icon={<Cpu className="h-5 w-5 text-blue-600" />}
           iconBgColor="bg-blue-100 dark:bg-blue-900/30"
+          to="/monitoring"
         />
         <StatCard
           title="Memory Usage"
           value={isLoading ? "..." : memoryDisplay}
+          compactValue
           icon={<HardDrive className="h-5 w-5 text-purple-600" />}
           iconBgColor="bg-purple-100 dark:bg-purple-900/30"
+          trend={stats && stats.memory_total_bytes > 0 ? `${memoryPercent.toFixed(1)}% used` : undefined}
+          trendPositive={memoryPercent < 80}
+          to="/monitoring"
         />
         <StatCard
           title="Disk Usage"
           value={isLoading ? "..." : diskDisplay}
+          compactValue
           icon={<Database className="h-5 w-5 text-orange-600" />}
           iconBgColor="bg-orange-100 dark:bg-orange-900/30"
           trend={diskStats ? `${diskStats.usage_percent.toFixed(1)}% used` : undefined}
           trendPositive={diskStats ? diskStats.usage_percent < 80 : true}
+          to="/monitoring"
         />
         <StatCard
           title="Server Uptime"

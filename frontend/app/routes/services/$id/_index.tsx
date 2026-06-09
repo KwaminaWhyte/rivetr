@@ -191,17 +191,6 @@ export default function ServiceGeneralTab() {
     [service.compose_content]
   );
 
-  // Collect all ports from all services
-  const allPorts = useMemo(() => {
-    const ports: Array<ParsedPort & { serviceName: string }> = [];
-    for (const svc of parsedServices) {
-      for (const port of svc.ports) {
-        ports.push({ ...port, serviceName: svc.name });
-      }
-    }
-    return ports;
-  }, [parsedServices]);
-
   // Collect all volumes
   const allVolumes = useMemo(() => {
     const volumes: Array<ParsedVolume & { serviceName: string }> = [];
@@ -298,61 +287,6 @@ export default function ServiceGeneralTab() {
                   </a>
                 </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Exposed Ports - show raw port links when no domain is configured */}
-      {service.status === "running" && !service.domain && allPorts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Network className="h-5 w-5" />
-              Exposed Ports
-            </CardTitle>
-            <CardDescription>
-              Click to open the service in your browser (no domain configured)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {allPorts.map((port, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                >
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">
-                      Port {port.hostPort}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      → {port.containerPort}/{port.protocol}
-                    </span>
-                  </div>
-                  <div className="flex gap-1">
-                    <CopyButton
-                      text={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
-                      field={`port-${idx}`}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1"
-                      asChild
-                    >
-                      <a
-                        href={`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:${port.hostPort}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Open
-                      </a>
-                    </Button>
-                  </div>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>

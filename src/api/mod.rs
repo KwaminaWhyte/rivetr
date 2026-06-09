@@ -11,7 +11,6 @@ mod bulk;
 mod ca_certificates;
 mod clone;
 mod cloudflare_tunnels;
-mod community_templates;
 mod cost_rates;
 mod costs;
 mod database_backups;
@@ -740,43 +739,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/templates/categories",
             get(service_templates::list_categories),
         )
-        .route(
-            "/templates/suggest",
-            post(service_templates::suggest_template),
-        )
-        .route(
-            "/templates/suggestions",
-            get(service_templates::list_template_suggestions),
-        )
-        .route(
-            "/templates/suggestions/:id/approve",
-            put(service_templates::approve_template_suggestion),
-        )
         .route("/templates/:id", get(service_templates::get_template))
         .route(
             "/templates/:id/deploy",
             post(service_templates::deploy_template),
-        )
-        // Community template submissions
-        .route(
-            "/templates/submit",
-            post(community_templates::submit_template),
-        )
-        .route(
-            "/templates/submissions",
-            get(community_templates::list_submissions),
-        )
-        .route(
-            "/templates/my-submissions",
-            get(community_templates::my_submissions),
-        )
-        .route(
-            "/templates/submissions/:id",
-            get(community_templates::get_submission).delete(community_templates::delete_submission),
-        )
-        .route(
-            "/templates/submissions/:id/review",
-            put(community_templates::review_submission),
         )
         // Two-Factor Authentication (authenticated)
         .route("/auth/2fa/setup", post(two_factor::setup_2fa))

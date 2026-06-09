@@ -48,6 +48,7 @@ import type {
   LarkConfig,
   GotifyConfig,
   ResendConfig,
+  SendryConfig,
 } from "@/types/api";
 import {
   Loader2,
@@ -75,6 +76,7 @@ import {
   LarkConfigFields,
   GotifyConfigFields,
   ResendConfigFields,
+  SendryConfigFields,
 } from "@/components/notifications/channel-config-fields";
 
 function formatDate(dateStr: string): string {
@@ -105,6 +107,8 @@ function getChannelIcon(type: NotificationChannelType) {
       return <BellRing className="h-4 w-4" />;
     case "resend":
       return <Mail className="h-4 w-4" />;
+    case "sendry":
+      return <Mail className="h-4 w-4" />;
   }
 }
 
@@ -131,6 +135,8 @@ function getChannelBadgeVariant(type: NotificationChannelType): "default" | "sec
     case "gotify":
       return "default";
     case "resend":
+      return "outline";
+    case "sendry":
       return "outline";
   }
 }
@@ -193,6 +199,9 @@ export default function SettingsNotificationsPage() {
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFromAddress, setResendFromAddress] = useState("");
   const [resendToAddresses, setResendToAddresses] = useState("");
+  const [sendryApiKey, setSendryApiKey] = useState("");
+  const [sendryFromAddress, setSendryFromAddress] = useState("");
+  const [sendryToAddresses, setSendryToAddresses] = useState("");
 
   // Subscription form state
   const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");
@@ -211,7 +220,7 @@ export default function SettingsNotificationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig;
+      let config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
 
       if (channelType === "slack") {
         config = { webhook_url: webhookUrl.trim() };
@@ -257,6 +266,16 @@ export default function SettingsNotificationsPage() {
         config = {
           api_key: resendApiKey.trim(),
           from_address: resendFromAddress.trim(),
+          to_addresses: addresses,
+        };
+      } else if (channelType === "sendry") {
+        const addresses = sendryToAddresses
+          .split(",")
+          .map((a) => a.trim())
+          .filter((a) => a);
+        config = {
+          api_key: sendryApiKey.trim(),
+          from_address: sendryFromAddress.trim(),
           to_addresses: addresses,
         };
       } else {
@@ -396,6 +415,9 @@ export default function SettingsNotificationsPage() {
     setResendApiKey("");
     setResendFromAddress("");
     setResendToAddresses("");
+    setSendryApiKey("");
+    setSendryFromAddress("");
+    setSendryToAddresses("");
     setChannelType("slack");
   };
 
@@ -494,6 +516,20 @@ export default function SettingsNotificationsPage() {
         toast.error("At least one recipient address is required");
         return;
       }
+    } else if (channelType === "sendry") {
+      if (!sendryApiKey.trim()) {
+        toast.error("API key is required");
+        return;
+      }
+      if (!sendryFromAddress.trim()) {
+        toast.error("From address is required");
+        return;
+      }
+      const addresses = sendryToAddresses.split(",").map((a) => a.trim()).filter((a) => a);
+      if (addresses.length === 0) {
+        toast.error("At least one recipient address is required");
+        return;
+      }
     } else if (channelType === "email") {
       if (!smtpHost.trim()) {
         toast.error("SMTP host is required");
@@ -559,7 +595,7 @@ export default function SettingsNotificationsPage() {
           <CardTitle>Notification Channels</CardTitle>
           <CardDescription>
             Send notifications via Slack, Discord, Email, Telegram, Microsoft Teams, Pushover,
-            ntfy, Mattermost, Lark, Gotify, or Resend when deployments occur.
+            ntfy, Mattermost, Lark, Gotify, Resend, or Sendry when deployments occur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -763,6 +799,12 @@ export default function SettingsNotificationsPage() {
                         Resend (Email API)
                       </span>
                     </SelectItem>
+                    <SelectItem value="sendry">
+                      <span className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Sendry (Email API)
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -861,6 +903,16 @@ export default function SettingsNotificationsPage() {
                   setResendFromAddress={setResendFromAddress}
                   resendToAddresses={resendToAddresses}
                   setResendToAddresses={setResendToAddresses}
+                />
+              )}
+              {channelType === "sendry" && (
+                <SendryConfigFields
+                  sendryApiKey={sendryApiKey}
+                  setSendryApiKey={setSendryApiKey}
+                  sendryFromAddress={sendryFromAddress}
+                  setSendryFromAddress={setSendryFromAddress}
+                  sendryToAddresses={sendryToAddresses}
+                  setSendryToAddresses={setSendryToAddresses}
                 />
               )}
             </div>

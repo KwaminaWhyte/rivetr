@@ -606,6 +606,68 @@ export function ResendConfigFields({
   );
 }
 
+// ---- Sendry ----
+
+interface SendryFieldsProps {
+  sendryApiKey: string;
+  setSendryApiKey: (v: string) => void;
+  sendryFromAddress: string;
+  setSendryFromAddress: (v: string) => void;
+  sendryToAddresses: string;
+  setSendryToAddresses: (v: string) => void;
+}
+
+export function SendryConfigFields({
+  sendryApiKey,
+  setSendryApiKey,
+  sendryFromAddress,
+  setSendryFromAddress,
+  sendryToAddresses,
+  setSendryToAddresses,
+}: SendryFieldsProps) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="sendry_api_key">API Key</Label>
+        <Input
+          id="sendry_api_key"
+          type="password"
+          value={sendryApiKey}
+          onChange={(e) => setSendryApiKey(e.target.value)}
+          placeholder="Your Sendry API key"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Get your API key from the Sendry dashboard at sendry.online.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="sendry_from_address">From Address</Label>
+        <Input
+          id="sendry_from_address"
+          value={sendryFromAddress}
+          onChange={(e) => setSendryFromAddress(e.target.value)}
+          placeholder="noreply@yourdomain.com"
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          Must be a verified sender domain in your Sendry account.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="sendry_to_addresses">To Addresses (comma-separated)</Label>
+        <Input
+          id="sendry_to_addresses"
+          value={sendryToAddresses}
+          onChange={(e) => setSendryToAddresses(e.target.value)}
+          placeholder="admin@example.com, devops@example.com"
+          required
+        />
+      </div>
+    </>
+  );
+}
+
 // ---- Webhook (team channels only) ----
 
 const PAYLOAD_TEMPLATES: {
