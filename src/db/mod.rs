@@ -1521,6 +1521,23 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 110: expand notification_subscriptions event_type CHECK to include
+    // container_crash / container_restarted (present in the enum + UI but rejected
+    // by the original constraint).
+    let subs_allows_container_crash: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'notification_subscriptions' AND sql LIKE '%container_crash%'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !subs_allows_container_crash {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/110_notification_event_types.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

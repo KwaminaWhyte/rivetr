@@ -218,7 +218,7 @@ pub async fn test_channel(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<TestNotificationRequest>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     if let Err(e) = validate_uuid(&id, "channel_id") {
         return Err(ApiError::validation_field("channel_id", e));
     }
@@ -241,7 +241,12 @@ pub async fn test_channel(
             ApiError::internal(format!("Failed to send test notification: {}", e))
         })?;
 
-    Ok(StatusCode::OK)
+    // Return a JSON body so clients that parse the response (the dashboard's
+    // test button calls response.json()) don't choke on an empty 200.
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Test notification sent"
+    })))
 }
 
 // -------------------------------------------------------------------------

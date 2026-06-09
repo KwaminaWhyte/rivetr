@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Notification channel "Send test" reported a JSON error** — the test endpoint returned an empty `200 OK`, but the dashboard parses the response as JSON, so the button failed with "Unexpected end of JSON input" even though the test was actually sent. The endpoint now returns a small JSON body.
+- **Subscribing to "Container Crashed" / "Container Restarted" failed** — these event types exist in the backend enum and the UI, but the `notification_subscriptions.event_type` CHECK constraint (from migration 016) never listed them, so the insert hit a CHECK violation. Migration 110 rebuilds the table with the full event-type set.
+
 ## [0.11.0] - 2026-06-09
 
 ### Added
