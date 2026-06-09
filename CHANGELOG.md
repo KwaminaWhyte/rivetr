@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CPU Steal tile on Monitoring** — surfaces the host's CPU "steal" (the since-boot share of cycles the hypervisor took from this VM for other tenants), read from `/proc/stat`. Explains why an in-guest CPU reading can look low while a hosting provider's host-side graph reads high: persistent steal means the node is oversubscribed. The tile is muted under 5%, amber 5–25%, red above 25%. `GET /api/system/stats` gained `cpu_steal_percent`.
+
 ### Fixed
 - **Monitoring CPU usage was wrong (showed e.g. 129.7%)** — the "CPU Usage" card and the utilization chart summed each container's Docker CPU% (where 100% = one core), so the figure was noisy and could exceed 100%, never reflecting real host load. Both the live `GET /api/system/stats` endpoint and the history collector now read true host CPU utilization from `/proc/stat` (sampling the cumulative counters over a 200 ms window), reported as a 0–100% aggregate across all cores. Falls back to the old container sum on non-Linux dev machines.
 - **Notification channel "Send test" reported a JSON error** — the test endpoint returned an empty `200 OK`, but the dashboard parses the response as JSON, so the button failed with "Unexpected end of JSON input" even though the test was actually sent. The endpoint now returns a small JSON body.

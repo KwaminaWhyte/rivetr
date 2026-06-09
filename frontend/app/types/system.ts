@@ -18,6 +18,8 @@ export interface SystemStats {
   total_services_count: number;
   /** Aggregate CPU usage percentage across all running containers */
   total_cpu_percent: number;
+  /** Host CPU steal % — cycles the hypervisor took for other tenants (0 = bare metal / not oversubscribed) */
+  cpu_steal_percent: number;
   /** Aggregate memory usage in bytes across all running containers */
   memory_used_bytes: number;
   /** Total memory limit in bytes (sum of all container limits) */

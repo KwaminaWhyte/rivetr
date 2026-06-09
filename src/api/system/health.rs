@@ -31,6 +31,9 @@ pub struct SystemStats {
     pub total_services_count: u32,
     /// Aggregate CPU usage percentage across all running containers
     pub total_cpu_percent: f64,
+    /// Host CPU "steal" percentage — share of cycles the hypervisor took from
+    /// this VM for other tenants (0 on bare metal; high = oversubscribed host).
+    pub cpu_steal_percent: f64,
     /// Aggregate memory usage in bytes across all running containers
     pub memory_used_bytes: u64,
     /// Total memory limit in bytes (sum of all container limits, or system memory if unlimited)
@@ -146,18 +149,32 @@ pub fn get_cpu_count() -> u32 {
         .unwrap_or(1)
 }
 
+/// Host CPU figures derived from `/proc/stat`: instantaneous busy% and the
+/// since-boot steal share.
+#[derive(Debug, Clone, Copy)]
+pub struct HostCpu {
+    /// Instantaneous busy share of capacity across all cores (0..=100) over the
+    /// sample window — everything not idle/iowait (includes steal).
+    pub busy_percent: f64,
+    /// Since-boot share of capacity (0..=100) the hypervisor took from this VM
+    /// for other tenants. Cumulative (not the noisy sample-window value, which
+    /// is 0 most windows): a stable signal of how oversubscribed the host is.
+    /// 0 on bare metal; persistently high means a contended node.
+    pub steal_percent: f64,
+}
+
 /// Read aggregate host CPU utilization from `/proc/stat` by sampling the
 /// cumulative jiffy counters twice over a short window and taking the delta.
 ///
-/// This is the canonical, reliable host CPU figure: it returns a 0..=100
-/// percentage of total capacity across *all* cores (not a per-container sum,
-/// which can exceed 100% and is noisy). Returns `None` on non-Linux platforms
-/// or read failure so callers can fall back.
-pub async fn get_host_cpu_percent() -> Option<f64> {
+/// This is the canonical, reliable host CPU figure: percentages of total
+/// capacity across *all* cores (not a per-container sum, which can exceed 100%
+/// and is noisy). Returns `None` on non-Linux platforms or read failure so
+/// callers can fall back.
+pub async fn get_host_cpu() -> Option<HostCpu> {
     #[cfg(target_os = "linux")]
     {
-        // (idle_jiffies, total_jiffies) from the aggregate "cpu " line.
-        fn read_cpu_times() -> Option<(u64, u64)> {
+        // (idle_jiffies, steal_jiffies, total_jiffies) from the aggregate "cpu " line.
+        fn read_cpu_times() -> Option<(u64, u64, u64)> {
             let content = std::fs::read_to_string("/proc/stat").ok()?;
             let line = content.lines().next()?;
             if !line.starts_with("cpu ") {
@@ -168,32 +185,51 @@ pub async fn get_host_cpu_percent() -> Option<f64> {
                 .skip(1)
                 .filter_map(|v| v.parse().ok())
                 .collect();
-            // user nice system idle iowait irq softirq steal ...
+            // user nice system idle iowait irq softirq steal guest guest_nice
             if vals.len() < 4 {
                 return None;
             }
             let idle = vals[3] + vals.get(4).copied().unwrap_or(0); // idle + iowait
+            let steal = vals.get(7).copied().unwrap_or(0);
             let total: u64 = vals.iter().sum();
-            Some((idle, total))
+            Some((idle, steal, total))
         }
 
-        let (idle1, total1) = read_cpu_times()?;
+        let (idle1, _steal1, total1) = read_cpu_times()?;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        let (idle2, total2) = read_cpu_times()?;
+        let (idle2, steal2, total2) = read_cpu_times()?;
 
+        // Instantaneous busy% from the sample-window delta.
         let total_delta = total2.saturating_sub(total1);
         let idle_delta = idle2.saturating_sub(idle1);
-        if total_delta == 0 {
-            return Some(0.0);
-        }
-        let usage = (total_delta.saturating_sub(idle_delta)) as f64 / total_delta as f64 * 100.0;
-        Some(usage.clamp(0.0, 100.0))
+        let busy = if total_delta == 0 {
+            0.0
+        } else {
+            (total_delta.saturating_sub(idle_delta)) as f64 / total_delta as f64 * 100.0
+        };
+
+        // Cumulative (since-boot) steal share — stable oversubscription signal.
+        let steal = if total2 == 0 {
+            0.0
+        } else {
+            steal2 as f64 / total2 as f64 * 100.0
+        };
+
+        Some(HostCpu {
+            busy_percent: busy.clamp(0.0, 100.0),
+            steal_percent: steal.clamp(0.0, 100.0),
+        })
     }
 
     #[cfg(not(target_os = "linux"))]
     {
         None
     }
+}
+
+/// Convenience wrapper returning just the busy percentage.
+pub async fn get_host_cpu_percent() -> Option<f64> {
+    get_host_cpu().await.map(|c| c.busy_percent)
 }
 
 /// A recent event (deployment, failure, restart, etc.)
@@ -537,7 +573,9 @@ pub async fn get_system_stats(
     // Prefer the real host CPU utilization (/proc/stat delta) over the noisy
     // per-container sum, which can exceed 100%. Fall back to the container sum
     // on non-Linux dev machines where /proc/stat is unavailable.
-    let total_cpu_percent = get_host_cpu_percent().await.unwrap_or(total_cpu_percent);
+    let host_cpu = get_host_cpu().await;
+    let total_cpu_percent = host_cpu.map(|c| c.busy_percent).unwrap_or(total_cpu_percent);
+    let cpu_steal_percent = host_cpu.map(|c| c.steal_percent).unwrap_or(0.0);
 
     Ok(Json(SystemStats {
         running_apps_count,
@@ -547,6 +585,7 @@ pub async fn get_system_stats(
         running_services_count: running_services.len() as u32,
         total_services_count,
         total_cpu_percent,
+        cpu_steal_percent,
         memory_used_bytes,
         memory_total_bytes,
         uptime_seconds,

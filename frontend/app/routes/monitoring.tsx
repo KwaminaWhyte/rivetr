@@ -200,6 +200,22 @@ export default function MonitoringPage() {
   const load1 = stats?.load_average_1m ?? 0;
   const loadPerCore = cpuCount > 0 ? load1 / cpuCount : 0;
 
+  // CPU steal: since-boot share of cycles the hypervisor took for other tenants.
+  // High = oversubscribed/contended host (a hosting-provider issue, not your apps).
+  const cpuSteal = stats?.cpu_steal_percent ?? 0;
+  const stealTone =
+    cpuSteal >= 25
+      ? "text-red-500"
+      : cpuSteal >= 5
+        ? "text-amber-500"
+        : "text-foreground";
+  const stealNote =
+    cpuSteal >= 25
+      ? "host heavily oversubscribed"
+      : cpuSteal >= 5
+        ? "host contention"
+        : "host not oversubscribed";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -358,6 +374,25 @@ export default function MonitoringPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   across {cpuCount} {cpuCount === 1 ? "core" : "cores"}
                 </p>
+              </>
+            ) : (
+              <div className="text-2xl font-bold text-muted-foreground">--</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">CPU Steal</CardTitle>
+            <Cpu className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {stats ? (
+              <>
+                <div className={`text-2xl font-bold ${stealTone}`}>
+                  {cpuSteal.toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{stealNote}</p>
               </>
             ) : (
               <div className="text-2xl font-bold text-muted-foreground">--</div>
