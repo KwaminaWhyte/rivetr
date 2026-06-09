@@ -50,7 +50,7 @@ mod ssh_keys;
 mod sso;
 pub mod start_logs;
 mod swarm;
-mod system;
+pub mod system;
 mod teams;
 mod two_factor;
 mod validation;

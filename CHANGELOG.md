@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Monitoring CPU usage was wrong (showed e.g. 129.7%)** — the "CPU Usage" card and the utilization chart summed each container's Docker CPU% (where 100% = one core), so the figure was noisy and could exceed 100%, never reflecting real host load. Both the live `GET /api/system/stats` endpoint and the history collector now read true host CPU utilization from `/proc/stat` (sampling the cumulative counters over a 200 ms window), reported as a 0–100% aggregate across all cores. Falls back to the old container sum on non-Linux dev machines.
 - **Notification channel "Send test" reported a JSON error** — the test endpoint returned an empty `200 OK`, but the dashboard parses the response as JSON, so the button failed with "Unexpected end of JSON input" even though the test was actually sent. The endpoint now returns a small JSON body.
 - **Subscribing to "Container Crashed" / "Container Restarted" failed** — these event types exist in the backend enum and the UI, but the `notification_subscriptions.event_type` CHECK constraint (from migration 016) never listed them, so the insert hit a CHECK violation. Migration 110 rebuilds the table with the full event-type set.
 

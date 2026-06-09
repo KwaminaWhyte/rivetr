@@ -283,6 +283,13 @@ async fn record_stats_snapshot(
     // Always use actual system RAM — container cgroup limits are not the server total.
     let total_memory_limit = get_system_memory() as i64;
 
+    // Record the real host CPU utilization (/proc/stat delta, 0..=100) instead
+    // of the noisy per-container sum, so the history chart matches the live card.
+    // Falls back to the container sum on non-Linux dev machines.
+    let cpu_percent = crate::api::system::get_host_cpu_percent()
+        .await
+        .unwrap_or(total_cpu);
+
     // Insert stats record
     sqlx::query(
         r#"
@@ -290,7 +297,7 @@ async fn record_stats_snapshot(
         VALUES (?, ?, ?, ?, ?, ?)
         "#,
     )
-    .bind(total_cpu)
+    .bind(cpu_percent)
     .bind(total_memory_used)
     .bind(total_memory_limit)
     .bind(running_apps)

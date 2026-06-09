@@ -146,6 +146,56 @@ pub fn get_cpu_count() -> u32 {
         .unwrap_or(1)
 }
 
+/// Read aggregate host CPU utilization from `/proc/stat` by sampling the
+/// cumulative jiffy counters twice over a short window and taking the delta.
+///
+/// This is the canonical, reliable host CPU figure: it returns a 0..=100
+/// percentage of total capacity across *all* cores (not a per-container sum,
+/// which can exceed 100% and is noisy). Returns `None` on non-Linux platforms
+/// or read failure so callers can fall back.
+pub async fn get_host_cpu_percent() -> Option<f64> {
+    #[cfg(target_os = "linux")]
+    {
+        // (idle_jiffies, total_jiffies) from the aggregate "cpu " line.
+        fn read_cpu_times() -> Option<(u64, u64)> {
+            let content = std::fs::read_to_string("/proc/stat").ok()?;
+            let line = content.lines().next()?;
+            if !line.starts_with("cpu ") {
+                return None;
+            }
+            let vals: Vec<u64> = line
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|v| v.parse().ok())
+                .collect();
+            // user nice system idle iowait irq softirq steal ...
+            if vals.len() < 4 {
+                return None;
+            }
+            let idle = vals[3] + vals.get(4).copied().unwrap_or(0); // idle + iowait
+            let total: u64 = vals.iter().sum();
+            Some((idle, total))
+        }
+
+        let (idle1, total1) = read_cpu_times()?;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let (idle2, total2) = read_cpu_times()?;
+
+        let total_delta = total2.saturating_sub(total1);
+        let idle_delta = idle2.saturating_sub(idle1);
+        if total_delta == 0 {
+            return Some(0.0);
+        }
+        let usage = (total_delta.saturating_sub(idle_delta)) as f64 / total_delta as f64 * 100.0;
+        Some(usage.clamp(0.0, 100.0))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
 /// A recent event (deployment, failure, restart, etc.)
 #[derive(Debug, Clone, Serialize)]
 pub struct RecentEvent {
@@ -483,6 +533,11 @@ pub async fn get_system_stats(
     let host_mem = get_host_memory();
     let cpu_count = get_cpu_count();
     let (load_1m, load_5m, load_15m) = get_load_average();
+
+    // Prefer the real host CPU utilization (/proc/stat delta) over the noisy
+    // per-container sum, which can exceed 100%. Fall back to the container sum
+    // on non-Linux dev machines where /proc/stat is unavailable.
+    let total_cpu_percent = get_host_cpu_percent().await.unwrap_or(total_cpu_percent);
 
     Ok(Json(SystemStats {
         running_apps_count,

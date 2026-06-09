@@ -15,7 +15,7 @@ pub use backup::{
 };
 pub use cleanup::run_docker_cleanup;
 pub use health::{
-    get_detailed_health, get_disk_stats, get_recent_events, get_stats_history, get_stats_summary,
-    get_system_stats,
+    get_detailed_health, get_disk_stats, get_host_cpu_percent, get_recent_events,
+    get_stats_history, get_stats_summary, get_system_stats,
 };
 pub use updates::{apply_update, check_for_updates, download_update, get_version_info};
