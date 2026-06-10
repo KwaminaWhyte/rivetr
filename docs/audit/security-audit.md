@@ -49,7 +49,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 - **Where:** `src/api/webhooks/github.rs:149-163`, `gitlab.rs:113-126`; secrets default `None` in `src/config/mod.rs:392-402`
 - **Problem:** When `webhooks.github_secret`/`gitlab_token`/`gitea_secret`/`bitbucket_secret` unset (all default `None`), handlers skip verification, accept any anonymous request. Secrets are also global per-provider, not per-app.
 - **Exploit:** With no secret, attacker knowing app's `git_url`+`branch` posts forged push to trigger redeploys (DoS / attacker-ref deploy).
-- [ ] **Fix:** Require webhook secret (fail closed), reject unsigned. Prefer per-app webhook secrets stored in DB.
+- [x] **FIXED — fail-closed** (`webhooks/github.rs`, `gitlab.rs`, `gitea.rs`, `bitbucket.rs`): a secret MUST be configured and the signature/token MUST verify, else 401. Previously verification was skipped when the secret was unset. **Operational:** server `187.124.50.183` had no secret + active GitHub webhooks — a `webhooks.github_secret` was provisioned in rivetr.toml and the operator must add the same secret to each repo's GitHub webhook (see deploy notes). Verified live: no-sig 401, wrong-sig 401, valid-sig 200. Still open (enhancement): per-app secrets in DB instead of one global secret per provider.
 
 ### SEC-H3 — Rate limiting bypassable via spoofed `X-Forwarded-For`; no account lockout
 - **Where:** `extract_client_ip` `src/api/rate_limit.rs:167-192`; login `src/api/auth.rs:130-217`; 2FA `src/api/two_factor.rs:335`
@@ -100,7 +100,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M4 — Non-constant-time secret comparisons
 - **Where:** `src/api/auth.rs:570` (`token == config.auth.admin_token`), `src/api/ws.rs:45`, `src/api/webhooks/gitlab.rs:122`
 - **Problem:** Admin token (`get_current_user`, reached on every protected route) and GitLab webhook token compared variable-time, despite `auth_middleware` already using `subtle::ct_eq`. Timing side channel on long-lived secrets.
-- [ ] **Fix:** Use `subtle::ConstantTimeEq` (with length-equality guard) for all three.
+- [~] **PARTIAL:** GitLab webhook token now uses `subtle::ConstantTimeEq` with a length guard (`webhooks/gitlab.rs`); DockerHub token compare is constant-time too. **Still TODO:** `get_current_user` admin-token compare at `src/api/auth.rs:570` and the WS admin-token path still use `==` — convert those.
 
 ### SEC-M5 — Session tokens in `localStorage` (XSS-exfiltratable)
 - **Where:** `frontend/app/lib/auth.ts:19-35`, `frontend/app/lib/api/core.ts:9-12`
