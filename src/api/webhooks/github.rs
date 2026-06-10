@@ -146,15 +146,44 @@ pub async fn github_webhook(
         }
     }
 
-    // SEC-H2: fail closed. A webhook secret MUST be configured and every request
-    // MUST carry a valid signature — unsigned/unconfigured requests are rejected.
-    let secret = state.config.webhooks.github_secret.as_ref().ok_or_else(|| {
+    // SEC-H2: fail closed. Every request MUST carry a signature that verifies
+    // against a configured secret. Candidate secrets are the global config secret
+    // (manual/OAuth webhooks) AND every connected GitHub App's own webhook_secret
+    // (GitHub Apps sign with their per-App secret, stored encrypted in github_apps).
+    // We accept if the signature matches ANY candidate, so GitHub-App setups work
+    // with no global config and no re-linking.
+    let mut secrets: Vec<String> = Vec::new();
+    if let Some(s) = state.config.webhooks.github_secret.as_ref() {
+        secrets.push(s.clone());
+    }
+    let enc_key = state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|s| crypto::derive_key(s));
+    if let Ok(stored) =
+        sqlx::query_scalar::<_, String>("SELECT webhook_secret FROM github_apps")
+            .fetch_all(&state.db)
+            .await
+    {
+        for enc in stored {
+            if let Ok(dec) = crypto::decrypt_if_encrypted(&enc, enc_key.as_ref()) {
+                if !dec.is_empty() {
+                    secrets.push(dec);
+                }
+            }
+        }
+    }
+
+    if secrets.is_empty() {
         tracing::error!(
-            "GitHub webhook rejected: webhooks.github_secret is not configured (fail-closed). \
-             Set it in rivetr.toml and in the repo's GitHub webhook settings."
+            "GitHub webhook rejected: no webhook secret configured (fail-closed). \
+             Set webhooks.github_secret in rivetr.toml or connect a GitHub App."
         );
-        StatusCode::UNAUTHORIZED
-    })?;
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
     let signature = headers
         .get("X-Hub-Signature-256")
         .and_then(|v| v.to_str().ok())
@@ -162,8 +191,11 @@ pub async fn github_webhook(
             tracing::warn!("GitHub webhook missing X-Hub-Signature-256 header");
             StatusCode::UNAUTHORIZED
         })?;
-    if !verify_github_signature(secret, signature, &body) {
-        tracing::warn!("GitHub webhook signature verification failed");
+    if !secrets
+        .iter()
+        .any(|secret| verify_github_signature(secret, signature, &body))
+    {
+        tracing::warn!("GitHub webhook signature verification failed (no candidate secret matched)");
         return Err(StatusCode::UNAUTHORIZED);
     }
     tracing::debug!("GitHub webhook signature verified");
