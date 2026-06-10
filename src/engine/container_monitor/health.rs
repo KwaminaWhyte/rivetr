@@ -524,6 +524,7 @@ pub(super) async fn check_services(
     let running_services: Vec<Service> = match sqlx::query_as(
         r#"
         SELECT id, name, project_id, team_id, compose_content, domain, port, status, error_message, created_at, updated_at,
+               cpu_limit, memory_limit,
                COALESCE(isolated_network, 1) AS isolated_network,
                COALESCE(raw_compose_mode, 0) AS raw_compose_mode,
                COALESCE(public_access, 0) AS public_access,
