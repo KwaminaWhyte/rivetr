@@ -146,21 +146,27 @@ pub async fn github_webhook(
         }
     }
 
-    if let Some(ref secret) = state.config.webhooks.github_secret {
-        let signature = headers
-            .get("X-Hub-Signature-256")
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                tracing::warn!("GitHub webhook missing X-Hub-Signature-256 header");
-                StatusCode::UNAUTHORIZED
-            })?;
-
-        if !verify_github_signature(secret, signature, &body) {
-            tracing::warn!("GitHub webhook signature verification failed");
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        tracing::debug!("GitHub webhook signature verified");
+    // SEC-H2: fail closed. A webhook secret MUST be configured and every request
+    // MUST carry a valid signature — unsigned/unconfigured requests are rejected.
+    let secret = state.config.webhooks.github_secret.as_ref().ok_or_else(|| {
+        tracing::error!(
+            "GitHub webhook rejected: webhooks.github_secret is not configured (fail-closed). \
+             Set it in rivetr.toml and in the repo's GitHub webhook settings."
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let signature = headers
+        .get("X-Hub-Signature-256")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            tracing::warn!("GitHub webhook missing X-Hub-Signature-256 header");
+            StatusCode::UNAUTHORIZED
+        })?;
+    if !verify_github_signature(secret, signature, &body) {
+        tracing::warn!("GitHub webhook signature verification failed");
+        return Err(StatusCode::UNAUTHORIZED);
     }
+    tracing::debug!("GitHub webhook signature verified");
 
     let event_type = headers
         .get("X-GitHub-Event")

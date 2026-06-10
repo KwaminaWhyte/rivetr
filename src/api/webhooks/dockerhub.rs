@@ -4,12 +4,20 @@ use super::{incr_webhooks, log_wh_event};
 use crate::{db::App, AppState};
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
+
+/// DockerHub sends no signature header, so auth is a shared token in the URL:
+/// configure the webhook as `/webhooks/dockerhub?token=<webhooks.dockerhub_secret>`.
+#[derive(Debug, Deserialize)]
+pub struct DockerHubAuthQuery {
+    pub token: Option<String>,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct DockerHubWebhookPayload {
@@ -37,10 +45,27 @@ pub struct DockerHubRepository {
 
 pub async fn dockerhub_webhook(
     State(state): State<Arc<AppState>>,
+    Query(auth): Query<DockerHubAuthQuery>,
     _headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, StatusCode> {
     incr_webhooks("dockerhub");
+
+    // SEC-H1: fail closed. DockerHub can't sign requests, so require a configured
+    // shared token supplied as ?token=... and compare it in constant time.
+    let expected = state.config.webhooks.dockerhub_secret.as_ref().ok_or_else(|| {
+        tracing::error!(
+            "DockerHub webhook rejected: webhooks.dockerhub_secret is not configured (fail-closed)."
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let provided = auth.token.as_deref().unwrap_or("");
+    let token_ok = provided.len() == expected.len()
+        && provided.as_bytes().ct_eq(expected.as_bytes()).into();
+    if !token_ok {
+        tracing::warn!("DockerHub webhook rejected: missing/invalid ?token=");
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     // DockerHub doesn't sign webhooks — just parse the payload
     let payload: DockerHubWebhookPayload = serde_json::from_slice(&body).map_err(|e| {

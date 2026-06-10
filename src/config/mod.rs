@@ -399,6 +399,9 @@ pub struct WebhookConfig {
     pub gitea_secret: Option<String>,
     /// Secret for verifying Bitbucket webhook signatures (HMAC-SHA256)
     pub bitbucket_secret: Option<String>,
+    /// Shared token required on DockerHub webhooks as `?token=...` (DockerHub
+    /// sends no signature header). Fail-closed when set; SEC-H1.
+    pub dockerhub_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

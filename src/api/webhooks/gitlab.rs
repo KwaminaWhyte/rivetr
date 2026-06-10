@@ -110,21 +110,29 @@ pub async fn gitlab_webhook(
 ) -> Result<StatusCode, StatusCode> {
     incr_webhooks("gitlab");
 
-    if let Some(ref expected_token) = state.config.webhooks.gitlab_token {
-        let token = headers
-            .get("X-Gitlab-Token")
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                tracing::warn!("GitLab webhook missing X-Gitlab-Token header");
-                StatusCode::UNAUTHORIZED
-            })?;
-
-        if token != expected_token {
-            tracing::warn!("GitLab webhook token verification failed");
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        tracing::debug!("GitLab webhook token verified");
+    // SEC-H2: fail closed — a token MUST be configured and MUST match.
+    let expected_token = state.config.webhooks.gitlab_token.as_ref().ok_or_else(|| {
+        tracing::error!(
+            "GitLab webhook rejected: webhooks.gitlab_token is not configured (fail-closed)."
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let token = headers
+        .get("X-Gitlab-Token")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            tracing::warn!("GitLab webhook missing X-Gitlab-Token header");
+            StatusCode::UNAUTHORIZED
+        })?;
+    // SEC-M4: constant-time comparison.
+    use subtle::ConstantTimeEq;
+    let matches = token.len() == expected_token.len()
+        && token.as_bytes().ct_eq(expected_token.as_bytes()).into();
+    if !matches {
+        tracing::warn!("GitLab webhook token verification failed");
+        return Err(StatusCode::UNAUTHORIZED);
     }
+    tracing::debug!("GitLab webhook token verified");
 
     let probe: GitLabEventProbe = serde_json::from_slice(&body).map_err(|e| {
         tracing::error!("Failed to parse GitLab webhook payload: {}", e);

@@ -118,22 +118,26 @@ pub async fn bitbucket_webhook(
 ) -> Result<StatusCode, StatusCode> {
     incr_webhooks("bitbucket");
 
-    if let Some(ref secret) = state.config.webhooks.bitbucket_secret {
-        let signature = headers
-            .get("X-Hub-Signature")
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                tracing::warn!("Bitbucket webhook missing X-Hub-Signature header");
-                StatusCode::UNAUTHORIZED
-            })?;
-
-        // Bitbucket uses same sha256= prefix format as GitHub
-        if !verify_github_signature(secret, signature, &body) {
-            tracing::warn!("Bitbucket webhook signature verification failed");
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        tracing::debug!("Bitbucket webhook signature verified");
+    // SEC-H2: fail closed — secret MUST be configured and signature MUST verify.
+    let secret = state.config.webhooks.bitbucket_secret.as_ref().ok_or_else(|| {
+        tracing::error!(
+            "Bitbucket webhook rejected: webhooks.bitbucket_secret is not configured (fail-closed)."
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let signature = headers
+        .get("X-Hub-Signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            tracing::warn!("Bitbucket webhook missing X-Hub-Signature header");
+            StatusCode::UNAUTHORIZED
+        })?;
+    // Bitbucket uses same sha256= prefix format as GitHub
+    if !verify_github_signature(secret, signature, &body) {
+        tracing::warn!("Bitbucket webhook signature verification failed");
+        return Err(StatusCode::UNAUTHORIZED);
     }
+    tracing::debug!("Bitbucket webhook signature verified");
 
     let event_key = headers
         .get("X-Event-Key")

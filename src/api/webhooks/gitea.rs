@@ -111,21 +111,25 @@ pub async fn gitea_webhook(
 ) -> Result<StatusCode, StatusCode> {
     incr_webhooks("gitea");
 
-    if let Some(ref secret) = state.config.webhooks.gitea_secret {
-        let signature = headers
-            .get("X-Gitea-Signature")
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
-                tracing::warn!("Gitea webhook missing X-Gitea-Signature header");
-                StatusCode::UNAUTHORIZED
-            })?;
-
-        if !verify_gitea_signature(secret, signature, &body) {
-            tracing::warn!("Gitea webhook signature verification failed");
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        tracing::debug!("Gitea webhook signature verified");
+    // SEC-H2: fail closed — secret MUST be configured and signature MUST verify.
+    let secret = state.config.webhooks.gitea_secret.as_ref().ok_or_else(|| {
+        tracing::error!(
+            "Gitea webhook rejected: webhooks.gitea_secret is not configured (fail-closed)."
+        );
+        StatusCode::UNAUTHORIZED
+    })?;
+    let signature = headers
+        .get("X-Gitea-Signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            tracing::warn!("Gitea webhook missing X-Gitea-Signature header");
+            StatusCode::UNAUTHORIZED
+        })?;
+    if !verify_gitea_signature(secret, signature, &body) {
+        tracing::warn!("Gitea webhook signature verification failed");
+        return Err(StatusCode::UNAUTHORIZED);
     }
+    tracing::debug!("Gitea webhook signature verified");
 
     let event_type = headers
         .get("X-Gitea-Event")
