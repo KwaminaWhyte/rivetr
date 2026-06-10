@@ -48,6 +48,7 @@ mod service_templates;
 mod services;
 mod shared_env_vars;
 mod ssh_keys;
+pub mod ssrf;
 mod sso;
 pub mod start_logs;
 mod swarm;

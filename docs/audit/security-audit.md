@@ -43,7 +43,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 - **Where:** `src/api/webhooks/dockerhub.rs:38-49` (no signature check), `:138-146` (POST to attacker `callback_url`)
 - **Problem:** No secret/signature verification. Parses `callback_url` from body and `reqwest` POSTs to it (follows redirects by default). Also enqueues deployments for any app whose `docker_image` matches attacker-chosen `repo_name`/`tag`.
 - **Exploit:** Anonymous payload with matching `repo_name` + `callback_url: "http://169.254.169.254/..."` → blind SSRF + unauthenticated forced redeploy.
-- [ ] **Fix:** Require configured shared secret/HMAC (or per-app token in path); validate `callback_url` against `*.docker.com` allowlist; disable redirect-following on that client.
+- [~] **SSRF FIXED** (`src/api/webhooks/dockerhub.rs` + new `src/api/ssrf.rs`): `callback_url` is now run through `ssrf::validate_external_url` (rejects private/loopback/link-local/metadata, requires http(s), resolves hostnames) and the callback client uses `redirect::Policy::none()`. **Still TODO:** the webhook itself remains unauthenticated (no HMAC/secret), so the unauthenticated forced-redeploy of registry apps stands — fold into the SEC-H2 fail-closed work.
 
 ### SEC-H2 — Webhook signature verification optional, disabled by default
 - **Where:** `src/api/webhooks/github.rs:149-163`, `gitlab.rs:113-126`; secrets default `None` in `src/config/mod.rs:392-402`
@@ -76,7 +76,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-H7 — `PUT /api/white-label` missing authz → CSS injection into login page
 - **Where:** `src/api/white_label.rs:31-42` (no role check despite "admin only" comment), routed at `src/api/mod.rs:968`; injected at `frontend/app/lib/white-label-context.tsx:78-90`; `GET /api/white-label` public at `mod.rs:1028`
 - **Problem:** `update_white_label` extracts no user identity, enforces no role. Any token holder (low-priv member, scoped `rvt_` token) can set `custom_css`/`logo_url`/`login_page_message`/`app_name`. CSS injected into every page including the unauthenticated login page → defacement, phishing overlays, exfil beacons via `url()`. Public GET serves it to all visitors.
-- [ ] **Fix:** Add admin role check in `update_white_label`. Sanitize/validate `custom_css` server-side (reject `@import`, off-origin `url()`, `expression`).
+- [x] **FIXED** (`src/api/white_label.rs`): `update_white_label` now extracts `User` and rejects non-admins (`authz::is_privileged_user`). Still TODO (hardening): sanitize `custom_css` server-side (reject `@import`, off-origin `url()`, `expression`).
 
 ---
 
@@ -85,7 +85,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M1 — SSRF via notification channels and log drains
 - **Where:** `src/notifications/mod.rs:440,502,753` + providers (`lark.rs:28`, `mattermost.rs:27`, `teams.rs:21`, `ntfy.rs:35`, `gotify.rs:30`); test endpoints in `src/api/log_drains.rs`
 - **Problem:** `webhook_url`/`server_url`/log-drain `url` fired without validating against internal/link-local ranges; "test" endpoints trigger immediate outbound request on demand. Amplified by SEC-C3.
-- [ ] **Fix:** Validate/resolve destination hosts, block private/loopback/link-local ranges (post-DNS and post-redirect); consider egress allowlist.
+- [x] **FIXED** (`src/api/ssrf.rs` + `notifications.rs` + `log_drains.rs`): notification-channel create/update/test and log-drain create/update/test now run user URLs (`url`/`webhook_url`/`server_url`) through `ssrf::validate_external_url`, blocking private/loopback/link-local/metadata/CGNAT (v4+v6, incl. v4-mapped) after DNS resolution. Test endpoints re-validate stored config so legacy URLs can't be used as an SSRF trigger. Unit tests in `ssrf.rs`. Note: the alert worker's *automatic* sends to already-stored channels aren't re-checked (store-time guard covers new ones).
 
 ### SEC-M2 — SSH `StrictHostKeyChecking=no` on all remote execution
 - **Where:** `src/engine/remote.rs:49-52`; `src/api/servers.rs:542,823,1064`

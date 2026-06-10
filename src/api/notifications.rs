@@ -78,6 +78,7 @@ pub async fn create_channel(
 
     // Validate the config based on channel type
     validate_channel_config(&req.channel_type.to_string(), &req.config)?;
+    validate_channel_egress(&req.config).await?;
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -149,6 +150,7 @@ pub async fn update_channel(
     // Validate config if provided
     if let Some(ref config) = req.config {
         validate_channel_config(&existing.channel_type, config)?;
+        validate_channel_egress(config).await?;
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -230,6 +232,12 @@ pub async fn test_channel(
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| ApiError::not_found("Notification channel not found"))?;
+
+    // SEC-M1: re-validate egress at test time (catches URLs stored before the
+    // create/update guard existed) so this endpoint can't be an SSRF trigger.
+    if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&channel.config) {
+        validate_channel_egress(&cfg).await?;
+    }
 
     let notification_service = NotificationService::new(state.db.clone());
 
@@ -400,6 +408,25 @@ pub async fn delete_subscription(
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
+
+/// SEC-M1: reject a channel config whose outbound URL targets an internal /
+/// loopback / metadata address. Async because it resolves the hostname. Covers
+/// every URL-bearing channel type generically via the common config keys.
+async fn validate_channel_egress(config: &serde_json::Value) -> Result<(), ApiError> {
+    for key in ["url", "webhook_url", "server_url"] {
+        if let Some(u) = config.get(key).and_then(|v| v.as_str()) {
+            if !u.is_empty() {
+                crate::api::ssrf::validate_external_url(u).await.map_err(|_| {
+                    ApiError::validation_field(
+                        format!("config.{key}").as_str(),
+                        "URL is not allowed (points at an internal or unresolvable address)",
+                    )
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Validate channel configuration based on type
 fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Result<(), ApiError> {
@@ -854,6 +881,7 @@ pub async fn create_team_channel(
 
     // Validate the config based on channel type
     validate_channel_config(&req.channel_type.to_string(), &req.config)?;
+    validate_channel_egress(&req.config).await?;
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -943,6 +971,7 @@ pub async fn update_team_channel(
     // Validate config if provided
     if let Some(ref config) = req.config {
         validate_channel_config(&existing.channel_type, config)?;
+        validate_channel_egress(config).await?;
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -1057,6 +1086,11 @@ pub async fn test_team_channel(
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| ApiError::not_found("Notification channel not found"))?;
+
+    // SEC-M1: re-validate egress at test time (legacy stored URLs).
+    if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&channel.config) {
+        validate_channel_egress(&cfg).await?;
+    }
 
     let notification_service = NotificationService::new(state.db.clone());
 

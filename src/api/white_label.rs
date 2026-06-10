@@ -6,7 +6,8 @@
 use axum::{extract::State, http::StatusCode, Json};
 use std::sync::Arc;
 
-use crate::db::{UpdateWhiteLabelRequest, WhiteLabel};
+use super::authz;
+use crate::db::{UpdateWhiteLabelRequest, User, WhiteLabel};
 use crate::AppState;
 
 /// GET /api/white-label
@@ -30,8 +31,15 @@ pub async fn get_white_label(
 /// Requires authentication (placed behind the auth middleware in routes).
 pub async fn update_white_label(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<UpdateWhiteLabelRequest>,
 ) -> Result<Json<WhiteLabel>, StatusCode> {
+    // SEC-H7: white-label config (incl. custom_css injected into the public login
+    // page) must be admin-only. The auth middleware only proves *some* user.
+    if !authz::is_privileged_user(&user) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     let config = WhiteLabel::update(&state.db, &req).await.map_err(|e| {
         tracing::error!("Failed to update white label config: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

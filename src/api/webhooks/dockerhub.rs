@@ -135,14 +135,30 @@ pub async fn dockerhub_webhook(
     )
     .await;
 
-    // DockerHub expects a callback if callback_url is provided
+    // DockerHub expects a callback if callback_url is provided.
+    // SEC-H1: the callback_url is attacker-controlled — validate it points at a
+    // public address (no internal/metadata SSRF) and never follow redirects.
     if let Some(callback_url) = &payload.callback_url {
-        let client = reqwest::Client::new();
-        let _ = client
-            .post(callback_url)
-            .json(&serde_json::json!({"state": "success", "description": "Deployment queued"}))
-            .send()
-            .await;
+        match crate::api::ssrf::validate_external_url(callback_url).await {
+            Ok(()) => {
+                if let Ok(client) = reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                {
+                    let _ = client
+                        .post(callback_url)
+                        .json(&serde_json::json!({"state": "success", "description": "Deployment queued"}))
+                        .send()
+                        .await;
+                }
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "Rejected DockerHub callback_url (failed SSRF validation): {}",
+                    callback_url
+                );
+            }
+        }
     }
 
     Ok(StatusCode::OK)
