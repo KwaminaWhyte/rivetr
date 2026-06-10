@@ -55,6 +55,11 @@ pub struct Session {
     pub token_hash: String,
     pub expires_at: String,
     pub created_at: String,
+    /// SEC-C2: true while a 2FA login is mid-flow (password verified, TOTP pending).
+    /// Pending sessions are rejected by the auth middleware and only consumed by
+    /// /api/auth/2fa/validate.
+    #[serde(default)]
+    pub is_pending_2fa: bool,
 }
 
 #[derive(Debug, Deserialize)]

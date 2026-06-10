@@ -337,10 +337,12 @@ pub async fn validate_2fa(
     client_ip: ClientIp,
     Json(request): Json<ValidateRequest>,
 ) -> Result<Json<crate::db::LoginResponse>, (StatusCode, String)> {
-    // Look up the temporary session
+    // Look up the temporary session.
+    // SEC-C2: only a pending-2FA session may be exchanged here. A full session
+    // (is_pending_2fa=0) must not be accepted by the 2FA step.
     let token_hash = hash_token(&request.session_token);
     let session: Option<crate::db::Session> = sqlx::query_as(
-        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now') AND is_pending_2fa = 1",
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)

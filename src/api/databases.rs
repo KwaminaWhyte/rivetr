@@ -22,6 +22,7 @@ use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
+use super::authz;
 use super::teams::log_team_audit;
 
 #[derive(Debug, Deserialize)]
@@ -35,8 +36,25 @@ pub struct ListQuery {
 /// List all managed databases
 pub async fn list_databases(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<ManagedDatabaseResponse>>, StatusCode> {
+    let privileged = authz::is_privileged_user(&user);
+
+    // SEC-C3: this endpoint can reveal credentials (?reveal=true). Non-privileged
+    // users may only filter by a team they belong to.
+    if !privileged {
+        if let Some(team_id) = &query.team_id {
+            if !team_id.is_empty()
+                && !authz::user_is_member(&state, &user.id, team_id)
+                    .await
+                    .map_err(|e| e.status())?
+            {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     let databases = if let Some(team_id) = &query.team_id {
         // Filter by team_id
         // Also include databases with NULL team_id if team_id is empty (for backward compatibility)
@@ -65,6 +83,23 @@ pub async fn list_databases(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // SEC-C3: when no team filter was supplied, restrict a non-privileged user to
+    // databases in their own teams plus legacy (team_id IS NULL) databases.
+    let databases = if privileged || query.team_id.is_some() {
+        databases
+    } else {
+        let teams = authz::user_team_ids(&state, &user.id)
+            .await
+            .map_err(|e| e.status())?;
+        databases
+            .into_iter()
+            .filter(|d| match &d.team_id {
+                None => true,
+                Some(tid) => teams.contains(tid),
+            })
+            .collect()
+    };
+
     let hostname = state.config.public_hostname();
     let host = Some(hostname.as_str());
     let responses: Vec<ManagedDatabaseResponse> = databases
@@ -78,18 +113,14 @@ pub async fn list_databases(
 /// Get a single database by ID
 pub async fn get_database(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ManagedDatabaseResponse>, StatusCode> {
-    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
+    // SEC-C3: caller must have access to this database (this can reveal credentials).
+    let database = authz::authorize_database(&state, &user, &id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get database: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .map_err(|e| e.status())?;
 
     let hostname = state.config.public_hostname();
     let host = Some(hostname.as_str());
@@ -291,16 +322,10 @@ pub async fn delete_database(
     client_ip: ClientIp,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    // Get the database record
-    let database = sqlx::query_as::<_, ManagedDatabase>("SELECT * FROM databases WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
+    // SEC-C3: caller must have access to this database.
+    let database = authz::authorize_database(&state, &user, &id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get database: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .map_err(|e| e.status())?;
 
     // Stop and remove the container if it exists
     if let Some(ref container_id) = database.container_id {

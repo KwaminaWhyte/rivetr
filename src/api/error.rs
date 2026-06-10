@@ -134,6 +134,12 @@ impl ApiError {
         self
     }
 
+    /// The HTTP status code this error maps to. Useful for handlers that still
+    /// return `Result<_, StatusCode>` and need to propagate an authz failure.
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
     /// Add details to the error
     pub fn with_details(mut self, details: ErrorDetails) -> Self {
         self.details = Some(details);

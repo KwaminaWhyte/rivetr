@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::audit::{audit_log, ClientIp};
+use super::authz;
 use crate::crypto;
 use crate::db::{
     actions, resource_types, CreateEnvVarRequest, EnvVar, EnvVarResponse, UpdateEnvVarRequest, User,
@@ -38,22 +39,14 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
 /// Secret values are masked unless reveal=true query param is passed
 pub async fn list_env_vars(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(app_id): Path<String>,
     Query(query): Query<ListEnvVarsQuery>,
 ) -> Result<Json<Vec<EnvVarResponse>>, StatusCode> {
-    // Verify app exists
-    let app_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps WHERE id = ?")
-        .bind(&app_id)
-        .fetch_one(&state.db)
+    // SEC-C3: caller must have access to this app (this can reveal secret values).
+    authz::authorize_app(&state, &user, &app_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to check app: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    if app_exists == 0 {
-        return Err(StatusCode::NOT_FOUND);
-    }
+        .map_err(|e| e.status())?;
 
     let env_vars =
         sqlx::query_as::<_, EnvVar>("SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? ORDER BY key ASC")
@@ -98,19 +91,10 @@ pub async fn create_env_var(
     Path(app_id): Path<String>,
     Json(req): Json<CreateEnvVarRequest>,
 ) -> Result<(StatusCode, Json<EnvVarResponse>), StatusCode> {
-    // Verify app exists
-    let app_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM apps WHERE id = ?")
-        .bind(&app_id)
-        .fetch_one(&state.db)
+    // SEC-C3: caller must have access to this app.
+    authz::authorize_app(&state, &user, &app_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to check app: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    if app_exists == 0 {
-        return Err(StatusCode::NOT_FOUND);
-    }
+        .map_err(|e| e.status())?;
 
     // Validate key format (alphanumeric + underscore, starts with letter or underscore)
     if req.key.is_empty() || !is_valid_env_key(&req.key) {
@@ -189,6 +173,11 @@ pub async fn update_env_var(
     Path((app_id, key)): Path<(String, String)>,
     Json(req): Json<UpdateEnvVarRequest>,
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
+    // SEC-C3: caller must have access to this app.
+    authz::authorize_app(&state, &user, &app_id)
+        .await
+        .map_err(|e| e.status())?;
+
     // Check if env var exists for this app
     let existing = sqlx::query_as::<_, EnvVar>(
         "SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? AND key = ?",
@@ -282,6 +271,11 @@ pub async fn delete_env_var(
     client_ip: ClientIp,
     Path((app_id, key)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
+    // SEC-C3: caller must have access to this app.
+    authz::authorize_app(&state, &user, &app_id)
+        .await
+        .map_err(|e| e.status())?;
+
     // Capture id before delete for the audit entry
     let id: Option<String> =
         sqlx::query_scalar("SELECT id FROM env_vars WHERE app_id = ? AND key = ?")
@@ -324,9 +318,15 @@ pub async fn delete_env_var(
 /// Get a single environment variable by key
 pub async fn get_env_var(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path((app_id, key)): Path<(String, String)>,
     Query(query): Query<ListEnvVarsQuery>,
 ) -> Result<Json<EnvVarResponse>, StatusCode> {
+    // SEC-C3: caller must have access to this app (this can reveal secret values).
+    authz::authorize_app(&state, &user, &app_id)
+        .await
+        .map_err(|e| e.status())?;
+
     let env_var = sqlx::query_as::<_, EnvVar>(
         "SELECT id, app_id, key, value, is_secret, created_at, updated_at FROM env_vars WHERE app_id = ? AND key = ?",
     )

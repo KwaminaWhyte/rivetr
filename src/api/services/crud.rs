@@ -16,6 +16,7 @@ use crate::db::{
 use crate::AppState;
 
 use super::super::audit::{audit_log, ClientIp};
+use super::super::authz;
 use super::super::teams::log_team_audit;
 use super::compose::{
     get_compose_dir, run_compose_command, validate_compose_content, write_compose_file,
@@ -33,8 +34,24 @@ pub struct ListServicesQuery {
 /// List all services
 pub async fn list_services(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListServicesQuery>,
 ) -> Result<Json<Vec<ServiceResponse>>, StatusCode> {
+    let privileged = authz::is_privileged_user(&user);
+
+    // SEC-C3: non-privileged users may only filter by a team they belong to.
+    if !privileged {
+        if let Some(team_id) = &query.team_id {
+            if !team_id.is_empty()
+                && !authz::user_is_member(&state, &user.id, team_id)
+                    .await
+                    .map_err(|e| e.status())?
+            {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     let services = match &query.team_id {
         Some(team_id) if team_id.is_empty() => {
             // Empty string means get legacy/unassigned services
@@ -64,6 +81,23 @@ pub async fn list_services(
         tracing::error!("Failed to list services: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // SEC-C3: when no team filter was supplied, restrict a non-privileged user to
+    // services in their own teams plus legacy (team_id IS NULL) services.
+    let services = if privileged || query.team_id.is_some() {
+        services
+    } else {
+        let teams = authz::user_team_ids(&state, &user.id)
+            .await
+            .map_err(|e| e.status())?;
+        services
+            .into_iter()
+            .filter(|s| match &s.team_id {
+                None => true,
+                Some(tid) => teams.contains(tid),
+            })
+            .collect()
+    };
 
     let responses: Vec<ServiceResponse> = services.into_iter().map(Into::into).collect();
     Ok(Json(responses))

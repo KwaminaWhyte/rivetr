@@ -157,8 +157,10 @@ pub async fn login(
             .to_rfc3339();
 
         let temp_session_id = uuid::Uuid::new_v4().to_string();
+        // SEC-C2: flag this as a pending-2FA session. The auth middleware rejects
+        // is_pending_2fa=1 sessions, so this token only works against /2fa/validate.
         sqlx::query(
-            "INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sessions (id, user_id, token_hash, expires_at, is_pending_2fa) VALUES (?, ?, ?, ?, 1)",
         )
         .bind(&temp_session_id)
         .bind(&user.id)
@@ -264,9 +266,9 @@ pub async fn validate(
 
     let token_hash = hash_token(token);
 
-    // Check if session exists and is not expired
+    // Check if session exists and is not expired (SEC-C2: exclude pending-2FA tokens)
     let session: Option<Session> = sqlx::query_as(
-        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now') AND is_pending_2fa = 0",
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)
@@ -390,9 +392,11 @@ pub async fn auth_middleware(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // Otherwise, check for a valid session
+    // Otherwise, check for a valid session.
+    // SEC-C2: is_pending_2fa sessions are pre-2FA tokens and must NOT authorize
+    // any protected route — only /2fa/validate consults them.
     let session: Option<Session> = sqlx::query_as(
-        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now') AND is_pending_2fa = 0",
     )
     .bind(&token_hash)
     .fetch_optional(&state.db)
@@ -625,9 +629,10 @@ pub async fn get_current_user(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // Look up session and user
+    // Look up session and user.
+    // SEC-C2: exclude pending-2FA sessions so a pre-2FA token can't resolve a user.
     let session: Option<Session> = sqlx::query_as(
-        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
+        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now') AND is_pending_2fa = 0",
     )
     .bind(&token_hash)
     .fetch_optional(pool)

@@ -9,11 +9,10 @@ use axum::{
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
-use crate::db::{Deployment, DeploymentLog, Session};
+use crate::db::{Deployment, DeploymentLog};
 use crate::runtime::{ExecConfig, LogStream, TtySize};
 use crate::AppState;
 
@@ -22,46 +21,54 @@ pub struct WsAuthQuery {
     token: Option<String>,
 }
 
-/// Hash a token for comparison
-fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-/// Validate a token from query params (public wrapper for use by other modules)
-pub async fn validate_ws_token_pub(state: &AppState, query: &WsAuthQuery) -> bool {
-    validate_ws_token(state, query).await
-}
-
-/// Validate a raw token string (None or empty → false). Public so other
-/// modules can authenticate WebSocket upgrades using their own query types.
-pub async fn validate_ws_token_str(state: &AppState, token: Option<&str>) -> bool {
-    let token = match token {
+/// Resolve the user behind a WS token (None/invalid → None). Used by the
+/// app/server/deployment WS authorization helpers below.
+async fn ws_resolve_user(state: &Arc<AppState>, query: &WsAuthQuery) -> Option<crate::db::User> {
+    let token = match query.token.as_deref() {
         Some(t) if !t.is_empty() => t,
-        _ => return false,
+        _ => return None,
     };
-
-    if token == state.config.auth.admin_token {
-        return true;
-    }
-
-    let token_hash = hash_token(token);
-    let session: Option<Session> = sqlx::query_as(
-        "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > datetime('now')",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
-    session.is_some()
+    super::auth::get_current_user(&state.db, &state.config, token)
+        .await
+        .ok()
 }
 
-/// Validate a token from query params
-async fn validate_ws_token(state: &AppState, query: &WsAuthQuery) -> bool {
-    validate_ws_token_str(state, query.token.as_deref()).await
+/// Resolve the user behind a WS token and verify access to `app_id` (SEC-C3).
+/// Returns false on a missing/invalid token or when the user has no access — used
+/// to gate app-scoped WebSocket upgrades (terminal, runtime logs).
+async fn ws_user_can_access_app(state: &Arc<AppState>, query: &WsAuthQuery, app_id: &str) -> bool {
+    match ws_resolve_user(state, query).await {
+        Some(user) => super::authz::authorize_app(state, &user, app_id).await.is_ok(),
+        None => false,
+    }
+}
+
+/// SEC-C3: verify the WS caller has access to `server_id` (server terminal = RCE).
+pub async fn ws_user_can_access_server(
+    state: &Arc<AppState>,
+    query: &WsAuthQuery,
+    server_id: &str,
+) -> bool {
+    match ws_resolve_user(state, query).await {
+        Some(user) => super::authz::authorize_server(state, &user, server_id)
+            .await
+            .is_ok(),
+        None => false,
+    }
+}
+
+/// SEC-C3: verify the WS caller has access to `deployment_id` (resolves the app).
+pub async fn ws_user_can_access_deployment(
+    state: &Arc<AppState>,
+    query: &WsAuthQuery,
+    deployment_id: &str,
+) -> bool {
+    match ws_resolve_user(state, query).await {
+        Some(user) => super::authz::authorize_deployment(state, &user, deployment_id)
+            .await
+            .is_ok(),
+        None => false,
+    }
 }
 
 /// WebSocket endpoint for streaming deployment logs
@@ -71,8 +78,8 @@ pub async fn deployment_logs_ws(
     Path(deployment_id): Path<String>,
     Query(query): Query<WsAuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Validate token from query params
-    if !validate_ws_token(&state, &query).await {
+    // SEC-C3: caller must have access to the deployment's app.
+    if !ws_user_can_access_deployment(&state, &query, &deployment_id).await {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(ws.on_upgrade(move |socket| handle_log_stream(socket, state, deployment_id)))
@@ -202,8 +209,8 @@ pub async fn runtime_logs_ws(
     Path(app_id): Path<String>,
     Query(query): Query<WsAuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Validate token from query params
-    if !validate_ws_token(&state, &query).await {
+    // SEC-C3: caller must have access to this app.
+    if !ws_user_can_access_app(&state, &query, &app_id).await {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(ws.on_upgrade(move |socket| handle_runtime_log_stream(socket, state, app_id)))
@@ -350,8 +357,8 @@ pub async fn terminal_ws(
     Path(app_id): Path<String>,
     Query(query): Query<WsAuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Validate token from query params
-    if !validate_ws_token(&state, &query).await {
+    // SEC-C3: a container shell is RCE-equivalent — caller must have access to this app.
+    if !ws_user_can_access_app(&state, &query, &app_id).await {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(ws.on_upgrade(move |socket| handle_terminal_session(socket, state, app_id)))

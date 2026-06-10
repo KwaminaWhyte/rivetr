@@ -15,10 +15,14 @@ Full security, performance, and UI/UX audit of the Rivetr codebase (backend, das
 ## Fix Order (master plan)
 
 ### Phase 1 — Critical security (do before anything else, ship as emergency release)
-- [ ] SEC-C1: Put `/mcp` endpoint behind auth middleware (currently anyone can deploy/restart/read all apps)
-- [ ] SEC-C2: Fix 2FA bypass — pre-2FA temp token is a fully valid session
-- [ ] SEC-C3: Add team-ownership authorization to ALL resource handlers (IDOR: any user can read any team's secrets, open terminals in any container, delete any app)
-- [ ] SEC-H4: Fix command injection in remote file browser (`$(...)` in path → RCE on managed servers)
+- [x] SEC-C1: Put `/mcp` endpoint behind auth middleware — **DONE** (`src/api/mod.rs`)
+- [x] SEC-C2: Fix 2FA bypass — pre-2FA temp token is a fully valid session — **DONE** (migration 111 + auth/ws/two_factor)
+- [~] SEC-C3: Team-ownership authorization — **MOSTLY DONE.** Built `src/api/authz.rs` + a central `resource_authz_middleware` on the `/api` group that authorizes every `/{apps,servers,databases,services,projects,deployments}/:id/**` route (covers all per-resource sub-routes automatically). Scoped all 5 list endpoints + all 6 WS/SSE stream endpoints. Remaining: top-level config resources (build-servers, ssh-keys, git-providers, log-drains, destinations, ca-certs, notification-channels, s3), create-time `team_id` assignment, and `app_shares` view-vs-write enforcement. See security-audit.md → SEC-C3.
+- [x] SEC-H4: Fix command injection in remote file browser — **DONE** (`validate_remote_path` in `src/api/filesystem.rs`)
+
+> **Verification status:** code compiles (`cargo check`), 254/254 lib unit tests pass, `cargo clippy --all-targets` clean except one pre-existing unrelated warning in `webhooks/mod.rs`. **DEPLOYED 2026-06-10** to `root@187.124.50.183` (rivetr 0.11.0, x86_64) via `deploy-dev.sh --backend-only`. Migration 111 applied ("Migrations completed"), service active, proxy+API listening, no panics. Live-verified: MCP no-auth → 401 / +token → 200; unauth `/api/apps` → 401; admin app-by-id → 200; missing uuid → 404 (not 500); literal routes pass through; db/env reveal (admin) → 200.
+>
+> **Pre-existing bug noted (NOT from this work):** startup logs show repeated `WARN container_monitor::health: Failed to fetch running services error=no column found for name: cpu_limit` — present on the prior binary too. The `services` table is missing the `cpu_limit` column that migration 108 (`service_resource_limits`) should have added; that migration likely didn't apply on this server. Investigate separately.
 
 ### Phase 2 — High security
 - [ ] SEC-H1: DockerHub webhook — require secret, validate `callback_url` (SSRF)

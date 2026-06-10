@@ -1538,6 +1538,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 111: Add is_pending_2fa flag to sessions (SEC-C2 — pre-2FA token
+    // must not be a usable session).
+    let has_pending_2fa: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('sessions') WHERE name = 'is_pending_2fa'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_pending_2fa.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/111_session_pending_2fa.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

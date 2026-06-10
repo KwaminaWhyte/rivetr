@@ -3,7 +3,7 @@
 # Usage: ./scripts/deploy-dev.sh [--frontend-only | --backend-only]
 set -e
 
-SERVER="root@46.101.187.233"
+SERVER="root@187.124.50.183"
 REMOTE_BIN="/opt/rivetr/rivetr"
 TARGET="x86_64-unknown-linux-gnu"
 

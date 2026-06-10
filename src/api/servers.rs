@@ -18,8 +18,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::crypto;
-use crate::db::{App, AppResponse, CreateServerRequest, Server, UpdateServerRequest};
+use crate::db::{App, AppResponse, CreateServerRequest, Server, UpdateServerRequest, User};
 use crate::AppState;
+
+use super::authz;
 
 /// Key length for AES-256 encryption
 const KEY_LENGTH: usize = 32;
@@ -42,8 +44,24 @@ pub struct ListServersQuery {
 /// List all servers, optionally filtered by team_id
 pub async fn list_servers(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListServersQuery>,
 ) -> Result<Json<Vec<Server>>, StatusCode> {
+    let privileged = authz::is_privileged_user(&user);
+
+    // SEC-C3: non-privileged users may only filter by a team they belong to.
+    if !privileged {
+        if let Some(team_id) = &query.team_id {
+            if !team_id.is_empty()
+                && !authz::user_is_member(&state, &user.id, team_id)
+                    .await
+                    .map_err(|e| e.status())?
+            {
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     let servers = if let Some(team_id) = &query.team_id {
         sqlx::query_as::<_, Server>(
             "SELECT * FROM servers WHERE team_id = ? ORDER BY created_at DESC",
@@ -60,6 +78,23 @@ pub async fn list_servers(
         tracing::error!("Failed to list servers: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // SEC-C3: when no team filter was supplied, restrict a non-privileged user to
+    // servers in their own teams plus legacy (team_id IS NULL) servers.
+    let servers = if privileged || query.team_id.is_some() {
+        servers
+    } else {
+        let teams = authz::user_team_ids(&state, &user.id)
+            .await
+            .map_err(|e| e.status())?;
+        servers
+            .into_iter()
+            .filter(|s| match &s.team_id {
+                None => true,
+                Some(tid) => teams.contains(tid),
+            })
+            .collect()
+    };
 
     // Mask secrets in responses (never return raw credentials)
     let masked: Vec<Server> = servers
@@ -150,17 +185,13 @@ pub async fn create_server(
 /// Get a single server by ID
 pub async fn get_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<Json<Server>, StatusCode> {
-    let mut server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
+    // SEC-C3: caller must have access to this server.
+    let mut server = authz::authorize_server(&state, &user, &id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get server: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .map_err(|e| e.status())?;
 
     // Mask secrets in response
     server.ssh_private_key = server.ssh_private_key.map(|_| "[encrypted]".to_string());
@@ -172,16 +203,14 @@ pub async fn get_server(
 /// Update a server record
 pub async fn update_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Json(req): Json<UpdateServerRequest>,
 ) -> Result<Json<Server>, StatusCode> {
-    // Verify server exists
-    let existing = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
+    // SEC-C3: caller must have access to this server.
+    let existing = authz::authorize_server(&state, &user, &id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .map_err(|e| e.status())?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -263,8 +292,14 @@ pub async fn update_server(
 /// Delete a server
 pub async fn delete_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    // SEC-C3: caller must have access to this server.
+    authz::authorize_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
+
     let result = sqlx::query("DELETE FROM servers WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -970,7 +1005,8 @@ pub async fn server_terminal_ws(
     Path(server_id): Path<String>,
     Query(query): Query<crate::api::ws::WsAuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    if !crate::api::ws::validate_ws_token_pub(&state, &query).await {
+    // SEC-C3: a server shell is RCE — caller must have access to this server.
+    if !crate::api::ws::ws_user_can_access_server(&state, &query, &server_id).await {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(ws.on_upgrade(move |socket| handle_server_terminal(socket, state, server_id)))

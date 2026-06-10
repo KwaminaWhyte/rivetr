@@ -17,6 +17,7 @@ use crate::db::{
 use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
+use super::authz;
 use super::error::{ApiError, ValidationErrorBuilder};
 
 // -------------------------------------------------------------------------
@@ -152,8 +153,19 @@ fn validate_update_request(req: &UpdateProjectRequest) -> Result<(), ApiError> {
 /// List all projects with app counts
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListProjectsQuery>,
 ) -> Result<Json<Vec<ProjectWithAppCount>>, ApiError> {
+    // SEC-C3: non-privileged users may only filter by a team they belong to.
+    let privileged = authz::is_privileged_user(&user);
+    if !privileged {
+        if let Some(team_id) = &query.team_id {
+            if !team_id.is_empty() && !authz::user_is_member(&state, &user.id, team_id).await? {
+                return Err(ApiError::forbidden("You are not a member of this team"));
+            }
+        }
+    }
+
     let projects = match &query.team_id {
         Some(team_id) if team_id.is_empty() => {
             // Empty string means get projects without a team_id (legacy/unassigned)
@@ -178,6 +190,21 @@ pub async fn list_projects(
                 .fetch_all(&state.db)
                 .await?
         }
+    };
+
+    // SEC-C3: when no team filter was supplied, restrict a non-privileged user to
+    // projects in their own teams plus legacy (team_id IS NULL) projects.
+    let projects = if privileged || query.team_id.is_some() {
+        projects
+    } else {
+        let teams = authz::user_team_ids(&state, &user.id).await?;
+        projects
+            .into_iter()
+            .filter(|p| match &p.team_id {
+                None => true,
+                Some(tid) => teams.contains(tid),
+            })
+            .collect()
     };
 
     // Get app counts for each project

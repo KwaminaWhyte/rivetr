@@ -4,6 +4,7 @@ mod api_tokens;
 mod apps;
 mod audit;
 pub mod auth;
+pub mod authz;
 mod autoscaling;
 mod basic_auth;
 mod build_servers;
@@ -988,6 +989,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // SEC-C3: resource-level authorization. Added before the auth layer so it
+        // sits *inside* it — runs after the token is validated, before handlers.
+        // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            authz::resource_authz_middleware,
+        ))
         // Protected by auth
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -1029,10 +1037,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // TypeScript SDK download
         .route("/sdk", get(sdk::get_sdk));
 
+    // MCP control-plane endpoint (SEC-C1). It can deploy/restart/read every
+    // resource, so it MUST require authentication. Clients authenticate with a
+    // Bearer token / X-API-Key, identical to the REST API.
+    let mcp_routes = Router::new()
+        .route("/mcp", post(crate::mcp::server::mcp_handler))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::auth_middleware,
+        ));
+
     Router::new()
         .route("/health", get(health_check))
         .route("/metrics", get(metrics::metrics_endpoint))
-        .route("/mcp", post(crate::mcp::server::mcp_handler))
+        .merge(mcp_routes)
         .nest("/api/auth", auth_routes)
         .nest("/api/auth", auth_info_routes)
         .nest("/api", public_api_routes)

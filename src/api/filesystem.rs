@@ -16,6 +16,7 @@ use crate::db::{Server, User};
 use crate::engine::remote::RemoteContext;
 use crate::AppState;
 
+use super::authz;
 use super::error::ApiError;
 
 const KEY_LENGTH: usize = 32;
@@ -27,6 +28,31 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; KEY_LENGTH]> {
         .encryption_key
         .as_ref()
         .map(|secret| crypto::derive_key(secret))
+}
+
+/// Characters that enable command injection / unexpected shell behavior when a
+/// path is interpolated into a remote `ssh "<cmd>"` invocation. `$` and backtick
+/// expand even inside double quotes; the rest are rejected as defense-in-depth so
+/// the path can never break out of its quoting or trigger glob/brace expansion.
+const FORBIDDEN_PATH_CHARS: &[char] = &[
+    '$', '`', '"', '\\', ';', '|', '&', '<', '>', '(', ')', '\n', '\r', '\0', '*', '?', '~', '{',
+    '}', '[', ']',
+];
+
+/// Validate a remote filesystem path before it is interpolated into a shell
+/// command (SEC-H4). Rejects shell metacharacters that would allow command
+/// injection on the managed server.
+fn validate_remote_path(path: &str) -> Result<(), ApiError> {
+    if path.is_empty() {
+        return Err(ApiError::bad_request("Path cannot be empty"));
+    }
+    if let Some(c) = path.chars().find(|c| FORBIDDEN_PATH_CHARS.contains(c) || c.is_control()) {
+        return Err(ApiError::bad_request(format!(
+            "Path contains a forbidden character: {:?}",
+            c
+        )));
+    }
+    Ok(())
 }
 
 /// A single file or directory entry
@@ -224,14 +250,15 @@ pub async fn browse_files(
     State(state): State<Arc<AppState>>,
     Path(server_id): Path<String>,
     Query(query): Query<BrowseQuery>,
-    _user: User,
+    user: User,
 ) -> Result<Json<Vec<FileEntry>>, ApiError> {
+    // SEC-C3: caller must have access to this server.
+    authz::authorize_server(&state, &user, &server_id).await?;
+
     let path = query.path.unwrap_or_else(|| "/".to_string());
 
-    // Basic path safety — disallow null bytes
-    if path.contains('\0') {
-        return Err(ApiError::bad_request("Invalid path"));
-    }
+    // SEC-H4: reject shell metacharacters before interpolating into the ssh command.
+    validate_remote_path(&path)?;
 
     let (_, ctx, key_path) = get_remote_context(&state, &server_id).await?;
 
@@ -264,11 +291,13 @@ pub async fn read_file(
     State(state): State<Arc<AppState>>,
     Path(server_id): Path<String>,
     Query(query): Query<FileContentQuery>,
-    _user: User,
+    user: User,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if query.path.contains('\0') {
-        return Err(ApiError::bad_request("Invalid path"));
-    }
+    // SEC-C3: caller must have access to this server.
+    authz::authorize_server(&state, &user, &server_id).await?;
+
+    // SEC-H4: reject shell metacharacters before interpolating into the ssh command.
+    validate_remote_path(&query.path)?;
 
     let (_, ctx, key_path) = get_remote_context(&state, &server_id).await?;
 
@@ -292,12 +321,14 @@ pub async fn read_file(
 pub async fn write_file(
     State(state): State<Arc<AppState>>,
     Path(server_id): Path<String>,
-    _user: User,
+    user: User,
     Json(body): Json<WriteFileRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if body.path.contains('\0') {
-        return Err(ApiError::bad_request("Invalid path"));
-    }
+    // SEC-C3: caller must have access to this server.
+    authz::authorize_server(&state, &user, &server_id).await?;
+
+    // SEC-H4: reject shell metacharacters before interpolating into the ssh command.
+    validate_remote_path(&body.path)?;
 
     let (_, ctx, key_path) = get_remote_context(&state, &server_id).await?;
 
@@ -334,11 +365,13 @@ pub async fn delete_file(
     State(state): State<Arc<AppState>>,
     Path(server_id): Path<String>,
     Query(query): Query<DeleteFileQuery>,
-    _user: User,
+    user: User,
 ) -> Result<StatusCode, ApiError> {
-    if query.path.contains('\0') {
-        return Err(ApiError::bad_request("Invalid path"));
-    }
+    // SEC-C3: caller must have access to this server.
+    authz::authorize_server(&state, &user, &server_id).await?;
+
+    // SEC-H4: reject shell metacharacters before interpolating into the ssh command.
+    validate_remote_path(&query.path)?;
 
     // Refuse to delete root or obviously dangerous paths
     let path = query.path.trim();

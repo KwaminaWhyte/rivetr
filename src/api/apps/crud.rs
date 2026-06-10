@@ -16,6 +16,7 @@ use axum::http::header;
 
 use super::super::audit::{audit_log, ClientIp};
 use super::super::auth::verify_password;
+use super::super::authz;
 use super::super::error::ApiError;
 use super::super::teams::log_team_audit;
 use super::super::validation::validate_uuid;
@@ -26,36 +27,77 @@ use super::{
 
 pub async fn list_apps(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListAppsQuery>,
 ) -> Result<Json<Vec<AppResponse>>, ApiError> {
-    let apps = if let Some(team_id) = &query.team_id {
-        if team_id.is_empty() {
-            sqlx::query_as::<_, App>(
-                "SELECT * FROM apps WHERE team_id IS NULL ORDER BY created_at DESC",
-            )
-            .fetch_all(&state.db)
-            .await?
+    // Privileged users (instance admin / admin token) keep the unrestricted view.
+    if authz::is_privileged_user(&user) {
+        let apps = if let Some(team_id) = &query.team_id {
+            if team_id.is_empty() {
+                sqlx::query_as::<_, App>(
+                    "SELECT * FROM apps WHERE team_id IS NULL ORDER BY created_at DESC",
+                )
+                .fetch_all(&state.db)
+                .await?
+            } else {
+                sqlx::query_as::<_, App>(
+                    "SELECT * FROM apps WHERE team_id = ? OR team_id IS NULL ORDER BY created_at DESC",
+                )
+                .bind(team_id)
+                .fetch_all(&state.db)
+                .await?
+            }
         } else {
-            // Include apps for this team plus legacy apps with no team_id
-            sqlx::query_as::<_, App>(
-                "SELECT * FROM apps WHERE team_id = ? OR team_id IS NULL ORDER BY created_at DESC",
-            )
-            .bind(team_id)
-            .fetch_all(&state.db)
-            .await?
-        }
-    } else {
-        // No team filter - return all apps (for backward compatibility)
-        sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY created_at DESC")
-            .fetch_all(&state.db)
-            .await?
-    };
+            sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY created_at DESC")
+                .fetch_all(&state.db)
+                .await?
+        };
+        return Ok(Json(apps.into_iter().map(AppResponse::from).collect()));
+    }
 
-    Ok(Json(apps.into_iter().map(AppResponse::from).collect()))
+    // SEC-C3: non-privileged users only see apps in teams they belong to, legacy
+    // apps with no team, and apps explicitly shared with one of their teams.
+    if let Some(team_id) = &query.team_id {
+        if !team_id.is_empty() && !authz::user_is_member(&state, &user.id, team_id).await? {
+            return Err(ApiError::forbidden("You are not a member of this team"));
+        }
+    }
+
+    let teams = authz::user_team_ids(&state, &user.id).await?;
+    let shared_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT s.app_id FROM app_shares s \
+         JOIN team_members m ON m.team_id = s.shared_with_team_id \
+         WHERE m.user_id = ?",
+    )
+    .bind(&user.id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let all = sqlx::query_as::<_, App>("SELECT * FROM apps ORDER BY created_at DESC")
+        .fetch_all(&state.db)
+        .await?;
+
+    let visible: Vec<AppResponse> = all
+        .into_iter()
+        .filter(|a| match &a.team_id {
+            None => true,
+            Some(tid) => teams.contains(tid) || shared_ids.contains(&a.id),
+        })
+        // Honor an explicit team filter within the user's accessible set.
+        .filter(|a| match &query.team_id {
+            Some(t) if !t.is_empty() => a.team_id.as_deref() == Some(t.as_str()) || a.team_id.is_none(),
+            Some(_) => a.team_id.is_none(),
+            None => true,
+        })
+        .map(AppResponse::from)
+        .collect();
+
+    Ok(Json(visible))
 }
 
 pub async fn get_app(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<Json<AppResponse>, ApiError> {
     // Validate ID format
@@ -63,11 +105,8 @@ pub async fn get_app(
         return Err(ApiError::validation_field("app_id", e));
     }
 
-    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::not_found("App not found"))?;
+    // SEC-C3: caller must have access to this app.
+    let app = authz::authorize_app(&state, &user, &id).await?;
 
     Ok(Json(AppResponse::from(app)))
 }
@@ -269,12 +308,8 @@ pub async fn update_app(
     // Validate request
     validate_update_request(&req)?;
 
-    // Check if app exists and get current values for merging
-    let existing = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::not_found("App not found"))?;
+    // SEC-C3: caller must have access to this app. Returns the row for merging.
+    let existing = authz::authorize_app(&state, &user, &id).await?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -803,12 +838,8 @@ pub async fn delete_app(
         }
     }
 
-    // Check if app exists before deleting
-    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::not_found("App not found"))?;
+    // SEC-C3: caller must have access to this app before deleting it.
+    let app = authz::authorize_app(&state, &user, &id).await?;
 
     // Stop any running containers for this app
     let deployments: Vec<(String,)> = sqlx::query_as(

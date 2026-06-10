@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use super::ws::validate_ws_token_str;
+use super::authz;
 use crate::AppState;
 
 /// How many log events to buffer per stream. Once exceeded, slow subscribers
@@ -208,6 +208,17 @@ impl Default for StartLogRegistry {
     }
 }
 
+/// Resolve the user behind a WS token (None/invalid → None) for start-stream auth.
+async fn resolve_ws_user(state: &Arc<AppState>, token: Option<&str>) -> Option<crate::db::User> {
+    let token = match token {
+        Some(t) if !t.is_empty() => t,
+        _ => return None,
+    };
+    super::auth::get_current_user(&state.db, &state.config, token)
+        .await
+        .ok()
+}
+
 /// WebSocket endpoint: GET /api/services/:id/start-stream
 pub async fn service_start_stream_ws(
     ws: WebSocketUpgrade,
@@ -215,8 +226,12 @@ pub async fn service_start_stream_ws(
     Path(id): Path<String>,
     Query(query): Query<AuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    if !validate_ws_token_str(&state, query.token.as_deref()).await {
+    // SEC-C3: caller must have access to this service (boot logs can leak secrets).
+    let Some(user) = resolve_ws_user(&state, query.token.as_deref()).await else {
         return Err(StatusCode::UNAUTHORIZED);
+    };
+    if authz::authorize_service(&state, &user, &id).await.is_err() {
+        return Err(StatusCode::FORBIDDEN);
     }
     let key = format!("service:{}", id);
     Ok(ws.on_upgrade(move |socket| handle_start_stream(socket, state, key)))
@@ -229,8 +244,12 @@ pub async fn database_start_stream_ws(
     Path(id): Path<String>,
     Query(query): Query<AuthQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    if !validate_ws_token_str(&state, query.token.as_deref()).await {
+    // SEC-C3: caller must have access to this database (boot logs can leak secrets).
+    let Some(user) = resolve_ws_user(&state, query.token.as_deref()).await else {
         return Err(StatusCode::UNAUTHORIZED);
+    };
+    if authz::authorize_database(&state, &user, &id).await.is_err() {
+        return Err(StatusCode::FORBIDDEN);
     }
     let key = format!("database:{}", id);
     Ok(ws.on_upgrade(move |socket| handle_start_stream(socket, state, key)))
