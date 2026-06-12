@@ -830,15 +830,27 @@ impl CertificateRenewalManager {
     pub async fn run(mut self) {
         info!("Certificate renewal manager started");
 
+        // New app/tenant domains should obtain HTTPS within ~a minute of being
+        // added, not at the next (12h) renewal tick — critical for multi-tenant
+        // apps that register a subdomain per tenant. So poll for new domains on
+        // a short interval and only run the expiry-based renewal check on the
+        // longer `renewal_check_interval`.
+        let new_domain_poll = Duration::from_secs(60);
+        let mut since_renewal = Duration::ZERO;
+
         loop {
             // Check for new app subdomains and reissue cert if any are missing coverage
             self.check_and_add_new_domains().await;
 
-            if let Err(e) = self.check_renewals().await {
-                error!(error = %e, "Error checking certificate renewals");
+            if since_renewal >= self.renewal_check_interval {
+                if let Err(e) = self.check_renewals().await {
+                    error!(error = %e, "Error checking certificate renewals");
+                }
+                since_renewal = Duration::ZERO;
             }
 
-            sleep(self.renewal_check_interval).await;
+            sleep(new_domain_poll).await;
+            since_renewal += new_domain_poll;
         }
     }
 
@@ -871,8 +883,22 @@ impl CertificateRenewalManager {
                 }
             }
             if let Some(json) = domains_json {
-                if let Ok(list) = serde_json::from_str::<Vec<String>>(&json) {
-                    for d in list {
+                // The `domains` column is persisted as an array of Domain objects
+                // (`[{"domain":"...","primary":...}]`), but older data may store a
+                // plain `["..."]` array of strings. Accept both: parse generically
+                // and pull the host out of either shape. Without this, secondary
+                // app/tenant domains never get added to the cert SANs.
+                if let Ok(values) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
+                    for v in values {
+                        let d = match v {
+                            serde_json::Value::String(s) => s,
+                            serde_json::Value::Object(ref map) => map
+                                .get("domain")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            _ => String::new(),
+                        };
                         if !d.is_empty() && !self.domains.contains(&d) {
                             new_domains.push(d);
                         }
