@@ -561,6 +561,8 @@ export interface UpdateAppRequest {
   preview_enabled?: boolean;
   // GitHub App installation
   github_app_installation_id?: string | null;
+  // Deployment source: "git", "upload", or "registry"
+  deployment_source?: DeploymentSource;
   // Rollback settings
   auto_rollback_enabled?: boolean;
   registry_push_enabled?: boolean;

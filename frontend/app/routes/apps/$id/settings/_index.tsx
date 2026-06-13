@@ -149,6 +149,11 @@ export default function AppSettingsGeneral() {
         environment: generalForm.environment as AppEnvironment,
         healthcheck: generalForm.healthcheck,
       };
+      // Setting a git URL on a non-registry app implies git-based deploys.
+      // This converts an upload-created app into a git app so pushes deploy it.
+      if (generalForm.git_url.trim() && !app.docker_image && app.deployment_source !== "git") {
+        updates.deployment_source = "git";
+      }
       await api.updateApp(app.id, updates);
       toast.success("Settings saved");
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });

@@ -339,6 +339,8 @@ pub async fn update_app(
         &req.github_app_installation_id,
         &existing.github_app_installation_id,
     );
+    let deployment_source =
+        merge_optional_string(&req.deployment_source, &existing.deployment_source);
     let dockerfile_path = merge_optional_string(&req.dockerfile_path, &existing.dockerfile_path);
     let base_directory = merge_optional_string(&req.base_directory, &existing.base_directory);
     let build_target = merge_optional_string(&req.build_target, &existing.build_target);
@@ -606,6 +608,7 @@ pub async fn update_app(
             destination_id = ?,
             custom_labels = ?,
             github_app_installation_id = ?,
+            deployment_source = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -677,6 +680,7 @@ pub async fn update_app(
     .bind(&destination_id)
     .bind(&custom_labels)
     .bind(&github_app_installation_id)
+    .bind(&deployment_source)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)

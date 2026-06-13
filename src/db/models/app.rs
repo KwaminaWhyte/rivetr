@@ -910,6 +910,8 @@ pub struct UpdateAppRequest {
     pub preview_enabled: Option<bool>,
     /// GitHub App installation ID for GitHub-based deployments
     pub github_app_installation_id: Option<String>,
+    /// Deployment source: "git", "upload", or "registry"
+    pub deployment_source: Option<String>,
     // Rollback settings
     /// Enable automatic rollback on health check failure
     pub auto_rollback_enabled: Option<bool>,

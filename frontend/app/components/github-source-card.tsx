@@ -14,8 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Github, GitBranch, Unlink, ExternalLink, Building2, User } from "lucide-react";
+import { Github, GitBranch, Unlink, ExternalLink, Building2, User, Link2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import type { App, GitHubAppInstallation } from "@/types/api";
 
 interface GitHubSourceCardProps {
@@ -75,9 +76,13 @@ export function GitHubSourceCard({ app }: GitHubSourceCardProps) {
     }
   };
 
-  // Don't show if not connected via GitHub App
+  // Not connected via GitHub App — offer a connect flow (needed for private repos).
+  // Skip for registry-image apps, which don't build from a repo.
   if (!app.github_app_installation_id) {
-    return null;
+    if (app.docker_image) {
+      return null;
+    }
+    return <ConnectGitHubCard app={app} />;
   }
 
   return (
@@ -198,5 +203,65 @@ export function GitHubSourceCard({ app }: GitHubSourceCardProps) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * Shown when an app has no GitHub App installation linked. Lets the user pick an
+ * installation + repository + branch and connects it, which also flips the app to
+ * git-based deploys so pushes and manual deploys clone and build the repo. This is
+ * how an upload-created app gets wired to a private GitHub repository.
+ */
+function ConnectGitHubCard({ app }: { app: App }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<SelectedRepo | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleConnect = async () => {
+    if (!selected) {
+      return;
+    }
+    setIsConnecting(true);
+    try {
+      await api.updateApp(app.id, {
+        github_app_installation_id: selected.installationId,
+        git_url: selected.gitUrl,
+        branch: selected.branch,
+        // Clear any registry image and switch to git-based deploys.
+        docker_image: "",
+        deployment_source: "git",
+      });
+      toast.success("Connected to GitHub — deploys will now build from this repo");
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to connect");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Github className="h-5 w-5" />
+          Connect a GitHub Repository
+        </CardTitle>
+        <CardDescription>
+          Link this app to a GitHub App installation so it can clone private repos and
+          auto-deploy on every push. This switches the app to git-based deployments.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <GitHubRepoPicker
+          onSelect={setSelected}
+          selectedInstallationId={app.github_app_installation_id ?? undefined}
+        />
+        <Button onClick={handleConnect} disabled={!selected || isConnecting} className="gap-1.5">
+          <Link2 className="h-4 w-4" />
+          {isConnecting ? "Connecting..." : "Connect & switch to Git"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

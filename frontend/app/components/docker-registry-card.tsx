@@ -97,6 +97,8 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
 
       // Clear git URL when switching to registry mode
       updates.git_url = "";
+      // Mark the app as registry-sourced so deploys pull the image
+      updates.deployment_source = "registry";
     } else {
       // Clear registry fields
       updates.docker_image = "";
@@ -104,6 +106,9 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
       updates.registry_url = "";
       updates.registry_username = "";
       updates.registry_password = "";
+      // Switch the app to git-sourced so deploys clone & build the repo.
+      // This is what converts an upload-created app into a git app.
+      updates.deployment_source = "git";
     }
 
     updateMutation.mutate(updates);
@@ -291,7 +296,14 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
                 {app.git_url || "Not configured"}
               </code>
             </p>
-            {isDirty && (
+            {app.deployment_source !== "git" && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
+                This app's deployment source is{" "}
+                <span className="font-medium">{app.deployment_source || "upload"}</span>.
+                Switch it to Git so pushes and manual deploys clone and build the repository above.
+              </p>
+            )}
+            {(isDirty || app.deployment_source !== "git") && (
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
