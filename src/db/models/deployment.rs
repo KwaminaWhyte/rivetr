@@ -58,6 +58,12 @@ pub struct Deployment {
     pub error_message: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,
+    /// Timestamp when the deployment went live (status -> 'running'). Set once
+    /// and never overwritten — unlike finished_at, which is later reused as the
+    /// "replaced/stopped at" time. Used to show live uptime vs build duration.
+    #[sqlx(default)]
+    #[serde(default)]
+    pub built_at: Option<String>,
     pub image_tag: Option<String>,
     /// ID of the deployment that triggered this auto-rollback (if any)
     pub rollback_from_deployment_id: Option<String>,

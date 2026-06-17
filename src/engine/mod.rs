@@ -569,7 +569,21 @@ async fn update_deployment_status(
 ) -> anyhow::Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
 
-    if status == "running" || status == "failed" || status == "stopped" {
+    if status == "running" {
+        // Going live: stamp built_at (once, never overwritten) so the UI can
+        // show live uptime, and finished_at = go-live time (later overwritten
+        // to the replaced/stopped moment when a newer deployment takes over).
+        sqlx::query(
+            "UPDATE deployments SET status = ?, error_message = ?, finished_at = ?, built_at = COALESCE(built_at, ?) WHERE id = ? AND status != 'cancelled'",
+        )
+        .bind(status)
+        .bind(error)
+        .bind(&now)
+        .bind(&now)
+        .bind(deployment_id)
+        .execute(db)
+        .await?;
+    } else if status == "failed" || status == "stopped" {
         sqlx::query(
             "UPDATE deployments SET status = ?, error_message = ?, finished_at = ? WHERE id = ? AND status != 'cancelled'",
         )

@@ -221,10 +221,29 @@ function TimelineItem({
   // A pending deployment is queued behind the concurrency limit and hasn't
   // started building yet — show "Queued" rather than a running clock (its
   // started_at is reset to the real build start once a slot frees).
-  const duration =
-    deployment.status === "pending"
-      ? "Queued"
-      : calculateDuration(deployment.started_at, deployment.finished_at);
+  //
+  // A live (running) deployment shows uptime since it went live (built_at),
+  // ticking. A still-building deployment ticks from started_at. Finished
+  // deployments (replaced/failed/stopped) show the build duration:
+  // started_at -> built_at if it ever went live, else -> finished_at.
+  const isRunning = deployment.status === "running";
+  const isLive = isActive || isRunning;
+  let duration: string;
+  if (deployment.status === "pending") {
+    duration = "Queued";
+  } else if (isRunning) {
+    duration = calculateDuration(
+      deployment.built_at ?? deployment.started_at,
+      null
+    );
+  } else if (isActive) {
+    duration = calculateDuration(deployment.started_at, null);
+  } else {
+    duration = calculateDuration(
+      deployment.started_at,
+      deployment.built_at ?? deployment.finished_at
+    );
+  }
 
   return (
     <div className="relative flex gap-4">
@@ -305,11 +324,11 @@ function TimelineItem({
                   <span className="text-sm text-muted-foreground">
                     {formatDate(deployment.started_at)}
                   </span>
-                  {(deployment.finished_at || isActive) && (
+                  {(deployment.finished_at || isLive) && (
                     <span className="text-sm text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {duration}
-                      {isActive && " (running)"}
+                      {isLive && " (running)"}
                     </span>
                   )}
                 </div>

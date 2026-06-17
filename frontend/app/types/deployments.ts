@@ -8,6 +8,9 @@ export interface Deployment {
   status: DeploymentStatus;
   started_at: string;
   finished_at: string | null;
+  /** When the deployment went live (status -> running). Set once, never
+   *  overwritten. Drives live uptime vs build-duration display. */
+  built_at: string | null;
   container_id: string | null;
   error_message: string | null;
   commit_sha: string | null;
