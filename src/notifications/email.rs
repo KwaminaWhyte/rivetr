@@ -11,21 +11,54 @@ use lettre::{
 };
 
 use crate::config::EmailConfig;
+use crate::db::{NotificationChannel, SendryConfig};
 
-/// Service for sending system emails
+/// Service for sending system emails.
+///
+/// Delivery prefers toml `[email]` SMTP. When that isn't configured, it falls
+/// back to an enabled Sendry notification channel from the database, so system
+/// mail works even on instances that only set up email via the dashboard.
 pub struct SystemEmailService {
     config: EmailConfig,
+    db: Option<sqlx::SqlitePool>,
 }
 
 impl SystemEmailService {
-    /// Create a new system email service
+    /// Create a new system email service (SMTP-only; no DB fallback).
     pub fn new(config: EmailConfig) -> Self {
-        Self { config }
+        Self { config, db: None }
     }
 
-    /// Check if email sending is configured and enabled
+    /// Create a service that can fall back to a Sendry notification channel.
+    pub fn with_db(config: EmailConfig, db: sqlx::SqlitePool) -> Self {
+        Self {
+            config,
+            db: Some(db),
+        }
+    }
+
+    /// Whether toml SMTP is configured.
     pub fn is_enabled(&self) -> bool {
         self.config.is_configured()
+    }
+
+    /// Whether email can be delivered by ANY route (SMTP or a Sendry channel).
+    pub async fn is_available(&self) -> bool {
+        self.config.is_configured() || self.find_sendry_channel().await.is_some()
+    }
+
+    /// Look up an enabled Sendry channel's config, preferring a global one.
+    async fn find_sendry_channel(&self) -> Option<SendryConfig> {
+        let db = self.db.as_ref()?;
+        let channel: Option<NotificationChannel> = sqlx::query_as(
+            "SELECT * FROM notification_channels \
+             WHERE channel_type = 'sendry' AND enabled = 1 \
+             ORDER BY (team_id IS NULL) DESC, created_at ASC LIMIT 1",
+        )
+        .fetch_optional(db)
+        .await
+        .ok()?;
+        channel?.get_sendry_config()
     }
 
     /// Send a team invitation email
@@ -38,14 +71,6 @@ impl SystemEmailService {
         accept_url: &str,
         expires_in_days: i64,
     ) -> Result<()> {
-        if !self.is_enabled() {
-            tracing::warn!(
-                "Email not configured, skipping invitation email to {}",
-                to_email
-            );
-            return Ok(());
-        }
-
         let subject = format!("You've been invited to join {} on Rivetr", team_name);
 
         let html_body =
@@ -66,14 +91,6 @@ impl SystemEmailService {
         reset_url: &str,
         expires_in_minutes: i64,
     ) -> Result<()> {
-        if !self.is_enabled() {
-            tracing::warn!(
-                "Email not configured, skipping password reset email to {}",
-                to_email
-            );
-            return Ok(());
-        }
-
         let subject = "Reset your Rivetr password".to_string();
         let html_body = render_password_reset_html(user_name, reset_url, expires_in_minutes);
         let text_body = render_password_reset_text(user_name, reset_url, expires_in_minutes);
@@ -82,8 +99,38 @@ impl SystemEmailService {
             .await
     }
 
-    /// Send an email with HTML and plain text versions
+    /// Send an email, choosing a transport: toml SMTP first, then a Sendry
+    /// notification channel. If neither is configured, logs a warning and
+    /// returns Ok so callers' flows aren't broken.
     async fn send_email(
+        &self,
+        to_email: &str,
+        subject: &str,
+        html_body: &str,
+        text_body: &str,
+    ) -> Result<()> {
+        if self.config.is_configured() {
+            return self.send_smtp(to_email, subject, html_body, text_body).await;
+        }
+
+        if let Some(sendry) = self.find_sendry_channel().await {
+            let client = reqwest::Client::new();
+            super::sendry::send_sendry_raw(&client, &sendry, to_email, subject, html_body, text_body)
+                .await?;
+            tracing::info!(to = %to_email, subject = %subject, "System email sent via Sendry channel");
+            return Ok(());
+        }
+
+        tracing::warn!(
+            to = %to_email,
+            "No email transport configured (set [email] SMTP or add an enabled Sendry \
+             notification channel); skipping email"
+        );
+        Ok(())
+    }
+
+    /// Send an email via toml-configured SMTP.
+    async fn send_smtp(
         &self,
         to_email: &str,
         subject: &str,

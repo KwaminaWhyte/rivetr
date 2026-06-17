@@ -231,8 +231,9 @@ pub async fn create_invitation(
     );
 
     // Send invitation email (non-blocking, log errors but don't fail the request)
-    let email_service = SystemEmailService::new(state.config.email.clone());
-    if email_service.is_enabled() {
+    let email_service =
+        SystemEmailService::with_db(state.config.email.clone(), state.db.clone());
+    if email_service.is_available().await {
         // Build the accept URL
         let base_url = state
             .config
@@ -398,8 +399,9 @@ pub async fn resend_invitation(
         .unwrap_or_else(|| "A team member".to_string());
 
     // Send invitation email
-    let email_service = SystemEmailService::new(state.config.email.clone());
-    if !email_service.is_enabled() {
+    let email_service =
+        SystemEmailService::with_db(state.config.email.clone(), state.db.clone());
+    if !email_service.is_available().await {
         return Err(ApiError::bad_request(
             "Email is not configured. Cannot resend invitation.",
         ));

@@ -321,8 +321,12 @@ pub async fn forgot_password(
     .await;
 
     // Deliver the reset link via email (best-effort, never blocks the response).
-    let email_service = crate::notifications::SystemEmailService::new(state.config.email.clone());
-    if email_service.is_enabled() {
+    // Uses toml SMTP if configured, otherwise an enabled Sendry channel.
+    let email_service = crate::notifications::SystemEmailService::with_db(
+        state.config.email.clone(),
+        state.db.clone(),
+    );
+    if email_service.is_available().await {
         let base_url = state
             .config
             .server

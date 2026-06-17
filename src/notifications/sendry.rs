@@ -55,6 +55,49 @@ pub async fn send_sendry(
     Ok(())
 }
 
+/// Send a raw email via the Sendry API to an explicit recipient.
+///
+/// Unlike `send_sendry` (which broadcasts an alert to the channel's configured
+/// `to_addresses`), this sends to a single arbitrary address with a caller-
+/// supplied subject/body. Used by `SystemEmailService` to deliver system mail
+/// (password resets, invitations) when toml SMTP isn't configured.
+pub async fn send_sendry_raw(
+    http_client: &reqwest::Client,
+    config: &SendryConfig,
+    to: &str,
+    subject: &str,
+    html_body: &str,
+    text_body: &str,
+) -> Result<()> {
+    let body = json!({
+        "from": config.from_address,
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+        "text": text_body,
+    });
+
+    let response = http_client
+        .post(SENDRY_API_URL)
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let response_body = response.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "Sendry API request failed with status {}: {}",
+            status,
+            response_body
+        );
+    }
+
+    Ok(())
+}
+
 /// Build an HTML email body for the notification
 fn build_html_body(payload: &NotificationPayload) -> String {
     format!(
