@@ -471,6 +471,36 @@ export async function login(email: string, password: string) {
   }>;
 }
 
+export async function forgotPassword(email: string) {
+  const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || "Request failed");
+  }
+
+  return response.json() as Promise<{ message: string }>;
+}
+
+export async function resetPassword(token: string, password: string) {
+  const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || "Password reset failed");
+  }
+
+  return response.json() as Promise<{ message: string }>;
+}
+
 export async function setup(data: {
   name: string;
   email: string;

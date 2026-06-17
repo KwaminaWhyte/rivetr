@@ -58,6 +58,30 @@ impl SystemEmailService {
             .await
     }
 
+    /// Send a password-reset email
+    pub async fn send_password_reset_email(
+        &self,
+        to_email: &str,
+        user_name: &str,
+        reset_url: &str,
+        expires_in_minutes: i64,
+    ) -> Result<()> {
+        if !self.is_enabled() {
+            tracing::warn!(
+                "Email not configured, skipping password reset email to {}",
+                to_email
+            );
+            return Ok(());
+        }
+
+        let subject = "Reset your Rivetr password".to_string();
+        let html_body = render_password_reset_html(user_name, reset_url, expires_in_minutes);
+        let text_body = render_password_reset_text(user_name, reset_url, expires_in_minutes);
+
+        self.send_email(to_email, &subject, &html_body, &text_body)
+            .await
+    }
+
     /// Send an email with HTML and plain text versions
     async fn send_email(
         &self,
@@ -320,6 +344,85 @@ https://rivetr.io"#,
         role = capitalize_role(role),
         accept_url = accept_url,
         expires_in_days = expires_in_days,
+    )
+}
+
+/// Render the HTML version of the password-reset email
+fn render_password_reset_html(user_name: &str, reset_url: &str, expires_in_minutes: i64) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset your password</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; -webkit-font-smoothing: antialiased; }}
+        .container {{ max-width: 560px; margin: 0 auto; padding: 40px 20px; }}
+        .card {{ background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }}
+        .header {{ background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 32px 24px; text-align: center; }}
+        .header h1 {{ margin: 0; font-size: 24px; font-weight: 600; }}
+        .content {{ padding: 32px 24px; }}
+        .content p {{ margin: 0 0 16px; color: #374151; line-height: 1.6; }}
+        .button-container {{ text-align: center; margin: 32px 0; }}
+        .button {{ display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white !important; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 500; font-size: 16px; }}
+        .link-fallback {{ word-break: break-all; color: #6b7280; font-size: 13px; }}
+        .note {{ color: #6b7280; font-size: 13px; text-align: center; margin-top: 24px; }}
+        .footer {{ padding: 24px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #f3f4f6; }}
+        .footer a {{ color: #3b82f6; text-decoration: none; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>Reset your password</h1>
+            </div>
+            <div class="content">
+                <p>Hi {user_name},</p>
+                <p>We received a request to reset the password for your Rivetr account. Click the button below to choose a new password.</p>
+                <div class="button-container">
+                    <a href="{reset_url}" class="button">Reset Password</a>
+                </div>
+                <p class="link-fallback">Or paste this link into your browser:<br>{reset_url}</p>
+                <p class="note">This link expires in {expires_in_minutes} minutes. If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>
+            </div>
+            <div class="footer">
+                <p>Sent by <a href="https://rivetr.io">Rivetr</a> - Deploy your apps with ease</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"#,
+        user_name = html_escape(user_name),
+        reset_url = html_escape(reset_url),
+        expires_in_minutes = expires_in_minutes,
+    )
+}
+
+/// Render the plain text version of the password-reset email
+fn render_password_reset_text(user_name: &str, reset_url: &str, expires_in_minutes: i64) -> String {
+    format!(
+        r#"Reset your password
+
+Hi {user_name},
+
+We received a request to reset the password for your Rivetr account.
+To choose a new password, visit:
+
+{reset_url}
+
+This link expires in {expires_in_minutes} minutes.
+
+If you didn't request a password reset, you can safely ignore this email
+— your password won't change.
+
+---
+Sent by Rivetr - Deploy your apps with ease
+https://rivetr.io"#,
+        user_name = user_name,
+        reset_url = reset_url,
+        expires_in_minutes = expires_in_minutes,
     )
 }
 

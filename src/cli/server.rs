@@ -3,9 +3,85 @@
 //! Handles:
 //! - `config check` — Validate the configuration file
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::Cli;
+
+/// Reset a user's password directly in the local database (offline recovery).
+pub async fn cmd_reset_password(cli: &Cli, email: &str, password: Option<&str>) -> Result<()> {
+    use crate::api::auth::hash_password;
+    use crate::config::Config;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::io::Write;
+
+    let config = Config::load(&cli.config)?;
+
+    let db_path = config.server.data_dir.join("rivetr.db");
+    if !db_path.exists() {
+        anyhow::bail!(
+            "Database not found at {}. Is Rivetr initialized?",
+            db_path.display()
+        );
+    }
+
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .context("Failed to connect to database")?;
+
+    let email_norm = email.trim().to_lowercase();
+    let user: Option<(String, String)> =
+        sqlx::query_as("SELECT id, name FROM users WHERE email = ?")
+            .bind(&email_norm)
+            .fetch_optional(&pool)
+            .await?;
+
+    let Some((user_id, name)) = user else {
+        anyhow::bail!("No user found with email '{}'", email_norm);
+    };
+
+    let new_password = match password {
+        Some(p) => p.to_string(),
+        None => {
+            print!("New password for {} ({}): ", name, email_norm);
+            std::io::stdout().flush()?;
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            line.trim_end_matches(['\n', '\r']).to_string()
+        }
+    };
+
+    if new_password.len() < 12 {
+        anyhow::bail!("Password must be at least 12 characters");
+    }
+
+    let hash = hash_password(&new_password)
+        .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
+
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(&hash)
+        .bind(&user_id)
+        .execute(&pool)
+        .await?;
+
+    // Revoke all of this user's sessions so old tokens can't be reused.
+    let revoked = sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(&user_id)
+        .execute(&pool)
+        .await?;
+
+    println!();
+    println!(
+        "Password reset for {} ({}). Revoked {} active session(s).",
+        name,
+        email_norm,
+        revoked.rows_affected()
+    );
+
+    Ok(())
+}
 
 /// Validate configuration file
 pub async fn cmd_config_check(cli: &Cli) -> Result<()> {

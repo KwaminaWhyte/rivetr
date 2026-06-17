@@ -89,6 +89,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/login", post(auth::login))
         .route("/logout", post(auth::logout))
         .route("/setup", post(auth::setup))
+        // Password reset flow (public) + authenticated change-password.
+        // change_password self-authenticates via the bearer token; all three
+        // sit behind the stricter auth-tier rate limiter (brute-force surface).
+        .route("/forgot-password", post(auth::forgot_password))
+        .route("/reset-password", post(auth::reset_password))
+        .route("/change-password", post(auth::change_password))
         .route(
             "/register-with-invitation",
             post(auth::register_with_invitation),

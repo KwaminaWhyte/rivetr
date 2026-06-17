@@ -39,6 +39,35 @@ pub struct SetupRequest {
     pub name: String,
 }
 
+/// Request to start the forgot-password flow
+#[derive(Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+/// Request to complete a password reset using an emailed token
+#[derive(Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+/// Request to change the password while authenticated
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// Generic message response
+#[derive(Serialize)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
+/// How long a password-reset token stays valid.
+const RESET_TOKEN_TTL_MINUTES: i64 = 30;
+
 /// Hash a password using Argon2
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
@@ -215,6 +244,261 @@ pub async fn login(
         token,
         user: UserResponse::from(user),
         requires_2fa: None,
+    }))
+}
+
+/// Forgot-password endpoint — POST /api/auth/forgot-password
+///
+/// Public. Always returns 200 with the same message regardless of whether the
+/// email exists, to avoid user enumeration. If the account exists and SMTP is
+/// configured, a single-use reset link is emailed.
+pub async fn forgot_password(
+    State(state): State<Arc<AppState>>,
+    client_ip: ClientIp,
+    Json(request): Json<ForgotPasswordRequest>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    let generic = MessageResponse {
+        message: "If an account with that email exists, a password reset link has been sent."
+            .to_string(),
+    };
+
+    let email = request.email.trim().to_lowercase();
+    if email.is_empty() {
+        return Ok(Json(generic));
+    }
+
+    // Look up the user (do not reveal whether it exists).
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let Some(user) = user else {
+        return Ok(Json(generic));
+    };
+
+    // OIDC-only users have no local password to reset.
+    if user.password_hash.is_empty() {
+        return Ok(Json(generic));
+    }
+
+    // Generate a single-use token; store only its hash.
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+    let id = uuid::Uuid::new_v4().to_string();
+    let expires_at = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::minutes(RESET_TOKEN_TTL_MINUTES))
+        .unwrap()
+        .to_rfc3339();
+
+    // Invalidate any prior outstanding reset tokens for this user, then insert.
+    let _ = sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = ?")
+        .bind(&user.id)
+        .execute(&state.db)
+        .await;
+    sqlx::query(
+        "INSERT INTO password_reset_tokens (id, token_hash, user_id, expires_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&token_hash)
+    .bind(&user.id)
+    .bind(&expires_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    audit_log(
+        &state,
+        actions::AUTH_PASSWORD_RESET_REQUEST,
+        resource_types::USER,
+        Some(&user.id),
+        Some(&user.email),
+        Some(&user.id),
+        client_ip.as_deref(),
+        None,
+    )
+    .await;
+
+    // Deliver the reset link via email (best-effort, never blocks the response).
+    let email_service = crate::notifications::SystemEmailService::new(state.config.email.clone());
+    if email_service.is_enabled() {
+        let base_url = state
+            .config
+            .server
+            .external_url
+            .as_deref()
+            .unwrap_or("http://localhost:8080")
+            .trim_end_matches('/');
+        let reset_url = format!("{}/reset-password?token={}", base_url, token);
+        match email_service
+            .send_password_reset_email(&user.email, &user.name, &reset_url, RESET_TOKEN_TTL_MINUTES)
+            .await
+        {
+            Ok(()) => tracing::info!(to = %user.email, "Password reset email sent"),
+            Err(e) => tracing::error!(to = %user.email, error = %e, "Failed to send password reset email"),
+        }
+    } else {
+        tracing::warn!(
+            to = %user.email,
+            "Password reset requested but email is not configured; no reset link delivered. \
+             Use `rivetr reset-password <email>` on the server to reset offline."
+        );
+    }
+
+    Ok(Json(generic))
+}
+
+/// Reset-password endpoint — POST /api/auth/reset-password
+///
+/// Public. Consumes a single-use token, sets a new password, and invalidates
+/// all existing sessions for the user.
+pub async fn reset_password(
+    State(state): State<Arc<AppState>>,
+    client_ip: ClientIp,
+    Json(request): Json<ResetPasswordRequest>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    if let Some(err) = validate_password_strength(&request.password) {
+        return Err((StatusCode::BAD_REQUEST, err));
+    }
+
+    let token_hash = hash_token(&request.token);
+
+    // Token must exist, be unused, and not be expired.
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, user_id FROM password_reset_tokens \
+         WHERE token_hash = ? AND used_at IS NULL AND expires_at > datetime('now')",
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let Some((token_id, user_id)) = row else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "This reset link is invalid or has expired. Please request a new one.".to_string(),
+        ));
+    };
+
+    let new_hash = hash_password(&request.password)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Update password, consume the token, and revoke all sessions atomically.
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(&new_hash)
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE id = ?")
+        .bind(&token_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Revoke every active session — a reset implies the account may be compromised.
+    sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(&user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    audit_log(
+        &state,
+        actions::AUTH_PASSWORD_RESET,
+        resource_types::USER,
+        Some(&user_id),
+        None,
+        Some(&user_id),
+        client_ip.as_deref(),
+        None,
+    )
+    .await;
+
+    Ok(Json(MessageResponse {
+        message: "Your password has been reset. You can now log in.".to_string(),
+    }))
+}
+
+/// Change-password endpoint — POST /api/auth/change-password
+///
+/// Authenticated. Verifies the current password, sets a new one, and revokes
+/// all OTHER sessions (the caller's current session stays valid).
+pub async fn change_password(
+    State(state): State<Arc<AppState>>,
+    client_ip: ClientIp,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<ChangePasswordRequest>,
+) -> Result<Json<MessageResponse>, (StatusCode, String)> {
+    let token = extract_token(&headers)
+        .ok_or((StatusCode::UNAUTHORIZED, "Not authenticated".to_string()))?;
+
+    let user = get_current_user(&state.db, &state.config, &token)
+        .await
+        .map_err(|s| (s, "Not authenticated".to_string()))?;
+
+    if user.password_hash.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "This account has no password set (managed via SSO).".to_string(),
+        ));
+    }
+
+    if !verify_password(&request.current_password, &user.password_hash) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Current password is incorrect.".to_string(),
+        ));
+    }
+
+    if let Some(err) = validate_password_strength(&request.new_password) {
+        return Err((StatusCode::BAD_REQUEST, err));
+    }
+
+    let new_hash = hash_password(&request.new_password)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    sqlx::query("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(&new_hash)
+        .bind(&user.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Revoke all sessions except the caller's current one.
+    let current_hash = hash_token(&token);
+    let _ = sqlx::query("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
+        .bind(&user.id)
+        .bind(&current_hash)
+        .execute(&state.db)
+        .await;
+
+    audit_log(
+        &state,
+        actions::AUTH_PASSWORD_CHANGE,
+        resource_types::USER,
+        Some(&user.id),
+        Some(&user.email),
+        Some(&user.id),
+        client_ip.as_deref(),
+        None,
+    )
+    .await;
+
+    Ok(Json(MessageResponse {
+        message: "Your password has been changed.".to_string(),
     }))
 }
 

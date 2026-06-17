@@ -77,6 +77,18 @@ pub enum Commands {
         follow: bool,
     },
 
+    /// Reset a user's password directly in the local database.
+    ///
+    /// Offline admin recovery for when SMTP isn't configured (or the admin is
+    /// locked out). Revokes all of that user's sessions.
+    ResetPassword {
+        /// Email of the user whose password to reset
+        email: String,
+        /// New password (if omitted, you'll be prompted to type it)
+        #[arg(long)]
+        password: Option<String>,
+    },
+
     /// Configuration management commands
     #[command(subcommand)]
     Config(ConfigCommands),
@@ -258,6 +270,9 @@ pub async fn run_command(cli: &Cli) -> Result<()> {
         Some(Commands::Deploy { app }) => deploy::cmd_deploy(cli, app).await,
         Some(Commands::Logs { app, lines, follow }) => {
             deploy::cmd_logs(cli, app, *lines, *follow).await
+        }
+        Some(Commands::ResetPassword { email, password }) => {
+            server::cmd_reset_password(cli, email, password.as_deref()).await
         }
         Some(Commands::Config(ConfigCommands::Check)) => server::cmd_config_check(cli).await,
         Some(Commands::Db(DbCommands::MigrateTeams { execute })) => {

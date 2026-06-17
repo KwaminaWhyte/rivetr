@@ -11,6 +11,8 @@ export default [
   route("login", "routes/login.tsx"),
   route("setup", "routes/setup.tsx"),
   route("logout", "routes/logout.tsx"),
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
   route("invitations/accept", "routes/invitations/accept.tsx"),
 
   // Protected routes with dashboard layout

@@ -35,6 +35,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { twoFactorApi } from "@/lib/api/two-factor";
+import { apiRequest } from "@/lib/api/core";
 import type {
   TwoFactorSetupResponse,
   TwoFactorVerifyResponse,
@@ -120,6 +121,42 @@ export default function SecuritySettingsPage() {
     },
   });
 
+  // Change-password state + mutation
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const changePasswordMutation = useMutation({
+    mutationFn: (vars: { current_password: string; new_password: string }) =>
+      apiRequest<{ message: string }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify(vars),
+      }),
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Password changed. Other sessions have been signed out.");
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to change password"
+      );
+    },
+  });
+
+  function handleChangePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    changePasswordMutation.mutate({
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+  }
+
   function handleCopyRecoveryCodes() {
     navigator.clipboard.writeText(recoveryCodes.join("\n"));
     toast.success("Recovery codes copied to clipboard");
@@ -172,6 +209,75 @@ export default function SecuritySettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Security</h1>
+
+      {/* Change Password Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Password</CardTitle>
+          <CardDescription className="mt-1">
+            Change your account password. Changing it signs out all your other
+            active sessions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={handleChangePassword}
+            className="max-w-md space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current password</Label>
+              <Input
+                id="current-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                At least 12 characters, with upper &amp; lowercase, a number, and
+                a symbol.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm new password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={
+                changePasswordMutation.isPending ||
+                currentPassword.length === 0 ||
+                newPassword.length === 0 ||
+                confirmPassword.length === 0
+              }
+            >
+              {changePasswordMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Change password
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* 2FA Status Card */}
       <Card>

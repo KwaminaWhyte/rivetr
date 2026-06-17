@@ -1553,6 +1553,35 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 112: Add built_at to deployments (go-live timestamp, distinct
+    // from finished_at which is reused as the replaced/stopped time).
+    let has_built_at: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'built_at'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_built_at.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/112_deployment_built_at.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 113: password_reset_tokens table (forgot-password flow).
+    let has_reset_tokens: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'password_reset_tokens'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_reset_tokens.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/113_password_reset_tokens.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
