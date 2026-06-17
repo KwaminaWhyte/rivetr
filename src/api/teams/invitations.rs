@@ -235,12 +235,7 @@ pub async fn create_invitation(
         SystemEmailService::with_db(state.config.email.clone(), state.db.clone());
     if email_service.is_available().await {
         // Build the accept URL
-        let base_url = state
-            .config
-            .server
-            .external_url
-            .as_deref()
-            .unwrap_or("http://localhost:8080");
+        let base_url = state.config.dashboard_base_url();
         let accept_url = format!("{}/invitations/accept?token={}", base_url, token);
 
         match email_service
@@ -408,12 +403,7 @@ pub async fn resend_invitation(
     }
 
     // Build the accept URL
-    let base_url = state
-        .config
-        .server
-        .external_url
-        .as_deref()
-        .unwrap_or("http://localhost:8080");
+    let base_url = state.config.dashboard_base_url();
     let accept_url = format!("{}/invitations/accept?token={}", base_url, invitation.token);
 
     email_service

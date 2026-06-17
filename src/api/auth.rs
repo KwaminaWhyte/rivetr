@@ -327,13 +327,7 @@ pub async fn forgot_password(
         state.db.clone(),
     );
     if email_service.is_available().await {
-        let base_url = state
-            .config
-            .server
-            .external_url
-            .as_deref()
-            .unwrap_or("http://localhost:8080")
-            .trim_end_matches('/');
+        let base_url = state.config.dashboard_base_url();
         let reset_url = format!("{}/reset-password?token={}", base_url, token);
         match email_service
             .send_password_reset_email(&user.email, &user.name, &reset_url, RESET_TOKEN_TTL_MINUTES)

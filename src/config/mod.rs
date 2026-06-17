@@ -870,6 +870,32 @@ impl Config {
         self.server.host.clone()
     }
 
+    /// Best public base URL for links shown to users in emails (password reset,
+    /// invitations). Prefers the dashboard's instance domain over the raw
+    /// external_url so links point at the pretty https host the user actually
+    /// browses — and so email-provider link tracking can encode them.
+    ///
+    /// Priority:
+    /// 1. `proxy.instance_domain` → `https://<domain>`
+    /// 2. `server.external_url` (verbatim)
+    /// 3. `http://localhost:<api_port>`
+    pub fn dashboard_base_url(&self) -> String {
+        if let Some(ref domain) = self.proxy.instance_domain {
+            let domain = domain.trim();
+            if !domain.is_empty() {
+                // instance_domain is a bare host; assume https.
+                return format!("https://{}", domain.trim_end_matches('/'));
+            }
+        }
+        if let Some(ref url) = self.server.external_url {
+            let url = url.trim();
+            if !url.is_empty() {
+                return url.trim_end_matches('/').to_string();
+            }
+        }
+        format!("http://localhost:{}", self.server.api_port)
+    }
+
     pub fn load(path: &Path) -> Result<Self> {
         if path.exists() {
             info!("Loading configuration from {}", path.display());
