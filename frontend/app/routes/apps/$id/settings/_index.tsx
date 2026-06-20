@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { GitHubSourceCard } from "@/components/github-source-card";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
+import { AppSharingCard } from "@/components/app-sharing-card";
 import { Zap, Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
@@ -260,6 +261,7 @@ export default function AppSettingsGeneral() {
           </form>
         </CardContent>
       </Card>
+      <AppSharingCard app={app} />
     </div>
   );
 }

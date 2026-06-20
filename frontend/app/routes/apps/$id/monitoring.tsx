@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router";
+import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -471,9 +471,15 @@ function UptimeSection({ appId }: { appId: string }) {
           )}
 
           {(!uptimeSummary || uptimeSummary.total_checks === 0) && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No uptime data yet. Add a health check URL to your app to start monitoring.
-            </p>
+            <div className="text-center py-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                No uptime data yet. Set a Healthcheck Path in your app settings to start
+                monitoring. The checker pings it every 60 seconds.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link to={`/apps/${appId}/settings`}>Configure Healthcheck</Link>
+              </Button>
+            </div>
           )}
         </div>
       </CardContent>

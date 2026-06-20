@@ -23,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DeploymentTimeline } from "@/components/deployment-timeline";
-import { DeploymentLogs } from "@/components/deployment-logs";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
@@ -439,14 +438,6 @@ export default function AppDeploymentsTab() {
           )}
         </CardContent>
       </Card>
-
-      {/* Live Deployment Logs */}
-      {activeDeployment && (
-        <DeploymentLogs
-          deploymentId={activeDeployment.id}
-          isActive={isActiveDeployment(activeDeployment.status)}
-        />
-      )}
 
       {/* Rollback confirmation dialog */}
       <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
