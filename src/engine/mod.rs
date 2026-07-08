@@ -144,6 +144,42 @@ impl DeploymentEngine {
                     .execute(&db)
                     .await;
 
+                // Supersede any older in-flight builds for this same app. The job
+                // channel is FIFO, so the deployment starting now is the newest —
+                // any other non-terminal build for the app is stale. Cancel it:
+                // queued ones bail before they start; mid-pipeline ones abort at the
+                // next cancellation checkpoint. Prevents two builds racing over the
+                // same image tag / proxy route (observed: two parallel builds, one
+                // left a zombie 'building' row when its build died).
+                let now_ts = chrono::Utc::now().to_rfc3339();
+                match sqlx::query(
+                    "UPDATE deployments
+                        SET status = 'cancelled', cancelled_at = ?, finished_at = ?,
+                            error_message = 'Superseded by a newer deployment'
+                      WHERE app_id = ? AND id != ?
+                        AND status IN ('pending', 'cloning', 'building', 'starting', 'checking')",
+                )
+                .bind(&now_ts)
+                .bind(&now_ts)
+                .bind(&app.id)
+                .bind(&deployment_id)
+                .execute(&db)
+                .await
+                {
+                    Ok(res) if res.rows_affected() > 0 => {
+                        tracing::info!(
+                            "Deployment {} superseded {} older in-flight deployment(s) for app {}",
+                            deployment_id,
+                            res.rows_affected(),
+                            app.name
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to supersede older deployments");
+                    }
+                }
+
                 let deploy_start = std::time::Instant::now();
                 let notification_service = NotificationService::new(db.clone());
 
@@ -172,6 +208,27 @@ impl DeploymentEngine {
                 .await
                 {
                     Ok(container_info) => {
+                        // Guard the rare race where a newer deployment superseded this
+                        // one after start_container returned but before we swap routes.
+                        // Don't point the proxy at a now-stale container — tear it down.
+                        let post_status: Option<String> = sqlx::query_scalar(
+                            "SELECT status FROM deployments WHERE id = ?",
+                        )
+                        .bind(&deployment_id)
+                        .fetch_optional(&db)
+                        .await
+                        .ok()
+                        .flatten();
+                        if post_status.as_deref() == Some("cancelled") {
+                            tracing::warn!(
+                                "Deployment {} superseded during build; discarding its container without swapping routes",
+                                deployment_id
+                            );
+                            let _ = runtime.stop(&container_info.container_id).await;
+                            let _ = runtime.remove(&container_info.container_id).await;
+                            return;
+                        }
+
                         // Record successful deployment metric
                         record_deployment_success();
                         let duration_secs = deploy_start.elapsed().as_secs_f64();

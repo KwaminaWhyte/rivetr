@@ -408,6 +408,21 @@ async fn run_git_deployment(
     Ok(image_tag)
 }
 
+/// Bail out of the pipeline if the deployment has been cancelled — either
+/// explicitly by a user or implicitly by a newer deployment that superseded it.
+/// Called at pipeline checkpoints so a stale build stops before it wastes work
+/// or, worse, swaps a stale container/route in over a newer deployment.
+async fn bail_if_cancelled(db: &DbPool, deployment_id: &str) -> Result<()> {
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
+        .bind(deployment_id)
+        .fetch_optional(db)
+        .await?;
+    if status.as_deref() == Some("cancelled") {
+        anyhow::bail!("Deployment was cancelled (superseded by a newer deployment)");
+    }
+    Ok(())
+}
+
 pub async fn run_deployment(
     db: &DbPool,
     runtime: Arc<dyn ContainerRuntime>,
@@ -417,14 +432,7 @@ pub async fn run_deployment(
     encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<DeploymentResult> {
     // Check if the deployment was cancelled while it was queued (before the pipeline picked it up)
-    let current_status: Option<String> =
-        sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
-            .bind(deployment_id)
-            .fetch_optional(db)
-            .await?;
-    if current_status.as_deref() == Some("cancelled") {
-        anyhow::bail!("Deployment was cancelled before it could start");
-    }
+    bail_if_cancelled(db, deployment_id).await?;
 
     // Log remote deployment intent if a server is assigned to this app
     if let Some(ref server_id) = app.server_id {
@@ -569,6 +577,11 @@ pub async fn run_deployment(
             };
         (tag, remote)
     };
+
+    // Abort if a newer deployment superseded this one while it was building,
+    // before we start a container or touch proxy routes — otherwise a stale
+    // build could win the container/route swap over the newer one.
+    bail_if_cancelled(db, deployment_id).await?;
 
     // Start container, health check, and finalize
     let result =
