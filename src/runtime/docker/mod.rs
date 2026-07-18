@@ -118,6 +118,10 @@ impl ContainerRuntime for DockerRuntime {
         container::prune_images(self).await
     }
 
+    async fn prune_all_images(&self) -> Result<u64> {
+        container::prune_all_images(self).await
+    }
+
     async fn prune_build_cache(&self) -> Result<u64> {
         container::prune_build_cache(self).await
     }

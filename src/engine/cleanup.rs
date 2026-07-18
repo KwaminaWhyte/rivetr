@@ -143,9 +143,18 @@ impl DeploymentCleanup {
             }
         }
 
-        // Prune unused images if enabled
+        // Prune unused images if enabled. Under disk pressure (aggressive),
+        // prune ALL unused images — not just dangling — so orphaned tagged
+        // per-deployment images (whose remove_image failed and left the image
+        // behind) actually get reclaimed. Normal cycles stay dangling-only to
+        // preserve recent rollback images.
         if prune_images {
-            match self.runtime.prune_images().await {
+            let prune = if aggressive {
+                self.runtime.prune_all_images().await
+            } else {
+                self.runtime.prune_images().await
+            };
+            match prune {
                 Ok(bytes_reclaimed) => {
                     stats.bytes_reclaimed += bytes_reclaimed;
                     if bytes_reclaimed > 0 {

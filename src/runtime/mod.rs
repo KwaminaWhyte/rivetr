@@ -329,6 +329,13 @@ pub trait ContainerRuntime: Send + Sync {
     async fn remove_image(&self, image: &str) -> Result<()>;
     /// Prune unused/dangling images, returns bytes reclaimed
     async fn prune_images(&self) -> Result<u64>;
+    /// Prune ALL unused images (like `docker image prune -a`), not just
+    /// dangling — reclaims orphaned tagged per-deployment images. Used under
+    /// disk pressure. Defaults to the dangling-only prune for runtimes that
+    /// don't distinguish.
+    async fn prune_all_images(&self) -> Result<u64> {
+        self.prune_images().await
+    }
     /// Prune Docker build cache, returns bytes reclaimed
     async fn prune_build_cache(&self) -> Result<u64> {
         Ok(0)

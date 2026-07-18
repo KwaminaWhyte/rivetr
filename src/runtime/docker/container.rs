@@ -820,9 +820,25 @@ pub async fn prune_build_cache(_runtime: &DockerRuntime) -> Result<u64> {
 }
 
 pub async fn prune_images(runtime: &DockerRuntime) -> Result<u64> {
-    let options = PruneImagesOptions::<String> {
-        filters: HashMap::new(),
-    };
+    prune_images_inner(runtime, false).await
+}
+
+/// Prune ALL unused images (equivalent to `docker image prune -a`): every image
+/// not referenced by a container, not just dangling ones. Reclaims orphaned
+/// tagged per-deployment images that a dangling-only prune leaves behind (the
+/// main driver of disk-fill on long-lived hosts). Only used under disk
+/// pressure — base images will re-pull on the next build.
+pub async fn prune_all_images(runtime: &DockerRuntime) -> Result<u64> {
+    prune_images_inner(runtime, true).await
+}
+
+async fn prune_images_inner(runtime: &DockerRuntime, all: bool) -> Result<u64> {
+    let mut filters: HashMap<String, Vec<String>> = HashMap::new();
+    if all {
+        // dangling=false ⇒ remove every unused image, not only dangling ones.
+        filters.insert("dangling".to_string(), vec!["false".to_string()]);
+    }
+    let options = PruneImagesOptions::<String> { filters };
 
     let result = runtime
         .client

@@ -255,7 +255,9 @@ impl DiskMonitor {
         tracing::warn!("Critical disk usage: reclaiming space (pruning images + build cache)");
 
         let mut reclaimed: u64 = 0;
-        match self.runtime.prune_images().await {
+        // Critical disk pressure — prune ALL unused images (not just dangling)
+        // so orphaned tagged per-deployment images are reclaimed too.
+        match self.runtime.prune_all_images().await {
             Ok(bytes) => reclaimed = reclaimed.saturating_add(bytes),
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to prune images during critical disk reclaim")
