@@ -106,6 +106,18 @@ ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:3px 0}
 <div class="wrap">
 
 <section class="panel active" id="p-summary">
+  <div class="card" style="border-left:4px solid var(--ok);margin-bottom:16px">
+    <h3 style="margin-top:0">Progress, 2026-10-17: shipped to the dev server and pushed to main</h3>
+    <p>The items below were built after this report was written, so the lists further down still show them as open. Each was tested live on the dev server unless noted.</p>
+    <ul>
+      <li><b>Sidebar</b> cut from 15 entries to 6, plus a Cmd+K command palette and a grouped Settings sub-nav. App page tabs went from 12 to 6 (URLs unchanged).</li>
+      <li><b>Security:</b> client-IP trust for rate limits, login lockout, CSP and HSTS, OAuth state (single use and cookie bound), SSH host-key pinning, team-scoped authorization tail (build servers, channels, destinations, S3, git providers), versioned ENC2 encryption with a per-install salt, generated encryption key on fresh installs.</li>
+      <li><b>Performance:</b> dashboard stats 36s to under 2s, one batch call for resource stats and one for app statuses (dashboard about 40 API calls to 12), data retention with batched pruning, batched proxy log writer, per-app opt-in access logging.</li>
+      <li><b>Deploys:</b> connection drain before the old container stops, readiness probe for apps without a healthcheck, rollback with data (pre-deploy database snapshots, tested end to end), and a fix for rollbacks dropping HTTP Basic Auth.</li>
+      <li><b>UI:</b> query error states with Retry, about 65 aria-labels, dead routes removed, clippy clean at CI strength.</li>
+      <li><b>Still open:</b> Cloudflare tunnel, GitHub App and swarm team scoping; per-caller filtering of SSH key and tunnel lists; app share view-versus-write; OIDC state cookie; mongo and redis snapshots; about 35 unlabeled select triggers and 20 pages without error UI; role-aware sidebar.</li>
+    </ul>
+  </div>
   <h2>Where things stand</h2>
   <p class="lead">Feature coverage is not the problem (599/599 tasks, parity or better vs Coolify and Dokploy on most rows). The gaps are first impression (a 15-item sidebar), hardening that the June audits flagged and nobody closed, and a few places where Rivetr can win on trust instead of checkboxes.</p>
   <div class="grid g3">
