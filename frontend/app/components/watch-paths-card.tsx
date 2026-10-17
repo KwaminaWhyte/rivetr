@@ -134,7 +134,7 @@ export function WatchPathsCard({ app, token }: WatchPathsCardProps) {
         )}
 
         <div className="flex gap-2">
-          <Input
+          <Input aria-label="e.g., src/**, package.json, Dockerfile"
             placeholder="e.g., src/**, package.json, Dockerfile"
             value={newPath}
             onChange={(e) => setNewPath(e.target.value)}

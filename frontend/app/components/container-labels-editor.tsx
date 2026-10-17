@@ -80,7 +80,7 @@ export function ContainerLabelsEditor({
             {rows.map((row, index) => (
               <TableRow key={index}>
                 <TableCell className="py-1 pr-2">
-                  <Input
+                  <Input aria-label="com.example.label"
                     placeholder="com.example.label"
                     value={row.key}
                     onChange={(e) => updateKey(index, e.target.value)}
@@ -88,7 +88,7 @@ export function ContainerLabelsEditor({
                   />
                 </TableCell>
                 <TableCell className="py-1 pr-2">
-                  <Input
+                  <Input aria-label="value"
                     placeholder="value"
                     value={row.value}
                     onChange={(e) => updateValue(index, e.target.value)}

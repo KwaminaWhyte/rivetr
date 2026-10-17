@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 
 export function meta() {
   return [
@@ -108,7 +109,7 @@ export default function SettingsWebhookEventsPage() {
     updateParams({ page: newPage > 1 ? String(newPage) : undefined });
   };
 
-  const { data, refetch, isLoading } = useQuery<WebhookEventListResponse>({
+  const { data, refetch, isLoading, error: listError } = useQuery<WebhookEventListResponse>({
     queryKey: ["webhookEvents", providerFilter, statusFilter, page],
     queryFn: () =>
       systemApi.listWebhookEvents({
@@ -200,7 +201,9 @@ export default function SettingsWebhookEventsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && !data ? (
+            <QueryError what="webhook events" error={listError} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />

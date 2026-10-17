@@ -489,7 +489,7 @@ export function SharedEnvVarsTable({
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Key</Label>
-              <Input value={formKey} disabled className="font-mono bg-muted" />
+              <Input aria-label="Key" value={formKey} disabled className="font-mono bg-muted" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-value">Value</Label>

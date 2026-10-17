@@ -612,7 +612,7 @@ export function TeamNotificationChannelsCard({
                         >
                           <Send className="h-4 w-4" />
                         </Button>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="destructive"
                           size="sm"
                           onClick={() => {

@@ -190,7 +190,7 @@ export function AuditTab({ teamId, isActiveTab }: AuditTabProps) {
 
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground" />
-            <Input
+            <Input aria-label="Start date"
               type="date"
               value={auditStartDate}
               onChange={(e) => {
@@ -201,7 +201,7 @@ export function AuditTab({ teamId, isActiveTab }: AuditTabProps) {
               placeholder="Start date"
             />
             <span className="text-muted-foreground">to</span>
-            <Input
+            <Input aria-label="End date"
               type="date"
               value={auditEndDate}
               onChange={(e) => {

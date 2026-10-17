@@ -319,11 +319,11 @@ export default function ServiceGeneralTab() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Created</Label>
-                <Input value={formatDate(service.created_at)} readOnly />
+                <Input aria-label="Created" value={formatDate(service.created_at)} readOnly />
               </div>
               <div className="space-y-2">
                 <Label>Updated</Label>
-                <Input value={formatDate(service.updated_at)} readOnly />
+                <Input aria-label="Updated" value={formatDate(service.updated_at)} readOnly />
               </div>
             </div>
           </CardContent>

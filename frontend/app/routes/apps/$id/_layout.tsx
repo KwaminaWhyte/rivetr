@@ -13,7 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
-import { getPrimaryDomain } from "@/lib/utils";
+import { cn, getPrimaryDomain } from "@/lib/utils";
+import { APP_TAB_GROUPS, resolveActiveAppTab } from "@/lib/app-tabs";
 import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
@@ -105,21 +106,6 @@ const ACTIVE_STATUSES: DeploymentStatus[] = [
 function isActiveDeployment(status: DeploymentStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
 }
-
-const TAB_DEFS = [
-  { id: "general", label: "General", path: "" },
-  { id: "env-vars", label: "Env Vars", path: "/env-vars" },
-  { id: "network", label: "Network", path: "/network" },
-  { id: "settings", label: "Settings", path: "/settings" },
-  { id: "deployments", label: "Deployments", path: "/deployments" },
-  { id: "previews", label: "Previews", path: "/previews" },
-  { id: "jobs", label: "Jobs", path: "/jobs" },
-  { id: "logs", label: "Logs", path: "/logs" },
-  { id: "log-drains", label: "Log Drains", path: "/log-drains" },
-  { id: "monitoring", label: "Monitoring", path: "/monitoring" },
-  { id: "security", label: "Security", path: "/security" },
-  { id: "terminal", label: "Terminal", path: "/terminal" },
-];
 
 export default function AppDetailLayout() {
   const { id } = useParams();
@@ -405,13 +391,10 @@ export default function AppDetailLayout() {
   // Determine active tab from path
   const basePath = `/apps/${id}`;
   const currentPath = location.pathname;
-  const activeTab =
-    TAB_DEFS.find((tab) => {
-      if (tab.path === "") {
-        return currentPath === basePath || currentPath === basePath + "/";
-      }
-      return currentPath.startsWith(basePath + tab.path);
-    })?.id || "general";
+  const { group: activeGroup, item: activeItem } = resolveActiveAppTab(
+    location.pathname,
+    basePath
+  );
 
   if (appLoading) {
     return (
@@ -659,13 +642,49 @@ export default function AppDetailLayout() {
       </div>
 
       {/* Tabs Navigation */}
-      <Tabs value={activeTab} className="w-full">
-        <TabsList className="w-full justify-start">
-          {TAB_DEFS.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} asChild>
-              <Link to={`${basePath}${tab.path}`} className="gap-1.5">
-                {tab.label}
-                {tab.id === "deployments" && pendingApprovalCount > 0 && (
+      <div className="space-y-2">
+        <Tabs value={activeGroup.id} className="w-full overflow-x-auto">
+          <TabsList className="w-full justify-start">
+            {APP_TAB_GROUPS.map((group) => (
+              <TabsTrigger key={group.id} value={group.id} asChild>
+                <Link
+                  to={`${basePath}${group.items[0].path}`}
+                  className="gap-1.5"
+                >
+                  {group.label}
+                  {group.id === "deployments" && pendingApprovalCount > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="h-4 min-w-4 px-1 text-[10px] rounded-full"
+                    >
+                      {pendingApprovalCount}
+                    </Badge>
+                  )}
+                </Link>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        {activeGroup.items.length > 1 && (
+          <nav
+            aria-label={`${activeGroup.label} sections`}
+            className="flex items-center gap-1 overflow-x-auto"
+          >
+            {activeGroup.items.map((item) => (
+              <Link
+                key={item.id}
+                to={`${basePath}${item.path}`}
+                aria-current={item.id === activeItem.id ? "page" : undefined}
+                className={cn(
+                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm transition-colors",
+                  item.id === activeItem.id
+                    ? "bg-muted font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                )}
+              >
+                {item.label}
+                {item.id === "deployments" && pendingApprovalCount > 0 && (
                   <Badge
                     variant="destructive"
                     className="h-4 min-w-4 px-1 text-[10px] rounded-full"
@@ -674,10 +693,10 @@ export default function AppDetailLayout() {
                   </Badge>
                 )}
               </Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+            ))}
+          </nav>
+        )}
+      </div>
 
       {/* Tab Content via Outlet */}
       <Outlet context={{ app, deployments, deploymentsData }} />

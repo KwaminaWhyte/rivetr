@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +59,7 @@ function statusBadge(status: CloudflareTunnel["status"]) {
 export default function TunnelsPage() {
   const qc = useQueryClient();
 
-  const { data: tunnels = [], isLoading } = useQuery({
+  const { data: tunnels = [], isLoading, error: listError, refetch: refetchList } = useQuery({
     queryKey: ["tunnels"],
     queryFn: () => tunnelsApi.list(),
     refetchInterval: 5000,
@@ -137,7 +138,9 @@ export default function TunnelsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && tunnels.length === 0 ? (
+            <QueryError what="tunnels" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground py-4">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading tunnels…
@@ -195,7 +198,7 @@ export default function TunnelsPage() {
                             Start
                           </Button>
                         )}
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => setDeleteId(tunnel.id)}

@@ -136,7 +136,8 @@ export default function DeploymentDetailPage() {
     deployment.image_tag != null;
 
   const rollbackMutation = useMutation({
-    mutationFn: () => api.rollbackDeployment(deploymentId!),
+    mutationFn: () =>
+      api.rollbackDeployment(deploymentId!, { target_deployment_id: deploymentId! }),
     onSuccess: () => {
       toast.success("Rollback started");
       queryClient.invalidateQueries({ queryKey: ["deployment", deploymentId] });

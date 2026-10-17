@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Copy, Plus, Trash2, Key, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -58,7 +59,7 @@ export default function SettingsTokensPage() {
   const [newTokenExpiry, setNewTokenExpiry] = useState("");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
 
-  const { data: tokens = [], isLoading } = useQuery<ApiToken[]>({
+  const { data: tokens = [], isLoading, error: listError, refetch: refetchList } = useQuery<ApiToken[]>({
     queryKey: ["api-tokens"],
     queryFn: () => apiRequest<ApiToken[]>("/tokens"),
   });
@@ -146,7 +147,7 @@ export default function SettingsTokensPage() {
               <code className="flex-1 rounded bg-muted px-3 py-2 text-sm font-mono break-all">
                 {createdToken}
               </code>
-              <Button
+              <Button aria-label="Copy to clipboard"
                 size="sm"
                 variant="outline"
                 onClick={() => copyToken(createdToken)}
@@ -175,7 +176,9 @@ export default function SettingsTokensPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && tokens.length === 0 ? (
+            <QueryError what="API tokens" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <p className="text-muted-foreground py-4 text-center text-sm">Loading…</p>
           ) : tokens.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center text-sm">
@@ -206,7 +209,7 @@ export default function SettingsTokensPage() {
                       {formatDate(token.expires_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      <Button aria-label="Delete"
                         size="sm"
                         variant="ghost"
                         className="text-destructive hover:text-destructive"

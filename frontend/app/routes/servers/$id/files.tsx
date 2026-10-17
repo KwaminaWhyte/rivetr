@@ -280,7 +280,7 @@ export default function ServerFilesPage() {
                           <span>{formatDate(entry.modified)}</span>
                         </div>
                       </div>
-                      <button
+                      <button aria-label="Delete"
                         className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -341,7 +341,7 @@ export default function ServerFilesPage() {
                       >
                         Edit
                       </Button>
-                      <Button
+                      <Button aria-label="Delete"
                         size="sm"
                         variant="ghost"
                         className="text-destructive hover:bg-destructive/10"

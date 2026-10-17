@@ -284,7 +284,7 @@ export function ContainerLabelsCard({
                       />
                     </TableCell>
                     <TableCell>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         onClick={() => removeLabel(key)}
@@ -312,7 +312,7 @@ export function ContainerLabelsCard({
           <div className="flex gap-2 items-end">
             <div className="flex-1 space-y-1">
               <Label className="text-xs">Key</Label>
-              <Input
+              <Input aria-label="Key"
                 placeholder="com.example.label"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
@@ -322,7 +322,7 @@ export function ContainerLabelsCard({
             </div>
             <div className="flex-1 space-y-1">
               <Label className="text-xs">Value</Label>
-              <Input
+              <Input aria-label="Value"
                 placeholder="value"
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}

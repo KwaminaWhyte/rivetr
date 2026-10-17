@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 
 export function meta() {
   return [
@@ -89,7 +90,7 @@ export default function SettingsAuditPage() {
     end_date: searchParams.get("end_date") || undefined,
   };
 
-  const { data: auditLogs, refetch, isLoading } = useQuery<AuditLogListResponse>({
+  const { data: auditLogs, refetch, isLoading, error: listError } = useQuery<AuditLogListResponse>({
     queryKey: ["auditLogs", query],
     queryFn: () => api.getAuditLogs(query),
   });
@@ -230,7 +231,7 @@ export default function SettingsAuditPage() {
 
               <div className="space-y-2">
                 <Label>Start Date</Label>
-                <Input
+                <Input aria-label="Start Date"
                   type="datetime-local"
                   value={query.start_date || ""}
                   onChange={(e) => handleFilterChange("start_date", e.target.value)}
@@ -239,7 +240,7 @@ export default function SettingsAuditPage() {
 
               <div className="space-y-2">
                 <Label>End Date</Label>
-                <Input
+                <Input aria-label="End Date"
                   type="datetime-local"
                   value={query.end_date || ""}
                   onChange={(e) => handleFilterChange("end_date", e.target.value)}
@@ -265,7 +266,9 @@ export default function SettingsAuditPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && !auditLogs ? (
+            <QueryError what="audit logs" error={listError} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3, 4, 5].map((i) => (
                 <Skeleton key={i} className="h-12 w-full" />

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { ResourceChart } from "@/components/resource-chart";
@@ -149,24 +150,27 @@ export default function MonitoringPage() {
   const { currentTeamId } = useTeamContext();
 
   // Query for system stats, scoped to current team (teamId null = global/personal workspace)
-  const { data: stats, refetch: refetchStats } = useQuery<SystemStats | null>({
+  const { data: stats, error: statsError, refetch: refetchStats } = useQuery<SystemStats>({
     queryKey: ["system-stats", currentTeamId],
-    queryFn: () => api.getSystemStats({ teamId: currentTeamId }).catch(() => null),
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
     refetchInterval: 10000, // Refresh every 10 seconds
+    retry: 1,
   });
 
   // Query for health status with polling
-  const { data: health, isLoading: healthLoading, refetch: refetchHealth } = useQuery<SystemHealthStatus | null>({
+  const { data: health, isLoading: healthLoading, error: healthError, refetch: refetchHealth } = useQuery<SystemHealthStatus>({
     queryKey: ["systemHealth"],
-    queryFn: () => api.getSystemHealth().catch(() => null),
+    queryFn: () => api.getSystemHealth(),
     refetchInterval: 30000, // Refresh every 30 seconds
+    retry: 1,
   });
 
   // Query for disk stats with polling, same key as dashboard so both pages share one cache entry
-  const { data: disk, isLoading: diskLoading, refetch: refetchDisk } = useQuery<DiskStats | null>({
+  const { data: disk, isLoading: diskLoading, error: diskError, refetch: refetchDisk } = useQuery<DiskStats>({
     queryKey: ["diskStats"],
-    queryFn: () => api.getDiskStats().catch(() => null),
+    queryFn: () => api.getDiskStats(),
     refetchInterval: 60000, // Refresh every minute
+    retry: 1,
   });
 
   const handleRefresh = () => {
@@ -230,6 +234,14 @@ export default function MonitoringPage() {
           Refresh
         </Button>
       </div>
+
+      {(statsError || healthError || diskError) && (
+        <QueryError
+          what="monitoring data"
+          error={statsError ?? healthError ?? diskError}
+          onRetry={handleRefresh}
+        />
+      )}
 
       {/* Overall Status Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -288,7 +288,7 @@ export default function BuildServersPage() {
                           )}
                           Check
                         </Button>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => setDeleteId(server.id)}

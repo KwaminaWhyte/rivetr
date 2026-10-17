@@ -71,15 +71,15 @@ export default function DatabaseGeneralTab() {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Name</Label>
-              <Input value={database.name} readOnly />
+              <Input aria-label="Name" value={database.name} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Type</Label>
-              <Input value={database.db_type.toUpperCase()} readOnly />
+              <Input aria-label="Type" value={database.db_type.toUpperCase()} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Version</Label>
-              <Input value={database.version} readOnly />
+              <Input aria-label="Version" value={database.version} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
@@ -269,14 +269,14 @@ export default function DatabaseGeneralTab() {
             </div>
             <div className="space-y-2">
               <Label>Created</Label>
-              <Input
+              <Input aria-label="Created"
                 value={new Date(database.created_at).toLocaleString()}
                 readOnly
               />
             </div>
             <div className="space-y-2">
               <Label>Last Updated</Label>
-              <Input
+              <Input aria-label="Last Updated"
                 value={new Date(database.updated_at).toLocaleString()}
                 readOnly
               />

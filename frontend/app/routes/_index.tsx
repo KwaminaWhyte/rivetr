@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ResourceChart } from "@/components/resource-chart";
 import { RecentEvents } from "@/components/recent-events";
 import { CostSummaryCard } from "@/components/cost-summary-card";
+import { QueryError } from "@/components/query-error";
 import { RunningServicesCard } from "@/components/running-services-card";
 import type { SystemStats, DiskStats } from "@/types/api";
 import { Activity, Cpu, HardDrive, Database, Clock, Plus } from "lucide-react";
@@ -98,12 +99,12 @@ function StatCard({
     >
       <CardContent className="pt-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <div className="flex items-baseline gap-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="truncate text-sm text-muted-foreground">{title}</p>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
               <p
-                className={`font-bold leading-none whitespace-nowrap ${
-                  compactValue ? "text-xl" : "text-2xl"
+                className={`min-w-0 break-words font-bold leading-tight ${
+                  compactValue ? "text-lg xl:text-xl" : "text-2xl"
                 }`}
               >
                 {value}
@@ -149,17 +150,29 @@ export default function DashboardPage() {
   // Use React Query for real-time updates
   // Note: system stats are always fetched, teamId is optional server-side scoping,
   // not a required parameter. Passing null means "all resources" (personal workspace).
-  const { data: stats, isLoading: statsLoading } = useQuery<SystemStats | null>({
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery<SystemStats>({
     queryKey: ["system-stats", currentTeamId],
-    queryFn: () => api.getSystemStats({ teamId: currentTeamId }).catch(() => null),
+    queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
     refetchInterval: 10000, // Refresh every 10 seconds
+    retry: 1,
   });
 
   // Use the same query key as the monitoring page so both share one cached result
-  const { data: diskStats, isLoading: diskLoading } = useQuery<DiskStats | null>({
+  const {
+    data: diskStats,
+    isLoading: diskLoading,
+    error: diskError,
+    refetch: refetchDisk,
+  } = useQuery<DiskStats>({
     queryKey: ["diskStats"],
-    queryFn: () => api.getDiskStats().catch(() => null),
+    queryFn: () => api.getDiskStats(),
     refetchInterval: 30000, // Refresh every 30 seconds (disk stats change less frequently)
+    retry: 1,
   });
 
   const { data: events = [], dataUpdatedAt } = useQuery({
@@ -185,6 +198,7 @@ export default function DashboardPage() {
     : "N/A";
 
   const isLoading = statsLoading || diskLoading;
+  const loadError = statsError ?? diskError;
 
   return (
     <div className="space-y-6">
@@ -218,11 +232,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {loadError && (
+        <QueryError
+          what="system stats"
+          error={loadError}
+          onRetry={() => {
+            refetchStats();
+            refetchDisk();
+          }}
+        />
+      )}
+
       {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <StatCard
           title="Running Services"
-          value={isLoading ? "..." : (stats?.running_apps_count ?? 0) + (stats?.running_databases_count ?? 0) + (stats?.running_services_count ?? 0)}
+          value={isLoading ? "..." : !stats ? "--" : (stats?.running_apps_count ?? 0) + (stats?.running_databases_count ?? 0) + (stats?.running_services_count ?? 0)}
           icon={<Activity className="h-5 w-5 text-green-600" />}
           iconBgColor="bg-green-100 dark:bg-green-900/30"
           trend={stats ? `${stats.running_apps_count} apps, ${stats.running_databases_count} dbs, ${stats.running_services_count} svcs` : undefined}
@@ -230,14 +255,14 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Total CPU Usage"
-          value={isLoading ? "..." : `${stats?.total_cpu_percent?.toFixed(1) ?? 0}%`}
+          value={isLoading ? "..." : stats ? `${stats.total_cpu_percent?.toFixed(1) ?? 0}%` : "--"}
           icon={<Cpu className="h-5 w-5 text-blue-600" />}
           iconBgColor="bg-blue-100 dark:bg-blue-900/30"
           to="/monitoring"
         />
         <StatCard
           title="Memory Usage"
-          value={isLoading ? "..." : memoryDisplay}
+          value={isLoading ? "..." : stats ? memoryDisplay : "--"}
           compactValue
           icon={<HardDrive className="h-5 w-5 text-purple-600" />}
           iconBgColor="bg-purple-100 dark:bg-purple-900/30"

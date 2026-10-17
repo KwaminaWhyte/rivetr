@@ -290,7 +290,7 @@ export function AlertsCard({ appId }: AlertsCardProps) {
                         onCheckedChange={() => handleToggleAlert(alert)}
                         disabled={updateMutation.isPending}
                       />
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="icon"
                         onClick={() => setDeleteAlertId(alert.id)}

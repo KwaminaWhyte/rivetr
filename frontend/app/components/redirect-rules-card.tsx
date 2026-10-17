@@ -216,7 +216,7 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
+                    <Button aria-label="Edit"
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
@@ -224,7 +224,7 @@ export function RedirectRulesCard({ appId, token }: RedirectRulesCardProps) {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button
+                    <Button aria-label="Delete"
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive hover:text-destructive"

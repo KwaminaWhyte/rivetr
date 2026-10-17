@@ -154,6 +154,16 @@ export function ZipUploadZone({
     <div className={cn("space-y-4", className)}>
       {/* Drop Zone */}
       <div
+        role="button"
+        tabIndex={disabled || isUploading ? -1 : 0}
+        aria-label="Select or drop a ZIP file"
+        aria-disabled={disabled || isUploading}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
         onClick={handleClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

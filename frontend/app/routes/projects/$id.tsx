@@ -106,7 +106,7 @@ export default function ProjectDetailPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
+          <Button aria-label="Back" variant="ghost" size="icon" asChild>
             <Link to="/projects">
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -152,7 +152,7 @@ export default function ProjectDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+        <Button aria-label="Back" variant="ghost" size="icon" asChild>
           <Link to="/projects">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -169,7 +169,7 @@ export default function ProjectDetailPage() {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button aria-label="More actions" variant="ghost" size="icon">
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>

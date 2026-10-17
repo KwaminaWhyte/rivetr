@@ -16,6 +16,8 @@ import type {
   DeploymentListResponse,
   DeploymentQuery,
   DeploymentLog,
+  DeploymentSnapshot,
+  RollbackRequest,
   ContainerStats,
   EnvVar,
   CreateEnvVarRequest,
@@ -193,13 +195,20 @@ export const appsApi = {
   getTags: (appId: string, limit = 20, token?: string) =>
     apiRequest<GitTag[]>(`/apps/${appId}/tags?limit=${limit}`, {}, token),
 
-  /** Rollback to a previous deployment */
-  rollbackDeployment: (id: string, token?: string) =>
+  /** Rollback to a previous deployment, optionally restoring database snapshots */
+  rollbackDeployment: (id: string, options?: RollbackRequest, token?: string) =>
     apiRequest<Deployment>(
       `/deployments/${id}/rollback`,
-      { method: "POST" },
+      {
+        method: "POST",
+        ...(options ? { body: JSON.stringify(options) } : {}),
+      },
       token,
     ),
+
+  /** Database snapshots restored by rolling back to this deployment */
+  getDeploymentSnapshots: (id: string, token?: string) =>
+    apiRequest<DeploymentSnapshot[]>(`/deployments/${id}/snapshots`, {}, token),
 
   // -------------------------------------------------------------------------
   // Upload Deployments (ZIP file upload)

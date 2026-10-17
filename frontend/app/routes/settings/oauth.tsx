@@ -462,7 +462,7 @@ function OAuthConnectionsCard() {
                       </p>
                     </div>
                   </div>
-                  <Button
+                  <Button aria-label="Unlink"
                     variant="ghost"
                     size="sm"
                     onClick={() => setUnlinkId(conn.id)}

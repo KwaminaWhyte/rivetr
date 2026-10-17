@@ -274,6 +274,8 @@ export interface App {
   registry_push_enabled: boolean;
   max_rollback_versions: number;
   rollback_retention_count: number;
+  /** Snapshot linked managed databases before each deployment (rollback with data) */
+  snapshot_before_deploy: boolean;
   // Replica settings
   replica_count: number;
   // Deployment approval and maintenance mode
@@ -328,6 +330,8 @@ export interface App {
   is_static_site: boolean;
   /** URL prefix to strip from incoming requests before forwarding to the container */
   strip_prefix: string | null;
+  /** Write this app's proxied requests to the proxy access log */
+  access_logging: boolean;
   /** Inline Dockerfile content (alternative to git-based build) */
   inline_dockerfile: string | null;
   /** Docker destination (named network) for this app */
@@ -506,6 +510,7 @@ export interface CreateAppRequest {
   publish_directory?: string;
   // Preview deployments
   preview_enabled?: boolean;
+  access_logging?: boolean;
   // GitHub App installation
   github_app_installation_id?: string;
   // Git provider (OAuth) link for authenticated HTTPS cloning
@@ -568,6 +573,7 @@ export interface UpdateAppRequest {
   registry_push_enabled?: boolean;
   max_rollback_versions?: number;
   rollback_retention_count?: number;
+  snapshot_before_deploy?: boolean;
   // Deployment approval and maintenance
   require_approval?: boolean;
   maintenance_mode?: boolean;
@@ -620,6 +626,7 @@ export interface UpdateAppRequest {
   is_static_site?: boolean;
   /** URL prefix to strip from incoming requests before forwarding to the container */
   strip_prefix?: string;
+  access_logging?: boolean;
   /** Inline Dockerfile content, set to empty string to clear */
   inline_dockerfile?: string;
   /** Docker destination (named network), set to empty string to clear */

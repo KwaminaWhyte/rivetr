@@ -115,6 +115,15 @@ export default function DatabaseImportTab() {
 
           {/* File upload area */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Select a dump file"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-8 cursor-pointer hover:border-primary/50 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >

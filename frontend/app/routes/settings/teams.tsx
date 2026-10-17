@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 
 export function meta() {
   return [
@@ -71,7 +72,7 @@ export default function SettingsTeamsPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const { data: teams = [], isLoading } = useQuery<TeamWithMemberCount[]>({
+  const { data: teams = [], isLoading, error: listError, refetch: refetchList } = useQuery<TeamWithMemberCount[]>({
     queryKey: ["teams"],
     queryFn: () => api.getTeams(),
   });
@@ -148,7 +149,9 @@ export default function SettingsTeamsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && teams.length === 0 ? (
+            <QueryError what="teams" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>

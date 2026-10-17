@@ -651,7 +651,7 @@ export default function SwarmPage() {
                         >
                           Scale
                         </Button>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => setDeleteServiceId(service.id)}

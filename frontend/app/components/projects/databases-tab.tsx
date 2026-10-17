@@ -830,7 +830,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       <div className="text-xs text-muted-foreground">Username</div>
                       <code className="text-sm">{revealedDatabase.credentials.username}</code>
                     </div>
-                    <Button
+                    <Button aria-label="Copy to clipboard"
                       variant="ghost"
                       size="icon"
                       onClick={() =>
@@ -852,7 +852,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                           : "----------------"}
                       </code>
                     </div>
-                    <Button
+                    <Button aria-label="Copy to clipboard"
                       variant="ghost"
                       size="icon"
                       onClick={() =>
@@ -870,7 +870,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       <div className="text-xs text-muted-foreground">Database</div>
                       <code className="text-sm">{revealedDatabase.credentials.database}</code>
                     </div>
-                    <Button
+                    <Button aria-label="Copy to clipboard"
                       variant="ghost"
                       size="icon"
                       onClick={() =>
@@ -891,7 +891,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       <div className="text-xs text-muted-foreground">
                         Internal Connection String
                       </div>
-                      <Button
+                      <Button aria-label="Copy to clipboard"
                         variant="ghost"
                         size="icon"
                         onClick={() =>
@@ -921,7 +921,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
                       <div className="text-xs text-muted-foreground">
                         External Connection String
                       </div>
-                      <Button
+                      <Button aria-label="Copy to clipboard"
                         variant="ghost"
                         size="icon"
                         onClick={() =>

@@ -730,7 +730,7 @@ export default function S3StoragePage() {
                         <Wifi className="h-4 w-4" />
                       )}
                     </Button>
-                    <Button
+                    <Button aria-label="Edit"
                       variant="outline"
                       size="sm"
                       onClick={() => setEditingConfig(config)}
@@ -739,7 +739,7 @@ export default function S3StoragePage() {
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="outline"
                           size="sm"
                           className="text-destructive hover:text-destructive"
@@ -798,7 +798,7 @@ export default function S3StoragePage() {
                 Backups stored in your S3-compatible storage.
               </CardDescription>
             </div>
-            <Button
+            <Button aria-label="Refresh"
               variant="outline"
               size="sm"
               onClick={() =>
@@ -898,7 +898,7 @@ export default function S3StoragePage() {
                     )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="outline"
                           size="sm"
                           className="text-destructive hover:text-destructive"

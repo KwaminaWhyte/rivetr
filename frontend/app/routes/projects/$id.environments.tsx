@@ -184,7 +184,7 @@ function EnvironmentEnvVarsPanel({ environment }: { environment: ProjectEnvironm
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <Button
+                <Button aria-label="Edit"
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
@@ -196,7 +196,7 @@ function EnvironmentEnvVarsPanel({ environment }: { environment: ProjectEnvironm
                 >
                   <Edit2 className="h-3 w-3" />
                 </Button>
-                <Button
+                <Button aria-label="Delete"
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-destructive"
@@ -282,7 +282,7 @@ function EnvironmentEnvVarsPanel({ environment }: { environment: ProjectEnvironm
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Value</Label>
-              <Textarea
+              <Textarea aria-label="Value"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 className="font-mono"
@@ -460,7 +460,7 @@ export default function ProjectEnvironmentsPage() {
     <div className="container max-w-5xl mx-auto py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+        <Button aria-label="Back" variant="ghost" size="icon" asChild>
           <Link to={`/projects/${id}`}>
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -631,14 +631,14 @@ export default function ProjectEnvironmentsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Name</Label>
-              <Input
+              <Input aria-label="Name"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input
+              <Input aria-label="Description"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
               />

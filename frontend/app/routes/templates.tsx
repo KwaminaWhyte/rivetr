@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -124,7 +125,7 @@ export default function TemplatesPage() {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
-  const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
+  const { data: templates = [], isLoading, error: listError, refetch: refetchList } = useQuery<ServiceTemplate[]>({
     queryKey: ["templates"],
     queryFn: () => api.getTemplates(),
   });
@@ -219,14 +220,14 @@ export default function TemplatesPage() {
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
+          <Input aria-label="Search templates..."
             placeholder="Search templates..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
           {searchQuery && (
-            <Button
+            <Button aria-label="Clear search"
               variant="ghost"
               size="icon"
               className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
@@ -263,7 +264,9 @@ export default function TemplatesPage() {
       </div>
 
       {/* Templates Grid */}
-      {isLoading ? (
+      {listError && templates.length === 0 ? (
+        <QueryError what="templates" error={listError} onRetry={() => refetchList()} />
+      ) : isLoading ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Loader2 className="mx-auto h-12 w-12 text-muted-foreground mb-4 animate-spin" />

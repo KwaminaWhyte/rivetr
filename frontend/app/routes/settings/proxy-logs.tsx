@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -81,7 +82,7 @@ export default function ProxyLogsPage() {
   const appliedDomain = searchParams.get("domain") ?? "";
   const appliedStatus = searchParams.get("status") ?? "all";
 
-  const { data, isLoading, isFetching, refetch } = useQuery<ProxyLogListResponse>({
+  const { data, isLoading, isFetching, refetch, error: listError } = useQuery<ProxyLogListResponse>({
     queryKey: ["proxy-logs", appliedDomain, appliedStatus, perPage, page],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -227,7 +228,9 @@ export default function ProxyLogsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && !data ? (
+            <QueryError what="proxy logs" error={listError} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
           ) : logs.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">

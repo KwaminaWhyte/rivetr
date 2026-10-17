@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api } from "@/lib/api";
+import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -68,11 +69,12 @@ interface RecentEventsProps {
 }
 
 export function RecentEvents({ initialEvents }: RecentEventsProps) {
-  const { data: events = [], isLoading } = useQuery<RecentEvent[]>({
+  const { data: events = [], isLoading, error, refetch } = useQuery<RecentEvent[]>({
     queryKey: ["recent-events"],
     queryFn: () => api.getRecentEvents(),
     initialData: initialEvents,
     refetchInterval: 15000, // Refresh every 15 seconds
+    retry: 1,
   });
 
   if (isLoading && !initialEvents) {
@@ -104,7 +106,9 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
         <CardTitle>Recent Events</CardTitle>
       </CardHeader>
       <CardContent>
-        {events.length === 0 ? (
+        {error && events.length === 0 ? (
+          <QueryError what="recent events" error={error} onRetry={() => refetch()} />
+        ) : events.length === 0 ? (
           <div className="py-4 text-center space-y-3">
             <p className="text-muted-foreground text-sm">
               No recent events. Deploy your first app to see activity here.

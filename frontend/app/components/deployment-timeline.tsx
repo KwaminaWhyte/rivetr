@@ -449,7 +449,7 @@ function TimelineItem({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button
+                      <Button aria-label="View logs"
                         variant="ghost"
                         size="sm"
                         onClick={() => onViewLogs(deployment.id)}
@@ -465,7 +465,7 @@ function TimelineItem({
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
+                        <Button aria-label="View diff"
                           variant="ghost"
                           size="sm"
                           onClick={() => onViewDiff(deployment.id)}
@@ -482,7 +482,7 @@ function TimelineItem({
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
+                        <Button aria-label="Rollback"
                           variant="outline"
                           size="sm"
                           onClick={() => onRollback(deployment.id)}
@@ -496,7 +496,7 @@ function TimelineItem({
                 )}
 
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm">
+                  <Button aria-label="Toggle details" variant="ghost" size="sm">
                     <ChevronDown
                       className={cn(
                         "w-4 h-4 transition-transform duration-200",

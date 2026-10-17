@@ -414,7 +414,7 @@ export default function DatabaseBackupsPage() {
                   )}
                 </p>
               </div>
-              <Button
+              <Button aria-label="Delete"
                 variant="ghost"
                 size="sm"
                 className="text-destructive hover:text-destructive"
@@ -448,7 +448,7 @@ export default function DatabaseBackupsPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button
+              <Button aria-label="Refresh"
                 variant="outline"
                 size="sm"
                 onClick={() => queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] })}

@@ -140,7 +140,7 @@ function ProviderCard({
           >
             Edit
           </Button>
-          <Button
+          <Button aria-label="Delete"
             variant="ghost"
             size="sm"
             onClick={() => setDeleteOpen(true)}

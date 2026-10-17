@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ProjectCard } from "@/components/project-card";
+import { QueryError } from "@/components/query-error";
 import type { App, DeploymentStatus, ManagedDatabase, ProjectWithApps } from "@/types/api";
 
 export function meta() {
@@ -81,7 +82,12 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Use React Query for data fetching
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<ProjectWithApps[]>({
+  const {
+    data: projects = [],
+    isLoading: projectsLoading,
+    error: projectsError,
+    refetch: refetchProjects,
+  } = useQuery<ProjectWithApps[]>({
     queryKey: ["projects-with-apps", currentTeamId],
     queryFn: async () => {
       const projectList = await api.getProjects(currentTeamId ?? undefined);
@@ -91,6 +97,7 @@ export default function ProjectsPage() {
       return projectsWithApps;
     },
     enabled: currentTeamId !== null,
+    retry: 1,
   });
 
   const { data: apps = [] } = useQuery<App[]>({
@@ -277,6 +284,14 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
+      {projectsError && projects.length === 0 && (
+        <QueryError
+          what="projects"
+          error={projectsError}
+          onRetry={() => refetchProjects()}
+        />
+      )}
+
       {/* Filter Tabs, hidden until there are apps to filter (U4) */}
       {apps.length > 0 && (
         <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
@@ -290,7 +305,7 @@ export default function ProjectsPage() {
       )}
 
       {/* Projects Grid */}
-      {filteredProjects.length === 0 ? (
+      {projectsError && projects.length === 0 ? null : filteredProjects.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             {projects.length === 0 ? (

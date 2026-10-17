@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -55,7 +56,7 @@ export default function SettingsDestinationsPage() {
   const [newName, setNewName] = useState("");
   const [newNetworkName, setNewNetworkName] = useState("");
 
-  const { data: destinations, isLoading } = useQuery({
+  const { data: destinations, isLoading, error: listError, refetch: refetchList } = useQuery({
     queryKey: ["destinations"],
     queryFn: () => destinationsApi.list(),
   });
@@ -114,7 +115,9 @@ export default function SettingsDestinationsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && !destinations ? (
+            <QueryError what="destinations" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <p className="text-muted-foreground text-sm">Loading...</p>
           ) : !destinations || destinations.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -147,7 +150,7 @@ export default function SettingsDestinationsPage() {
                       {new Date(dest.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         onClick={() => setShowDelete(dest)}

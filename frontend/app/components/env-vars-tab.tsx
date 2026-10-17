@@ -591,7 +591,7 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button
+                          <Button aria-label="Edit"
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(envVar)}
@@ -599,7 +599,7 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                           >
                             <Pencil className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label="Delete"
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDelete(envVar)}
@@ -797,7 +797,7 @@ DEBUG=true`}
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Key</Label>
-              <Input value={formKey} disabled className="font-mono bg-muted" />
+              <Input aria-label="Key" value={formKey} disabled className="font-mono bg-muted" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-value">Value</Label>

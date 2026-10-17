@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { QueryError } from "@/components/query-error";
 import { DollarSign, TrendingUp, TrendingDown, ArrowRight } from "lucide-react";
 import type { DashboardCostResponse, DailyCostPoint } from "@/types/api";
 
@@ -55,11 +56,12 @@ function calculateTrend(data: DailyCostPoint[]): { percent: number; isUp: boolea
 }
 
 export function CostSummaryCard() {
-  const { data: costData, isLoading } = useQuery<DashboardCostResponse | null>({
+  const { data: costData, isLoading, error, refetch } = useQuery<DashboardCostResponse | null>({
     queryKey: ["dashboard-costs"],
     queryFn: () => api.getDashboardCosts("30d"),
     refetchInterval: 60000, // Refresh every minute
     staleTime: 30000,
+    retry: 1,
   });
 
   // Calculate sparkline path
@@ -97,7 +99,9 @@ export function CostSummaryCard() {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {error && !costData ? (
+          <QueryError what="cost data" error={error} onRetry={() => refetch()} />
+        ) : isLoading ? (
           <div className="space-y-3 animate-pulse">
             <div className="h-8 bg-muted rounded w-24" />
             <div className="h-4 bg-muted rounded w-32" />

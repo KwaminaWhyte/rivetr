@@ -144,6 +144,7 @@ export const api = {
   getCommits: appsApi.getCommits,
   getTags: appsApi.getTags,
   rollbackDeployment: appsApi.rollbackDeployment,
+  getDeploymentSnapshots: appsApi.getDeploymentSnapshots,
   getAppStats: appsApi.getAppStats,
   getEnvVars: appsApi.getEnvVars,
   getEnvVar: appsApi.getEnvVar,

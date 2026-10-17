@@ -969,7 +969,7 @@ export default function ServersPage() {
                         {/* Secondary: maintenance + danger in dropdown */}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="px-2">
+                            <Button aria-label="More actions" variant="outline" size="sm" className="px-2">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>

@@ -265,6 +265,7 @@ function GitHubAppsTab() {
                   <TableRow
                     key={app.id}
                     className="cursor-pointer"
+                    aria-expanded={expandedApp === app.id}
                     onClick={() => setExpandedApp(expandedApp === app.id ? null : app.id)}
                   >
                     <TableCell>
@@ -319,7 +320,7 @@ function GitHubAppsTab() {
                         )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon">
+                            <Button aria-label="More actions" variant="ghost" size="icon">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -566,7 +567,7 @@ function GitLabTab() {
                   <p className="text-sm text-muted-foreground">@{gitlabProvider.username}</p>
                 </div>
               </div>
-              <Button
+              <Button aria-label="Delete"
                 variant="ghost"
                 size="sm"
                 onClick={() => setDeleteProvider(gitlabProvider)}
@@ -807,7 +808,7 @@ function BitbucketTab() {
                   <p className="text-sm text-muted-foreground">@{bitbucketProvider.username}</p>
                 </div>
               </div>
-              <Button
+              <Button aria-label="Delete"
                 variant="ghost"
                 size="sm"
                 onClick={() => setDeleteProvider(bitbucketProvider)}

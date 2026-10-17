@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -25,7 +26,7 @@ import {
 import { DeploymentTimeline } from "@/components/deployment-timeline";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
-import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse } from "@/types/api";
+import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse, DeploymentSnapshot } from "@/types/api";
 import { CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare, Ban } from "lucide-react";
 import { PaginationControls } from "@/components/pagination-controls";
 
@@ -101,6 +102,7 @@ export default function AppDeploymentsTab() {
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<string | null>(null);
+  const [restoreData, setRestoreData] = useState(false);
 
   // Fetch app status for deployment phase indicator
   const { data: appStatus } = useQuery<AppStatus>({
@@ -149,6 +151,13 @@ export default function AppDeploymentsTab() {
     enabled: !!selectedDeploymentId && showBuildLogsDialog,
   });
 
+  // Database snapshots a rollback to the selected deployment can restore
+  const { data: rollbackSnapshots = [] } = useQuery<DeploymentSnapshot[]>({
+    queryKey: ["deployment-snapshots", selectedDeploymentId],
+    queryFn: () => api.getDeploymentSnapshots(selectedDeploymentId!),
+    enabled: !!selectedDeploymentId && showRollbackDialog,
+  });
+
   const hasActiveDeployment = useMemo(() => {
     return deployments.some((d) => isActiveDeployment(d.status));
   }, [deployments]);
@@ -182,10 +191,14 @@ export default function AppDeploymentsTab() {
     if (!selectedDeploymentId) return;
     setIsSubmitting(true);
     try {
-      await api.rollbackDeployment(selectedDeploymentId);
+      await api.rollbackDeployment(selectedDeploymentId, {
+        target_deployment_id: selectedDeploymentId,
+        restore_data: restoreData && rollbackSnapshots.length > 0,
+      });
       toast.success("Rollback started");
       setShowRollbackDialog(false);
       setSelectedDeploymentId(null);
+      setRestoreData(false);
       queryClient.invalidateQueries({ queryKey: ["deployments", app.id] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Rollback failed");
@@ -440,7 +453,13 @@ export default function AppDeploymentsTab() {
       </Card>
 
       {/* Rollback confirmation dialog */}
-      <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+      <Dialog
+        open={showRollbackDialog}
+        onOpenChange={(open) => {
+          setShowRollbackDialog(open);
+          if (!open) setRestoreData(false);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rollback Deployment</DialogTitle>
@@ -449,6 +468,26 @@ export default function AppDeploymentsTab() {
               previous deployment. The current running container will be replaced.
             </DialogDescription>
           </DialogHeader>
+          {rollbackSnapshots.length > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Checkbox
+                id="rollback-restore-data"
+                checked={restoreData}
+                onCheckedChange={(v) => setRestoreData(v === true)}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="rollback-restore-data">
+                  Also restore database data (snapshot from{" "}
+                  {new Date(rollbackSnapshots[0].created_at).toLocaleString()})
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Databases: {rollbackSnapshots.map((s) => s.database_name).join(", ")}.
+                  Replaces current data with the snapshot; anything written since is lost.
+                  A safety backup of the current data is taken first.
+                </p>
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"

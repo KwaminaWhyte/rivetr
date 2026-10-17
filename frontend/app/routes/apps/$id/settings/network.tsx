@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -55,6 +56,7 @@ export default function AppSettingsNetwork() {
   const [isSavingLabels, setIsSavingLabels] = useState(false);
   const [isSavingCustomLabels, setIsSavingCustomLabels] = useState(false);
   const [isSavingPrefix, setIsSavingPrefix] = useState(false);
+  const [isSavingAccessLogging, setIsSavingAccessLogging] = useState(false);
   const [stripPrefix, setStripPrefix] = useState(app.strip_prefix ?? "");
   const [isSavingDestination, setIsSavingDestination] = useState(false);
   const [destinationId, setDestinationId] = useState(app.destination_id || "__none__");
@@ -138,6 +140,19 @@ export default function AppSettingsNetwork() {
     }
   };
 
+  const handleToggleAccessLogging = async (enabled: boolean) => {
+    setIsSavingAccessLogging(true);
+    try {
+      await api.updateApp(app.id, { access_logging: enabled });
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+      toast.success(`Access logging ${enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      toast.error(`Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsSavingAccessLogging(false);
+    }
+  };
+
   const handleSaveDestination = async () => {
     setIsSavingDestination(true);
     try {
@@ -190,6 +205,24 @@ export default function AppSettingsNetwork() {
             {isSavingPrefix ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Save
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Proxy access logging */}
+      <Card>
+        <CardContent className="flex items-center justify-between gap-4 pt-6">
+          <div className="space-y-1">
+            <Label htmlFor="access-logging">Access logging</Label>
+            <p className="text-xs text-muted-foreground">
+              Record each proxied request in the proxy logs. Turn off for high-traffic apps to save CPU and database writes. Takes effect immediately.
+            </p>
+          </div>
+          <Switch
+            id="access-logging"
+            checked={app.access_logging}
+            disabled={isSavingAccessLogging}
+            onCheckedChange={handleToggleAccessLogging}
+          />
         </CardContent>
       </Card>
 

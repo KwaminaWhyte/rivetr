@@ -281,7 +281,7 @@ export function DomainManagementCard({
                 <span className="font-mono text-sm">{app.auto_subdomain}</span>
               </div>
               <div className="flex gap-1">
-                <Button
+                <Button aria-label="Copy to clipboard"
                   variant="ghost"
                   size="sm"
                   onClick={() => copyDomain(app.auto_subdomain!)}
@@ -289,7 +289,7 @@ export function DomainManagementCard({
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
-                <Button
+                <Button aria-label="Open in new tab"
                   variant="ghost"
                   size="sm"
                   asChild
@@ -350,7 +350,7 @@ export function DomainManagementCard({
                         {domain.primary && (
                           <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                         )}
-                        <Button
+                        <Button aria-label="Copy to clipboard"
                           variant="ghost"
                           size="sm"
                           onClick={() => copyDomain(domain.domain)}
@@ -358,7 +358,7 @@ export function DomainManagementCard({
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
-                        <Button
+                        <Button aria-label="Open in new tab"
                           variant="ghost"
                           size="sm"
                           asChild
@@ -426,7 +426,7 @@ export function DomainManagementCard({
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         onClick={() => removeDomain(index)}
@@ -447,7 +447,7 @@ export function DomainManagementCard({
           <Label className="text-sm font-medium">Add Domain</Label>
           <div className="flex gap-4 items-start">
             <div className="flex-1 space-y-1">
-              <Input
+              <Input aria-label="example.com"
                 placeholder="example.com"
                 value={newDomain.domain}
                 onChange={(e) =>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { QueryError } from "@/components/query-error";
 import { useTeamContext } from "@/lib/team-context";
 import { Cpu, HardDrive, Activity, Database, Server } from "lucide-react";
 import { Link } from "react-router";
@@ -41,6 +42,7 @@ export function RunningServicesCard() {
     queryKey: ["system-resources", currentTeamId],
     queryFn: () => api.getResourceStats({ teamId: currentTeamId ?? undefined }),
     refetchInterval: 15000,
+    retry: 1,
   });
 
   const resourceInfos: RunningServiceInfo[] = (resourcesQuery.data ?? []).map((r) => ({
@@ -131,7 +133,13 @@ export function RunningServicesCard() {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
-        {allRunning.length === 0 ? (
+        {resourcesQuery.isError && resourcesQuery.data === undefined ? (
+          <QueryError
+            what="running services"
+            error={resourcesQuery.error}
+            onRetry={() => resourcesQuery.refetch()}
+          />
+        ) : allRunning.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center py-4">
             No running services
           </div>

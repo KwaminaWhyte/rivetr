@@ -183,7 +183,7 @@ export default function CaCertificatesPage() {
                       {formatDate(cert.created_at)}
                     </TableCell>
                     <TableCell>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         onClick={() => setDeleteId(cert.id)}

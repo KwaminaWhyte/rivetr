@@ -29,6 +29,31 @@ export interface Deployment {
   trigger: string | null;
 }
 
+/** Request body for rolling back a deployment */
+export interface RollbackRequest {
+  /** Deployment to roll back to (defaults to the previous successful one) */
+  target_deployment_id?: string;
+  /** Also restore the database snapshots taken while the target was running.
+   *  Overwrites current data in the linked databases. */
+  restore_data?: boolean;
+}
+
+/** Pre-deploy database snapshot restored by rolling back to a deployment */
+export interface DeploymentSnapshot {
+  id: string;
+  /** Deployment that was about to start when the snapshot was taken */
+  deployment_id: string;
+  app_id: string;
+  /** Deployment that was running at that moment */
+  source_deployment_id: string | null;
+  database_id: string;
+  database_name: string;
+  db_type: string;
+  backup_id: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 /** Git commit info from the commits list API */
 export interface GitCommit {
   sha: string;

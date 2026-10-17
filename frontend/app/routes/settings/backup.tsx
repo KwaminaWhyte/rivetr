@@ -406,7 +406,7 @@ export default function BackupPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    <Button
+                    <Button aria-label="Download"
                       variant="outline"
                       size="sm"
                       onClick={() => handleDownloadBackup(backup.name)}
@@ -428,7 +428,7 @@ export default function BackupPage() {
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="outline"
                           size="sm"
                           className="text-destructive hover:text-destructive"
@@ -673,7 +673,7 @@ export default function BackupPage() {
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="outline"
                           size="sm"
                           className="text-destructive hover:text-destructive"

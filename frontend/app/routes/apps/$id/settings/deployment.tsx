@@ -31,6 +31,10 @@ export default function AppSettingsDeployment() {
     app.maintenance_message ?? "Service temporarily unavailable"
   );
   const [isSavingDeployControl, setIsSavingDeployControl] = useState(false);
+  const [snapshotBeforeDeploy, setSnapshotBeforeDeploy] = useState(
+    app.snapshot_before_deploy ?? false
+  );
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
 
   // Freeze windows state
   const [showFreezeWindowDialog, setShowFreezeWindowDialog] = useState(false);
@@ -114,6 +118,21 @@ export default function AppSettingsDeployment() {
       refetchFreezeWindows();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete freeze window");
+    }
+  };
+
+  const handleToggleSnapshot = async (enabled: boolean) => {
+    setSnapshotBeforeDeploy(enabled);
+    setIsSavingSnapshot(true);
+    try {
+      await api.updateApp(app.id, { snapshot_before_deploy: enabled });
+      toast.success(enabled ? "Pre-deploy snapshots enabled" : "Pre-deploy snapshots disabled");
+      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
+    } catch (err) {
+      setSnapshotBeforeDeploy(!enabled);
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSavingSnapshot(false);
     }
   };
 
@@ -298,6 +317,36 @@ export default function AppSettingsDeployment() {
             <Button onClick={handleSaveRetention} disabled={isSavingRetention}>
               {isSavingRetention ? "Saving..." : "Save"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pre-deploy database snapshots (rollback with data) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Rollback with Data</CardTitle>
+          <CardDescription>
+            Dump linked PostgreSQL, MySQL and MariaDB databases before each deployment so a
+            rollback can also restore their data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="snapshot-before-deploy" className="text-base">
+                Snapshot databases before deploy
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                A failed snapshot never blocks the deployment. Only the most recent
+                snapshots are kept (server setting data_retention.deployment_snapshots_keep).
+              </p>
+            </div>
+            <Switch
+              id="snapshot-before-deploy"
+              checked={snapshotBeforeDeploy}
+              disabled={isSavingSnapshot}
+              onCheckedChange={handleToggleSnapshot}
+            />
           </div>
         </CardContent>
       </Card>

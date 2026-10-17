@@ -225,7 +225,7 @@ export function AppSharingCard({ app }: AppSharingCardProps) {
                         {share.created_by_name || "Unknown"}
                       </TableCell>
                       <TableCell>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => setTeamToRemove(share)}

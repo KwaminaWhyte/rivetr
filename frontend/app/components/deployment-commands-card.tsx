@@ -153,7 +153,7 @@ export function DeploymentCommandsCard({
                       {index + 1}.
                     </span>
                   </div>
-                  <Input
+                  <Input aria-label="e.g., npm run db:migrate"
                     value={cmd}
                     onChange={(e) =>
                       handleUpdatePreCommand(index, e.target.value)
@@ -161,7 +161,7 @@ export function DeploymentCommandsCard({
                     placeholder="e.g., npm run db:migrate"
                     className="font-mono text-sm"
                   />
-                  <Button
+                  <Button aria-label="Delete"
                     type="button"
                     variant="ghost"
                     size="icon"
@@ -210,7 +210,7 @@ export function DeploymentCommandsCard({
                       {index + 1}.
                     </span>
                   </div>
-                  <Input
+                  <Input aria-label="e.g., npm run cache:warm"
                     value={cmd}
                     onChange={(e) =>
                       handleUpdatePostCommand(index, e.target.value)
@@ -218,7 +218,7 @@ export function DeploymentCommandsCard({
                     placeholder="e.g., npm run cache:warm"
                     className="font-mono text-sm"
                   />
-                  <Button
+                  <Button aria-label="Delete"
                     type="button"
                     variant="ghost"
                     size="icon"

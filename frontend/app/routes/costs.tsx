@@ -531,7 +531,7 @@ export default function CostsPage() {
               <SelectItem value="90d">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <Button aria-label="Refresh" variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCsv}>

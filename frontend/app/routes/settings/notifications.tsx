@@ -668,6 +668,7 @@ export default function SettingsNotificationsPage() {
                           Subscriptions
                         </Button>
                         <Button
+                          aria-label="Send test notification"
                           variant="outline"
                           size="sm"
                           disabled={isSubmitting || !channel.enabled}
@@ -675,7 +676,7 @@ export default function SettingsNotificationsPage() {
                         >
                           <Send className="h-4 w-4" />
                         </Button>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="destructive"
                           size="sm"
                           onClick={() => {
@@ -1050,7 +1051,7 @@ export default function SettingsNotificationsPage() {
                         </TableCell>
                         <TableCell>{sub.app_name || "All Apps"}</TableCell>
                         <TableCell>
-                          <Button
+                          <Button aria-label="Delete subscription"
                             variant="destructive"
                             size="sm"
                             disabled={deleteSubscriptionMutation.isPending}

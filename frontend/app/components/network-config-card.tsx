@@ -225,7 +225,7 @@ export function NetworkConfigCard({
                     </TableCell>
                     <TableCell className="uppercase">{mapping.protocol}</TableCell>
                     <TableCell>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         onClick={() => removePortMapping(index)}
@@ -243,7 +243,7 @@ export function NetworkConfigCard({
           <div className="flex gap-2 items-end">
             <div className="space-y-1">
               <Label className="text-xs">Host Port</Label>
-              <Input
+              <Input aria-label="Host Port"
                 type="number"
                 placeholder="0 = auto"
                 value={newPort.host_port || ""}
@@ -255,7 +255,7 @@ export function NetworkConfigCard({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Container Port</Label>
-              <Input
+              <Input aria-label="Container Port"
                 type="number"
                 placeholder="8080"
                 value={newPort.container_port || ""}
@@ -313,7 +313,7 @@ export function NetworkConfigCard({
                   className="flex items-center gap-1 bg-muted px-2 py-1 rounded-md"
                 >
                   <span className="font-mono text-sm">{alias}</span>
-                  <Button
+                  <Button aria-label="Delete"
                     variant="ghost"
                     size="sm"
                     onClick={() => removeNetworkAlias(index)}
@@ -327,7 +327,7 @@ export function NetworkConfigCard({
           )}
 
           <div className="flex gap-2">
-            <Input
+            <Input aria-label="my-service"
               placeholder="my-service"
               value={newAlias}
               onChange={(e) => setNewAlias(e.target.value)}
@@ -374,7 +374,7 @@ export function NetworkConfigCard({
                       <TableCell className="font-mono">{hostname}</TableCell>
                       <TableCell className="font-mono">{ip}</TableCell>
                       <TableCell>
-                        <Button
+                        <Button aria-label="Delete"
                           variant="ghost"
                           size="sm"
                           onClick={() => removeExtraHost(index)}
@@ -393,7 +393,7 @@ export function NetworkConfigCard({
           <div className="flex gap-2 items-end">
             <div className="space-y-1">
               <Label className="text-xs">Hostname</Label>
-              <Input
+              <Input aria-label="Hostname"
                 placeholder="myhost"
                 value={newHost.hostname}
                 onChange={(e) => setNewHost({ ...newHost, hostname: e.target.value })}
@@ -402,7 +402,7 @@ export function NetworkConfigCard({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">IP Address</Label>
-              <Input
+              <Input aria-label="IP Address"
                 placeholder="192.168.1.1 or host-gateway"
                 value={newHost.ip}
                 onChange={(e) => setNewHost({ ...newHost, ip: e.target.value })}

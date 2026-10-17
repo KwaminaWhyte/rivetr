@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 export function meta() {
@@ -48,7 +49,7 @@ export default function SettingsSshKeysPage() {
   const [privateKey, setPrivateKey] = useState("");
   const [publicKey, setPublicKey] = useState("");
 
-  const { data: sshKeys = [], isLoading } = useQuery<SshKey[]>({
+  const { data: sshKeys = [], isLoading, error: listError, refetch: refetchList } = useQuery<SshKey[]>({
     queryKey: ["ssh-keys"],
     queryFn: () => api.getSshKeys(),
   });
@@ -132,7 +133,9 @@ export default function SettingsSshKeysPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError && sshKeys.length === 0 ? (
+            <QueryError what="SSH keys" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <p className="text-muted-foreground py-4 text-center">Loading...</p>
           ) : sshKeys.length === 0 ? (
             <p className="text-muted-foreground py-4 text-center">

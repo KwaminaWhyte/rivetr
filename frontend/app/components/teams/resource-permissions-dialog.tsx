@@ -156,7 +156,7 @@ export function ResourcePermissionsDialog({
                       >
                         {perm.permission}
                       </Badge>
-                      <Button
+                      <Button aria-label="Delete"
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
@@ -216,7 +216,7 @@ export function ResourcePermissionsDialog({
               <div className="space-y-1">
                 <Label className="text-xs">Resource ID</Label>
                 <div className="flex gap-2">
-                  <Input
+                  <Input aria-label="e.g. app-uuid-here"
                     className="h-8 text-xs font-mono"
                     placeholder="e.g. app-uuid-here"
                     value={newResourceId}
