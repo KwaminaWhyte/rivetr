@@ -53,6 +53,8 @@ pub struct CloudflareTunnel {
     pub tunnel_token: String,
     pub container_id: Option<String>,
     pub status: String,
+    /// Owning team; `None` means legacy/global (visible to every signed-in user).
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -67,6 +69,7 @@ pub struct CloudflareTunnelResponse {
     pub container_id: Option<String>,
     pub status: String,
     pub routes: Vec<CloudflareTunnelRoute>,
+    pub team_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -80,6 +83,7 @@ impl CloudflareTunnel {
             container_id: self.container_id.clone(),
             status: self.status.clone(),
             routes,
+            team_id: self.team_id.clone(),
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
         }
@@ -102,6 +106,9 @@ pub struct CloudflareTunnelRoute {
 pub struct CreateTunnelRequest {
     pub name: String,
     pub tunnel_token: String,
+    /// Optional owning team; the caller must belong to it.
+    #[serde(default)]
+    pub team_id: Option<String>,
 }
 
 /// Request body for adding a route to a tunnel.

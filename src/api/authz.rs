@@ -197,6 +197,7 @@ enum TeamTable {
     Destinations,
     CaCertificates,
     S3StorageConfigs,
+    CloudflareTunnels,
 }
 
 impl TeamTable {
@@ -207,6 +208,7 @@ impl TeamTable {
             Self::Destinations => "SELECT team_id FROM destinations WHERE id = ?",
             Self::CaCertificates => "SELECT team_id FROM ca_certificates WHERE id = ?",
             Self::S3StorageConfigs => "SELECT team_id FROM s3_storage_configs WHERE id = ?",
+            Self::CloudflareTunnels => "SELECT team_id FROM cloudflare_tunnels WHERE id = ?",
         }
     }
 
@@ -217,6 +219,7 @@ impl TeamTable {
             Self::Destinations => "Destination not found",
             Self::CaCertificates => "CA certificate not found",
             Self::S3StorageConfigs => "S3 configuration not found",
+            Self::CloudflareTunnels => "Tunnel not found",
         }
     }
 }
@@ -244,6 +247,101 @@ pub async fn authorize_build_server(
     id: &str,
 ) -> Result<(), ApiError> {
     authorize_team_row(&state.db, user, TeamTable::BuildServers, id).await
+}
+
+/// Reject non-privileged callers. For cluster-level resources with no natural team
+/// owner (Docker Swarm nodes, swarm services not bound to an app).
+pub fn require_privileged(user: &User) -> Result<(), ApiError> {
+    if is_privileged(user) {
+        Ok(())
+    } else {
+        Err(ApiError::forbidden(
+            "This action requires an instance administrator",
+        ))
+    }
+}
+
+/// Authorize access to a Cloudflare tunnel (team scoped, `team_id IS NULL` stays global).
+pub async fn authorize_tunnel(
+    state: &Arc<AppState>,
+    user: &User,
+    id: &str,
+) -> Result<(), ApiError> {
+    authorize_team_row(&state.db, user, TeamTable::CloudflareTunnels, id).await
+}
+
+/// Which team gates a GitHub App for this access mode. System-wide apps are readable
+/// by everyone (they exist to be shared); changing one still needs its owning team.
+fn github_app_gate(is_system_wide: bool, team_id: Option<&str>, write: bool) -> Option<&str> {
+    if is_system_wide && !write {
+        None
+    } else {
+        team_id
+    }
+}
+
+/// Team that gates *seeing* a GitHub App in a list (system-wide apps are visible to all).
+pub fn github_app_list_team(is_system_wide: bool, team_id: Option<&str>) -> Option<&str> {
+    github_app_gate(is_system_wide, team_id, false)
+}
+
+/// Authorize a GitHub App by id. `write` is true for mutating requests.
+pub async fn authorize_github_app(
+    db: &SqlitePool,
+    user: &User,
+    id: &str,
+    write: bool,
+) -> Result<(), ApiError> {
+    let row: Option<(Option<String>, bool)> =
+        sqlx::query_as("SELECT team_id, is_system_wide FROM github_apps WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    let (team_id, system_wide) = row.ok_or_else(|| ApiError::not_found("GitHub App not found"))?;
+    check_team_access_db(
+        db,
+        user,
+        github_app_gate(system_wide, team_id.as_deref(), write),
+    )
+    .await
+}
+
+/// Authorize a GitHub App installation through the app that owns it.
+pub async fn authorize_github_installation(
+    db: &SqlitePool,
+    user: &User,
+    id: &str,
+    write: bool,
+) -> Result<(), ApiError> {
+    let row: Option<(Option<String>, bool)> = sqlx::query_as(
+        "SELECT a.team_id, a.is_system_wide FROM github_app_installations i \
+         JOIN github_apps a ON a.id = i.github_app_id WHERE i.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    let (team_id, system_wide) =
+        row.ok_or_else(|| ApiError::not_found("Installation not found"))?;
+    check_team_access_db(
+        db,
+        user,
+        github_app_gate(system_wide, team_id.as_deref(), write),
+    )
+    .await
+}
+
+/// Authorize an app and require the developer team role for changing it, for handlers
+/// outside the `/api/apps/:id` path that act on an app (swarm services, ...).
+pub async fn authorize_app_write(
+    state: &Arc<AppState>,
+    user: &User,
+    app_id: &str,
+) -> Result<App, ApiError> {
+    let app = authorize_app(state, user, app_id).await?;
+    authorize_write(&state.db, user, ResourceKind::App, app_id).await?;
+    Ok(app)
 }
 
 /// Authorize access to an app and return it. Honors `app_shares` so an app shared
@@ -445,6 +543,11 @@ pub async fn resource_authz_middleware(
             ResourceKind::S3Config => {
                 authorize_team_row(&state.db, &user, TeamTable::S3StorageConfigs, id).await
             }
+            ResourceKind::Tunnel => authorize_tunnel(&state, &user, id).await,
+            ResourceKind::GitHubApp => authorize_github_app(&state.db, &user, id, mutating).await,
+            ResourceKind::GitHubInstallation => {
+                authorize_github_installation(&state.db, &user, id, mutating).await
+            }
         };
 
         if let Err(e) = result {
@@ -477,6 +580,16 @@ fn team_sql(kind: ResourceKind) -> Option<&'static str> {
         ResourceKind::Service => "SELECT team_id FROM services WHERE id = ?",
         ResourceKind::Project => "SELECT team_id FROM projects WHERE id = ?",
         ResourceKind::Server => "SELECT team_id FROM servers WHERE id = ?",
+        // App-bound SSH keys follow their app; global keys (app_id NULL) match no row.
+        ResourceKind::SshKey => {
+            "SELECT a.team_id FROM ssh_keys k JOIN apps a ON a.id = k.app_id WHERE k.id = ?"
+        }
+        ResourceKind::Tunnel => "SELECT team_id FROM cloudflare_tunnels WHERE id = ?",
+        ResourceKind::GitHubApp => "SELECT team_id FROM github_apps WHERE id = ?",
+        ResourceKind::GitHubInstallation => {
+            "SELECT a.team_id FROM github_app_installations i \
+             JOIN github_apps a ON a.id = i.github_app_id WHERE i.id = ?"
+        }
         _ => return None,
     })
 }
@@ -625,6 +738,9 @@ enum ResourceKind {
     Destination,
     CaCertificate,
     S3Config,
+    Tunnel,
+    GitHubApp,
+    GitHubInstallation,
 }
 
 /// Extract `(kind, id)` from a request path when it targets a specific resource.
@@ -632,6 +748,8 @@ enum ResourceKind {
 fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
     let rest = path.strip_prefix("/api/")?;
     let mut segs = rest.split('/');
+    // Set when the first id-like segment was already consumed to pick the kind.
+    let mut id_override = None;
     let kind = match segs.next()? {
         "apps" => ResourceKind::App,
         "servers" => ResourceKind::Server,
@@ -648,6 +766,16 @@ fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
         "notification-channels" => ResourceKind::NotificationChannel,
         "destinations" => ResourceKind::Destination,
         "ca-certificates" => ResourceKind::CaCertificate,
+        "tunnels" => ResourceKind::Tunnel,
+        // `/github-apps/installations/:iid/...` addresses an installation, every other
+        // second segment is the app id.
+        "github-apps" => match segs.next()? {
+            "installations" => ResourceKind::GitHubInstallation,
+            app_id => {
+                id_override = Some(app_id);
+                ResourceKind::GitHubApp
+            }
+        },
         "s3" => match segs.next()? {
             "configs" => ResourceKind::S3Config,
             "backups" => ResourceKind::S3Backup,
@@ -655,7 +783,10 @@ fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
         },
         _ => return None,
     };
-    let id = segs.next()?;
+    let id = match id_override {
+        Some(id) => id,
+        None => segs.next()?,
+    };
     // Only enforce when the segment is an actual resource id (UUID). Literal
     // sub-routes like `with-sharing` / `check-port` fall through to the handler.
     if uuid::Uuid::parse_str(id).is_ok() {
@@ -764,6 +895,229 @@ mod tests {
         assert_eq!(
             k(&format!("/api/notification-channels/{ID}/subscriptions")),
             Some((ResourceKind::NotificationChannel, id))
+        );
+    }
+
+    #[test]
+    fn parse_tunnels_and_github_apps() {
+        let k = |p: &str| parse_resource_target(p).map(|(k, id)| (k, id.to_string()));
+        let id = ID.to_string();
+        let other = "223e4567-e89b-12d3-a456-426614174000";
+        assert_eq!(
+            k(&format!("/api/tunnels/{ID}/routes/{other}")),
+            Some((ResourceKind::Tunnel, id.clone()))
+        );
+        assert_eq!(
+            k(&format!("/api/github-apps/{ID}")),
+            Some((ResourceKind::GitHubApp, id.clone()))
+        );
+        // The app id is the one that is authorized, not the installation id.
+        assert_eq!(
+            k(&format!(
+                "/api/github-apps/{ID}/installations/{other}/repos"
+            )),
+            Some((ResourceKind::GitHubApp, id.clone()))
+        );
+        assert_eq!(
+            k(&format!("/api/github-apps/installations/{ID}/repos")),
+            Some((ResourceKind::GitHubInstallation, id.clone()))
+        );
+        assert_eq!(
+            k(&format!(
+                "/api/github-apps/installations/{ID}/repos/o/r/branches"
+            )),
+            Some((ResourceKind::GitHubInstallation, id))
+        );
+        // Collections and the installations listing are left to the handlers.
+        for p in [
+            "/api/tunnels",
+            "/api/github-apps",
+            "/api/github-apps/installations",
+        ] {
+            assert!(parse_resource_target(p).is_none(), "{p}");
+        }
+    }
+
+    #[test]
+    fn require_privileged_allows_only_admins() {
+        assert!(require_privileged(&user("root", "admin")).is_ok());
+        assert!(require_privileged(&user("system", "member")).is_ok());
+        assert_eq!(
+            require_privileged(&user("alice", "user"))
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn github_app_gate_rules() {
+        // System-wide apps are readable by anyone but changeable only by the owning team.
+        assert_eq!(github_app_gate(true, Some("t1"), false), None);
+        assert_eq!(github_app_gate(true, Some("t1"), true), Some("t1"));
+        assert_eq!(github_app_gate(false, Some("t1"), false), Some("t1"));
+        assert_eq!(github_app_gate(false, None, true), None);
+        assert_eq!(github_app_list_team(true, Some("t1")), None);
+        assert_eq!(github_app_list_team(false, Some("t1")), Some("t1"));
+    }
+
+    async fn github_pool() -> SqlitePool {
+        let db = pool().await;
+        for sql in [
+            "CREATE TABLE github_apps (id TEXT, team_id TEXT, is_system_wide INTEGER)",
+            "CREATE TABLE github_app_installations (id TEXT, github_app_id TEXT)",
+            "CREATE TABLE cloudflare_tunnels (id TEXT, team_id TEXT)",
+            "INSERT INTO github_apps VALUES ('ga-t1', 't1', 0)",
+            "INSERT INTO github_apps VALUES ('ga-t2', 't2', 0)",
+            "INSERT INTO github_apps VALUES ('ga-t2-shared', 't2', 1)",
+            "INSERT INTO github_apps VALUES ('ga-legacy', NULL, 0)",
+            "INSERT INTO github_app_installations VALUES ('in-t1', 'ga-t1')",
+            "INSERT INTO github_app_installations VALUES ('in-t2', 'ga-t2')",
+            "INSERT INTO github_app_installations VALUES ('in-t2-shared', 'ga-t2-shared')",
+            "INSERT INTO cloudflare_tunnels VALUES ('tn-t1', 't1')",
+            "INSERT INTO cloudflare_tunnels VALUES ('tn-t2', 't2')",
+            "INSERT INTO cloudflare_tunnels VALUES ('tn-legacy', NULL)",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        db
+    }
+
+    #[tokio::test]
+    async fn github_apps_follow_team_and_sharing() {
+        let db = github_pool().await;
+        let alice = user("alice", "user");
+        let bob = user("bob", "user");
+        let admin = user("root", "admin");
+        for write in [false, true] {
+            assert!(authorize_github_app(&db, &alice, "ga-t1", write)
+                .await
+                .is_ok());
+            assert_eq!(
+                authorize_github_app(&db, &alice, "ga-t2", write)
+                    .await
+                    .unwrap_err()
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+            assert!(authorize_github_app(&db, &bob, "ga-legacy", write)
+                .await
+                .is_ok());
+            assert!(authorize_github_app(&db, &admin, "ga-t2", write)
+                .await
+                .is_ok());
+            assert_eq!(
+                authorize_github_app(&db, &alice, "missing", write)
+                    .await
+                    .unwrap_err()
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
+        // System-wide app owned by t2: alice may use (read) it but not change it.
+        assert!(authorize_github_app(&db, &alice, "ga-t2-shared", false)
+            .await
+            .is_ok());
+        assert_eq!(
+            authorize_github_app(&db, &alice, "ga-t2-shared", true)
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn github_installations_follow_their_app() {
+        let db = github_pool().await;
+        let alice = user("alice", "user");
+        assert!(authorize_github_installation(&db, &alice, "in-t1", true)
+            .await
+            .is_ok());
+        assert_eq!(
+            authorize_github_installation(&db, &alice, "in-t2", false)
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert!(
+            authorize_github_installation(&db, &alice, "in-t2-shared", false)
+                .await
+                .is_ok()
+        );
+        assert_eq!(
+            authorize_github_installation(&db, &alice, "nope", false)
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn tunnels_follow_team_membership() {
+        let db = github_pool().await;
+        let alice = user("alice", "user");
+        let t = |u: &User, id: &'static str| {
+            let (db, u) = (db.clone(), u.clone());
+            async move { authorize_team_row(&db, &u, TeamTable::CloudflareTunnels, id).await }
+        };
+        assert!(t(&alice, "tn-t1").await.is_ok());
+        assert!(t(&alice, "tn-legacy").await.is_ok());
+        assert_eq!(
+            t(&alice, "tn-t2").await.unwrap_err().status(),
+            StatusCode::FORBIDDEN
+        );
+        assert!(t(&user("root", "admin"), "tn-t2").await.is_ok());
+        assert_eq!(
+            t(&alice, "none").await.unwrap_err().status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn app_bound_ssh_keys_and_tunnels_need_developer_role_to_write() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for sql in [
+            "CREATE TABLE apps (id TEXT, team_id TEXT)",
+            "CREATE TABLE ssh_keys (id TEXT, app_id TEXT)",
+            "CREATE TABLE cloudflare_tunnels (id TEXT, team_id TEXT)",
+            "CREATE TABLE team_members (team_id TEXT, user_id TEXT, role TEXT)",
+            "INSERT INTO team_members VALUES ('t1', 'dev', 'developer')",
+            "INSERT INTO team_members VALUES ('t1', 'view', 'viewer')",
+            "INSERT INTO apps VALUES ('a1', 't1')",
+            "INSERT INTO ssh_keys VALUES ('k-app', 'a1')",
+            "INSERT INTO ssh_keys VALUES ('k-global', NULL)",
+            "INSERT INTO cloudflare_tunnels VALUES ('tn1', 't1')",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        let w = |u: &str, kind: ResourceKind, id: &'static str| {
+            let (db, u) = (db.clone(), user(u, "member"));
+            async move { authorize_write(&db, &u, kind, id).await }
+        };
+        assert!(w("dev", ResourceKind::SshKey, "k-app").await.is_ok());
+        assert_eq!(
+            w("view", ResourceKind::SshKey, "k-app")
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Global keys have no team owner and stay open.
+        assert!(w("view", ResourceKind::SshKey, "k-global").await.is_ok());
+        assert!(w("dev", ResourceKind::Tunnel, "tn1").await.is_ok());
+        assert_eq!(
+            w("view", ResourceKind::Tunnel, "tn1")
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
         );
     }
 
@@ -880,7 +1234,7 @@ mod tests {
         );
         // Kinds without a team lookup are not role-gated here.
         assert!(
-            authorize_write(&db, &user("view", "member"), ResourceKind::SshKey, "x")
+            authorize_write(&db, &user("view", "member"), ResourceKind::Environment, "x")
                 .await
                 .is_ok()
         );

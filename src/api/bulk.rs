@@ -515,29 +515,16 @@ pub struct CloneAppResponse {
     pub app: crate::db::AppResponse,
 }
 
-pub async fn clone_app(
-    State(state): State<Arc<AppState>>,
-    user: User,
-    client_ip: ClientIp,
-    Path(id): Path<String>,
-    body: Option<Json<CloneAppRequest>>,
-) -> Result<(StatusCode, Json<CloneAppResponse>), ApiError> {
-    if let Err(e) = validate_uuid(&id, "app_id") {
-        return Err(ApiError::validation_field("app_id", e));
-    }
-
-    let original = get_app(&state, &id).await?;
-
-    let clone_name = body
-        .as_ref()
-        .and_then(|b| b.name.as_ref())
-        .cloned()
-        .unwrap_or_else(|| format!("{}-copy", original.name));
-
-    // Build the cloned app row
-    let new_id = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
+/// Insert the cloned app row. Domain, auto-subdomain, basic auth, registry password,
+/// approval and maintenance settings are reset; everything else (including
+/// `snapshot_before_deploy` and `access_logging`) is copied.
+async fn insert_cloned_app(
+    db: &crate::DbPool,
+    original: &App,
+    new_id: &str,
+    clone_name: &str,
+    now: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         INSERT INTO apps (
@@ -553,7 +540,8 @@ pub async fn clone_app(
             preview_enabled, github_app_installation_id, deployment_source,
             auto_rollback_enabled, registry_push_enabled, max_rollback_versions,
             require_approval, maintenance_mode, maintenance_message,
-            created_at, updated_at
+            created_at, updated_at,
+            snapshot_before_deploy, access_logging
         ) VALUES (
             ?, ?, ?, ?, ?, NULL, ?, ?,
             ?, ?, ?, ?, ?, ?, ?,
@@ -567,12 +555,13 @@ pub async fn clone_app(
             ?, ?, ?,
             ?, ?, ?,
             0, 0, NULL,
+            ?, ?,
             ?, ?
         )
         "#,
     )
-    .bind(&new_id)
-    .bind(&clone_name)
+    .bind(new_id)
+    .bind(clone_name)
     .bind(&original.git_url)
     .bind(&original.branch)
     .bind(&original.dockerfile)
@@ -615,10 +604,40 @@ pub async fn clone_app(
     .bind(original.registry_push_enabled)
     .bind(original.max_rollback_versions)
     // require_approval, maintenance_mode, maintenance_message reset to defaults
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
+    .bind(now)
+    .bind(now)
+    // Settings that carry over unchanged
+    .bind(original.snapshot_before_deploy)
+    .bind(original.access_logging)
+    .execute(db)
     .await?;
+    Ok(())
+}
+
+pub async fn clone_app(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    client_ip: ClientIp,
+    Path(id): Path<String>,
+    body: Option<Json<CloneAppRequest>>,
+) -> Result<(StatusCode, Json<CloneAppResponse>), ApiError> {
+    if let Err(e) = validate_uuid(&id, "app_id") {
+        return Err(ApiError::validation_field("app_id", e));
+    }
+
+    let original = get_app(&state, &id).await?;
+
+    let clone_name = body
+        .as_ref()
+        .and_then(|b| b.name.as_ref())
+        .cloned()
+        .unwrap_or_else(|| format!("{}-copy", original.name));
+
+    // Build the cloned app row
+    let new_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    insert_cloned_app(&state.db, &original, &new_id, &clone_name, &now).await?;
 
     // Copy env vars (excluding secret values — clone gets the key structure but masked secrets)
     let env_vars: Vec<EnvVar> =
@@ -1182,4 +1201,38 @@ pub async fn set_maintenance_mode(
         maintenance_mode: req.enabled,
         maintenance_message: req.message,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn clone_carries_snapshot_and_access_logging_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, branch, port, snapshot_before_deploy, access_logging) \
+             VALUES ('src-app', 'src', 'https://example.com/r.git', 'main', 3000, 1, 0)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        let original: App = sqlx::query_as("SELECT * FROM apps WHERE id = 'src-app'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+
+        insert_cloned_app(&db, &original, "new-app", "src-copy", "2026-10-17 00:00:00")
+            .await
+            .unwrap();
+
+        let cloned: App = sqlx::query_as("SELECT * FROM apps WHERE id = 'new-app'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(cloned.snapshot_before_deploy, 1);
+        assert_eq!(cloned.access_logging, 0);
+        assert_eq!(cloned.name, "src-copy");
+    }
 }

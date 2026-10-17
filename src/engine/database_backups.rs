@@ -19,6 +19,31 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
+/// Scratch path for an RDB dump inside a Redis-family container.
+pub(crate) const RDB_TMP_PATH: &str = "/tmp/rivetr_backup.rdb";
+
+/// Single-quote `value` for a POSIX shell.
+pub(crate) fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Shell prelude for Redis-family exec commands. Picks `redis-cli` or `keydb-cli` into
+/// `$CLI` and enables AUTH only when the server demands it (the managed containers are
+/// usually started without a password, and AUTH against a password-less server errors).
+pub(crate) fn redis_cli_prelude(password: &str) -> String {
+    format!(
+        "CLI=$(command -v redis-cli || command -v keydb-cli) || \
+         {{ echo 'neither redis-cli nor keydb-cli found in this container' >&2; exit 127; }}; \
+         case \"$($CLI PING 2>&1)\" in *NOAUTH*) export REDISCLI_AUTH={};; esac; ",
+        shell_quote(password)
+    )
+}
+
+/// True when `bytes` starts with the RDB magic.
+pub(crate) fn is_rdb(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"REDIS")
+}
+
 /// Handles database backup operations
 pub struct DatabaseBackupTask {
     db: DbPool,
@@ -225,7 +250,9 @@ impl DatabaseBackupTask {
                 self.backup_mongodb(container_id, &creds, &backup_path)
                     .await
             }
-            "redis" | "dragonfly" | "keydb" => self.backup_redis(container_id, &backup_path).await,
+            "redis" | "dragonfly" | "keydb" => {
+                self.backup_redis(container_id, &creds, &backup_path).await
+            }
             "clickhouse" => Err(anyhow::anyhow!(
                 "Automated backup is not yet supported for ClickHouse"
             )),
@@ -504,8 +531,8 @@ impl DatabaseBackupTask {
             ));
         }
 
-        // Copy the backup file from container
-        self.copy_from_container(container_id, "/tmp/backup.archive", backup_path)
+        // The archive is binary: copy it through base64, not as a UTF-8 string.
+        self.copy_binary_from_container(container_id, "/tmp/backup.archive", backup_path)
             .await?;
 
         // Clean up temp file in container
@@ -524,35 +551,127 @@ impl DatabaseBackupTask {
         Ok(())
     }
 
-    /// Backup Redis database
-    async fn backup_redis(&self, container_id: &str, backup_path: &PathBuf) -> Result<()> {
-        // Trigger BGSAVE
-        let cmd = vec!["redis-cli".to_string(), "BGSAVE".to_string()];
-        let result = self.runtime.run_command(container_id, cmd).await?;
+    /// Backup a Redis-family database (redis, keydb) as an RDB file.
+    ///
+    /// `redis-cli --rdb` pulls a consistent RDB over the replication protocol, so there
+    /// is no BGSAVE race and the data directory is not touched. The file is binary and
+    /// is copied out through base64.
+    async fn backup_redis(
+        &self,
+        container_id: &str,
+        creds: &DatabaseCredentials,
+        backup_path: &PathBuf,
+    ) -> Result<()> {
+        let script = format!(
+            "{}rm -f {RDB_TMP_PATH}; $CLI --rdb {RDB_TMP_PATH}",
+            redis_cli_prelude(&creds.password)
+        );
+        let result = self
+            .runtime
+            .run_command(container_id, vec!["sh".into(), "-c".into(), script])
+            .await?;
 
         if result.exit_code != 0 {
+            let _ = self
+                .runtime
+                .run_command(
+                    container_id,
+                    vec!["rm".into(), "-f".into(), RDB_TMP_PATH.into()],
+                )
+                .await;
             return Err(anyhow::anyhow!(
-                "redis-cli BGSAVE failed with exit code {}: {}",
+                "redis-cli --rdb failed with exit code {}: {}{}",
                 result.exit_code,
-                result.stderr
+                result.stderr.trim(),
+                result.stdout.trim()
             ));
         }
 
-        // Wait for BGSAVE to complete
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let copied = self
+            .copy_binary_from_container(container_id, RDB_TMP_PATH, backup_path)
+            .await;
+        let _ = self
+            .runtime
+            .run_command(
+                container_id,
+                vec!["rm".into(), "-f".into(), RDB_TMP_PATH.into()],
+            )
+            .await;
+        copied?;
 
-        // Check if save is complete
-        let check_cmd = vec![
-            "sh".to_string(),
-            "-c".to_string(),
-            "redis-cli LASTSAVE".to_string(),
-        ];
-        let _ = self.runtime.run_command(container_id, check_cmd).await?;
+        let bytes = tokio::fs::read(backup_path).await?;
+        if !is_rdb(&bytes) {
+            let _ = tokio::fs::remove_file(backup_path).await;
+            return Err(anyhow::anyhow!(
+                "redis-cli --rdb produced a file that is not a valid RDB dump"
+            ));
+        }
 
-        // Copy the RDB file from container
-        self.copy_from_container(container_id, "/data/dump.rdb", backup_path)
+        Ok(())
+    }
+
+    /// Copy a binary file from the container to the host. Exec output is captured as
+    /// text, so the file travels as base64 and its decoded length is checked against
+    /// `wc -c` to catch truncated output.
+    async fn copy_binary_from_container(
+        &self,
+        container_id: &str,
+        container_path: &str,
+        host_path: &PathBuf,
+    ) -> Result<()> {
+        use base64::Engine as _;
+
+        let size = self
+            .runtime
+            .run_command(
+                container_id,
+                vec![
+                    "sh".into(),
+                    "-c".into(),
+                    format!("wc -c < '{container_path}'"),
+                ],
+            )
             .await?;
+        if size.exit_code != 0 {
+            return Err(anyhow::anyhow!(
+                "Failed to stat backup file in container: {}",
+                size.stderr.trim()
+            ));
+        }
+        let expected: usize = size
+            .stdout
+            .trim()
+            .parse()
+            .context("Could not parse backup file size")?;
 
+        let result = self
+            .runtime
+            .run_command(container_id, vec!["base64".into(), container_path.into()])
+            .await?;
+        if result.exit_code != 0 {
+            return Err(anyhow::anyhow!(
+                "Failed to read backup file from container: {}",
+                result.stderr.trim()
+            ));
+        }
+
+        let compact: String = result
+            .stdout
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(compact.as_bytes())
+            .context("Backup file from container is not valid base64")?;
+        if bytes.len() != expected {
+            return Err(anyhow::anyhow!(
+                "Backup file copy is incomplete ({} of {} bytes)",
+                bytes.len(),
+                expected
+            ));
+        }
+
+        tokio::fs::write(host_path, bytes).await?;
         Ok(())
     }
 
@@ -721,4 +840,32 @@ pub fn spawn_database_backup_task(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_quote_escapes_single_quotes() {
+        assert_eq!(shell_quote("plain"), "'plain'");
+        assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn redis_prelude_only_authenticates_when_asked() {
+        let script = redis_cli_prelude("p@ss w'rd");
+        assert!(script.contains("redis-cli"));
+        assert!(script.contains("keydb-cli"));
+        assert!(script.contains("*NOAUTH*) export REDISCLI_AUTH='p@ss w'\\''rd';;"));
+        // AUTH is never exported unconditionally.
+        assert!(!script.starts_with("export"));
+    }
+
+    #[test]
+    fn rdb_magic_is_checked() {
+        assert!(is_rdb(b"REDIS0011\xfa"));
+        assert!(!is_rdb(b"not an rdb"));
+        assert!(!is_rdb(b""));
+    }
 }

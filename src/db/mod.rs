@@ -944,7 +944,12 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Migration 066: Remove UNIQUE constraint from apps.name
     // Apps have UUID primary keys, so names don't need to be globally unique.
     let has_name_unique: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='apps' AND name LIKE 'sqlite_autoindex_apps%'",
+        // Only a UNIQUE constraint on `name` (origin 'u'). The old check matched any
+        // sqlite_autoindex_apps%, which the TEXT primary key always creates, so the apps
+        // table was rebuilt on every startup and every column added after migration 066
+        // (snapshot_before_deploy, access_logging, restart_policy, ...) reset to its default.
+        "SELECT il.name FROM pragma_index_list('apps') AS il, pragma_index_info(il.name) AS ii \
+         WHERE il.origin = 'u' AND ii.name = 'name'",
     )
     .fetch_optional(pool)
     .await?;
@@ -1615,9 +1620,53 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 117: cloudflare_tunnels.team_id (team scoping for tunnels)
+    let has_tunnel_team: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('cloudflare_tunnels') WHERE name = 'team_id'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_tunnel_team.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/117_cloudflare_tunnel_team.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
     info!("Migrations completed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Restarting must not rebuild the apps table (migration 066) and reset the
+    /// columns added after it.
+    #[tokio::test]
+    async fn restart_keeps_app_settings_added_after_migration_066() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, branch, port, snapshot_before_deploy, access_logging) \
+             VALUES ('a1', 'app', 'https://example.com/r.git', 'main', 3000, 1, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let pool = init(dir.path()).await.unwrap();
+        let row: (i64, i64) = sqlx::query_as(
+            "SELECT snapshot_before_deploy, access_logging FROM apps WHERE id = 'a1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row, (1, 0));
+    }
 }

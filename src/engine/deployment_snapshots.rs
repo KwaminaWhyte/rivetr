@@ -12,8 +12,21 @@
 //! snapshot (including by T and by the deployment being rolled back) is lost, so the
 //! restore takes a safety backup of the current data first.
 //!
-//! Only text dump formats survive the existing dump path (stdout captured as a string),
-//! so snapshots are limited to postgres, mysql and mariadb.
+//! Supported types: PostgreSQL, MySQL, MariaDB (SQL dumps), MongoDB (`mongodump
+//! --archive`) and Redis/KeyDB (RDB file). DragonflyDB and ClickHouse are not
+//! snapshotted.
+//!
+//! How each type is restored:
+//! - PostgreSQL: public schema dropped and the dump replayed in one transaction.
+//! - MySQL/MariaDB: dump replayed over the database; tables created after the snapshot
+//!   are left in place.
+//! - MongoDB: archive validated with `mongorestore --dryRun`, then the database is
+//!   dropped and the archive restored (exact rollback; the `admin`, `local` and `config`
+//!   databases are never dropped, only overwritten collection by collection).
+//! - Redis/KeyDB: an RDB cannot be loaded into a running server, so the container is
+//!   stopped, `dump.rdb` in its data volume is replaced, and the container is started
+//!   again (a few seconds of downtime). Needs the data volume on this host and no AOF
+//!   persistence; both are checked before anything is touched.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -24,7 +37,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use super::add_deployment_log;
-use super::database_backups::DatabaseBackupTask;
+use super::database_backups::{is_rdb, redis_cli_prelude, shell_quote, DatabaseBackupTask};
 use crate::config::DatabaseBackupConfig;
 use crate::db::{App, BackupType, DatabaseCredentials, ManagedDatabase};
 use crate::runtime::ContainerRuntime;
@@ -46,7 +59,12 @@ const PRUNE_BATCH: usize = 50;
 const PRUNE_PAUSE: Duration = Duration::from_millis(50);
 
 const RESTORE_B64_PATH: &str = "/tmp/rivetr_snapshot_restore.b64";
-const RESTORE_SQL_PATH: &str = "/tmp/rivetr_snapshot_restore.sql";
+const RESTORE_DATA_PATH: &str = "/tmp/rivetr_snapshot_restore.dump";
+
+/// How long a Redis-family container gets to save and exit before it is killed, and how
+/// long a restarted one gets to answer PING.
+const REDIS_STOP_TIMEOUT_SECS: i64 = 60;
+const REDIS_READY_ATTEMPTS: u32 = 30;
 
 /// Where snapshot dumps are written; same layout as regular database backups.
 #[derive(Debug, Clone)]
@@ -87,11 +105,51 @@ pub struct DeploymentSnapshot {
     pub backup_status: String,
     #[serde(skip_serializing)]
     pub database_status: String,
+    #[serde(skip_serializing)]
+    pub volume_path: Option<String>,
 }
 
-/// Database types whose dumps are plain text and can be restored with the client tools.
+/// Database types that can be snapshotted and restored.
 pub fn snapshot_supported(db_type: &str) -> bool {
-    matches!(db_type, "postgres" | "mysql" | "mariadb")
+    matches!(
+        db_type,
+        "postgres" | "mysql" | "mariadb" | "mongodb" | "redis" | "keydb"
+    )
+}
+
+/// Redis-family types restored by replacing `dump.rdb` in the data volume.
+fn is_rdb_restore(db_type: &str) -> bool {
+    matches!(db_type, "redis" | "keydb")
+}
+
+/// Human-readable list of supported types, for log and error messages.
+const SUPPORTED_TYPES: &str = "PostgreSQL, MySQL, MariaDB, MongoDB, Redis and KeyDB";
+
+/// Why a Redis-family database cannot be restored from an RDB snapshot, if it cannot.
+/// The restore replaces `dump.rdb` in the data volume on this host, and AOF files would
+/// take precedence over it at startup. `path_exists` is injected for testing.
+pub fn rdb_restore_blocker(
+    volume_path: Option<&str>,
+    path_exists: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let Some(volume) = volume_path.filter(|v| !v.is_empty()) else {
+        return Some("it has no data volume on this host".to_string());
+    };
+    if !path_exists(volume) {
+        return Some(format!(
+            "its data volume {volume} does not exist on this host"
+        ));
+    }
+    for aof in ["appendonlydir", "appendonly.aof"] {
+        let p = std::path::Path::new(volume).join(aof);
+        if path_exists(&p.to_string_lossy()) {
+            return Some(
+                "it uses AOF persistence, which would take precedence over a restored RDB"
+                    .to_string(),
+            );
+        }
+    }
+    None
 }
 
 /// Keep the first (newest) snapshot per database. Input must be newest first.
@@ -104,10 +162,10 @@ pub fn latest_per_database(snapshots: Vec<DeploymentSnapshot>) -> Vec<Deployment
 }
 
 /// Verify a restore can proceed. Called before the rollback deployment is created, so
-/// nothing has changed yet when this fails. `file_exists` is injected for testing.
+/// nothing has changed yet when this fails. `path_exists` is injected for testing.
 pub fn check_restore_preconditions(
     snapshots: &[DeploymentSnapshot],
-    file_exists: impl Fn(&str) -> bool,
+    path_exists: impl Fn(&str) -> bool,
 ) -> Result<(), String> {
     if snapshots.is_empty() {
         return Err(
@@ -120,8 +178,8 @@ pub fn check_restore_preconditions(
     for s in snapshots {
         if !snapshot_supported(&s.db_type) {
             return Err(format!(
-                "Snapshot restore is not supported for {} database '{}'",
-                s.db_type, s.database_name
+                "Snapshot restore is not supported for {} database '{}' (supported: {})",
+                s.db_type, s.database_name, SUPPORTED_TYPES
             ));
         }
         if s.backup_status != "completed" {
@@ -131,7 +189,7 @@ pub fn check_restore_preconditions(
             ));
         }
         match s.file_path.as_deref() {
-            Some(p) if file_exists(p) => {}
+            Some(p) if path_exists(p) => {}
             _ => {
                 return Err(format!(
                     "Snapshot file for database '{}' is missing on disk",
@@ -151,6 +209,14 @@ pub fn check_restore_preconditions(
                 s.database_name, s.database_status
             ));
         }
+        if is_rdb_restore(&s.db_type) {
+            if let Some(why) = rdb_restore_blocker(s.volume_path.as_deref(), &path_exists) {
+                return Err(format!(
+                    "Cannot restore the snapshot of {} database '{}': {}",
+                    s.db_type, s.database_name, why
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -159,7 +225,7 @@ const SNAPSHOT_SELECT: &str = r#"
     SELECT s.id, s.deployment_id, s.app_id, s.source_deployment_id, s.database_id,
            d.name AS database_name, d.db_type AS db_type, s.backup_id, s.size_bytes,
            s.created_at, b.file_path AS file_path, b.status AS backup_status,
-           d.status AS database_status
+           d.status AS database_status, d.volume_path AS volume_path
     FROM deployment_db_snapshots s
     JOIN databases d ON d.id = s.database_id
     JOIN database_backups b ON b.id = s.backup_id
@@ -222,12 +288,31 @@ pub async fn take_pre_deploy_snapshots(
                 deployment_id,
                 "warn",
                 format!(
-                    "Pre-deploy snapshot skipped for {} database '{}': type not supported",
-                    database.db_type, database.name
+                    "Pre-deploy snapshot skipped for {} database '{}': type not supported \
+                     (supported: {})",
+                    database.db_type, database.name, SUPPORTED_TYPES
                 ),
             )
             .await;
             continue;
+        }
+        if is_rdb_restore(&database.db_type) {
+            if let Some(why) = rdb_restore_blocker(database.volume_path.as_deref(), |p| {
+                std::path::Path::new(p).exists()
+            }) {
+                dlog(
+                    db,
+                    deployment_id,
+                    "warn",
+                    format!(
+                        "Pre-deploy snapshot skipped for {} database '{}': {}, so a snapshot \
+                         could not be restored",
+                        database.db_type, database.name, why
+                    ),
+                )
+                .await;
+                continue;
+            }
         }
         if database.status != "running" || database.container_id.is_none() {
             dlog(
@@ -463,7 +548,11 @@ pub async fn restore_snapshots(
             }
         }
 
-        match restore_one(runtime.as_ref(), &database, snap).await {
+        let outcome = restore_one(runtime.as_ref(), &database, snap).await;
+        if is_rdb_restore(&database.db_type) {
+            sync_running_status(db, runtime.as_ref(), &database).await;
+        }
+        match outcome {
             Ok(()) => {
                 restored += 1;
                 dlog(
@@ -480,8 +569,8 @@ pub async fn restore_snapshots(
                     rollback_deployment_id,
                     "error",
                     format!(
-                        "Restore of database '{}' failed: {}. Use the safety backup to recover \
-                         the previous data; restart the app if it holds stale connections.",
+                        "Restore of database '{}' failed: {}. The safety backup above holds the \
+                         previous data; restart the app if it holds stale connections.",
                         database.name, e
                     ),
                 )
@@ -503,6 +592,27 @@ pub async fn restore_snapshots(
     restored
 }
 
+/// The container monitor marks a database stopped when it sees the container down, which
+/// a Redis-family restore causes on purpose. Put the status back once it is running.
+async fn sync_running_status(
+    db: &DbPool,
+    runtime: &dyn ContainerRuntime,
+    database: &ManagedDatabase,
+) {
+    let Some(container_id) = database.container_id.as_deref() else {
+        return;
+    };
+    if matches!(runtime.inspect(container_id).await, Ok(info) if info.running) {
+        let _ = sqlx::query(
+            "UPDATE databases SET status = 'running', error_message = NULL, \
+             updated_at = datetime('now') WHERE id = ? AND status != 'running'",
+        )
+        .bind(&database.id)
+        .execute(db)
+        .await;
+    }
+}
+
 async fn restore_one(
     runtime: &dyn ContainerRuntime,
     database: &ManagedDatabase,
@@ -520,10 +630,12 @@ async fn restore_one(
         .await
         .with_context(|| format!("Failed to read snapshot file {path}"))?;
 
+    if is_rdb_restore(&database.db_type) {
+        return restore_rdb(runtime, database, container_id, &creds, &bytes).await;
+    }
+
     upload_dump(runtime, container_id, &bytes).await?;
-    let result = runtime
-        .run_command(container_id, restore_command(&database.db_type, &creds)?)
-        .await;
+    let result = run_restore(runtime, container_id, &database.db_type, &creds).await;
 
     // Always remove the temp files, whatever the outcome.
     let _ = runtime
@@ -533,23 +645,109 @@ async fn restore_one(
                 "rm".into(),
                 "-f".into(),
                 RESTORE_B64_PATH.into(),
-                RESTORE_SQL_PATH.into(),
+                RESTORE_DATA_PATH.into(),
             ],
         )
         .await;
 
-    let result = result?;
-    if result.exit_code != 0 {
+    result
+}
+
+/// Validate (when the engine can) and then load the uploaded dump.
+async fn run_restore(
+    runtime: &dyn ContainerRuntime,
+    container_id: &str,
+    db_type: &str,
+    creds: &DatabaseCredentials,
+) -> Result<()> {
+    // Dry run first so a corrupt dump fails before anything is overwritten.
+    if let Some(check) = restore_check_command(db_type, creds) {
+        let r = runtime.run_command(container_id, check).await?;
+        if r.exit_code != 0 {
+            anyhow::bail!(
+                "snapshot failed validation, nothing was changed: {}",
+                r.stderr.trim()
+            );
+        }
+    }
+    let r = runtime
+        .run_command(container_id, restore_command(db_type, creds)?)
+        .await?;
+    if r.exit_code != 0 {
         anyhow::bail!(
             "restore command exited {}: {}",
-            result.exit_code,
-            result.stderr.trim()
+            r.exit_code,
+            r.stderr.trim()
         );
     }
     Ok(())
 }
 
-/// Write `bytes` to `RESTORE_SQL_PATH` inside the container via base64 chunks.
+/// Restore a Redis-family RDB snapshot: stop the container (it saves and exits), swap
+/// `dump.rdb` in the data volume, start it again and wait for it to answer. Everything
+/// that can be checked is checked before the stop; if the swap fails the container is
+/// started again with its data as it was.
+async fn restore_rdb(
+    runtime: &dyn ContainerRuntime,
+    database: &ManagedDatabase,
+    container_id: &str,
+    creds: &DatabaseCredentials,
+    bytes: &[u8],
+) -> Result<()> {
+    if !is_rdb(bytes) {
+        anyhow::bail!("snapshot file is not a valid RDB dump, nothing was changed");
+    }
+    if let Some(why) = rdb_restore_blocker(database.volume_path.as_deref(), |p| {
+        std::path::Path::new(p).exists()
+    }) {
+        anyhow::bail!("cannot restore, {why}; nothing was changed");
+    }
+    let volume = PathBuf::from(database.volume_path.as_deref().unwrap_or_default());
+    let target = volume.join("dump.rdb");
+    let staging = volume.join("dump.rdb.rivetr-restore");
+
+    runtime
+        .stop_timeout(container_id, Some(REDIS_STOP_TIMEOUT_SECS))
+        .await
+        .context("Failed to stop the database container")?;
+
+    let swap = async {
+        tokio::fs::write(&staging, bytes).await?;
+        tokio::fs::rename(&staging, &target).await
+    }
+    .await;
+    if let Err(e) = swap {
+        let _ = tokio::fs::remove_file(&staging).await;
+        let started = runtime.start(container_id).await;
+        anyhow::bail!(
+            "could not write dump.rdb in {} ({e}); the previous data was left in place{}",
+            volume.display(),
+            if started.is_err() {
+                " but the container failed to start again, start it manually"
+            } else {
+                ""
+            }
+        );
+    }
+
+    runtime.start(container_id).await.context(
+        "Snapshot written but the database container failed to start; start it manually",
+    )?;
+
+    let ping = format!("{}$CLI PING", redis_cli_prelude(&creds.password));
+    for _ in 0..REDIS_READY_ATTEMPTS {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let ready = runtime
+            .run_command(container_id, vec!["sh".into(), "-c".into(), ping.clone()])
+            .await;
+        if matches!(&ready, Ok(r) if r.exit_code == 0 && r.stdout.contains("PONG")) {
+            return Ok(());
+        }
+    }
+    anyhow::bail!("restored, but the database did not answer PING within {REDIS_READY_ATTEMPTS}s")
+}
+
+/// Write `bytes` to `RESTORE_DATA_PATH` inside the container via base64 chunks.
 async fn upload_dump(
     runtime: &dyn ContainerRuntime,
     container_id: &str,
@@ -581,7 +779,9 @@ async fn upload_dump(
     let r = runtime
         .run_command(
             container_id,
-            sh(format!("base64 -d {RESTORE_B64_PATH} > {RESTORE_SQL_PATH}")),
+            sh(format!(
+                "base64 -d {RESTORE_B64_PATH} > {RESTORE_DATA_PATH}"
+            )),
         )
         .await?;
     if r.exit_code != 0 {
@@ -590,10 +790,57 @@ async fn upload_dump(
     Ok(())
 }
 
-/// Command that loads `RESTORE_SQL_PATH` over the current data.
+fn mongo_restore_base(creds: &DatabaseCredentials, extra: &str) -> String {
+    let name = creds
+        .database
+        .clone()
+        .unwrap_or_else(|| "admin".to_string());
+    format!(
+        "mongorestore --username {} --password {} --authenticationDatabase admin \
+         --archive={RESTORE_DATA_PATH} --nsInclude {} {extra}",
+        shell_quote(&creds.username),
+        shell_quote(&creds.password),
+        shell_quote(&format!("{name}.*"))
+    )
+}
+
+/// Script that restores the uploaded MongoDB archive. The snapshotted database is
+/// dropped first so collections created after the snapshot disappear too; the archive
+/// was already validated with a dry run and a safety backup exists. System databases
+/// are never dropped, only overwritten collection by collection.
+fn mongo_restore_script(creds: &DatabaseCredentials) -> String {
+    let restore = mongo_restore_base(creds, "--drop");
+    match creds.database.as_deref() {
+        Some(name) if !matches!(name, "admin" | "local" | "config") => format!(
+            "SHELL_BIN=$(command -v mongosh || command -v mongo) && \
+             $SHELL_BIN --quiet --username {} --password {} --authenticationDatabase admin \
+             {} --eval 'db.dropDatabase()' && {restore}",
+            shell_quote(&creds.username),
+            shell_quote(&creds.password),
+            shell_quote(name),
+        ),
+        _ => restore,
+    }
+}
+
+/// Non-destructive validation of the uploaded dump, for engines that offer one.
+pub fn restore_check_command(db_type: &str, creds: &DatabaseCredentials) -> Option<Vec<String>> {
+    match db_type {
+        "mongodb" => Some(vec![
+            "sh".into(),
+            "-c".into(),
+            mongo_restore_base(creds, "--dryRun"),
+        ]),
+        _ => None,
+    }
+}
+
+/// Command that loads `RESTORE_DATA_PATH` over the current data.
 /// Postgres: the public schema is dropped and the dump replayed in one transaction with
 /// ON_ERROR_STOP, so a failed restore leaves the data as it was. MySQL/MariaDB dumps
 /// carry DROP TABLE IF EXISTS, but tables created after the snapshot are left in place.
+/// MongoDB: the database is dropped and the archive restored, so the result matches the
+/// snapshot exactly. Redis-family types are restored by `restore_rdb`.
 pub fn restore_command(db_type: &str, creds: &DatabaseCredentials) -> Result<Vec<String>> {
     let sh = |script: String| vec!["sh".to_string(), "-c".to_string(), script];
     match db_type {
@@ -604,7 +851,7 @@ pub fn restore_command(db_type: &str, creds: &DatabaseCredentials) -> Result<Vec
                 .unwrap_or_else(|| "postgres".to_string());
             Ok(sh(format!(
                 "{{ echo 'BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public;'; \
-                 cat {RESTORE_SQL_PATH}; echo 'COMMIT;'; }} | \
+                 cat {RESTORE_DATA_PATH}; echo 'COMMIT;'; }} | \
                  PGPASSWORD='{}' psql -q -v ON_ERROR_STOP=1 -U {} -d {}",
                 creds.password, creds.username, name
             )))
@@ -624,9 +871,10 @@ pub fn restore_command(db_type: &str, creds: &DatabaseCredentials) -> Result<Vec
                 "mariadb"
             };
             Ok(sh(format!(
-                "{client} -u root -p'{password}' {name} < {RESTORE_SQL_PATH}"
+                "{client} -u root -p'{password}' {name} < {RESTORE_DATA_PATH}"
             )))
         }
+        "mongodb" => Ok(sh(mongo_restore_script(creds))),
         other => anyhow::bail!("Snapshot restore is not supported for {other}"),
     }
 }
@@ -748,6 +996,7 @@ mod tests {
             file_path: Some(format!("/data/{db}.sql")),
             backup_status: "completed".into(),
             database_status: "running".into(),
+            volume_path: Some("/vol/db".into()),
         }
     }
 
@@ -768,10 +1017,15 @@ mod tests {
 
     #[test]
     fn restore_preconditions_reject_bad_snapshots() {
-        let mut s = snap("a", "redis");
+        let mut s = snap("a", "clickhouse");
         assert!(check_restore_preconditions(&[s.clone()], |_| true)
             .unwrap_err()
             .contains("not supported"));
+        assert!(
+            check_restore_preconditions(&[snap("a", "dragonfly")], |_| true)
+                .unwrap_err()
+                .contains("not supported")
+        );
 
         s = snap("a", "postgres");
         s.backup_status = "failed".into();
@@ -802,6 +1056,38 @@ mod tests {
         assert!(check_restore_preconditions(&[s], |_| true)
             .unwrap_err()
             .contains("must be running"));
+    }
+
+    #[test]
+    fn rdb_restore_needs_a_usable_volume_without_aof() {
+        // Volume and dump exist, no AOF: fine.
+        let ok = |p: &str| !p.contains("appendonly");
+        assert!(check_restore_preconditions(&[snap("a", "redis")], ok).is_ok());
+        assert!(check_restore_preconditions(&[snap("a", "keydb")], ok).is_ok());
+
+        let mut no_vol = snap("a", "redis");
+        no_vol.volume_path = None;
+        assert!(check_restore_preconditions(&[no_vol], ok)
+            .unwrap_err()
+            .contains("no data volume"));
+
+        // Volume directory missing on this host (dump file still present).
+        let err =
+            check_restore_preconditions(&[snap("a", "redis")], |p| p != "/vol/db").unwrap_err();
+        assert!(err.contains("does not exist"), "{err}");
+
+        for aof in ["/vol/db/appendonlydir", "/vol/db/appendonly.aof"] {
+            let err = check_restore_preconditions(&[snap("a", "keydb")], |p| {
+                p == aof || p == "/vol/db" || p == "/data/a.sql"
+            })
+            .unwrap_err();
+            assert!(err.contains("AOF"), "{err}");
+        }
+
+        // Non-RDB types never look at the volume.
+        let mut pg = snap("a", "postgres");
+        pg.volume_path = None;
+        assert!(check_restore_preconditions(&[pg], |_| true).is_ok());
     }
 
     #[test]
@@ -870,14 +1156,42 @@ mod tests {
         let ma = restore_command("mariadb", &creds).unwrap().join(" ");
         assert!(ma.contains("mariadb -u root"));
         assert!(restore_command("redis", &creds).is_err());
+        assert!(restore_command("clickhouse", &creds).is_err());
+        assert!(restore_check_command("postgres", &creds).is_none());
+
+        let mongo = restore_command("mongodb", &creds).unwrap().join(" ");
+        assert!(mongo.contains("mongorestore"));
+        assert!(mongo.contains("--drop"));
+        assert!(mongo.contains("db.dropDatabase()"));
+        assert!(mongo.contains("--nsInclude 'appdb.*'"));
+        assert!(mongo.contains("--nsInclude 'appdb.*'"));
+        assert!(mongo.contains("--archive=/tmp/rivetr_snapshot_restore.dump"));
+        let check = restore_check_command("mongodb", &creds).unwrap().join(" ");
+        assert!(check.contains("--dryRun"));
+        assert!(!check.contains("--drop"));
     }
 
     #[test]
-    fn only_text_dump_types_are_supported() {
-        for t in ["postgres", "mysql", "mariadb"] {
+    fn mongo_credentials_are_shell_quoted() {
+        let creds = DatabaseCredentials {
+            username: "root".into(),
+            password: "pa'ss".into(),
+            database: None,
+            root_password: None,
+        };
+        let cmd = restore_command("mongodb", &creds).unwrap().join(" ");
+        assert!(cmd.contains("--password 'pa'\\''ss'"), "{cmd}");
+        assert!(cmd.contains("--nsInclude 'admin.*'"));
+        // Without a named database the admin database must never be dropped.
+        assert!(!cmd.contains("dropDatabase"));
+    }
+
+    #[test]
+    fn supported_types() {
+        for t in ["postgres", "mysql", "mariadb", "mongodb", "redis", "keydb"] {
             assert!(snapshot_supported(t));
         }
-        for t in ["mongodb", "redis", "clickhouse", "dragonfly", "keydb"] {
+        for t in ["clickhouse", "dragonfly", "libsql"] {
             assert!(!snapshot_supported(t));
         }
     }
@@ -889,14 +1203,14 @@ mod tests {
             .await
             .unwrap();
         for ddl in [
-            "CREATE TABLE databases (id TEXT PRIMARY KEY, name TEXT NOT NULL, db_type TEXT NOT NULL, status TEXT NOT NULL)",
+            "CREATE TABLE databases (id TEXT PRIMARY KEY, name TEXT NOT NULL, db_type TEXT NOT NULL, status TEXT NOT NULL, volume_path TEXT)",
             "CREATE TABLE database_backups (id TEXT PRIMARY KEY, database_id TEXT NOT NULL REFERENCES databases(id) ON DELETE CASCADE, backup_type TEXT NOT NULL, status TEXT NOT NULL, file_path TEXT)",
             "CREATE TABLE deployments (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, started_at TEXT)",
             "CREATE TABLE deployment_db_snapshots (id TEXT PRIMARY KEY, deployment_id TEXT NOT NULL, app_id TEXT NOT NULL, source_deployment_id TEXT, database_id TEXT NOT NULL REFERENCES databases(id) ON DELETE CASCADE, backup_id TEXT NOT NULL REFERENCES database_backups(id) ON DELETE CASCADE, size_bytes INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')))",
         ] {
             sqlx::query(ddl).execute(&pool).await.unwrap();
         }
-        sqlx::query("INSERT INTO databases VALUES ('db1', 'main', 'postgres', 'running')")
+        sqlx::query("INSERT INTO databases VALUES ('db1', 'main', 'postgres', 'running', NULL)")
             .execute(&pool)
             .await
             .unwrap();

@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{SwarmNode, SwarmService};
+use crate::db::{SwarmNode, SwarmService, User};
 use crate::AppState;
 
+use super::authz;
 use super::error::ApiError;
 
 // ---------------------------------------------------------------------------
@@ -88,7 +89,11 @@ pub struct ScaleServiceRequest {
 /// POST /api/swarm/init — Initialize the Docker Swarm on this node
 pub async fn init_swarm(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<SwarmInitResponse>, ApiError> {
+    // The swarm is host-wide infrastructure with no team owner.
+    authz::require_privileged(&user)?;
+
     // Initialize swarm, passing --advertise-addr when server_ip is configured
     // (required on multi-homed hosts that have multiple IPs on the same interface)
     if let Some(ref ip) = state.config.proxy.server_ip {
@@ -151,7 +156,10 @@ pub async fn init_swarm(
 /// GET /api/swarm/status — Get swarm status from docker info
 pub async fn get_swarm_status(
     State(_state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<SwarmStatusResponse>, ApiError> {
+    authz::require_privileged(&user)?;
+
     let raw = run_docker(&["info", "--format", "{{json .Swarm}}"]).await?;
 
     let info: serde_json::Value = serde_json::from_str(raw.trim())
@@ -178,7 +186,12 @@ pub async fn get_swarm_status(
 }
 
 /// POST /api/swarm/leave — Leave the swarm (force)
-pub async fn leave_swarm(State(state): State<Arc<AppState>>) -> Result<StatusCode, ApiError> {
+pub async fn leave_swarm(
+    State(state): State<Arc<AppState>>,
+    user: User,
+) -> Result<StatusCode, ApiError> {
+    authz::require_privileged(&user)?;
+
     run_docker(&["swarm", "leave", "--force"]).await?;
 
     // Clear stored swarm config
@@ -200,7 +213,10 @@ pub async fn leave_swarm(State(state): State<Arc<AppState>>) -> Result<StatusCod
 /// GET /api/swarm/nodes — List nodes from DB
 pub async fn list_nodes(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<Vec<SwarmNode>>, ApiError> {
+    authz::require_privileged(&user)?;
+
     let nodes =
         sqlx::query_as::<_, SwarmNode>("SELECT * FROM swarm_nodes ORDER BY created_at DESC")
             .fetch_all(&state.db)
@@ -216,7 +232,10 @@ pub async fn list_nodes(
 /// POST /api/swarm/sync-nodes — Sync nodes from `docker node ls`
 pub async fn sync_nodes(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<Vec<SwarmNode>>, ApiError> {
+    authz::require_privileged(&user)?;
+
     // Each line from `docker node ls --format json` is a separate JSON object
     let raw = run_docker(&["node", "ls", "--format", "{{json .}}"]).await?;
 
@@ -315,9 +334,12 @@ pub async fn sync_nodes(
 /// PUT /api/swarm/nodes/:id/availability — Drain or activate a node
 pub async fn update_node_availability(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Json(req): Json<NodeAvailabilityRequest>,
 ) -> Result<Json<SwarmNode>, ApiError> {
+    authz::require_privileged(&user)?;
+
     let valid_values = ["active", "pause", "drain"];
     if !valid_values.contains(&req.availability.as_str()) {
         return Err(ApiError::bad_request(
@@ -369,6 +391,7 @@ pub async fn update_node_availability(
 /// GET /api/swarm/services — List swarm services from DB
 pub async fn list_services(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<Vec<SwarmService>>, ApiError> {
     let services =
         sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services ORDER BY created_at DESC")
@@ -379,19 +402,69 @@ pub async fn list_services(
                 ApiError::database("Failed to list swarm services")
             })?;
 
+    let services = visible_services(&state, &user, services).await?;
     Ok(Json(services))
+}
+
+/// Services bound to an app follow that app's team access; services with no app have
+/// no team owner and are visible to instance admins only.
+async fn visible_services(
+    state: &Arc<AppState>,
+    user: &User,
+    services: Vec<SwarmService>,
+) -> Result<Vec<SwarmService>, ApiError> {
+    if authz::is_privileged_user(user) {
+        return Ok(services);
+    }
+    let app_ids: Vec<String> = services.iter().filter_map(|s| s.app_id.clone()).collect();
+    let accessible = authz::accessible_app_ids(state, user, app_ids).await?;
+    Ok(services
+        .into_iter()
+        .filter(|s| s.app_id.as_ref().is_some_and(|a| accessible.contains(a)))
+        .collect())
+}
+
+/// Authorize one swarm service. `write` additionally needs the developer team role.
+async fn authorize_swarm_service(
+    state: &Arc<AppState>,
+    user: &User,
+    service: &SwarmService,
+    write: bool,
+) -> Result<(), ApiError> {
+    match service.app_id.as_deref() {
+        Some(app_id) if write => authz::authorize_app_write(state, user, app_id)
+            .await
+            .map(|_| ()),
+        Some(app_id) => authz::authorize_app(state, user, app_id).await.map(|_| ()),
+        None => authz::require_privileged(user),
+    }
 }
 
 /// POST /api/swarm/services — Create a swarm service
 pub async fn create_service(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateServiceRequest>,
 ) -> Result<(StatusCode, Json<SwarmService>), ApiError> {
+    match req.app_id.as_deref().filter(|a| !a.is_empty()) {
+        Some(app_id) => {
+            authz::authorize_app_write(&state, &user, app_id).await?;
+        }
+        None => authz::require_privileged(&user)?,
+    }
+
     if req.service_name.trim().is_empty() {
         return Err(ApiError::bad_request("service_name is required"));
     }
     if req.image.trim().is_empty() {
         return Err(ApiError::bad_request("image is required"));
+    }
+    // Names and images are passed to the docker CLI as positional values; a leading
+    // dash would be parsed as a flag (e.g. `--privileged`).
+    if req.image.starts_with('-') || req.service_name.starts_with('-') {
+        return Err(ApiError::bad_request(
+            "service_name and image must not start with '-'",
+        ));
     }
 
     let replicas = req.replicas.unwrap_or(1);
@@ -458,6 +531,7 @@ pub async fn create_service(
 /// DELETE /api/swarm/services/:id — Remove a swarm service
 pub async fn delete_service(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let service = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
@@ -466,6 +540,7 @@ pub async fn delete_service(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    authorize_swarm_service(&state, &user, &service, true).await?;
 
     // Remove from Docker if we have the service name
     if let Err(e) = run_docker(&["service", "rm", &service.service_name]).await {
@@ -488,6 +563,7 @@ pub async fn delete_service(
 /// POST /api/swarm/services/:id/scale — Scale a swarm service
 pub async fn scale_service(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Json(req): Json<ScaleServiceRequest>,
 ) -> Result<Json<SwarmService>, ApiError> {
@@ -501,6 +577,7 @@ pub async fn scale_service(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    authorize_swarm_service(&state, &user, &service, true).await?;
 
     let scale_arg = format!("{}={}", service.service_name, req.replicas);
     run_docker(&["service", "scale", &scale_arg]).await?;
@@ -527,6 +604,7 @@ pub async fn scale_service(
 /// GET /api/swarm/services/:id/logs — Get logs for a swarm service
 pub async fn get_service_logs(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let service = sqlx::query_as::<_, SwarmService>("SELECT * FROM swarm_services WHERE id = ?")
@@ -535,6 +613,7 @@ pub async fn get_service_logs(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found("Swarm service not found"))?;
+    authorize_swarm_service(&state, &user, &service, false).await?;
 
     let output = run_docker(&[
         "service",

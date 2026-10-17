@@ -7,6 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::audit::{audit_log, ClientIp};
+use super::authz;
 use crate::db::{
     actions, resource_types, CreateSshKeyRequest, SshKey, SshKeyResponse, UpdateSshKeyRequest, User,
 };
@@ -15,6 +16,7 @@ use crate::AppState;
 /// List all SSH keys (returns public info only, not private keys)
 pub async fn list_ssh_keys(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<Vec<SshKeyResponse>>, StatusCode> {
     let keys = sqlx::query_as::<_, SshKey>("SELECT * FROM ssh_keys ORDER BY created_at DESC")
         .fetch_all(&state.db)
@@ -24,7 +26,17 @@ pub async fn list_ssh_keys(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let responses: Vec<SshKeyResponse> = keys.into_iter().map(SshKeyResponse::from).collect();
+    // App-bound keys are only listed for callers who can access the app; global
+    // keys (no app) stay visible to everyone.
+    let app_ids: Vec<String> = keys.iter().filter_map(|k| k.app_id.clone()).collect();
+    let accessible = authz::accessible_app_ids(&state, &user, app_ids)
+        .await
+        .map_err(|e| e.status())?;
+    let responses: Vec<SshKeyResponse> = keys
+        .into_iter()
+        .filter(|k| k.app_id.as_ref().map_or(true, |a| accessible.contains(a)))
+        .map(SshKeyResponse::from)
+        .collect();
     Ok(Json(responses))
 }
 
@@ -56,6 +68,13 @@ pub async fn create_ssh_key(
     // Validate the private key format
     if !req.private_key.contains("PRIVATE KEY") {
         return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // A key bound to an app needs write access to that app.
+    if let Some(app_id) = req.app_id.as_deref() {
+        authz::authorize_app_write(&state, &user, app_id)
+            .await
+            .map_err(|e| e.status())?;
     }
 
     let id = Uuid::new_v4().to_string();
@@ -132,6 +151,13 @@ pub async fn update_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Re-binding a key to another app needs write access to that app.
+    if let Some(app_id) = req.app_id.as_deref() {
+        authz::authorize_app_write(&state, &user, app_id)
+            .await
+            .map_err(|e| e.status())?;
+    }
 
     // Validate private key if provided
     if let Some(ref pk) = req.private_key {

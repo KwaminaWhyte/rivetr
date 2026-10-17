@@ -43,6 +43,137 @@ pub struct CloneEnvironmentResponse {
     pub cloned_services: usize,
 }
 
+/// Insert one cloned app row into the new environment. Domains are cleared and
+/// deployment state starts fresh; settings such as `snapshot_before_deploy` and
+/// `access_logging` are copied.
+async fn insert_cloned_app(
+    db: &crate::DbPool,
+    app: &App,
+    new_app_id: &str,
+    new_env_id: &str,
+    now: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO apps (
+            id, name, git_url, branch, dockerfile, domain, port, healthcheck,
+            memory_limit, cpu_limit, ssh_key_id, environment, project_id,
+            environment_id, team_id, dockerfile_path, base_directory, build_target,
+            watch_paths, custom_docker_options, port_mappings, network_aliases,
+            extra_hosts, domains, auto_subdomain, pre_deploy_commands,
+            post_deploy_commands, docker_image, docker_image_tag, registry_url,
+            registry_username, registry_password, container_labels, build_type,
+            nixpacks_config, publish_directory, preview_enabled,
+            github_app_installation_id, restart_policy, privileged, cap_add,
+            devices, shm_size, init_process, build_platforms, build_secrets,
+            docker_cap_drop, docker_gpus, docker_ulimits, docker_security_opt,
+            require_approval, maintenance_mode, maintenance_message,
+            auto_rollback_enabled, registry_push_enabled, max_rollback_versions,
+            replica_count, server_id, build_server_id, rollback_retention_count,
+            deployment_source, created_at, updated_at,
+            snapshot_before_deploy, access_logging
+        )
+        VALUES (
+            ?, ?, ?, ?, ?, NULL, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, NULL, NULL, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?
+        )
+        "#,
+    )
+    // Core identity
+    .bind(new_app_id)
+    .bind(&app.name)
+    .bind(&app.git_url)
+    .bind(&app.branch)
+    .bind(&app.dockerfile)
+    // domain cleared (NULL above)
+    .bind(app.port)
+    .bind(&app.healthcheck)
+    // Resources
+    .bind(&app.memory_limit)
+    .bind(&app.cpu_limit)
+    .bind(&app.ssh_key_id)
+    .bind(&app.environment)
+    .bind(&app.project_id)
+    // Environment
+    .bind(new_env_id)
+    .bind(&app.team_id)
+    // Build options
+    .bind(&app.dockerfile_path)
+    .bind(&app.base_directory)
+    .bind(&app.build_target)
+    .bind(&app.watch_paths)
+    .bind(&app.custom_docker_options)
+    // Network
+    .bind(&app.port_mappings)
+    .bind(&app.network_aliases)
+    .bind(&app.extra_hosts)
+    // domains JSON cleared (NULL above), auto_subdomain cleared (NULL above)
+    // Deploy commands
+    .bind(&app.pre_deploy_commands)
+    .bind(&app.post_deploy_commands)
+    // Registry
+    .bind(&app.docker_image)
+    .bind(&app.docker_image_tag)
+    .bind(&app.registry_url)
+    .bind(&app.registry_username)
+    .bind(&app.registry_password)
+    // Build config
+    .bind(&app.container_labels)
+    .bind(&app.build_type)
+    .bind(&app.nixpacks_config)
+    .bind(&app.publish_directory)
+    .bind(app.preview_enabled)
+    .bind(&app.github_app_installation_id)
+    // Runtime options
+    .bind(&app.restart_policy)
+    .bind(app.privileged)
+    .bind(&app.cap_add)
+    .bind(&app.devices)
+    .bind(&app.shm_size)
+    .bind(app.init_process)
+    // Build extras
+    .bind(&app.build_platforms)
+    .bind(&app.build_secrets)
+    .bind(&app.docker_cap_drop)
+    .bind(&app.docker_gpus)
+    .bind(&app.docker_ulimits)
+    .bind(&app.docker_security_opt)
+    // Deployment policy
+    .bind(app.require_approval)
+    .bind(app.maintenance_mode)
+    .bind(&app.maintenance_message)
+    .bind(app.auto_rollback_enabled)
+    .bind(app.registry_push_enabled)
+    .bind(app.max_rollback_versions)
+    .bind(app.replica_count)
+    .bind(&app.server_id)
+    .bind(&app.build_server_id)
+    .bind(app.rollback_retention_count)
+    .bind(&app.deployment_source)
+    .bind(now)
+    .bind(now)
+    // Settings that carry over unchanged
+    .bind(app.snapshot_before_deploy)
+    .bind(app.access_logging)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// POST /api/projects/:project_id/environments/:env_id/clone
 ///
 /// Creates a new environment that is a copy of the source environment.
@@ -172,123 +303,12 @@ pub async fn clone_environment(
     for app in &apps {
         let new_app_id = Uuid::new_v4().to_string();
 
-        sqlx::query(
-            r#"
-            INSERT INTO apps (
-                id, name, git_url, branch, dockerfile, domain, port, healthcheck,
-                memory_limit, cpu_limit, ssh_key_id, environment, project_id,
-                environment_id, team_id, dockerfile_path, base_directory, build_target,
-                watch_paths, custom_docker_options, port_mappings, network_aliases,
-                extra_hosts, domains, auto_subdomain, pre_deploy_commands,
-                post_deploy_commands, docker_image, docker_image_tag, registry_url,
-                registry_username, registry_password, container_labels, build_type,
-                nixpacks_config, publish_directory, preview_enabled,
-                github_app_installation_id, restart_policy, privileged, cap_add,
-                devices, shm_size, init_process, build_platforms, build_secrets,
-                docker_cap_drop, docker_gpus, docker_ulimits, docker_security_opt,
-                require_approval, maintenance_mode, maintenance_message,
-                auto_rollback_enabled, registry_push_enabled, max_rollback_versions,
-                replica_count, server_id, build_server_id, rollback_retention_count,
-                deployment_source, created_at, updated_at
-            )
-            VALUES (
-                ?, ?, ?, ?, ?, NULL, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, NULL, NULL, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?
-            )
-            "#,
-        )
-        // Core identity
-        .bind(&new_app_id)
-        .bind(&app.name)
-        .bind(&app.git_url)
-        .bind(&app.branch)
-        .bind(&app.dockerfile)
-        // domain cleared (NULL above)
-        .bind(app.port)
-        .bind(&app.healthcheck)
-        // Resources
-        .bind(&app.memory_limit)
-        .bind(&app.cpu_limit)
-        .bind(&app.ssh_key_id)
-        .bind(&app.environment)
-        .bind(&app.project_id)
-        // Environment
-        .bind(&new_env_id)
-        .bind(&app.team_id)
-        // Build options
-        .bind(&app.dockerfile_path)
-        .bind(&app.base_directory)
-        .bind(&app.build_target)
-        .bind(&app.watch_paths)
-        .bind(&app.custom_docker_options)
-        // Network
-        .bind(&app.port_mappings)
-        .bind(&app.network_aliases)
-        .bind(&app.extra_hosts)
-        // domains JSON cleared (NULL above), auto_subdomain cleared (NULL above)
-        // Deploy commands
-        .bind(&app.pre_deploy_commands)
-        .bind(&app.post_deploy_commands)
-        // Registry
-        .bind(&app.docker_image)
-        .bind(&app.docker_image_tag)
-        .bind(&app.registry_url)
-        .bind(&app.registry_username)
-        .bind(&app.registry_password)
-        // Build config
-        .bind(&app.container_labels)
-        .bind(&app.build_type)
-        .bind(&app.nixpacks_config)
-        .bind(&app.publish_directory)
-        .bind(app.preview_enabled)
-        .bind(&app.github_app_installation_id)
-        // Runtime options
-        .bind(&app.restart_policy)
-        .bind(app.privileged)
-        .bind(&app.cap_add)
-        .bind(&app.devices)
-        .bind(&app.shm_size)
-        .bind(app.init_process)
-        // Build extras
-        .bind(&app.build_platforms)
-        .bind(&app.build_secrets)
-        .bind(&app.docker_cap_drop)
-        .bind(&app.docker_gpus)
-        .bind(&app.docker_ulimits)
-        .bind(&app.docker_security_opt)
-        // Deployment policy
-        .bind(app.require_approval)
-        .bind(app.maintenance_mode)
-        .bind(&app.maintenance_message)
-        .bind(app.auto_rollback_enabled)
-        .bind(app.registry_push_enabled)
-        .bind(app.max_rollback_versions)
-        .bind(app.replica_count)
-        .bind(&app.server_id)
-        .bind(&app.build_server_id)
-        .bind(app.rollback_retention_count)
-        .bind(&app.deployment_source)
-        .bind(&now)
-        .bind(&now)
-        .execute(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to clone app {}: {}", app.id, e);
-            ApiError::database("Failed to clone app")
-        })?;
+        insert_cloned_app(&state.db, app, &new_app_id, &new_env_id, &now)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to clone app {}: {}", app.id, e);
+                ApiError::database("Failed to clone app")
+            })?;
 
         // Clone app env vars
         let app_env_vars =
@@ -534,4 +554,48 @@ struct VolumeRow {
     pub created_at: String,
     #[allow(dead_code)]
     pub updated_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn cloned_app_keeps_snapshot_and_access_logging_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, branch, port, snapshot_before_deploy, access_logging) \
+             VALUES ('src-app', 'src', 'https://example.com/r.git', 'main', 3000, 1, 0)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO projects (id, name) VALUES ('p1', 'proj')")
+            .execute(&db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO environments (id, project_id, name) VALUES ('env-2', 'p1', 'staging')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        let app: App = sqlx::query_as("SELECT * FROM apps WHERE id = 'src-app'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+
+        insert_cloned_app(&db, &app, "new-app", "env-2", "2026-10-17T00:00:00+00:00")
+            .await
+            .unwrap();
+
+        let cloned: App = sqlx::query_as("SELECT * FROM apps WHERE id = 'new-app'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(cloned.snapshot_before_deploy, 1);
+        assert_eq!(cloned.access_logging, 0);
+        assert_eq!(cloned.environment_id.as_deref(), Some("env-2"));
+    }
 }

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -15,6 +15,33 @@ use crate::db::{
 use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
+use super::state_cookie::{state_matches_cookie, StateCookie};
+
+/// Cookie that binds the SSO `state` to the browser that started the login (SEC-M3).
+const STATE_COOKIE: StateCookie = StateCookie {
+    name: "rivetr_sso_state",
+    path: "/auth/sso",
+};
+
+/// How long an SSO login state stays valid.
+const STATE_TTL_MINUTES: i64 = 10;
+
+/// `sso_states.created_at` format. Matches SQLite's `datetime('now')` so the
+/// lazy cleanup query compares like with like.
+const STATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+
+/// Whether a stored `created_at` is still inside the state TTL. Accepts both the
+/// SQLite format and RFC 3339 (older rows); anything unparsable is expired.
+fn state_is_fresh(created_at: &str, now: chrono::DateTime<chrono::Utc>) -> bool {
+    let created = chrono::NaiveDateTime::parse_from_str(created_at, STATE_TIME_FORMAT)
+        .map(|n| n.and_utc())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(created_at).map(|d| d.to_utc()))
+        .ok();
+    created.is_some_and(|c| {
+        c <= now + chrono::Duration::minutes(1)
+            && now - c < chrono::Duration::minutes(STATE_TTL_MINUTES)
+    })
+}
 
 /// OIDC discovery document structure
 #[derive(Deserialize)]
@@ -350,6 +377,7 @@ pub async fn delete_provider(
 pub async fn initiate_sso_login(
     State(state): State<Arc<AppState>>,
     Path(provider_id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Look up provider
     let provider: Option<OidcProvider> =
@@ -389,7 +417,7 @@ pub async fn initiate_sso_login(
     let state_param = uuid::Uuid::new_v4().to_string();
 
     // Store state in sso_states table (expires in 10 minutes - we'll clean up old ones lazily)
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now().format(STATE_TIME_FORMAT).to_string();
     sqlx::query(
         "INSERT INTO sso_states (state, provider_id, redirect_to, created_at) VALUES (?, ?, ?, ?)",
     )
@@ -411,7 +439,10 @@ pub async fn initiate_sso_login(
         url_encode(&state_param),
     );
 
-    Ok(Redirect::to(&auth_url))
+    // Bind the state to this browser; the callback must present the same value.
+    let cookie = STATE_COOKIE.header(&state_param, super::csp::is_https_request(&headers));
+
+    Ok(([(SET_COOKIE, cookie)], Redirect::to(&auth_url)))
 }
 
 /// GET /auth/sso/:provider_id/callback - Handle OIDC callback
@@ -419,6 +450,7 @@ pub async fn handle_sso_callback(
     State(state): State<Arc<AppState>>,
     Path(provider_id): Path<String>,
     Query(params): Query<OidcCallbackParams>,
+    headers: HeaderMap,
     client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check for errors from provider
@@ -438,37 +470,41 @@ pub async fn handle_sso_callback(
         "Missing authorization code".to_string(),
     ))?;
 
-    let state_param = params.state.ok_or((
+    let state_param = params.state.as_deref().filter(|s| !s.is_empty()).ok_or((
         StatusCode::BAD_REQUEST,
         "Missing state parameter".to_string(),
     ))?;
 
-    // Verify CSRF state
-    let valid_state: Option<(String,)> =
-        sqlx::query_as("SELECT state FROM sso_states WHERE state = ? AND provider_id = ?")
-            .bind(&state_param)
-            .bind(&provider_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // The state must match the cookie set when this browser started the login, so a
+    // state minted by an attacker cannot be replayed into a victim's browser.
+    if !state_matches_cookie(state_param, STATE_COOKIE.read(&headers)) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "SSO state does not match this browser. Please start the sign-in again.".to_string(),
+        ));
+    }
 
-    if valid_state.is_none() {
+    // Consume the state atomically so it can only be used once.
+    let consumed: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM sso_states WHERE state = ? AND provider_id = ? RETURNING created_at",
+    )
+    .bind(state_param)
+    .bind(&provider_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Clean up abandoned states (best effort)
+    let _ = sqlx::query("DELETE FROM sso_states WHERE created_at < datetime('now', '-10 minutes')")
+        .execute(&state.db)
+        .await;
+
+    if !consumed.is_some_and(|(created_at,)| state_is_fresh(&created_at, chrono::Utc::now())) {
         return Err((
             StatusCode::BAD_REQUEST,
             "Invalid or expired state parameter".to_string(),
         ));
     }
-
-    // Clean up used state
-    let _ = sqlx::query("DELETE FROM sso_states WHERE state = ?")
-        .bind(&state_param)
-        .execute(&state.db)
-        .await;
-
-    // Clean up old states older than 10 minutes
-    let _ = sqlx::query("DELETE FROM sso_states WHERE created_at < datetime('now', '-10 minutes')")
-        .execute(&state.db)
-        .await;
 
     // Look up provider
     let provider: Option<OidcProvider> =
@@ -615,7 +651,13 @@ pub async fn handle_sso_callback(
     .await;
 
     // Redirect to frontend with token
-    Ok(Redirect::to(&format!("/login?oauth_token={}", token)))
+    Ok((
+        [(
+            SET_COOKIE,
+            STATE_COOKIE.clear_header(super::csp::is_https_request(&headers)),
+        )],
+        Redirect::to(&format!("/login?oauth_token={}", token)),
+    ))
 }
 
 /// Find existing user by OIDC subject or email, or create a new one
@@ -760,4 +802,39 @@ fn url_encode(s: &str) -> String {
         }
     }
     encoded
+}
+
+#[cfg(test)]
+mod state_tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+
+    fn fmt(t: chrono::DateTime<Utc>) -> String {
+        t.format(STATE_TIME_FORMAT).to_string()
+    }
+
+    #[test]
+    fn fresh_state_is_accepted() {
+        let now = Utc::now();
+        assert!(state_is_fresh(&fmt(now), now));
+        assert!(state_is_fresh(&fmt(now - Duration::minutes(9)), now));
+        assert!(state_is_fresh(
+            &(now - Duration::minutes(2)).to_rfc3339(),
+            now
+        ));
+    }
+
+    #[test]
+    fn expired_or_garbage_state_is_rejected() {
+        let now = Utc::now();
+        assert!(!state_is_fresh(&fmt(now - Duration::minutes(11)), now));
+        assert!(!state_is_fresh(
+            &(now - Duration::hours(1)).to_rfc3339(),
+            now
+        ));
+        assert!(!state_is_fresh("", now));
+        assert!(!state_is_fresh("not a date", now));
+        // Far-future timestamps are not trusted either.
+        assert!(!state_is_fresh(&fmt(now + Duration::hours(1)), now));
+    }
 }

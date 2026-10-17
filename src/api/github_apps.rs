@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use super::audit::{audit_log, ClientIp};
+use super::authz;
 use crate::crypto;
 use crate::db::{
     actions, resource_types, GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse,
@@ -44,8 +45,14 @@ const DEFAULT_EVENTS: &[&str] = &["push", "pull_request", "create", "delete"];
 /// The manifest includes the app configuration (permissions, events, webhook URL, etc.)
 pub async fn create_manifest(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(request): Json<ManifestRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // The app is registered under this team, so the caller must belong to it.
+    authz::authorize_team_assignment(&state, &user, request.team_id.as_deref())
+        .await
+        .map_err(|e| (e.status(), e.to_string()))?;
+
     // Generate a state parameter for CSRF protection
     let state_param = uuid::Uuid::new_v4().to_string();
 
@@ -227,12 +234,19 @@ pub async fn manifest_callback(
 /// GET /api/github-apps - List all accessible GitHub Apps
 pub async fn list_apps(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // For now, return all apps (in production, filter by team membership)
     let apps: Vec<GitHubApp> = sqlx::query_as("SELECT * FROM github_apps ORDER BY created_at DESC")
         .fetch_all(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Own teams' apps, system-wide apps and legacy (team-less) apps.
+    let apps = authz::retain_visible(&state, &user, apps, |a| {
+        authz::github_app_list_team(a.is_system_wide, a.team_id.as_deref())
+    })
+    .await
+    .map_err(|e| (e.status(), e.to_string()))?;
 
     let responses: Vec<GitHubAppResponse> = apps.into_iter().map(GitHubAppResponse::from).collect();
     Ok(Json(responses))
@@ -495,18 +509,42 @@ pub async fn list_installations(
 /// for repository selection in the app creation form.
 pub async fn list_all_installations(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Get all installations with their associated app info
-    let installations: Vec<GitHubAppInstallation> = sqlx::query_as(
-        r#"
-        SELECT i.* FROM github_app_installations i
-        JOIN github_apps a ON i.github_app_id = a.id
-        ORDER BY i.account_login ASC, i.created_at DESC
-        "#,
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Get all installations with their owning app's team scope
+    let rows: Vec<(GitHubAppInstallation, Option<String>, bool)> = {
+        let installations: Vec<GitHubAppInstallation> = sqlx::query_as(
+            r#"
+            SELECT i.* FROM github_app_installations i
+            JOIN github_apps a ON i.github_app_id = a.id
+            ORDER BY i.account_login ASC, i.created_at DESC
+            "#,
+        )
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let scopes: Vec<(String, Option<String>, bool)> =
+            sqlx::query_as("SELECT id, team_id, is_system_wide FROM github_apps")
+                .fetch_all(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        installations
+            .into_iter()
+            .filter_map(|i| {
+                let (_, team, shared) = scopes.iter().find(|(id, _, _)| *id == i.github_app_id)?;
+                Some((i, team.clone(), *shared))
+            })
+            .collect()
+    };
+    let installations: Vec<GitHubAppInstallation> =
+        authz::retain_visible(&state, &user, rows, |(_, team, shared)| {
+            authz::github_app_list_team(*shared, team.as_deref())
+        })
+        .await
+        .map_err(|e| (e.status(), e.to_string()))?
+        .into_iter()
+        .map(|(i, _, _)| i)
+        .collect();
 
     let responses: Vec<GitHubAppInstallationResponse> = installations
         .into_iter()

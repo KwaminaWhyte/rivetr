@@ -16,6 +16,7 @@ use crate::db::{
 use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
+use super::state_cookie::{state_matches_cookie, StateCookie};
 
 /// Query params for OAuth callback
 #[derive(Debug, Deserialize)]
@@ -46,56 +47,10 @@ struct OAuthUserInfo {
 // ============================================================================
 
 /// Cookie that binds the OAuth `state` to the browser that started the login (SEC-M3).
-const STATE_COOKIE: &str = "rivetr_oauth_state";
-/// Only sent to the OAuth login endpoints.
-const STATE_COOKIE_PATH: &str = "/api/auth/oauth-login";
-/// Same lifetime as the DB state row.
-const STATE_COOKIE_MAX_AGE_SECS: u32 = 600;
-
-/// `Set-Cookie` value for the state cookie. `Secure` only when the request arrived
-/// over HTTPS, otherwise browsers would drop it on plain-http installs.
-fn state_cookie_header(value: &str, secure: bool) -> String {
-    format!(
-        "{STATE_COOKIE}={value}; Path={STATE_COOKIE_PATH}; Max-Age={STATE_COOKIE_MAX_AGE_SECS}; HttpOnly; SameSite=Lax{}",
-        if secure { "; Secure" } else { "" }
-    )
-}
-
-/// `Set-Cookie` value that expires the state cookie.
-fn clear_state_cookie_header(secure: bool) -> String {
-    format!(
-        "{STATE_COOKIE}=; Path={STATE_COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Lax{}",
-        if secure { "; Secure" } else { "" }
-    )
-}
-
-/// Find a cookie by name in a `Cookie` request header value.
-fn cookie_value<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
-    cookie_header.split(';').find_map(|pair| {
-        let (k, v) = pair.trim().split_once('=')?;
-        (k == name).then_some(v)
-    })
-}
-
-/// Constant-time check that the callback `state` equals the browser's cookie value.
-/// A missing or empty cookie never matches.
-fn state_matches_cookie(state_param: &str, cookie: Option<&str>) -> bool {
-    use subtle::ConstantTimeEq;
-    match cookie {
-        Some(c) if !c.is_empty() && c.len() == state_param.len() => {
-            c.as_bytes().ct_eq(state_param.as_bytes()).into()
-        }
-        _ => false,
-    }
-}
-
-fn state_cookie_from_headers(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get_all(axum::http::header::COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .find_map(|h| cookie_value(h, STATE_COOKIE))
-}
+const STATE_COOKIE: StateCookie = StateCookie {
+    name: "rivetr_oauth_state",
+    path: "/api/auth/oauth-login",
+};
 
 /// Supported login OAuth providers (social login — not git providers)
 fn is_supported_login_provider(p: &str) -> bool {
@@ -226,7 +181,7 @@ pub async fn oauth_login_authorize(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Bind the state to this browser; the callback must present the same value.
-    let cookie = state_cookie_header(&state_param, super::csp::is_https_request(&headers));
+    let cookie = STATE_COOKIE.header(&state_param, super::csp::is_https_request(&headers));
 
     Ok((
         [(SET_COOKIE, cookie)],
@@ -262,7 +217,7 @@ pub async fn oauth_login_callback(
 
     // The state must also match the cookie set when this browser started the login,
     // so a state minted by an attacker cannot be replayed into a victim's browser.
-    if !state_matches_cookie(state_param, state_cookie_from_headers(&headers)) {
+    if !state_matches_cookie(state_param, STATE_COOKIE.read(&headers)) {
         return Err((
             StatusCode::BAD_REQUEST,
             "OAuth state does not match this browser. Please start the sign-in again from the same address you use to open the dashboard.".to_string(),
@@ -559,7 +514,7 @@ pub async fn oauth_login_callback(
     Ok((
         [(
             SET_COOKIE,
-            clear_state_cookie_header(super::csp::is_https_request(&headers)),
+            STATE_COOKIE.clear_header(super::csp::is_https_request(&headers)),
         )],
         Redirect::to(&format!("/login?oauth_token={}", token)),
     ))
@@ -1357,66 +1312,4 @@ async fn fetch_bitbucket_primary_email(
             StatusCode::BAD_REQUEST,
             "No email found on Bitbucket account".to_string(),
         ))
-}
-
-#[cfg(test)]
-mod state_cookie_tests {
-    use super::*;
-
-    #[test]
-    fn cookie_attributes() {
-        let c = state_cookie_header("abc", false);
-        assert!(c.starts_with("rivetr_oauth_state=abc;"));
-        for attr in [
-            "HttpOnly",
-            "SameSite=Lax",
-            "Max-Age=600",
-            "Path=/api/auth/oauth-login",
-        ] {
-            assert!(c.contains(attr), "{c}");
-        }
-        assert!(!c.contains("Secure"));
-        assert!(state_cookie_header("abc", true).ends_with("; Secure"));
-    }
-
-    #[test]
-    fn clear_cookie_expires_immediately() {
-        let c = clear_state_cookie_header(true);
-        assert!(c.starts_with("rivetr_oauth_state=;"));
-        assert!(c.contains("Max-Age=0") && c.ends_with("; Secure"));
-        assert!(!clear_state_cookie_header(false).contains("Secure"));
-    }
-
-    #[test]
-    fn parses_cookie_among_others() {
-        let h = "a=1; rivetr_oauth_state=xyz; b=2";
-        assert_eq!(cookie_value(h, STATE_COOKIE), Some("xyz"));
-        assert_eq!(cookie_value("a=1", STATE_COOKIE), None);
-        assert_eq!(cookie_value("", STATE_COOKIE), None);
-        // Name must match exactly, not as a suffix/prefix.
-        assert_eq!(cookie_value("x_rivetr_oauth_state=1", STATE_COOKIE), None);
-        assert_eq!(cookie_value("rivetr_oauth_state2=1", STATE_COOKIE), None);
-    }
-
-    #[test]
-    fn reads_cookie_from_header_map() {
-        let mut h = HeaderMap::new();
-        h.append(axum::http::header::COOKIE, "a=1".parse().unwrap());
-        h.append(
-            axum::http::header::COOKIE,
-            "rivetr_oauth_state=s1".parse().unwrap(),
-        );
-        assert_eq!(state_cookie_from_headers(&h), Some("s1"));
-        assert_eq!(state_cookie_from_headers(&HeaderMap::new()), None);
-    }
-
-    #[test]
-    fn state_must_match_cookie() {
-        assert!(state_matches_cookie("s-1", Some("s-1")));
-        assert!(!state_matches_cookie("s-1", Some("s-2")));
-        assert!(!state_matches_cookie("s-1", Some("s-12")));
-        assert!(!state_matches_cookie("s-1", Some("")));
-        assert!(!state_matches_cookie("s-1", None));
-        assert!(!state_matches_cookie("", Some("")));
-    }
 }

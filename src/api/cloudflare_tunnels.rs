@@ -21,6 +21,8 @@ use crate::db::{
 use crate::runtime::RunConfig;
 use crate::AppState;
 
+use super::authz;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // List
 // ──────────────────────────────────────────────────────────────────────────────
@@ -28,7 +30,7 @@ use crate::AppState;
 /// `GET /api/tunnels` — list all tunnels with their routes.
 pub async fn list_tunnels(
     State(state): State<Arc<AppState>>,
-    _user: User,
+    user: User,
 ) -> Result<Json<Vec<CloudflareTunnelResponse>>, StatusCode> {
     let tunnels = sqlx::query_as::<_, CloudflareTunnel>(
         "SELECT * FROM cloudflare_tunnels ORDER BY created_at DESC",
@@ -39,6 +41,11 @@ pub async fn list_tunnels(
         tracing::error!("Failed to list cloudflare tunnels: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Only the caller's teams' tunnels plus legacy (team-less) ones.
+    let tunnels = authz::retain_visible(&state, &user, tunnels, |t| t.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
 
     let mut responses = Vec::with_capacity(tunnels.len());
     for tunnel in tunnels {
@@ -65,19 +72,26 @@ pub async fn list_tunnels(
 /// `POST /api/tunnels` — create a tunnel record and start the cloudflared container.
 pub async fn create_tunnel(
     State(state): State<Arc<AppState>>,
-    _user: User,
+    user: User,
     Json(req): Json<CreateTunnelRequest>,
 ) -> Result<(StatusCode, Json<CloudflareTunnelResponse>), StatusCode> {
+    // The caller must belong to the team the tunnel is assigned to.
+    let team_id = req.team_id.as_deref().filter(|t| !t.is_empty());
+    authz::authorize_team_assignment(&state, &user, team_id)
+        .await
+        .map_err(|e| e.status())?;
+
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     sqlx::query(
-        "INSERT INTO cloudflare_tunnels (id, name, tunnel_token, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'stopped', ?, ?)",
+        "INSERT INTO cloudflare_tunnels (id, name, tunnel_token, status, team_id, created_at, updated_at)
+         VALUES (?, ?, ?, 'stopped', ?, ?, ?)",
     )
     .bind(&id)
     .bind(&req.name)
     .bind(&req.tunnel_token)
+    .bind(team_id)
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
@@ -262,7 +276,7 @@ pub async fn list_tunnel_routes(
 /// `POST /api/tunnels/:id/routes` — add a route to a tunnel.
 pub async fn create_tunnel_route(
     State(state): State<Arc<AppState>>,
-    _user: User,
+    user: User,
     Path(id): Path<String>,
     Json(req): Json<CreateTunnelRouteRequest>,
 ) -> Result<(StatusCode, Json<CloudflareTunnelRoute>), StatusCode> {
@@ -273,6 +287,13 @@ pub async fn create_tunnel_route(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // A route may only point at an app the caller can change.
+    if let Some(app_id) = req.app_id.as_deref().filter(|a| !a.is_empty()) {
+        authz::authorize_app_write(&state, &user, app_id)
+            .await
+            .map_err(|e| e.status())?;
+    }
 
     let route_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();

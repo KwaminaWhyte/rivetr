@@ -130,7 +130,7 @@ pub async fn rollback_deployment(
     // snapshot is a clear error instead of a half-done rollback.
     let restore_snapshots_list = if body.as_ref().is_some_and(|b| b.restore_data) {
         let snapshots = load_restorable_snapshots(&state.db, &target_deployment.id).await?;
-        check_restore_preconditions(&snapshots, |p| std::path::Path::new(p).is_file())
+        check_restore_preconditions(&snapshots, |p| std::path::Path::new(p).exists())
             .map_err(ApiError::bad_request)?;
         // Overwriting a database requires access to that database, not just the app.
         for s in &snapshots {
