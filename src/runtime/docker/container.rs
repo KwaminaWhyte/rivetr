@@ -546,6 +546,29 @@ pub async fn remove(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// The host port a container is published on.
+///
+/// `NetworkSettings.Ports` lists every port the image EXPOSEs, including ones that are not
+/// published (their binding list is null). Taking the first map entry was order-dependent:
+/// when it landed on an unpublished port the result was `None`, and a successful deploy
+/// silently skipped the proxy route swap, leaving the proxy on the old, removed container.
+/// Look through all entries, in a stable order, for the first one actually bound to a host port.
+fn published_host_port(
+    ports: &HashMap<String, Option<Vec<bollard::service::PortBinding>>>,
+) -> Option<u16> {
+    let mut keys: Vec<&String> = ports.keys().collect();
+    keys.sort();
+    keys.into_iter().find_map(|key| {
+        ports.get(key)?.as_ref()?.iter().find_map(|binding| {
+            binding
+                .host_port
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .and_then(|p| p.parse().ok())
+        })
+    })
+}
+
 pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<ContainerInfo> {
     let info = runtime
         .client
@@ -557,15 +580,7 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         .network_settings
         .as_ref()
         .and_then(|ns| ns.ports.as_ref())
-        .and_then(|ports| {
-            ports.values().next().and_then(|bindings| {
-                bindings.as_ref().and_then(|b| {
-                    b.first()
-                        .and_then(|p| p.host_port.as_ref())
-                        .and_then(|p| p.parse().ok())
-                })
-            })
-        });
+        .and_then(published_host_port);
 
     let (running, status) = info
         .state
@@ -1134,4 +1149,42 @@ pub async fn update_container_limits(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod published_port_tests {
+    use super::published_host_port;
+    use bollard::service::PortBinding;
+    use std::collections::HashMap;
+
+    fn bound(port: &str) -> Option<Vec<PortBinding>> {
+        Some(vec![PortBinding {
+            host_ip: Some("0.0.0.0".into()),
+            host_port: Some(port.into()),
+        }])
+    }
+
+    #[test]
+    fn skips_exposed_but_unpublished_ports() {
+        // FrankenPHP images expose 80, 443 and 443/udp; only the app port is published.
+        let mut ports = HashMap::new();
+        ports.insert("80/tcp".to_string(), None);
+        ports.insert("443/tcp".to_string(), None);
+        ports.insert("443/udp".to_string(), None);
+        ports.insert("8000/tcp".to_string(), bound("33341"));
+        ports.insert("8080/tcp".to_string(), Some(vec![]));
+
+        // HashMap order varies run to run; the answer must not.
+        for _ in 0..50 {
+            assert_eq!(published_host_port(&ports.clone()), Some(33341));
+        }
+    }
+
+    #[test]
+    fn none_when_nothing_is_published() {
+        let mut ports = HashMap::new();
+        ports.insert("80/tcp".to_string(), None);
+        ports.insert("3000/tcp".to_string(), Some(vec![PortBinding { host_ip: None, host_port: Some(String::new()) }]));
+        assert_eq!(published_host_port(&ports), None);
+    }
 }

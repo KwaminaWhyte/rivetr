@@ -36,6 +36,14 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { App, ProjectWithApps, ProjectEnvironment } from "@/types/api";
 
 interface AppsTabProps {
@@ -299,92 +307,91 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
             </div>
           ) : (
             <>
-              {/* Select All checkbox row */}
-              <div className="flex items-center gap-2 mb-3">
-                <Checkbox
-                  id="select-all-apps"
-                  checked={
-                    filteredApps.length > 0 &&
-                    selectedAppIds.size === filteredApps.length
-                  }
-                  onCheckedChange={toggleSelectAll}
-                />
-                <label
-                  htmlFor="select-all-apps"
-                  className="text-sm text-muted-foreground cursor-pointer select-none"
-                >
-                  Select all ({filteredApps.length})
-                </label>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredApps.map((app) => {
-                  const status = appStatuses?.[app.id] || "stopped";
-                  const isSelected = selectedAppIds.has(app.id);
-                  return (
-                    <Card
-                      key={app.id}
-                      className={`group relative hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-primary" : ""}`}
-                    >
-                      <div
-                        className="absolute top-3 left-3 z-10"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
                         <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleAppSelection(app.id)}
+                          aria-label="Select all apps"
+                          checked={
+                            filteredApps.length > 0 &&
+                            selectedAppIds.size === filteredApps.length
+                          }
+                          onCheckedChange={toggleSelectAll}
                         />
-                      </div>
-                      <Link
-                        to={`/apps/${app.id}`}
-                        className="absolute inset-0 z-0"
-                      />
-                      <CardHeader className="pb-2 pl-10">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1">
-                            <CardTitle className="text-base font-semibold">
+                      </TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Environment</TableHead>
+                      <TableHead>Domain</TableHead>
+                      <TableHead>Repository</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredApps.map((app) => {
+                      const status = appStatuses?.[app.id] || "stopped";
+                      const isSelected = selectedAppIds.has(app.id);
+                      const domain = getPrimaryDomain(app);
+                      return (
+                        <TableRow
+                          key={app.id}
+                          data-state={isSelected ? "selected" : undefined}
+                        >
+                          <TableCell>
+                            <Checkbox
+                              aria-label={`Select ${app.name}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleAppSelection(app.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <Link to={`/apps/${app.id}`} className="hover:underline">
                               {app.name}
-                            </CardTitle>
-                            <div className="flex items-center gap-2">
-                              <StatusBadge status={status} />
-                              <EnvironmentBadge environment={app.environment} />
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity relative z-10"
-                            disabled={removeAppMutation.isPending}
-                            title="Remove from project"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              removeAppMutation.mutate(app.id);
-                            }}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pt-0 pb-4">
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                          {getPrimaryDomain(app) && (
-                            <div className="flex items-center gap-2 truncate">
-                              <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{getPrimaryDomain(app)}</span>
-                            </div>
-                          )}
-                          {app.git_url && (
-                            <div className="truncate text-xs opacity-75">
-                              {app.git_url
-                                .replace(/^https?:\/\//, "")
-                                .replace(/\.git$/, "")}
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={status} />
+                          </TableCell>
+                          <TableCell>
+                            <EnvironmentBadge environment={app.environment} />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground max-w-[220px] truncate">
+                            {domain ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <ExternalLink className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{domain}</span>
+                              </span>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs max-w-[260px] truncate">
+                            {app.git_url
+                              ? app.git_url
+                                  .replace(/^https?:\/\//, "")
+                                  .replace(/\.git$/, "")
+                              : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              disabled={removeAppMutation.isPending}
+                              title="Remove from project"
+                              onClick={() => removeAppMutation.mutate(app.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             </>
           )}

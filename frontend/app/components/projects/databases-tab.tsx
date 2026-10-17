@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -49,6 +49,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { ProjectWithApps, ManagedDatabase, DatabaseType } from "@/types/api";
 import { DATABASE_TYPES } from "@/types/api";
 
@@ -423,151 +431,138 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {project.databases.map((db) => {
-                const dbTypeInfo = DATABASE_TYPES.find((t) => t.type === db.db_type);
-                return (
-                  <Card
-                    key={db.id}
-                    className="group relative hover:shadow-md transition-shadow"
-                  >
-                    <Link to={`/databases/${db.id}`} className="absolute inset-0 z-0" />
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="text-base font-semibold">
-                              {db.name}
-                            </CardTitle>
-                            {db.status === "failed" && db.error_message && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <AlertCircle className="h-4 w-4 text-destructive" />
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-xs">
-                                    <p className="text-sm">{db.error_message}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Access</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {project.databases.map((db) => {
+                    const dbTypeInfo = DATABASE_TYPES.find((t) => t.type === db.db_type);
+                    return (
+                      <Fragment key={db.id}>
+                        <TableRow>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <Link to={`/databases/${db.id}`} className="hover:underline">
+                                {db.name}
+                              </Link>
+                              {db.status === "failed" && db.error_message && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <AlertCircle className="h-4 w-4 text-destructive" />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="text-sm">{db.error_message}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <DatabaseStatusBadge status={db.status} />
+                          </TableCell>
+                          <TableCell>
                             <Badge variant="outline" className="capitalize text-xs">
                               {dbTypeInfo?.name || db.db_type} {db.version}
                             </Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="View Credentials"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleViewCredentials(db);
-                            }}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive"
-                            title="Delete Database"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setSelectedDatabase(db);
-                              setIsDeleteDbDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0 pb-4">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {db.public_access && db.external_port > 0 ? (
-                            <span className="font-mono">Port {db.external_port}</span>
-                          ) : (
-                            "Internal only"
-                          )}
-                        </span>
-                        <div className="relative z-10 flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2"
-                            disabled={inlineLoadingId === db.id}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              toggleInlineCredentials(db);
-                            }}
-                            title={
-                              inlineCredentials[db.id]
-                                ? "Hide credentials"
-                                : "Show credentials"
-                            }
-                          >
-                            {inlineCredentials[db.id] ? (
-                              <EyeOff className="h-3 w-3 mr-1" />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {db.public_access && db.external_port > 0 ? (
+                              <span className="font-mono">Port {db.external_port}</span>
                             ) : (
-                              <Eye className="h-3 w-3 mr-1" />
+                              "Internal only"
                             )}
-                            {inlineLoadingId === db.id
-                              ? "Loading…"
-                              : inlineCredentials[db.id]
-                              ? "Hide credentials"
-                              : "Show credentials"}
-                          </Button>
-                          {db.status === "stopped" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2"
-                              disabled={startDatabaseMutation.isPending}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                startDatabaseMutation.mutate(db.id);
-                              }}
-                            >
-                              <Play className="h-3 w-3 mr-1" />
-                              Start
-                            </Button>
-                          )}
-                          {db.status === "running" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2"
-                              disabled={stopDatabaseMutation.isPending}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                stopDatabaseMutation.mutate(db.id);
-                              }}
-                            >
-                              <Square className="h-3 w-3 mr-1" />
-                              Stop
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      {inlineCredentials[db.id] && (
-                        <InlineCredentials
-                          database={inlineCredentials[db.id]}
-                          showPassword={inlinePasswordRevealed.has(db.id)}
-                          onTogglePassword={() => toggleInlinePassword(db.id)}
-                          onCopy={copyToClipboard}
-                        />
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2"
+                                disabled={inlineLoadingId === db.id}
+                                onClick={() => toggleInlineCredentials(db)}
+                                title={
+                                  inlineCredentials[db.id]
+                                    ? "Hide credentials"
+                                    : "Show credentials"
+                                }
+                              >
+                                {inlineCredentials[db.id] ? (
+                                  <EyeOff className="h-3 w-3 mr-1" />
+                                ) : (
+                                  <Eye className="h-3 w-3 mr-1" />
+                                )}
+                                {inlineLoadingId === db.id
+                                  ? "Loading…"
+                                  : inlineCredentials[db.id]
+                                  ? "Hide credentials"
+                                  : "Show credentials"}
+                              </Button>
+                              {db.status === "stopped" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  disabled={startDatabaseMutation.isPending}
+                                  onClick={() => startDatabaseMutation.mutate(db.id)}
+                                >
+                                  <Play className="h-3 w-3 mr-1" />
+                                  Start
+                                </Button>
+                              )}
+                              {db.status === "running" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  disabled={stopDatabaseMutation.isPending}
+                                  onClick={() => stopDatabaseMutation.mutate(db.id)}
+                                >
+                                  <Square className="h-3 w-3 mr-1" />
+                                  Stop
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive"
+                                title="Delete Database"
+                                onClick={() => {
+                                  setSelectedDatabase(db);
+                                  setIsDeleteDbDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        {inlineCredentials[db.id] && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={5} className="whitespace-normal">
+                              <InlineCredentials
+                                database={inlineCredentials[db.id]}
+                                showPassword={inlinePasswordRevealed.has(db.id)}
+                                onTogglePassword={() => toggleInlinePassword(db.id)}
+                                onCopy={copyToClipboard}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

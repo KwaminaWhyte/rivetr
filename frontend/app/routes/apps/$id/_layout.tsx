@@ -186,7 +186,6 @@ export default function AppDetailLayout() {
       } else {
         breadcrumbs.push({ label: "Projects", href: "/projects" });
       }
-      breadcrumbs.push({ label: "Apps" });
       breadcrumbs.push({ label: app.name });
       setItems(breadcrumbs);
     }

@@ -143,7 +143,6 @@ export default function ServiceDetailPage() {
       } else {
         breadcrumbs.push({ label: "Projects", href: "/projects" });
       }
-      breadcrumbs.push({ label: "Services" });
       breadcrumbs.push({ label: service.name });
       setItems(breadcrumbs);
     }

@@ -19,6 +19,14 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -275,20 +283,23 @@ services:
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {project.services.map((service) => (
-                <Card
-                  key={service.id}
-                  className="group relative hover:shadow-md transition-shadow"
-                >
-                  <Link to={`/services/${service.id}`} className="absolute inset-0 z-0" />
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {project.services.map((service) => (
+                    <TableRow key={service.id}>
+                      <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
-                          <CardTitle className="text-base font-semibold">
+                          <Link to={`/services/${service.id}`} className="hover:underline">
                             {service.name}
-                          </CardTitle>
+                          </Link>
                           {service.status === "failed" && service.error_message && (
                             <TooltipProvider>
                               <Tooltip>
@@ -302,63 +313,54 @@ services:
                             </TooltipProvider>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
                         <ServiceStatusBadge status={service.status} />
-                      </div>
-                      <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          title="Delete Service"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setSelectedService(service);
-                            setIsDeleteServiceDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-4">
-                    <div className="flex items-center justify-end text-sm">
-                      <div className="relative z-10 flex items-center gap-1">
-                        {service.status === "stopped" && (
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          {service.status === "stopped" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={startServiceMutation.isPending}
+                              onClick={() => startServiceMutation.mutate(service.id)}
+                            >
+                              <Play className="h-3 w-3 mr-1" />
+                              Start
+                            </Button>
+                          )}
+                          {service.status === "running" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={stopServiceMutation.isPending}
+                              onClick={() => stopServiceMutation.mutate(service.id)}
+                            >
+                              <Square className="h-3 w-3 mr-1" />
+                              Stop
+                            </Button>
+                          )}
                           <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2"
-                            disabled={startServiceMutation.isPending}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              startServiceMutation.mutate(service.id);
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            title="Delete Service"
+                            onClick={() => {
+                              setSelectedService(service);
+                              setIsDeleteServiceDialogOpen(true);
                             }}
                           >
-                            <Play className="h-3 w-3 mr-1" />
-                            Start
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        )}
-                        {service.status === "running" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2"
-                            disabled={stopServiceMutation.isPending}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              stopServiceMutation.mutate(service.id);
-                            }}
-                          >
-                            <Square className="h-3 w-3 mr-1" />
-                            Stop
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

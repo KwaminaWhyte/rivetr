@@ -30,6 +30,7 @@ import {
   ThumbsDown,
   GitCompare,
   RefreshCw,
+  Activity,
 } from "lucide-react";
 import type { Deployment, DeploymentStatus } from "@/types/api";
 
@@ -222,20 +223,14 @@ function TimelineItem({
   // started building yet — show "Queued" rather than a running clock (its
   // started_at is reset to the real build start once a slot frees).
   //
-  // A live (running) deployment shows uptime since it went live (built_at),
-  // ticking. A still-building deployment ticks from started_at. Finished
-  // deployments (replaced/failed/stopped) show the build duration:
-  // started_at -> built_at if it ever went live, else -> finished_at.
+  // Build duration is the time the deployment took (started_at -> built_at,
+  // else finished_at), ticking while still building. Uptime is separate: how
+  // long a running deployment has been live since built_at.
   const isRunning = deployment.status === "running";
   const isLive = isActive || isRunning;
   let duration: string;
   if (deployment.status === "pending") {
     duration = "Queued";
-  } else if (isRunning) {
-    duration = calculateDuration(
-      deployment.built_at ?? deployment.started_at,
-      null
-    );
   } else if (isActive) {
     duration = calculateDuration(deployment.started_at, null);
   } else {
@@ -244,6 +239,9 @@ function TimelineItem({
       deployment.built_at ?? deployment.finished_at
     );
   }
+  const uptime = isRunning
+    ? calculateDuration(deployment.built_at ?? deployment.started_at, null)
+    : null;
 
   return (
     <div className="relative flex gap-4">
@@ -324,11 +322,23 @@ function TimelineItem({
                   <span className="text-sm text-muted-foreground">
                     {formatDate(deployment.started_at)}
                   </span>
-                  {(deployment.finished_at || isLive) && (
-                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                  {(deployment.finished_at || deployment.built_at || isActive || isRunning) && (
+                    <span
+                      className="text-sm text-muted-foreground flex items-center gap-1"
+                      title="Deployment duration"
+                    >
                       <Clock className="w-3 h-3" />
                       {duration}
-                      {isLive && " (running)"}
+                      {isActive && " (building)"}
+                    </span>
+                  )}
+                  {uptime && (
+                    <span
+                      className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"
+                      title="Time since this deployment went live"
+                    >
+                      <Activity className="w-3 h-3" />
+                      Up {uptime}
                     </span>
                   )}
                 </div>

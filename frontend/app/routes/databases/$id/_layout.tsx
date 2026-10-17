@@ -65,14 +65,14 @@ function StatusBadge({ status }: { status?: DatabaseStatus }) {
 // Database type badge
 function DatabaseTypeBadge({ dbType }: { dbType: string }) {
   const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
-    postgres: { bg: "bg-blue-100", text: "text-blue-800", label: "PostgreSQL" },
-    mysql: { bg: "bg-orange-100", text: "text-orange-800", label: "MySQL" },
-    mariadb: { bg: "bg-amber-100", text: "text-amber-800", label: "MariaDB" },
-    mongodb: { bg: "bg-green-100", text: "text-green-800", label: "MongoDB" },
-    redis: { bg: "bg-red-100", text: "text-red-800", label: "Redis" },
+    postgres: { bg: "bg-blue-100 dark:bg-blue-500/20", text: "text-blue-800 dark:text-blue-300", label: "PostgreSQL" },
+    mysql: { bg: "bg-orange-100 dark:bg-orange-500/20", text: "text-orange-800 dark:text-orange-300", label: "MySQL" },
+    mariadb: { bg: "bg-amber-100 dark:bg-amber-500/20", text: "text-amber-800 dark:text-amber-300", label: "MariaDB" },
+    mongodb: { bg: "bg-green-100 dark:bg-green-500/20", text: "text-green-800 dark:text-green-300", label: "MongoDB" },
+    redis: { bg: "bg-red-100 dark:bg-red-500/20", text: "text-red-800 dark:text-red-300", label: "Redis" },
   };
 
-  const config = typeConfig[dbType] || { bg: "bg-gray-100", text: "text-gray-800", label: dbType };
+  const config = typeConfig[dbType] || { bg: "bg-gray-100 dark:bg-gray-500/20", text: "text-gray-800 dark:text-gray-300", label: dbType };
 
   return (
     <Badge variant="outline" className={`${config.bg} ${config.text} border-0`}>
@@ -129,7 +129,6 @@ export default function DatabaseDetailLayout() {
       } else {
         breadcrumbs.push({ label: "Projects", href: "/projects" });
       }
-      breadcrumbs.push({ label: "Databases" });
       breadcrumbs.push({ label: database.name });
       setItems(breadcrumbs);
     }

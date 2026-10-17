@@ -260,8 +260,30 @@ impl DeploymentEngine {
                         .execute(&db)
                         .await;
 
-                        // Update proxy routes on successful deployment for all domains
-                        if let Some(port) = container_info.port {
+                        // Update proxy routes on successful deployment for all domains.
+                        // Without a host port the route cannot be swapped, and the proxy would
+                        // keep pointing at the old (now removed) container: retry the lookup
+                        // briefly, and say so loudly if it never appears.
+                        let mut routed_port = container_info.port;
+                        for _ in 0..10 {
+                            if routed_port.is_some() {
+                                break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            routed_port = runtime
+                                .inspect(&container_info.container_id)
+                                .await
+                                .ok()
+                                .and_then(|info| info.port);
+                        }
+                        if routed_port.is_none() {
+                            tracing::error!(
+                                app = %app.name,
+                                container = %container_info.container_id,
+                                "Deployment succeeded but the container has no published host port; proxy routes were NOT updated"
+                            );
+                        }
+                        if let Some(port) = routed_port {
                             let domain_entries = app.get_all_domains_with_redirects();
                             let all_domains: Vec<String> = domain_entries
                                 .iter()

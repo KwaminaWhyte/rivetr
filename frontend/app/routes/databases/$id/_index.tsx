@@ -296,17 +296,17 @@ export default function DatabaseGeneralTab() {
 // Status indicator component
 function StatusIndicator({ status }: { status: string }) {
   const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-    running: { color: "text-green-600", bg: "bg-green-100", label: "Running" },
-    stopped: { color: "text-gray-600", bg: "bg-gray-100", label: "Stopped" },
-    pending: { color: "text-blue-600", bg: "bg-blue-100", label: "Pending" },
-    pulling: { color: "text-blue-600", bg: "bg-blue-100", label: "Pulling Image" },
-    starting: { color: "text-blue-600", bg: "bg-blue-100", label: "Starting" },
-    failed: { color: "text-red-600", bg: "bg-red-100", label: "Failed" },
+    running: { color: "text-green-700 dark:text-green-300", bg: "bg-green-100 dark:bg-green-500/20", label: "Running" },
+    stopped: { color: "text-gray-700 dark:text-gray-300", bg: "bg-gray-100 dark:bg-gray-500/20", label: "Stopped" },
+    pending: { color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-500/20", label: "Pending" },
+    pulling: { color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-500/20", label: "Pulling Image" },
+    starting: { color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-100 dark:bg-blue-500/20", label: "Starting" },
+    failed: { color: "text-red-700 dark:text-red-300", bg: "bg-red-100 dark:bg-red-500/20", label: "Failed" },
   };
 
   const config = statusConfig[status] || {
-    color: "text-gray-600",
-    bg: "bg-gray-100",
+    color: "text-gray-700 dark:text-gray-300",
+    bg: "bg-gray-100 dark:bg-gray-500/20",
     label: status,
   };
 
