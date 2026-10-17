@@ -58,7 +58,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 - **Where:** `extract_client_ip` `src/api/rate_limit.rs:167-192`; login `src/api/auth.rs:130-217`; 2FA `src/api/two_factor.rs:335`
 - **Problem:** Limiter keys buckets on client-controlled `X-Forwarded-For`/`X-Real-IP` with no trusted-proxy check. Rotate header per request → fresh bucket every time. No account lockout/backoff.
 - **Exploit:** Login attempts each with unique `X-Forwarded-For` → unlimited password / 6-digit TOTP brute force.
-- [ ] **Fix:** Derive client IP from TCP peer (honor `X-Forwarded-For` only from configured trusted proxies); add per-account failed-login throttling/lockout + dedicated low limit for `/login` and `/2fa/validate`.
+- [x] **FIXED:** client IP is the TCP peer unless the peer is in `rate_limit.trusted_proxies` (loopback always trusted; `X-Forwarded-For` read right to left, `rate_limit.rs`, also used by the audit `ClientIp`). Per-account lockout on `/login` and `/2fa/validate` (`login_throttle.rs`: 5 failures/15 min, exponential backoff up to 15 min, 429, cleared on success). The `/api/auth` tier limit still applies per IP.
 
 ### SEC-H4 — Command injection in remote file browser via `path`
 - **Where:** `src/api/filesystem.rs:239-242,275,307-311,351-354`; executed by `RemoteContext::run_command` `src/engine/remote.rs:65`
@@ -98,12 +98,12 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M3 — OAuth CSRF state not enforced + email-based account linking
 - **Where:** `src/api/oauth.rs:190-208` (state check best-effort, "Don't fail if state verification fails"), `:282-315` (link by email), `:336-341` (open self-registration)
 - **Problem:** Callback continues when state missing/invalid → login-CSRF/session fixation. New identities linked to existing local account by email match with no verified-email check. Open self-registration + SEC-C3 = any outsider gains full cross-tenant access.
-- [ ] **Fix:** Enforce state strictly (reject on mismatch). Auto-link only when provider asserts verified email. Gate self-registration behind admin allowlist/invitation, no resource access by default.
+- [~] **PARTIAL:** state is enforced strictly (400 on missing/unknown/expired, consumed atomically, `oauth.rs`) and linking by email now requires a provider-verified email (GitHub `/user/emails`, Google `verified_email`, GitLab `confirmed_at`, Bitbucket `is_confirmed`, Azure single-tenant only). **Still TODO:** state is not bound to a browser cookie; gate self-registration behind admin allowlist/invitation.
 
 ### SEC-M4 — Non-constant-time secret comparisons
 - **Where:** `src/api/auth.rs:570` (`token == config.auth.admin_token`), `src/api/ws.rs:45`, `src/api/webhooks/gitlab.rs:122`
 - **Problem:** Admin token (`get_current_user`, reached on every protected route) and GitLab webhook token compared variable-time, despite `auth_middleware` already using `subtle::ct_eq`. Timing side channel on long-lived secrets.
-- [~] **PARTIAL:** GitLab webhook token now uses `subtle::ConstantTimeEq` with a length guard (`webhooks/gitlab.rs`); DockerHub token compare is constant-time too. **Still TODO:** `get_current_user` admin-token compare at `src/api/auth.rs:570` and the WS admin-token path still use `==` — convert those.
+- [x] **FIXED:** GitLab webhook token and DockerHub token use `subtle::ConstantTimeEq` with a length guard; `get_current_user` admin-token compare (`src/api/auth.rs`) now does too. The WS path resolves tokens through `get_current_user`, so it is covered.
 
 ### SEC-M5 — Session tokens in `localStorage` (XSS-exfiltratable)
 - **Where:** `frontend/app/lib/auth.ts:19-35`, `frontend/app/lib/api/core.ts:9-12`
@@ -113,12 +113,12 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M6 — No Content-Security-Policy header
 - **Where:** `src/api/mod.rs:1132-1172` (`security_headers` — no CSP)
 - **Problem:** No CSP. Combined with localStorage tokens, white-label CSS injection, inline theme script (`root.tsx:44`) → no second line of defense against injection/exfil.
-- [ ] **Fix:** Add CSP: `default-src 'self'`, explicit `connect-src 'self'` (+ WS origins), `script-src` with nonce/hash for the inline theme script, `frame-ancestors 'none'`.
+- [x] **FIXED:** `src/api/csp.rs` + `serve_embedded_static`: SPA HTML gets `default-src 'self'`, `script-src 'self'` + sha256 of every inline script in the embedded HTML (computed at serve time), `style-src 'self' 'unsafe-inline'` (white-label CSS), `connect-src 'self'` + same-host ws/wss, `img-src 'self' data: blob: https:`, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`. Other responses get `default-src 'none'; frame-ancestors 'none'`.
 
 ### SEC-M7 — Open-redirect-style `returnUrl` from localStorage applied unvalidated
 - **Where:** `frontend/app/routes/login.tsx:116-122,205-211,229-235`; written at `invitations/accept.tsx:178-179`
 - **Problem:** Post-login `navigate(returnUrl)` from `rivetr_return_url`. Currently safe value, but unvalidated user-influenced navigation; `//evil.com` or scheme-relative may be mishandled.
-- [ ] **Fix:** Validate `returnUrl` starts with single `/`, not `//`/scheme-relative/absolute; else fall back to `/`.
+- [x] **FIXED:** `safeReturnUrl` in `login.tsx` requires a single leading `/` (rejects `//`, backslash, control chars); otherwise falls back to `/`.
 
 ### SEC-M8 — DB export via top-level GET navigation (CSRF shape)
 - **Where:** `frontend/app/routes/services/$id/settings.tsx:652` (`window.location.href`); backend `src/api/services/export_db.rs:35-39`, route `src/api/mod.rs:735`
@@ -133,7 +133,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M10 — Optional encryption-at-rest + fixed KDF salt
 - **Where:** `encryption_key: Option<String>` `src/config/mod.rs:101`; fixed salt + 100k PBKDF2 `src/crypto/mod.rs:25-28,44-54`
 - **Problem:** If `encryption_key` unset, env vars/SSH keys/OAuth secrets/TOTP secrets stored plaintext (silent passthrough). KEK uses hard-coded salt + 100k SHA-256 iterations (low).
-- [ ] **Fix:** Require `encryption_key` at startup (refuse boot, or auto-generate+persist). Per-install random salt + memory-hard KDF (Argon2id) for KEK.
+- [x] **Fix:** Require `encryption_key` at startup (refuse boot, or auto-generate+persist). Per-install random salt + memory-hard KDF (Argon2id) for KEK. **Done (partial):** key resolved at startup as config > `<data_dir>/.encryption_key` > auto-generated (mode 0600, create-new) on fresh installs; existing installs without a key get a prominent warning and unchanged behavior; legacy plaintext still decrypts. NOT done: per-install salt + Argon2id (needs a versioned ciphertext format; follow-up).
 
 ---
 
@@ -149,12 +149,12 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 
 ### SEC-L3 — Missing HSTS and CSP headers
 - **Where:** `src/api/mod.rs:1130-1173`
-- [ ] **Fix:** Add `Strict-Transport-Security` (when HTTPS) + restrictive CSP. (CSP detailed in SEC-M6.)
+- [x] **FIXED:** `security_headers` sends `Strict-Transport-Security: max-age=31536000` when `X-Forwarded-Proto` is https, plus the CSP from SEC-M6.
 
 ### SEC-L4 — Username enumeration via login timing
 - **Where:** `src/api/auth.rs:136-147`
 - **Problem:** Argon2 verify runs only when email exists; non-existent email returns faster.
-- [ ] **Fix:** Dummy Argon2 verify against fixed hash when user not found to equalize timing.
+- [x] **FIXED:** `login` verifies against a fixed dummy Argon2id hash (default params) when the email is unknown.
 
 ### SEC-L5 — Detailed backend error text surfaced verbatim in UI
 - **Where:** `frontend/app/lib/api/core.ts:56-72,104-117`; e.g. `login.tsx:186-189`; backend `auth.rs:430`, `oauth.rs:234-240`

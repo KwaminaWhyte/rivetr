@@ -5,6 +5,12 @@
 //!
 //! The encryption format is: base64(nonce || ciphertext || tag)
 //! where nonce is 12 bytes, and tag is 16 bytes (AES-GCM authentication tag).
+//!
+//! Follow-up (SEC-M10): the KDF uses a fixed salt and 100k PBKDF2 iterations. Changing
+//! either would break existing ciphertext, so a KDF upgrade (per-install salt, Argon2id)
+//! needs a versioned ciphertext format (e.g. `ENC2:`) with `ENC:` kept readable.
+
+pub mod key_file;
 
 use aes_gcm::{
     aead::{Aead, KeyInit},
@@ -244,6 +250,16 @@ mod tests {
         assert!(is_encrypted("ENC:some-base64-data"));
         assert!(!is_encrypted("plain-text-value"));
         assert!(!is_encrypted(""));
+    }
+
+    #[test]
+    fn test_legacy_plaintext_passthrough_with_and_without_key() {
+        // Rows written before a key was configured must stay readable after one is enabled.
+        let key = derive_key("newly-enabled-key");
+        for legacy in ["hunter2", "", "postgres://u:p@db/x", "-----BEGIN KEY-----"] {
+            assert_eq!(decrypt_if_encrypted(legacy, Some(&key)).unwrap(), legacy);
+            assert_eq!(decrypt_if_encrypted(legacy, None).unwrap(), legacy);
+        }
     }
 
     #[test]

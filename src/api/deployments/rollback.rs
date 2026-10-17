@@ -209,13 +209,12 @@ pub async fn rollback_deployment(
                         old_containers = ?result.old_container_ids,
                         "Stopping old containers after rollback proxy route swap (zero-downtime)"
                     );
-                    for old_id in &result.old_container_ids {
-                        if old_id == &result.container_id {
-                            continue;
-                        }
-                        let _ = runtime.stop(old_id).await;
-                        let _ = runtime.remove(old_id).await;
-                    }
+                    crate::engine::retire::retire_old_containers(
+                        &*runtime,
+                        &result.old_container_ids,
+                        &result.container_id,
+                    )
+                    .await;
                 }
             }
             Err(e) => {

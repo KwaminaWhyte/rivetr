@@ -603,6 +603,24 @@ pub(super) async fn start_container(
         }
 
         add_deployment_log(db, deployment_id, "info", "Health check passed").await?;
+    } else if let Ok(info) = runtime.inspect(&container_id).await {
+        // No healthcheck configured: still wait for the port to accept connections
+        // so routes are not swapped to a container that is not listening yet.
+        if let Some(port) = info.port {
+            let addr = format!("127.0.0.1:{}", port);
+            if super::super::retire::wait_for_tcp(&addr, std::time::Duration::from_secs(30)).await {
+                add_deployment_log(db, deployment_id, "info", "Port is accepting connections")
+                    .await?;
+            } else {
+                add_deployment_log(
+                    db,
+                    deployment_id,
+                    "warn",
+                    "Port did not accept connections within 30s; continuing without a readiness check",
+                )
+                .await?;
+            }
+        }
     }
 
     // Step 7: Execute post-deploy commands (after health check)

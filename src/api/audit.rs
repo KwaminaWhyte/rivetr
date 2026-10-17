@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{ConnectInfo, FromRequestParts, Query, State},
-    http::{request::Parts, HeaderMap},
+    http::request::Parts,
     Json,
 };
 use std::{convert::Infallible, net::SocketAddr, sync::Arc};
@@ -12,13 +12,14 @@ use crate::AppState;
 
 use super::error::ApiError;
 
-/// Axum extractor that resolves the client IP from headers and connection info.
+/// Axum extractor that resolves the client IP.
 ///
-/// Prefers `X-Forwarded-For` / `X-Real-IP` (when fronted by a reverse proxy) and
-/// falls back to the raw socket address attached via
-/// `into_make_service_with_connect_info::<SocketAddr>()` in `main.rs`.
+/// Uses the TCP peer address attached via
+/// `into_make_service_with_connect_info::<SocketAddr>()` in `main.rs`, and honors
+/// `X-Forwarded-For` / `X-Real-IP` only when the peer is a trusted proxy (see
+/// `rate_limit.trusted_proxies`; loopback is always trusted).
 ///
-/// Always succeeds — if no IP can be determined, the inner Option is None.
+/// Always succeeds - if no IP can be determined, the inner Option is None.
 #[derive(Debug, Clone, Default)]
 pub struct ClientIp(pub Option<String>);
 
@@ -29,50 +30,25 @@ impl ClientIp {
 }
 
 #[axum::async_trait]
-impl<S> FromRequestParts<S> for ClientIp
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<Arc<AppState>> for ClientIp {
     type Rejection = Infallible;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // Headers first (X-Forwarded-For, X-Real-IP)
-        let ip = extract_client_ip(
-            &parts.headers,
-            // Fall back to socket connection info if available
-            parts
-                .extensions
-                .get::<ConnectInfo<SocketAddr>>()
-                .map(|ConnectInfo(addr)| addr),
-        );
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let peer = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(addr)| *addr);
+        let ip = peer.map(|_| {
+            state
+                .rate_limiter
+                .client_ip(&parts.headers, peer)
+                .to_string()
+        });
         Ok(ClientIp(ip))
     }
-}
-
-/// Extract client IP address from request headers or connection info.
-/// Checks X-Forwarded-For, X-Real-IP headers first (for reverse proxy scenarios),
-/// then falls back to the connection info.
-fn extract_client_ip(headers: &HeaderMap, conn_info: Option<&SocketAddr>) -> Option<String> {
-    // Check X-Forwarded-For header first (comma-separated list, first is client)
-    if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|h| h.to_str().ok()) {
-        if let Some(first_ip) = forwarded.split(',').next() {
-            let ip = first_ip.trim();
-            if !ip.is_empty() {
-                return Some(ip.to_string());
-            }
-        }
-    }
-
-    // Check X-Real-IP header
-    if let Some(real_ip) = headers.get("x-real-ip").and_then(|h| h.to_str().ok()) {
-        let ip = real_ip.trim();
-        if !ip.is_empty() {
-            return Some(ip.to_string());
-        }
-    }
-
-    // Fall back to connection info
-    conn_info.map(|addr| addr.ip().to_string())
 }
 
 /// Helper function to log an audit event with common patterns.

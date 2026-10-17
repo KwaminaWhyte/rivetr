@@ -247,6 +247,7 @@ The full annotated reference is [`rivetr.example.toml`](rivetr.example.toml). Be
 | `webhook_requests_per_window` | `500` | Webhook endpoint limit |
 | `auth_requests_per_window` | `20` | Auth endpoint limit (brute-force protection) |
 | `window_seconds` | `60` | Rolling window duration |
+| `trusted_proxies` | `[]` | IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted (loopback always is). See [configuration reference](docs/reference/configuration.md#rate_limit) |
 
 ### `[cleanup]`
 

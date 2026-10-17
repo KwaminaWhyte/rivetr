@@ -45,10 +45,17 @@ pub struct ListProxyLogsParams {
 
 // ── Response ──────────────────────────────────────────────────────────────────
 
+/// Upper bound for the reported `total`. Counting millions of rows on every page
+/// view is a full scan, so the count stops here.
+const TOTAL_COUNT_CAP: i64 = 10_000;
+
 #[derive(Debug, Serialize)]
 pub struct ProxyLogListResponse {
     pub items: Vec<ProxyLog>,
+    /// Matching rows, capped at `TOTAL_COUNT_CAP` (see `total_capped`)
     pub total: i64,
+    /// True when more than `TOTAL_COUNT_CAP` rows match and `total` is a lower bound
+    pub total_capped: bool,
     pub page: i64,
     pub per_page: i64,
     pub total_pages: i64,
@@ -101,8 +108,12 @@ pub async fn list_proxy_logs(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
-    // COUNT query
-    let count_sql = format!("SELECT COUNT(*) FROM proxy_logs {}", where_clause);
+    // Capped COUNT query: scans at most TOTAL_COUNT_CAP + 1 matching rows
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM proxy_logs {} LIMIT {})",
+        where_clause,
+        TOTAL_COUNT_CAP + 1
+    );
     let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
     if let Some(ref domain) = bind_domain {
         count_query = count_query.bind(domain);
@@ -113,7 +124,9 @@ pub async fn list_proxy_logs(
     if let Some(max) = bind_status_max {
         count_query = count_query.bind(max);
     }
-    let total: i64 = count_query.fetch_one(&state.db).await?;
+    let counted: i64 = count_query.fetch_one(&state.db).await?;
+    let total_capped = counted > TOTAL_COUNT_CAP;
+    let total = counted.min(TOTAL_COUNT_CAP);
 
     // Data query
     let sql = format!(
@@ -140,6 +153,7 @@ pub async fn list_proxy_logs(
     Ok(Json(ProxyLogListResponse {
         items,
         total,
+        total_capped,
         page,
         per_page,
         total_pages,

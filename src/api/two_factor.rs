@@ -370,6 +370,18 @@ pub async fn validate_2fa(
         ));
     }
 
+    // SEC-H3: per-account throttle so a 6-digit TOTP cannot be brute forced
+    let throttle_key = format!("2fa:{}", user.id);
+    if let Err(retry_after) = state.rate_limiter.login_throttle().check(&throttle_key) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "Too many failed verification attempts. Try again in {} seconds.",
+                retry_after
+            ),
+        ));
+    }
+
     let code = request.code.trim().to_uppercase();
     let mut validated = false;
 
@@ -426,11 +438,25 @@ pub async fn validate_2fa(
     }
 
     if !validated {
+        state
+            .rate_limiter
+            .login_throttle()
+            .record_failure(&throttle_key);
         return Err((
             StatusCode::UNAUTHORIZED,
             "Invalid verification code".to_string(),
         ));
     }
+
+    // Both factors passed: clear the 2FA and password throttles
+    state
+        .rate_limiter
+        .login_throttle()
+        .record_success(&throttle_key);
+    state
+        .rate_limiter
+        .login_throttle()
+        .record_success(&crate::api::login_throttle::LoginThrottle::key(&user.email));
 
     // Delete the temporary session
     sqlx::query("DELETE FROM sessions WHERE id = ?")

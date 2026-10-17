@@ -13,12 +13,12 @@ Backend (Rust/Axum/SQLite/Tokio) + dashboard frontend (React Router v7 SPA, rust
 #### PERF-H1 — `proxy_logs` grows unbounded, no pruning anywhere
 - **Where:** `src/proxy/handler.rs:150-178` (writer), `migrations/103_proxy_logs.sql`
 - **Problem:** Every proxied request inserts a row. No `DELETE FROM proxy_logs` exists anywhere (unlike `stats_history`, `uptime_checks`, `resource_metrics` which all have cleanup). 50 apps @ 5 req/s ≈ 432k rows/day, ~39M/90 days → multi-GB SQLite file, every backup copies it, `SELECT COUNT(*)` in `src/api/proxy_logs.rs:105` (run on every logs page view) becomes a multi-second full scan.
-- [ ] **Fix:** Daily pruning job (in `log_cleaner.rs`) deleting rows older than configurable retention (default 7-14 days) and/or row-count cap. Replace `COUNT(*)` pagination with keyset pagination on `id`.
+- [x] **Fix:** Daily pruning job (in `log_cleaner.rs`) deleting rows older than configurable retention (default 7-14 days) and/or row-count cap. Replace `COUNT(*)` pagination with keyset pagination on `id`. **Done:** daily `log_cleaner` now prunes `proxy_logs` older than `[data_retention] proxy_logs_days` (default 14) in 10k-row batches; `/api/proxy/logs` total uses a capped count (10,000, `total_capped` flag) instead of a full-table `COUNT(*)`.
 
 #### PERF-H2 — One DB INSERT + spawned task per proxied request
 - **Where:** `src/proxy/handler.rs:150-178`
 - **Problem:** `log_request()` does `tokio::spawn` + individual `sqlx::query().execute()` per request. Pool is `max_connections(5)` (`src/db/mod.rs:71-72`), shared with API/pipeline/background. At 200 req/s → 200 tasks/s contending for 5 connections + single SQLite WAL writer; access logging starves deploy status updates; spawned-task backlog unbounded in memory during bursts.
-- [ ] **Fix:** Send entries to a bounded `mpsc` (drop on full), single writer task batch-inserting (multi-row every 1s/100 entries). Make access logging opt-in.
+- [x] **Fix:** Send entries to a bounded `mpsc` (drop on full), single writer task batch-inserting (multi-row every 1s/100 entries). Make access logging opt-in. **Done:** `log_request` enqueues to a bounded mpsc (10k, drop-on-full with a periodic dropped-count warning); one writer task batch-inserts (multi-row, every 1s or 200 entries). Access logging opt-in not done.
 
 #### PERF-H3 — `GET /api/system/stats` serial 2-sample docker stats per container
 - **Where:** `src/api/system/health.rs:480-535` (handler), `src/runtime/docker/container.rs:709-735` (stats), route `src/api/mod.rs:804`
@@ -45,12 +45,12 @@ Backend (Rust/Axum/SQLite/Tokio) + dashboard frontend (React Router v7 SPA, rust
 #### PERF-M2 — Redirect-rule regexes recompiled per request
 - **Where:** `src/proxy/handler.rs:577-584` (`apply_redirect_rules`)
 - **Problem:** `Regex::new(&rule.source_pattern)` per rule per request — pure waste + heap alloc in hottest path.
-- [ ] **Fix:** Compile regexes once when `Backend`/`RouteTable` is built; skip invalid patterns at load time.
+- [x] **Fix:** Compile regexes once when `Backend`/`RouteTable` is built; skip invalid patterns at load time. **Done:** regexes are compiled once into a pattern-keyed `DashMap` cache in `src/proxy/handler.rs`; invalid patterns are cached as `None`, warned once and skipped.
 
 #### PERF-M3 — No retention for webhook_events, audit_logs, team_audit_logs, scheduled_job_runs, expired sessions
 - **Where:** writers `src/api/webhook_events.rs:54,150`, `src/db/models/audit.rs:188`, `src/api/teams/audit.rs:33`, `src/engine/scheduler.rs:225`; sessions deleted only on logout `src/api/auth.rs:234`
 - **Problem:** None pruned. `webhook_events` stores full payloads; a `* * * * *` job = 525k `scheduled_job_runs` rows/year. 90 days → millions of dead rows.
-- [ ] **Fix:** Extend daily `log_cleaner`: delete `webhook_events` older than N days, resolved audit rows past retention (configurable, e.g. 90 days), `scheduled_job_runs` keep last N per job, `sessions WHERE expires_at < datetime('now')`.
+- [x] **Fix:** Extend daily `log_cleaner`: delete `webhook_events` older than N days, resolved audit rows past retention (configurable, e.g. 90 days), `scheduled_job_runs` keep last N per job, `sessions WHERE expires_at < datetime('now')`. **Done:** `log_cleaner` also prunes `webhook_events` (30d), `audit_logs`/`team_audit_logs` (90d), keeps last 100 `scheduled_job_runs` per job, and deletes sessions expired over 1 day ago (all configurable under `[data_retention]`).
 
 #### PERF-M4 — Remote build-server image transfer uses blocking std::process in async
 - **Where:** `src/engine/pipeline/build.rs:1040-1090`
@@ -83,7 +83,7 @@ Backend (Rust/Axum/SQLite/Tokio) + dashboard frontend (React Router v7 SPA, rust
 
 #### PERF-L4 — Per-request String allocations even when DB logging disabled
 - **Where:** `src/proxy/handler.rs:192-206,490-500`
-- [ ] **Fix:** Build `ProxyLogEntry` lazily, gated on `self.db.is_some()`.
+- [x] **Fix:** Build `ProxyLogEntry` lazily, gated on `self.db.is_some()`. **Done:** log metadata is only built when the log queue exists (`log_tx.is_some()`).
 
 ---
 

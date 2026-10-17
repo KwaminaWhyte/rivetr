@@ -87,6 +87,11 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+/// Fixed Argon2id hash (default params) verified when a login email is unknown,
+/// so the response time does not reveal whether the account exists (SEC-L4).
+const DUMMY_PASSWORD_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$YV7nkmNRrv3h4p9AvIq39w$UKztE6Ar1ZW8jjV0Qq+gxjH8Cj03Sm121mqENNQ7wuI";
+
 /// Generate a random token
 fn generate_token() -> String {
     let mut rng = rand::rng();
@@ -161,6 +166,18 @@ pub async fn login(
     client_ip: ClientIp,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    // SEC-H3: per-account throttle, checked before any password work
+    let throttle_key = crate::api::login_throttle::LoginThrottle::key(&request.email);
+    if let Err(retry_after) = state.rate_limiter.login_throttle().check(&throttle_key) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "Too many failed login attempts. Try again in {} seconds.",
+                retry_after
+            ),
+        ));
+    }
+
     // Find user by email
     let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?")
         .bind(&request.email)
@@ -168,11 +185,33 @@ pub async fn login(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let user = user.ok_or((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
+    // SEC-L4: always run one Argon2 verify so unknown emails take as long as bad passwords
+    let password_ok = match &user {
+        Some(user) => verify_password(&request.password, &user.password_hash),
+        None => {
+            let _ = verify_password(&request.password, DUMMY_PASSWORD_HASH);
+            false
+        }
+    };
 
-    // Verify password
-    if !verify_password(&request.password, &user.password_hash) {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
+    let user = match user {
+        Some(user) if password_ok => user,
+        _ => {
+            state
+                .rate_limiter
+                .login_throttle()
+                .record_failure(&throttle_key);
+            return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
+        }
+    };
+
+    // Password is correct. For 2FA users the counter is cleared only after the second
+    // factor succeeds, so a stolen password cannot reset the 2FA throttle.
+    if !user.totp_enabled {
+        state
+            .rate_limiter
+            .login_throttle()
+            .record_success(&throttle_key);
     }
 
     // Check if 2FA is enabled for this user
@@ -334,7 +373,9 @@ pub async fn forgot_password(
             .await
         {
             Ok(()) => tracing::info!(to = %user.email, "Password reset email sent"),
-            Err(e) => tracing::error!(to = %user.email, error = %e, "Failed to send password reset email"),
+            Err(e) => {
+                tracing::error!(to = %user.email, error = %e, "Failed to send password reset email")
+            }
         }
     } else {
         tracing::warn!(
@@ -853,7 +894,10 @@ pub async fn get_current_user(
     token: &str,
 ) -> Result<User, StatusCode> {
     // For admin token, return the first admin user from DB (or synthetic fallback)
-    if token == config.auth.admin_token {
+    // SEC-M4: constant-time compare with a length guard
+    let admin_token = config.auth.admin_token.as_bytes();
+    let provided = token.as_bytes();
+    if admin_token.len() == provided.len() && bool::from(admin_token.ct_eq(provided)) {
         if let Ok(Some(admin_user)) = sqlx::query_as::<_, User>(
             "SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1",
         )
@@ -1102,5 +1146,25 @@ impl FromRequestParts<Arc<AppState>> for User {
     ) -> Result<Self, Self::Rejection> {
         let token = extract_token(&parts.headers).ok_or(StatusCode::UNAUTHORIZED)?;
         get_current_user(&state.db, &state.config, &token).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dummy_hash_is_valid_default_argon2_and_never_matches() {
+        let parsed = PasswordHash::new(DUMMY_PASSWORD_HASH).expect("dummy hash must parse");
+        assert_eq!(parsed.algorithm.as_str(), "argon2id");
+        // Same cost parameters as hash_password, so timing is equalized
+        let real = hash_password("x").unwrap();
+        let real_parsed = PasswordHash::new(&real).unwrap();
+        assert_eq!(
+            parsed.params.to_string(),
+            real_parsed.params.to_string(),
+            "dummy hash params must match Argon2::default()"
+        );
+        assert!(!verify_password("anything", DUMMY_PASSWORD_HASH));
     }
 }

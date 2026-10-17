@@ -33,6 +33,8 @@ pub struct Config {
     #[serde(default)]
     pub stats_retention: StatsRetentionConfig,
     #[serde(default)]
+    pub data_retention: DataRetentionConfig,
+    #[serde(default)]
     pub email: EmailConfig,
     #[serde(default)]
     pub auto_update: AutoUpdateConfig,
@@ -96,7 +98,9 @@ pub struct AuthConfig {
     #[serde(default = "default_admin_token")]
     pub admin_token: String,
     /// Secret key for encrypting environment variables in the database.
-    /// If not set, environment variables are stored in plaintext (backwards compatible).
+    /// If not set, Rivetr loads `<data_dir>/.encryption_key` if it exists; on a fresh
+    /// install it generates that file (mode 0600). On an existing install with neither,
+    /// secrets stay in plaintext (backwards compatible) and a startup warning is logged.
     /// Recommended: Use a strong, random 32+ character string.
     pub encryption_key: Option<String>,
 }
@@ -256,6 +260,10 @@ pub struct ProxyConfig {
     /// Number of consecutive failures before marking backend as unhealthy (default: 3)
     #[serde(default = "default_health_check_threshold")]
     pub health_check_threshold: u32,
+    /// Seconds to wait for in-flight requests to finish on the old container
+    /// after a deploy swaps routes, before it is stopped (default: 30, 0 disables)
+    #[serde(default = "default_drain_timeout_secs")]
+    pub drain_timeout_secs: u64,
     /// Base domain for auto-generated subdomains (e.g., "rivetr.example.com")
     /// Apps will get subdomains like "my-app.rivetr.example.com"
     pub base_domain: Option<String>,
@@ -292,6 +300,10 @@ fn default_health_check_threshold() -> u32 {
     3
 }
 
+fn default_drain_timeout_secs() -> u64 {
+    30
+}
+
 impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
@@ -302,6 +314,7 @@ impl Default for ProxyConfig {
             health_check_interval: default_health_check_interval(),
             health_check_timeout: default_health_check_timeout(),
             health_check_threshold: default_health_check_threshold(),
+            drain_timeout_secs: default_drain_timeout_secs(),
             base_domain: None,
             auto_subdomain_enabled: false,
             server_ip: None,
@@ -444,6 +457,11 @@ pub struct RateLimitConfig {
     /// Cleanup interval for expired entries in seconds (default: 300)
     #[serde(default = "default_cleanup_interval")]
     pub cleanup_interval: u64,
+    /// Reverse proxies (IPs or CIDRs) whose `X-Forwarded-For` / `X-Real-IP` headers
+    /// are trusted when resolving the client IP (default: empty). Loopback peers are
+    /// always trusted. When the TCP peer is not trusted the peer address is used.
+    #[serde(default)]
+    pub trusted_proxies: Vec<String>,
 }
 
 fn default_rate_limit_enabled() -> bool {
@@ -479,6 +497,7 @@ impl Default for RateLimitConfig {
             auth_requests_per_window: default_auth_requests_per_window(),
             window_seconds: default_window_seconds(),
             cleanup_interval: default_cleanup_interval(),
+            trusted_proxies: Vec::new(),
         }
     }
 }
@@ -724,6 +743,51 @@ impl Default for StatsRetentionConfig {
     }
 }
 
+/// Retention for high-volume operational tables, enforced by the daily cleaner.
+/// A value of 0 disables pruning for that table (keep forever).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DataRetentionConfig {
+    /// Days to keep proxy access logs (default: 14)
+    #[serde(default = "default_proxy_logs_days")]
+    pub proxy_logs_days: i64,
+    /// Days to keep webhook delivery audit events (default: 30)
+    #[serde(default = "default_webhook_events_days")]
+    pub webhook_events_days: i64,
+    /// Days to keep audit_logs and team_audit_logs rows (default: 90)
+    #[serde(default = "default_audit_logs_days")]
+    pub audit_logs_days: i64,
+    /// Number of most recent runs to keep per scheduled job (default: 100)
+    #[serde(default = "default_scheduled_job_runs_keep")]
+    pub scheduled_job_runs_keep: i64,
+}
+
+fn default_proxy_logs_days() -> i64 {
+    14
+}
+
+fn default_webhook_events_days() -> i64 {
+    30
+}
+
+fn default_audit_logs_days() -> i64 {
+    90
+}
+
+fn default_scheduled_job_runs_keep() -> i64 {
+    100
+}
+
+impl Default for DataRetentionConfig {
+    fn default() -> Self {
+        Self {
+            proxy_logs_days: default_proxy_logs_days(),
+            webhook_events_days: default_webhook_events_days(),
+            audit_logs_days: default_audit_logs_days(),
+            scheduled_job_runs_keep: default_scheduled_job_runs_keep(),
+        }
+    }
+}
+
 /// Email/SMTP configuration for sending system emails (invitations, notifications)
 #[derive(Debug, Clone, Deserialize)]
 pub struct EmailConfig {
@@ -926,6 +990,7 @@ impl Config {
             container_monitor: ContainerMonitorConfig::default(),
             database_backup: DatabaseBackupConfig::default(),
             stats_retention: StatsRetentionConfig::default(),
+            data_retention: DataRetentionConfig::default(),
             email: EmailConfig::default(),
             auto_update: AutoUpdateConfig::default(),
             ai: AiConfig::default(),

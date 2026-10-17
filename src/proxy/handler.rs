@@ -7,6 +7,7 @@ use arc_swap::ArcSwap;
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::Bytes;
+use dashmap::DashMap;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::header::{AUTHORIZATION, CONNECTION, UPGRADE, WWW_AUTHENTICATE};
@@ -16,9 +17,11 @@ use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use regex::Regex;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio_rustls::server::TlsStream;
 use tracing::{debug, error, info, warn};
 
@@ -27,6 +30,15 @@ use super::{Backend, ProxyService, RouteTable};
 
 /// ACME HTTP-01 challenge path prefix
 const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
+
+/// Capacity of the access-log queue; entries are dropped (and counted) when full.
+const LOG_QUEUE_CAPACITY: usize = 10_000;
+
+/// Max rows per batched INSERT (7 binds per row stays far below SQLite's bind limit).
+const LOG_BATCH_SIZE: usize = 200;
+
+/// Max time a queued entry waits before being flushed.
+const LOG_FLUSH_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Owned fields needed to write a proxy access log row.
 struct ProxyLogEntry {
@@ -39,6 +51,131 @@ struct ProxyLogEntry {
     user_agent: String,
 }
 
+/// Request metadata captured up front; only built when access logging is enabled.
+struct LogMeta {
+    method: String,
+    path: String,
+    client_ip: String,
+    user_agent: String,
+}
+
+/// Handle used by request tasks to enqueue access-log entries for the writer task.
+#[derive(Clone)]
+struct ProxyLogSender {
+    tx: mpsc::Sender<ProxyLogEntry>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl ProxyLogSender {
+    /// Spawn the single batching writer task and return a sender for it.
+    fn spawn(db: sqlx::SqlitePool) -> Self {
+        let (tx, rx) = mpsc::channel(LOG_QUEUE_CAPACITY);
+        let dropped = Arc::new(AtomicU64::new(0));
+        tokio::spawn(run_log_writer(db, rx, dropped.clone()));
+        Self { tx, dropped }
+    }
+
+    /// Enqueue without blocking; drops the entry when the queue is full.
+    fn send(&self, entry: ProxyLogEntry) {
+        if self.tx.try_send(entry).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Single writer: batches queued entries into multi-row INSERTs, flushing every
+/// `LOG_FLUSH_INTERVAL` or `LOG_BATCH_SIZE` entries, whichever comes first.
+async fn run_log_writer(
+    db: sqlx::SqlitePool,
+    mut rx: mpsc::Receiver<ProxyLogEntry>,
+    dropped: Arc<AtomicU64>,
+) {
+    let mut buf: Vec<ProxyLogEntry> = Vec::with_capacity(LOG_BATCH_SIZE);
+    let mut tick = tokio::time::interval(LOG_FLUSH_INTERVAL);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            maybe = rx.recv() => match maybe {
+                Some(entry) => {
+                    buf.push(entry);
+                    if buf.len() >= LOG_BATCH_SIZE {
+                        flush_log_batch(&db, &mut buf).await;
+                    }
+                }
+                None => {
+                    flush_log_batch(&db, &mut buf).await;
+                    break;
+                }
+            },
+            _ = tick.tick() => {
+                flush_log_batch(&db, &mut buf).await;
+                let n = dropped.swap(0, Ordering::Relaxed);
+                if n > 0 {
+                    warn!(dropped = n, "Proxy access log queue full; entries dropped");
+                }
+            }
+        }
+    }
+}
+
+/// Insert all buffered entries with one multi-row statement and clear the buffer.
+async fn flush_log_batch(db: &sqlx::SqlitePool, buf: &mut Vec<ProxyLogEntry>) {
+    if buf.is_empty() {
+        return;
+    }
+    let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+        "INSERT INTO proxy_logs (host, method, path, status, response_ms, bytes_out, client_ip, user_agent) ",
+    );
+    qb.push_values(buf.drain(..), |mut row, e| {
+        row.push_bind(e.host)
+            .push_bind(e.method)
+            .push_bind(e.path)
+            .push_bind(e.status as i64)
+            .push_bind(e.response_ms as i64)
+            .push("0")
+            .push_bind(if e.client_ip.is_empty() {
+                None
+            } else {
+                Some(e.client_ip)
+            })
+            .push_bind(if e.user_agent.is_empty() {
+                None
+            } else {
+                Some(e.user_agent)
+            });
+    });
+    if let Err(e) = qb.build().execute(db).await {
+        debug!(error = %e, "Failed to write proxy access log batch");
+    }
+}
+
+/// Compiled redirect-rule regexes keyed by pattern; `None` marks an invalid pattern
+/// so it is reported once and skipped on later requests.
+static REDIRECT_REGEX_CACHE: OnceLock<DashMap<String, Option<Regex>>> = OnceLock::new();
+
+/// Upper bound on cached patterns; the cache is cleared if exceeded (rules changed a lot).
+const REDIRECT_REGEX_CACHE_MAX: usize = 1024;
+
+fn redirect_regex(pattern: &str) -> Option<Regex> {
+    let cache = REDIRECT_REGEX_CACHE.get_or_init(DashMap::new);
+    if let Some(entry) = cache.get(pattern) {
+        return entry.value().clone();
+    }
+    if cache.len() >= REDIRECT_REGEX_CACHE_MAX {
+        cache.clear();
+    }
+    let compiled = match Regex::new(pattern) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            warn!(pattern = %pattern, error = %e, "Invalid redirect rule regex");
+            None
+        }
+    };
+    cache.insert(pattern.to_string(), compiled.clone());
+    compiled
+}
+
 /// Handles incoming proxy connections
 #[derive(Clone)]
 pub struct ProxyHandler {
@@ -49,8 +186,8 @@ pub struct ProxyHandler {
     https_redirect_port: Option<u16>,
     /// Runtime flag — set to true after TLS cert is confirmed available
     https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
-    /// Optional database pool for proxy access logging
-    db: Option<sqlx::SqlitePool>,
+    /// Queue to the access-log writer task (None when logging is disabled)
+    log_tx: Option<ProxyLogSender>,
     /// Scheme reported to backends via X-Forwarded-Proto ("http" or "https").
     /// The HTTPS listener sets this to "https" so upstream apps (Laravel, Rails,
     /// etc.) generate correct absolute URLs instead of insecure http:// ones.
@@ -65,14 +202,14 @@ impl ProxyHandler {
             acme_challenges: None,
             https_redirect_port: None,
             https_redirect_enabled: None,
-            db: None,
+            log_tx: None,
             forwarded_proto: "http",
         }
     }
 
     /// Enable proxy access logging by providing a database pool
     pub fn with_db(mut self, db: sqlx::SqlitePool) -> Self {
-        self.db = Some(db);
+        self.log_tx = Some(ProxyLogSender::spawn(db));
         self
     }
 
@@ -146,33 +283,23 @@ impl ProxyHandler {
         Ok(())
     }
 
-    /// Write a proxy access log entry to the database (fire-and-forget)
-    fn log_request(&self, entry: ProxyLogEntry) {
-        if let Some(ref db) = self.db {
-            let db = db.clone();
-            tokio::spawn(async move {
-                let ProxyLogEntry {
-                    host,
-                    method,
-                    path,
-                    status,
-                    response_ms,
-                    client_ip,
-                    user_agent,
-                } = entry;
-                let _ = sqlx::query(
-                    "INSERT INTO proxy_logs (host, method, path, status, response_ms, bytes_out, client_ip, user_agent) \
-                     VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
-                )
-                .bind(&host)
-                .bind(&method)
-                .bind(&path)
-                .bind(status as i64)
-                .bind(response_ms as i64)
-                .bind(if client_ip.is_empty() { None } else { Some(client_ip) })
-                .bind(if user_agent.is_empty() { None } else { Some(user_agent) })
-                .execute(&db)
-                .await;
+    /// Queue a proxy access log entry for the batching writer (non-blocking)
+    fn log_request(
+        &self,
+        meta: Option<LogMeta>,
+        host: Option<&str>,
+        status: u16,
+        response_ms: u64,
+    ) {
+        if let (Some(tx), Some(meta)) = (&self.log_tx, meta) {
+            tx.send(ProxyLogEntry {
+                host: host.unwrap_or("unknown").to_string(),
+                method: meta.method,
+                path: meta.path,
+                status,
+                response_ms,
+                client_ip: meta.client_ip,
+                user_agent: meta.user_agent,
             });
         }
     }
@@ -189,21 +316,24 @@ impl ProxyHandler {
         let path = uri.path();
 
         // Capture logging metadata from request headers before they are consumed
-        let log_method = method.to_string();
-        let log_path = path.to_string();
-        let log_client_ip = req
-            .headers()
-            .get("X-Forwarded-For")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| remote_addr.ip().to_string());
-        let log_user_agent = req
-            .headers()
-            .get(hyper::header::USER_AGENT)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
+        // (skipped entirely when access logging is disabled)
+        let log_meta = self.log_tx.is_some().then(|| LogMeta {
+            method: method.to_string(),
+            path: path.to_string(),
+            client_ip: req
+                .headers()
+                .get("X-Forwarded-For")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| remote_addr.ip().to_string()),
+            user_agent: req
+                .headers()
+                .get(hyper::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+        });
 
         // Check for ACME HTTP-01 challenge (must happen before HTTPS redirect)
         if let Some(response) = self.handle_acme_challenge(path) {
@@ -247,7 +377,6 @@ impl ProxyHandler {
 
         let host = self.extract_host(&req);
         let is_websocket = self.is_websocket_upgrade(&req);
-        let log_host = host.clone().unwrap_or_else(|| "unknown".to_string());
 
         debug!(
             method = %method,
@@ -301,15 +430,12 @@ impl ProxyHandler {
                                     "Basic auth required but not provided or invalid"
                                 );
                                 let ms = start.elapsed().as_millis() as u64;
-                                self.log_request(ProxyLogEntry {
-                                    host: log_host,
-                                    method: log_method,
-                                    path: log_path,
-                                    status: response.status().as_u16(),
-                                    response_ms: ms,
-                                    client_ip: log_client_ip,
-                                    user_agent: log_user_agent,
-                                });
+                                self.log_request(
+                                    log_meta,
+                                    host.as_deref(),
+                                    response.status().as_u16(),
+                                    ms,
+                                );
                                 return Ok(response);
                             }
                         }
@@ -321,15 +447,12 @@ impl ProxyHandler {
                             self.apply_redirect_rules(path, &backend.redirect_rules)
                         {
                             let ms = start.elapsed().as_millis() as u64;
-                            self.log_request(ProxyLogEntry {
-                                host: log_host,
-                                method: log_method,
-                                path: log_path,
-                                status: redirect_response.status().as_u16(),
-                                response_ms: ms,
-                                client_ip: log_client_ip,
-                                user_agent: log_user_agent,
-                            });
+                            self.log_request(
+                                log_meta,
+                                host.as_deref(),
+                                redirect_response.status().as_u16(),
+                                ms,
+                            );
                             return Ok(redirect_response);
                         }
                     }
@@ -348,7 +471,13 @@ impl ProxyHandler {
                         return self.handle_websocket_upgrade(req, &backend).await;
                     }
 
-                    match self.proxy_service.forward(req, &backend, self.forwarded_proto).await {
+                    // Counted so a deploy can drain this backend before stopping it.
+                    let _in_flight = super::inflight::track(&backend.addr());
+                    match self
+                        .proxy_service
+                        .forward(req, &backend, self.forwarded_proto)
+                        .await
+                    {
                         Ok(response) => response,
                         Err(e) => {
                             error!(error = %e, backend = %backend.addr(), "Backend request failed");
@@ -378,15 +507,7 @@ impl ProxyHandler {
 
         let ms = start.elapsed().as_millis() as u64;
         let status = response.status().as_u16();
-        self.log_request(ProxyLogEntry {
-            host: log_host,
-            method: log_method,
-            path: log_path,
-            status,
-            response_ms: ms,
-            client_ip: log_client_ip,
-            user_agent: log_user_agent,
-        });
+        self.log_request(log_meta, host.as_deref(), status, ms);
         Ok(response)
     }
 
@@ -420,7 +541,11 @@ impl ProxyHandler {
         info!(backend = %backend.addr(), "Handling WebSocket upgrade");
 
         // Forward the WebSocket upgrade request to the backend
-        match self.proxy_service.forward_websocket(req, backend, self.forwarded_proto).await {
+        match self
+            .proxy_service
+            .forward_websocket(req, backend, self.forwarded_proto)
+            .await
+        {
             Ok(response) => Ok(response),
             Err(e) => {
                 error!(error = %e, "WebSocket upgrade failed");
@@ -575,12 +700,8 @@ impl ProxyHandler {
         rules: &[crate::proxy::RedirectRule],
     ) -> Option<Response<BoxBody<Bytes, hyper::Error>>> {
         for rule in rules {
-            let re = match Regex::new(&rule.source_pattern) {
-                Ok(r) => r,
-                Err(e) => {
-                    warn!(pattern = %rule.source_pattern, error = %e, "Invalid redirect rule regex");
-                    continue;
-                }
+            let Some(re) = redirect_regex(&rule.source_pattern) else {
+                continue;
             };
 
             if re.is_match(path) {
@@ -725,4 +846,88 @@ fn empty_response(status: StatusCode) -> Response<BoxBody<Bytes, hyper::Error>> 
     let mut resp = Response::new(Full::new(Bytes::new()).map_err(|e| match e {}).boxed());
     *resp.status_mut() = status;
     resp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    fn entry(path: &str, ip: &str) -> ProxyLogEntry {
+        ProxyLogEntry {
+            host: "example.com".into(),
+            method: "GET".into(),
+            path: path.into(),
+            status: 200,
+            response_ms: 5,
+            client_ip: ip.into(),
+            user_agent: String::new(),
+        }
+    }
+
+    async fn test_pool() -> sqlx::SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query(include_str!("../../migrations/103_proxy_logs.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn flush_batch_inserts_rows_and_maps_empty_to_null() {
+        let pool = test_pool().await;
+        let mut buf = vec![entry("/a", "1.2.3.4"), entry("/b", "")];
+        flush_log_batch(&pool, &mut buf).await;
+        assert!(buf.is_empty());
+
+        let rows: Vec<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT path, bytes_out, client_ip, user_agent FROM proxy_logs ORDER BY id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], ("/a".into(), 0, Some("1.2.3.4".into()), None));
+        assert_eq!(rows[1].2, None);
+    }
+
+    #[tokio::test]
+    async fn writer_flushes_on_interval_and_on_close() {
+        let pool = test_pool().await;
+        let sender = ProxyLogSender::spawn(pool.clone());
+        sender.send(entry("/x", "9.9.9.9"));
+        // Flushed by the 1s tick.
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM proxy_logs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[tokio::test]
+    async fn full_queue_drops_and_counts() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = ProxyLogSender {
+            tx,
+            dropped: Arc::new(AtomicU64::new(0)),
+        };
+        sender.send(entry("/1", ""));
+        sender.send(entry("/2", ""));
+        sender.send(entry("/3", ""));
+        assert_eq!(sender.dropped.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn redirect_regex_caches_and_skips_invalid() {
+        assert!(redirect_regex("^/old/(.*)$").is_some());
+        assert!(redirect_regex("^/old/(.*)$").is_some());
+        assert!(redirect_regex("(unclosed").is_none());
+        assert!(redirect_regex("(unclosed").is_none());
+    }
 }

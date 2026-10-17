@@ -35,6 +35,9 @@ pub struct OAuthAuthorizeResponse {
 struct OAuthUserInfo {
     provider_user_id: String,
     email: Option<String>,
+    /// Whether the provider asserts that `email` is verified (SEC-M3).
+    /// Only verified emails may be used to link to an existing local account.
+    email_verified: bool,
     name: Option<String>,
 }
 
@@ -150,6 +153,12 @@ pub async fn oauth_login_authorize(
         _ => unreachable!(),
     };
 
+    // Drop expired CSRF states (best effort) so abandoned logins do not pile up
+    let _ = sqlx::query("DELETE FROM sessions WHERE user_id = 'oauth_state' AND expires_at < ?")
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(&state.db)
+        .await;
+
     // Store state in database for CSRF verification (expires in 10 minutes)
     let state_id = uuid::Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now()
@@ -187,24 +196,29 @@ pub async fn oauth_login_callback(
         ));
     }
 
-    // Verify CSRF state (optional but recommended)
-    if let Some(state_param) = &params.state {
-        let valid_state: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM sessions WHERE user_id = 'oauth_state' AND token_hash = ? AND expires_at > datetime('now')",
-        )
-        .bind(state_param)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // SEC-M3: enforce the CSRF state strictly. It must exist, be unexpired, and is
+    // consumed atomically so it can only be used once.
+    let state_param = params.state.as_deref().filter(|s| !s.is_empty()).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Missing OAuth state parameter. Please start the sign-in again.".to_string(),
+    ))?;
 
-        if let Some((state_id,)) = valid_state {
-            // Clean up used state
-            let _ = sqlx::query("DELETE FROM sessions WHERE id = ?")
-                .bind(&state_id)
-                .execute(&state.db)
-                .await;
-        }
-        // Don't fail if state verification fails - some flows may not have it
+    let consumed: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM sessions WHERE user_id = 'oauth_state' AND token_hash = ? RETURNING expires_at",
+    )
+    .bind(state_param)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let state_valid = consumed
+        .and_then(|(expires_at,)| chrono::DateTime::parse_from_rfc3339(&expires_at).ok())
+        .is_some_and(|expires_at| expires_at > chrono::Utc::now());
+    if !state_valid {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid or expired OAuth state. Please start the sign-in again.".to_string(),
+        ));
     }
 
     // Look up the provider configuration
@@ -256,12 +270,39 @@ pub async fn oauth_login_callback(
     // Fetch user info from the provider
     let user_info = fetch_user_info(&provider, &access_token).await?;
 
-    // For GitHub and Bitbucket, email may be null in user profile, so fetch from emails endpoint
+    // For GitHub and Bitbucket, email may be null in user profile, so fetch from emails endpoint.
+    // `email_verified` records whether the provider vouches for ownership of the address.
+    let mut email_verified = user_info.email_verified;
     let email = match (&user_info.email, provider.as_str()) {
-        (None, "github") => fetch_github_primary_email(&access_token).await.ok(),
-        (None, "bitbucket") => fetch_bitbucket_primary_email(&access_token).await.ok(),
+        (None, "github") => match fetch_github_primary_email(&access_token).await {
+            Ok(e) => {
+                email_verified = true;
+                Some(e)
+            }
+            Err(_) => None,
+        },
+        (Some(e), "github") => {
+            email_verified = github_email_is_verified(&access_token, e).await;
+            Some(e.clone())
+        }
+        (_, "bitbucket") => match fetch_bitbucket_primary_email(&access_token).await {
+            Ok((e, confirmed)) => {
+                email_verified = confirmed;
+                Some(e)
+            }
+            Err(_) => None,
+        },
         (email, _) => email.clone(),
     };
+
+    // Azure AD: Graph /me does not say whether `mail` is verified. In a single-tenant app
+    // the tenant admin controls it; in multi-tenant mode any tenant can assert any address.
+    if provider == "azure" {
+        email_verified = !matches!(
+            get_azure_tenant_id(&oauth_provider).as_str(),
+            "common" | "organizations" | "consumers"
+        );
+    }
 
     let email = email.ok_or((
         StatusCode::BAD_REQUEST,
@@ -291,6 +332,17 @@ pub async fn oauth_login_callback(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         if let Some(user) = existing_user {
+            // SEC-M3: only auto-link to a local account when the provider vouches for the email
+            if !email_verified {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    format!(
+                        "An account with this email already exists, but {} did not confirm that you own it. Verify the email with {} or sign in with your password.",
+                        provider, provider
+                    ),
+                ));
+            }
+
             // Link OAuth connection to existing user
             let conn_id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().to_rfc3339();
@@ -956,6 +1008,8 @@ async fn fetch_user_info(
             Ok(OAuthUserInfo {
                 provider_user_id: user.id.to_string(),
                 email: user.email,
+                // Checked against /user/emails by the caller
+                email_verified: false,
                 name: user.name,
             })
         }
@@ -964,6 +1018,8 @@ async fn fetch_user_info(
             struct GoogleUser {
                 id: String,
                 email: Option<String>,
+                #[serde(default, alias = "email_verified")]
+                verified_email: Option<bool>,
                 name: Option<String>,
             }
 
@@ -989,6 +1045,7 @@ async fn fetch_user_info(
             Ok(OAuthUserInfo {
                 provider_user_id: user.id,
                 email: user.email,
+                email_verified: user.verified_email.unwrap_or(false),
                 name: user.name,
             })
         }
@@ -997,6 +1054,7 @@ async fn fetch_user_info(
             struct GitLabUser {
                 id: i64,
                 email: Option<String>,
+                confirmed_at: Option<String>,
                 name: Option<String>,
             }
 
@@ -1022,6 +1080,7 @@ async fn fetch_user_info(
             Ok(OAuthUserInfo {
                 provider_user_id: user.id.to_string(),
                 email: user.email,
+                email_verified: user.confirmed_at.is_some(),
                 name: user.name,
             })
         }
@@ -1060,6 +1119,8 @@ async fn fetch_user_info(
             Ok(OAuthUserInfo {
                 provider_user_id: user.id,
                 email,
+                // Decided by the caller based on tenant configuration
+                email_verified: false,
                 name: user.display_name,
             })
         }
@@ -1095,6 +1156,7 @@ async fn fetch_user_info(
                 provider_user_id: user.account_id,
                 // Email is fetched separately via /user/emails
                 email: None,
+                email_verified: false,
                 name: user.display_name,
             })
         }
@@ -1148,8 +1210,38 @@ async fn fetch_github_primary_email(access_token: &str) -> Result<String, (Statu
         ))
 }
 
-/// Fetch primary email from Bitbucket (when user profile email is null)
-async fn fetch_bitbucket_primary_email(access_token: &str) -> Result<String, (StatusCode, String)> {
+/// Whether GitHub lists `email` as a verified address on the account (SEC-M3).
+/// Returns false on any failure (e.g. token lacks the `user:email` scope).
+async fn github_email_is_verified(access_token: &str, email: &str) -> bool {
+    #[derive(Deserialize)]
+    struct GitHubEmail {
+        email: String,
+        verified: bool,
+    }
+
+    let response = match reqwest::Client::new()
+        .get("https://api.github.com/user/emails")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "Rivetr")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    match response.json::<Vec<GitHubEmail>>().await {
+        Ok(emails) => emails
+            .iter()
+            .any(|e| e.verified && e.email.eq_ignore_ascii_case(email)),
+        Err(_) => false,
+    }
+}
+
+/// Fetch primary email from Bitbucket (when user profile email is null).
+/// Returns the address and whether Bitbucket has confirmed it.
+async fn fetch_bitbucket_primary_email(
+    access_token: &str,
+) -> Result<(String, bool), (StatusCode, String)> {
     let client = reqwest::Client::new();
 
     #[derive(Deserialize)]
@@ -1189,7 +1281,7 @@ async fn fetch_bitbucket_primary_email(access_token: &str) -> Result<String, (St
         .find(|e| e.is_primary && e.is_confirmed)
         .or_else(|| page.values.iter().find(|e| e.is_confirmed))
         .or_else(|| page.values.first())
-        .map(|e| e.email.clone())
+        .map(|e| (e.email.clone(), e.is_confirmed))
         .ok_or((
             StatusCode::BAD_REQUEST,
             "No email found on Bitbucket account".to_string(),

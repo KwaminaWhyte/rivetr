@@ -71,9 +71,18 @@ async fn main() -> Result<()> {
     // Initialize database
     let db = rivetr::db::init(&config.server.data_dir).await?;
 
+    let mut config = config;
+
+    // Resolve the encryption key (config > key file > auto-generate on fresh install).
+    rivetr::crypto::key_file::resolve_encryption_key(
+        &mut config.auth.encryption_key,
+        &config.server.data_dir,
+        &db,
+    )
+    .await?;
+
     // DB takes priority over toml for instance_domain: load from instance_settings table
     // and override the config value so the rest of startup uses the correct domain.
-    let mut config = config;
     if let Ok(db_settings) = InstanceSettings::load(&db).await {
         if let Some(ref db_domain) = db_settings.instance_domain {
             if !db_domain.is_empty() {
@@ -124,6 +133,7 @@ async fn main() -> Result<()> {
     let proxy_addr: SocketAddr = format!("{}:{}", config.server.host, config.server.proxy_port)
         .parse()
         .expect("Invalid proxy address");
+    rivetr::proxy::inflight::set_drain_timeout_secs(config.proxy.drain_timeout_secs);
     let proxy_server = ProxyServer::new(proxy_addr).with_db(db.clone());
     let routes = proxy_server.routes();
 
@@ -362,7 +372,7 @@ async fn main() -> Result<()> {
 
     // Start advanced monitoring tasks (uptime checker + log cleaner)
     rivetr::monitoring::spawn_uptime_checker_task(db.clone());
-    rivetr::monitoring::spawn_log_cleaner_task(db.clone());
+    rivetr::monitoring::spawn_log_cleaner_task(db.clone(), config.data_retention.clone());
 
     // Create API router
     let api_router = rivetr::api::create_router(state.clone());

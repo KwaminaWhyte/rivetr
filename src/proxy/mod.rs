@@ -6,6 +6,7 @@
 pub mod acme;
 mod handler;
 mod health_checker;
+pub mod inflight;
 mod service;
 pub mod tls;
 

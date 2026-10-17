@@ -14,6 +14,7 @@ mod clone;
 mod cloudflare_tunnels;
 mod cost_rates;
 mod costs;
+pub mod csp;
 mod database_backups;
 mod database_extensions;
 pub mod database_links;
@@ -29,6 +30,7 @@ mod github_apps;
 mod instance_settings;
 mod jobs;
 mod log_drains;
+pub mod login_throttle;
 pub mod metrics;
 mod monitoring;
 mod notifications;
@@ -48,8 +50,8 @@ mod service_templates;
 mod services;
 mod shared_env_vars;
 mod ssh_keys;
-pub mod ssrf;
 mod sso;
+pub mod ssrf;
 pub mod start_logs;
 mod swarm;
 pub mod system;
@@ -64,7 +66,7 @@ mod ws;
 
 use axum::{
     body::Body,
-    http::{header, Request, Response, StatusCode, Uri},
+    http::{header, HeaderMap, Request, Response, StatusCode, Uri},
     middleware,
     response::IntoResponse,
     routing::{delete, get, post, put},
@@ -1080,8 +1082,30 @@ async fn health_check() -> &'static str {
     "OK"
 }
 
+/// Build an HTML response for the SPA shell with a Content-Security-Policy that
+/// allows exactly the inline scripts present in the document (SEC-M6).
+fn html_response(body: Vec<u8>, host: Option<&str>) -> Response<Body> {
+    let csp = csp::html_csp(&String::from_utf8_lossy(&body), host);
+    let mut response = (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=0, must-revalidate"),
+        ],
+        body,
+    )
+        .into_response();
+    if let Ok(value) = csp.parse() {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_SECURITY_POLICY, value);
+    }
+    response
+}
+
 /// Serve embedded static files with SPA fallback
-async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
+async fn serve_embedded_static(uri: Uri, req_headers: HeaderMap) -> impl IntoResponse {
+    let host = req_headers.get(header::HOST).and_then(|h| h.to_str().ok());
     let path = uri.path().trim_start_matches('/');
 
     // API paths that reach this fallback are genuinely missing — return 404, not the SPA shell.
@@ -1109,6 +1133,10 @@ async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
             "public, max-age=0, must-revalidate"
         };
 
+        if mime.as_ref() == "text/html" {
+            return html_response(content.data.into_owned(), host);
+        }
+
         return (
             StatusCode::OK,
             [
@@ -1123,29 +1151,13 @@ async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
     // For root path, try index.html
     if path.is_empty() || path == "index.html" {
         if let Some(content) = StaticAssets::get("index.html") {
-            return (
-                StatusCode::OK,
-                [
-                    (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-                    (header::CACHE_CONTROL, "public, max-age=0, must-revalidate"),
-                ],
-                content.data.into_owned(),
-            )
-                .into_response();
+            return html_response(content.data.into_owned(), host);
         }
     }
 
     // SPA fallback: serve __spa-fallback.html for client-side routing
     if let Some(content) = StaticAssets::get("__spa-fallback.html") {
-        return (
-            StatusCode::OK,
-            [
-                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-                (header::CACHE_CONTROL, "public, max-age=0, must-revalidate"),
-            ],
-            content.data.into_owned(),
-        )
-            .into_response();
+        return html_response(content.data.into_owned(), host);
     }
 
     // If no fallback exists, return 404
@@ -1155,6 +1167,7 @@ async fn serve_embedded_static(uri: Uri) -> impl IntoResponse {
 /// Security headers middleware
 /// Adds common security headers to all responses
 async fn security_headers(request: Request<Body>, next: axum::middleware::Next) -> Response<Body> {
+    let is_https = csp::is_https_request(request.headers());
     let mut response = next.run(request).await;
 
     // Check if cache-control already set (before borrowing headers mutably)
@@ -1184,6 +1197,23 @@ async fn security_headers(request: Request<Body>, next: axum::middleware::Next) 
         axum::http::header::REFERRER_POLICY,
         "strict-origin-when-cross-origin".parse().unwrap(),
     );
+
+    // Content-Security-Policy: the SPA shell sets its own (with inline script hashes);
+    // every other response gets the locked-down API policy
+    if !headers.contains_key(axum::http::header::CONTENT_SECURITY_POLICY) {
+        headers.insert(
+            axum::http::header::CONTENT_SECURITY_POLICY,
+            csp::API_CSP.parse().unwrap(),
+        );
+    }
+
+    // HSTS only when the request arrived over HTTPS (browsers ignore it on HTTP anyway)
+    if is_https {
+        headers.insert(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            csp::HSTS_VALUE.parse().unwrap(),
+        );
+    }
 
     // Prevent caching of sensitive API responses
     // Static files served separately can have their own caching policy

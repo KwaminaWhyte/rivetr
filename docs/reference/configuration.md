@@ -19,6 +19,7 @@ Source of truth: `src/config/mod.rs`. A copyable starter is in `rivetr.example.t
 - [`[container_monitor]`](#container_monitor)
 - [`[database_backup]`](#database_backup)
 - [`[stats_retention]`](#stats_retention)
+- [`[data_retention]`](#data_retention)
 - [`[email]`](#email)
 - [`[auto_update]`](#auto_update)
 - [`[ai]`](#ai)
@@ -43,7 +44,18 @@ Network bind addresses and data location.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `admin_token` | string | random 256-bit hex | Bearer token for programmatic API access. **Auto-generated per start if unset**: set explicitly in production so it is stable. |
-| `encryption_key` | string? | _none_ | Secret used to encrypt env vars at rest in the DB. If unset, env vars are stored in plaintext (backwards compatible). Use a strong, random 32+ char string. |
+| `encryption_key` | string? | _none_ | Secret used to encrypt env vars, SSH keys, OAuth and TOTP secrets at rest in the DB. Use a strong, random 32+ char string (`openssl rand -hex 32`). If unset, see [Encryption key resolution](#encryption-key-resolution). |
+
+### Encryption key resolution
+
+At startup the key is resolved in this order:
+
+1. `[auth] encryption_key`, if set (always wins).
+2. `<data_dir>/.encryption_key`, if the file exists.
+3. Fresh install (no users, env vars, servers, build servers or git providers in the DB): a random 256-bit key is generated and written to `<data_dir>/.encryption_key` (mode `0600`, created atomically, never overwritten). A one-time notice is logged. **Back this file up together with the database**: without it, encrypted values cannot be recovered.
+4. Existing install with neither: behavior is unchanged (plaintext) and a startup warning shows the exact line to add. Existing plaintext values stay readable after a key is enabled; new and updated values are encrypted.
+
+The key is stretched with PBKDF2-HMAC-SHA256 (100k iterations, fixed salt). Upgrading the KDF (per-install salt, Argon2id) would break existing ciphertext and needs a versioned ciphertext format first; it is a tracked follow-up.
 
 ## `[runtime]`
 
@@ -72,6 +84,7 @@ Embedded reverse proxy: TLS/ACME, health checks, and automatic domain generation
 | `health_check_interval` | u64 | `30` | Seconds between backend health checks. |
 | `health_check_timeout` | u64 | `5` | Seconds before a health check request times out. |
 | `health_check_threshold` | u32 | `3` | Consecutive failures before a backend is marked unhealthy. |
+| `drain_timeout_secs` | u64 | `30` | After a deploy or rollback swaps routes, wait up to this many seconds for in-flight requests on the old container to finish before stopping it. `0` disables draining. WebSocket tunnels are not waited for. |
 | `base_domain` | string? | _none_ | Base domain for auto-generated subdomains (e.g. `rivetr.example.com` → `my-app.rivetr.example.com`). |
 | `auto_subdomain_enabled` | bool | `false` | Enable automatic subdomain generation for new apps (requires `base_domain`). |
 | `server_ip` | string? | _none_ | Public IP used for `sslip.io` / `traefik.me` style domains. Auto-detected if unset. |
@@ -120,6 +133,11 @@ Per-tier request throttling.
 | `auth_requests_per_window` | u32 | `20` | Limit for auth endpoints per window (stricter, anti-brute-force). |
 | `window_seconds` | u64 | `60` | Window duration in seconds. |
 | `cleanup_interval` | u64 | `300` | Seconds between cleanups of expired rate-limit entries. |
+| `trusted_proxies` | string[] | `[]` | IPs or CIDRs of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are trusted. |
+
+**Client IP resolution.** Rate limiting and audit logs key on the TCP peer address. `X-Forwarded-For` / `X-Real-IP` are honored only when the peer is a trusted proxy, and `X-Forwarded-For` is read right to left, skipping trusted hops, so values a client prepends are ignored. Loopback peers (`127.0.0.0/8`, `::1`) are always trusted, which covers the embedded proxy and nginx / Caddy / Traefik on the same host. Add other proxies explicitly, for example the Docker bridge range (`172.17.0.0/16`) when Rivetr runs in a container behind a proxy; without it every client shares the bridge IP's bucket. Do not list ranges that untrusted clients can connect from.
+
+**Account lockout.** Independently of IP limits, 5 failed password attempts for the same email (or 5 failed 2FA codes for the same user) within 15 minutes lock that account with an exponential backoff (30 s doubling, capped at 15 min). `/api/auth/login` and `/api/auth/2fa/validate` return `429` while locked; a successful sign-in clears the counter. State is in memory and resets on restart.
 
 ## `[cleanup]`
 
@@ -178,6 +196,17 @@ Retention and aggregation of resource-usage stats.
 | `hourly_retention_days` | i64 | `30` | Days to keep hourly-aggregated stats. |
 | `daily_retention_days` | i64 | `365` | Days to keep daily-aggregated stats. |
 | `cleanup_interval_seconds` | u64 | `3600` | Seconds between cleanup/aggregation runs. |
+
+## `[data_retention]`
+
+Daily pruning of high-volume operational tables. Rows are deleted in bounded batches (10,000 per statement) so a run never holds the SQLite write lock for long. A value of `0` disables pruning for that item. Expired rows in `sessions` (including OAuth state rows) are always removed after a one-day grace period.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `proxy_logs_days` | i64 | `14` | Days to keep proxy access logs (`proxy_logs`). |
+| `webhook_events_days` | i64 | `30` | Days to keep webhook delivery events (`webhook_events`). |
+| `audit_logs_days` | i64 | `90` | Days to keep `audit_logs` and `team_audit_logs`. |
+| `scheduled_job_runs_keep` | i64 | `100` | Most recent runs kept per scheduled job (`scheduled_job_runs`). |
 
 ## `[email]`
 

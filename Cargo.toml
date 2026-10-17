@@ -130,6 +130,7 @@ tui = ["ratatui", "crossterm"]
 
 [dev-dependencies]
 tokio-test = "0.4"
+tokio = { version = "1", features = ["test-util"] }
 
 # Lint levels codified in the manifest so `cargo clippy`/`cargo build` apply them
 # consistently in local dev and CI without extra flags. These all pass clean on

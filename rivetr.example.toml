@@ -14,9 +14,11 @@ external_url = "https://ce84db70b5c8.ngrok-free.app"
 [auth]
 # API token for programmatic access (generate a secure token for production!)
 admin_token = "change-me-in-production"
-# Secret key for encrypting environment variables at rest in the database
-# If not set, environment variables are stored in plaintext (backwards compatible)
-# Recommended: Use a strong, random 32+ character string
+# Secret key for encrypting env vars, SSH keys, OAuth and TOTP secrets at rest
+# If not set: <data_dir>/.encryption_key is loaded if it exists; on a fresh install it is
+# generated (mode 0600) - back it up with the database. On an existing install with
+# neither, secrets stay in plaintext and a startup warning is logged.
+# Recommended: Use a strong, random 32+ character string (openssl rand -hex 32)
 # encryption_key = "your-strong-encryption-key-here"
 
 [runtime]
@@ -67,6 +69,9 @@ acme_cache_dir = "./data/acme"
 health_check_interval = 30
 health_check_timeout = 5
 health_check_threshold = 3
+# Seconds to wait for in-flight requests to finish on the old container after a
+# deploy swaps routes, before it is stopped (0 disables draining)
+drain_timeout_secs = 30
 # Base domain for auto-generated app subdomains (e.g., "rivetr.example.com")
 # Apps will automatically get subdomains like "my-app.rivetr.example.com"
 # base_domain = "rivetr.example.com"
@@ -105,6 +110,15 @@ auth_requests_per_window = 20
 window_seconds = 60
 # Cleanup interval for expired rate limit entries in seconds (default: 300)
 cleanup_interval = 300
+# Reverse proxies (IPs or CIDRs) whose X-Forwarded-For / X-Real-IP headers are trusted
+# when resolving the client IP for rate limiting and audit logs (default: none).
+# The TCP peer address is used unless the peer is listed here. Loopback peers
+# (127.0.0.0/8, ::1) are always trusted, so the embedded proxy, or nginx / Caddy /
+# Traefik on the same host, work without configuration. Add the address of a proxy that
+# runs elsewhere, or the Docker bridge gateway when Rivetr itself runs in a container
+# behind a proxy (otherwise every client appears as the bridge IP and shares one bucket).
+# Never list a range that untrusted clients can connect from.
+# trusted_proxies = ["172.17.0.0/16", "10.0.0.5"]
 
 [cleanup]
 # Enable automatic cleanup of old deployments (default: true)
@@ -148,6 +162,17 @@ max_backoff_secs = 300
 # Duration in seconds a container must run before being considered stable (default: 120)
 # After this duration without crashing, the restart counter is reset
 stable_duration_secs = 120
+
+[data_retention]
+# Daily pruning of high-volume tables (deleted in bounded batches). 0 disables pruning.
+# Days to keep proxy access logs
+proxy_logs_days = 14
+# Days to keep webhook delivery events
+webhook_events_days = 30
+# Days to keep audit_logs and team_audit_logs
+audit_logs_days = 90
+# Most recent runs kept per scheduled job
+scheduled_job_runs_keep = 100
 
 [email]
 # Enable email sending for team invitations and notifications (default: false)

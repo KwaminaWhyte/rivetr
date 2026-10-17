@@ -13,6 +13,7 @@ pub mod preview;
 pub mod railpack;
 pub mod remote;
 mod resource_metrics_collector;
+pub mod retire;
 pub mod scheduler;
 pub mod static_builder;
 mod stats_collector;
@@ -211,14 +212,13 @@ impl DeploymentEngine {
                         // Guard the rare race where a newer deployment superseded this
                         // one after start_container returned but before we swap routes.
                         // Don't point the proxy at a now-stale container — tear it down.
-                        let post_status: Option<String> = sqlx::query_scalar(
-                            "SELECT status FROM deployments WHERE id = ?",
-                        )
-                        .bind(&deployment_id)
-                        .fetch_optional(&db)
-                        .await
-                        .ok()
-                        .flatten();
+                        let post_status: Option<String> =
+                            sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
+                                .bind(&deployment_id)
+                                .fetch_optional(&db)
+                                .await
+                                .ok()
+                                .flatten();
                         if post_status.as_deref() == Some("cancelled") {
                             tracing::warn!(
                                 "Deployment {} superseded during build; discarding its container without swapping routes",
@@ -417,14 +417,12 @@ impl DeploymentEngine {
                                 old_containers = ?container_info.old_container_ids,
                                 "Stopping old containers after proxy route swap (zero-downtime)"
                             );
-                            for old_id in &container_info.old_container_ids {
-                                // Skip if the old ID is the same as the new container (no previous deployment)
-                                if old_id == &container_info.container_id {
-                                    continue;
-                                }
-                                let _ = runtime.stop(old_id).await;
-                                let _ = runtime.remove(old_id).await;
-                            }
+                            retire::retire_old_containers(
+                                &*runtime,
+                                &container_info.old_container_ids,
+                                &container_info.container_id,
+                            )
+                            .await;
                         }
                     }
                     Err(e) => {
@@ -527,13 +525,12 @@ impl DeploymentEngine {
                                 {
                                     let new_container_id =
                                         rb_deployment.container_id.unwrap_or_default();
-                                    for old_id in &auto_rollback.old_container_ids {
-                                        if old_id == &new_container_id {
-                                            continue;
-                                        }
-                                        let _ = runtime.stop(old_id).await;
-                                        let _ = runtime.remove(old_id).await;
-                                    }
+                                    retire::retire_old_containers(
+                                        &*runtime,
+                                        &auto_rollback.old_container_ids,
+                                        &new_container_id,
+                                    )
+                                    .await;
                                 }
                             }
 
