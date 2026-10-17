@@ -821,6 +821,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // System stats and events
         .route("/system/stats", get(system::get_system_stats))
+        .route("/system/resources", get(system::get_resource_stats))
         .route("/system/stats/history", get(system::get_stats_history))
         .route("/system/stats/summary", get(system::get_stats_summary))
         .route("/system/disk", get(system::get_disk_stats))

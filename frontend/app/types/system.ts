@@ -3,6 +3,16 @@
 // -------------------------------------------------------------------------
 
 // System-wide statistics for dashboard
+/** CPU and memory of one running app or database container */
+export interface ResourceStat {
+  id: string;
+  name: string;
+  type: "app" | "database";
+  cpu_percent: number;
+  memory_usage: number;
+  memory_limit: number;
+}
+
 export interface SystemStats {
   /** Number of apps with a running deployment */
   running_apps_count: number;

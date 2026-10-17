@@ -342,6 +342,7 @@ export const api = {
 
   // System
   getSystemStats: systemApi.getSystemStats,
+  getResourceStats: systemApi.getResourceStats,
   getDiskStats: systemApi.getDiskStats,
   getSystemHealth: systemApi.getSystemHealth,
   getRecentEvents: systemApi.getRecentEvents,

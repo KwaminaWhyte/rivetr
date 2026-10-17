@@ -5,6 +5,7 @@
 
 import { apiRequest, apiRawRequest, getStoredToken } from "./core";
 import type {
+  ResourceStat,
   SystemStats,
   DiskStats,
   RecentEvent,
@@ -56,6 +57,20 @@ export const systemApi = {
   // -------------------------------------------------------------------------
   // System Stats & Health
   // -------------------------------------------------------------------------
+
+  /** CPU and memory of every running app and database, in one request */
+  getResourceStats: (options: GetSystemStatsOptions = {}, token?: string) => {
+    const params = new URLSearchParams();
+    if (options.teamId) {
+      params.append("team_id", options.teamId);
+    }
+    const queryString = params.toString();
+    return apiRequest<ResourceStat[]>(
+      `/system/resources${queryString ? `?${queryString}` : ""}`,
+      {},
+      token
+    );
+  },
 
   /** Get system-wide statistics, optionally scoped to a team */
   getSystemStats: (options: GetSystemStatsOptions = {}, token?: string) => {

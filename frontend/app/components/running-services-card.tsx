@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { Cpu, HardDrive, Activity, Database, Server } from "lucide-react";
 import { Link } from "react-router";
-import type { App, ManagedDatabase, Service } from "@/types/api";
+import type { Service } from "@/types/api";
 
 interface RunningServiceInfo {
   id: string;
@@ -29,98 +29,30 @@ function formatBytes(bytes: number): string {
 export function RunningServicesCard() {
   const { currentTeamId } = useTeamContext();
 
-  const { data: apps = [] } = useQuery<App[]>({
-    queryKey: ["apps", currentTeamId],
-    queryFn: () => api.getApps(currentTeamId ? { teamId: currentTeamId } : undefined),
-    refetchInterval: 30000,
-  });
-
-  const { data: databases = [] } = useQuery<ManagedDatabase[]>({
-    queryKey: ["databases", currentTeamId],
-    queryFn: () => api.getDatabases(currentTeamId ? { teamId: currentTeamId } : {}),
-    refetchInterval: 30000,
-  });
-
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: ["services", currentTeamId],
     queryFn: () => api.getServices(currentTeamId ? { teamId: currentTeamId } : undefined),
     refetchInterval: 30000,
   });
 
-  // Fetch stats for all apps. The backend returns zeroed stats (not 404) for
-  // non-running apps, so we filter out entries with zero memory usage to show
-  // only apps that are actually consuming resources.
-  const appStatsQuery = useQuery({
-    queryKey: ["app-stats", apps.map((a) => a.id)],
-    queryFn: async () => {
-      const results = await Promise.all(
-        apps.map(async (app) => {
-          try {
-            const stats = await api.getAppStats(app.id);
-            // Skip apps that are not running (backend returns zeroed stats)
-            if (!stats || (stats.cpu_percent === 0 && stats.memory_usage === 0)) {
-              return null;
-            }
-            return {
-              id: app.id,
-              name: app.name,
-              type: "app" as const,
-              status: "running",
-              cpu_percent: stats.cpu_percent,
-              memory_usage: stats.memory_usage,
-              memory_limit: stats.memory_limit,
-              url: `/apps/${app.id}`,
-            };
-          } catch {
-            // Unexpected error, omit from list
-            return null;
-          }
-        })
-      );
-      return results.filter((r): r is NonNullable<typeof r> => r !== null);
-    },
-    enabled: apps.length > 0,
+  // One request for CPU/memory of every running app and database (was one request
+  // per resource, each waiting on Docker for a stats sample).
+  const resourcesQuery = useQuery({
+    queryKey: ["system-resources", currentTeamId],
+    queryFn: () => api.getResourceStats({ teamId: currentTeamId ?? undefined }),
     refetchInterval: 15000,
   });
 
-  // Fetch stats for all running databases
-  const runningDatabases = databases.filter((db) => db.status === "running");
-  const dbStatsQuery = useQuery({
-    queryKey: ["db-stats", runningDatabases.map((d) => d.id)],
-    queryFn: async () => {
-      const results = await Promise.all(
-        runningDatabases.map(async (db) => {
-          try {
-            const stats = await api.getDatabaseStats(db.id);
-            return {
-              id: db.id,
-              name: db.name,
-              type: "database" as const,
-              status: "running",
-              cpu_percent: stats?.cpu_percent ?? 0,
-              memory_usage: stats?.memory_usage ?? 0,
-              memory_limit: stats?.memory_limit ?? 0,
-              url: `/databases/${db.id}`,
-            };
-          } catch {
-            return {
-              id: db.id,
-              name: db.name,
-              type: "database" as const,
-              status: "running",
-              cpu_percent: 0,
-              memory_usage: 0,
-              memory_limit: 0,
-              url: `/databases/${db.id}`,
-            };
-          }
-        })
-      );
-      return results;
-    },
-    enabled: runningDatabases.length > 0,
-    refetchInterval: 15000,
-  });
+  const resourceInfos: RunningServiceInfo[] = (resourcesQuery.data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    status: "running",
+    cpu_percent: r.cpu_percent,
+    memory_usage: r.memory_usage,
+    memory_limit: r.memory_limit,
+    url: r.type === "app" ? `/apps/${r.id}` : `/databases/${r.id}`,
+  }));
 
   const runningServices = services.filter((s) => s.status === "running");
   const serviceInfos: RunningServiceInfo[] = runningServices.map((service) => ({
@@ -135,8 +67,7 @@ export function RunningServicesCard() {
   }));
 
   const allRunning: RunningServiceInfo[] = [
-    ...(appStatsQuery.data ?? []),
-    ...(dbStatsQuery.data ?? []),
+    ...resourceInfos,
     ...serviceInfos,
   ].sort((a, b) => b.memory_usage - a.memory_usage);
 

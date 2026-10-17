@@ -620,6 +620,118 @@ pub async fn get_system_stats(
     }))
 }
 
+/// Resource usage of one running app or database container.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResourceStat {
+    pub id: String,
+    pub name: String,
+    /// "app" or "database"
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub cpu_percent: f64,
+    pub memory_usage: u64,
+    pub memory_limit: u64,
+}
+
+type ResourceStatsCache =
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, Vec<ResourceStat>)>>;
+
+fn resource_stats_cache() -> &'static ResourceStatsCache {
+    static CACHE: std::sync::OnceLock<ResourceStatsCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Per-container CPU and memory for every running app and database, in one call.
+/// GET /api/system/resources
+///
+/// Replaces one `/apps/:id/stats` or `/databases/:id/stats` request per resource
+/// (each waits ~1-2s for Docker). Containers are queried concurrently and the
+/// result is cached for 10s. Team scoping matches `GET /api/system/stats`.
+pub async fn get_resource_stats(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SystemStatsQuery>,
+) -> Result<Json<Vec<ResourceStat>>, ApiError> {
+    let team_id = query.team_id.clone().unwrap_or_default();
+
+    if let Ok(cache) = resource_stats_cache().lock() {
+        if let Some((at, items)) = cache.get(&team_id) {
+            if at.elapsed() < CONTAINER_TOTALS_TTL {
+                return Ok(Json(items.clone()));
+            }
+        }
+    }
+
+    // (id, name, is_app, container_id)
+    let mut targets: Vec<(String, String, bool, String)> = Vec::new();
+
+    let apps: Vec<(String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT a.id, a.name, d.container_id
+        FROM apps a
+        JOIN deployments d ON d.app_id = a.id
+        WHERE d.status = 'running'
+          AND d.container_id IS NOT NULL
+          AND d.started_at = (
+              SELECT MAX(started_at) FROM deployments
+              WHERE app_id = a.id AND status = 'running'
+          )
+          AND (? = '' OR a.team_id = ? OR a.team_id IS NULL)
+        "#,
+    )
+    .bind(&team_id)
+    .bind(&team_id)
+    .fetch_all(&state.db)
+    .await?;
+    targets.extend(apps.into_iter().map(|(id, name, c)| (id, name, true, c)));
+
+    let dbs: Vec<(String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT id, name, container_id FROM databases
+        WHERE status = 'running'
+          AND container_id IS NOT NULL
+          AND (? = '' OR team_id = ? OR team_id IS NULL)
+        "#,
+    )
+    .bind(&team_id)
+    .bind(&team_id)
+    .fetch_all(&state.db)
+    .await?;
+    targets.extend(dbs.into_iter().map(|(id, name, c)| (id, name, false, c)));
+
+    use futures::StreamExt;
+    let mut items: Vec<ResourceStat> = futures::stream::iter(targets)
+        .map(|(id, name, is_app, container_id)| {
+            let runtime = state.runtime.clone();
+            async move {
+                let stats = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    runtime.stats(&container_id),
+                )
+                .await
+                .ok()?
+                .ok()?;
+                Some(ResourceStat {
+                    id,
+                    name,
+                    kind: if is_app { "app" } else { "database" },
+                    cpu_percent: stats.cpu_percent,
+                    memory_usage: stats.memory_usage,
+                    memory_limit: stats.memory_limit,
+                })
+            }
+        })
+        .buffer_unordered(32)
+        .filter_map(|item| async move { item })
+        .collect()
+        .await;
+    items.sort_by(|a, b| b.memory_usage.cmp(&a.memory_usage));
+
+    if let Ok(mut cache) = resource_stats_cache().lock() {
+        cache.insert(team_id, (std::time::Instant::now(), items.clone()));
+    }
+    Ok(Json(items))
+}
+
 /// Row type for joining deployment with app name
 #[derive(Debug, sqlx::FromRow)]
 struct DeploymentWithApp {
