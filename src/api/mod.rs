@@ -166,6 +166,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let api_routes = Router::new()
         // Apps
         .route("/apps", get(apps::list_apps))
+        .route("/apps/statuses", get(apps::list_app_statuses))
         .route("/apps", post(apps::create_app))
         .route("/apps/:id", get(apps::get_app))
         .route("/apps/:id", put(apps::update_app))

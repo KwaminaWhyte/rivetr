@@ -105,35 +105,14 @@ export default function ProjectsPage() {
     enabled: currentTeamId !== null,
   });
 
-  // Fetch app statuses
+  // One request for every app's latest deployment status (was one call per app).
   const { data: appStatuses = {} } = useQuery<Record<string, DeploymentStatus>>({
-    queryKey: ["app-statuses", apps.map((a) => a.id)],
+    queryKey: ["app-statuses", currentTeamId],
     queryFn: async () => {
-      const statuses: Record<string, DeploymentStatus> = {};
-      await Promise.all(
-        apps.map(async (app) => {
-          try {
-            const status = await api.getAppStatus(app.id);
-            if (status.status === "running") {
-              statuses[app.id] = "running";
-            } else if (status.status === "stopped") {
-              statuses[app.id] = "stopped";
-            } else {
-              const deploymentsData = await api.getDeployments(app.id, { per_page: 1 }).catch(() => null);
-              if (deploymentsData && deploymentsData.items.length > 0) {
-                statuses[app.id] = deploymentsData.items[0].status as DeploymentStatus;
-              } else {
-                statuses[app.id] = "stopped";
-              }
-            }
-          } catch {
-            statuses[app.id] = "stopped";
-          }
-        })
-      );
-      return statuses;
+      const raw = await api.getAppStatuses({ teamId: currentTeamId ?? undefined });
+      return raw as Record<string, DeploymentStatus>;
     },
-    enabled: apps.length > 0,
+    enabled: currentTeamId !== null,
   });
 
   // Database statuses from the database objects

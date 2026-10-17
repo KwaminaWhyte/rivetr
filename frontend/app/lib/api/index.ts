@@ -132,6 +132,7 @@ export const api = {
   deleteApp: appsApi.deleteApp,
   assignAppToProject: appsApi.assignAppToProject,
   getAppStatus: appsApi.getAppStatus,
+  getAppStatuses: appsApi.getAppStatuses,
   startApp: appsApi.startApp,
   stopApp: appsApi.stopApp,
   restartApp: appsApi.restartApp,

@@ -25,6 +25,41 @@ use super::{
     DeleteAppRequest, ListAppsQuery,
 };
 
+/// Latest deployment status for every app the caller can see, in one query.
+/// GET /api/apps/statuses (same `team_id` scoping as `GET /api/apps`)
+///
+/// Lets list pages show status badges without one `/apps/:id/status` call per app.
+/// Apps with no deployment report `stopped`.
+pub async fn list_app_statuses(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Query(query): Query<ListAppsQuery>,
+) -> Result<Json<std::collections::HashMap<String, String>>, ApiError> {
+    // Reuse list_apps so visibility rules (teams, sharing) stay in one place.
+    let Json(apps) = list_apps(State(state.clone()), user, Query(query)).await?;
+
+    let latest: Vec<(String, String)> = sqlx::query_as(
+        "SELECT d.app_id, d.status FROM deployments d \
+         JOIN (SELECT app_id, MAX(started_at) AS m FROM deployments GROUP BY app_id) l \
+           ON d.app_id = l.app_id AND d.started_at = l.m",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let latest: std::collections::HashMap<String, String> = latest.into_iter().collect();
+
+    Ok(Json(
+        apps.into_iter()
+            .map(|a| {
+                let status = latest
+                    .get(&a.id)
+                    .cloned()
+                    .unwrap_or_else(|| "stopped".into());
+                (a.id, status)
+            })
+            .collect(),
+    ))
+}
+
 pub async fn list_apps(
     State(state): State<Arc<AppState>>,
     user: User,
@@ -85,7 +120,9 @@ pub async fn list_apps(
         })
         // Honor an explicit team filter within the user's accessible set.
         .filter(|a| match &query.team_id {
-            Some(t) if !t.is_empty() => a.team_id.as_deref() == Some(t.as_str()) || a.team_id.is_none(),
+            Some(t) if !t.is_empty() => {
+                a.team_id.as_deref() == Some(t.as_str()) || a.team_id.is_none()
+            }
             Some(_) => a.team_id.is_none(),
             None => true,
         })

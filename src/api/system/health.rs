@@ -345,6 +345,29 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// How long aggregated container stats are reused before querying Docker again.
+const CONTAINER_TOTALS_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+type ContainerTotalsCache =
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, (f64, u64))>>;
+
+fn container_totals_cache() -> &'static ContainerTotalsCache {
+    static CACHE: std::sync::OnceLock<ContainerTotalsCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn cached_container_totals(key: &str) -> Option<(f64, u64)> {
+    let cache = container_totals_cache().lock().ok()?;
+    let (at, totals) = cache.get(key)?;
+    (at.elapsed() < CONTAINER_TOTALS_TTL).then_some(*totals)
+}
+
+fn store_container_totals(key: &str, totals: (f64, u64)) {
+    if let Ok(mut cache) = container_totals_cache().lock() {
+        cache.insert(key.to_string(), (std::time::Instant::now(), totals));
+    }
+}
+
 /// Get system-wide statistics
 /// GET /api/system/stats
 ///
@@ -472,80 +495,73 @@ pub async fn get_system_stats(
 
     let total_services_count = services.len() as u32;
 
-    // Aggregate container stats for running apps and databases
-    let mut total_cpu_percent = 0.0;
-    let mut memory_used_bytes: u64 = 0;
-
-    // Stats from running app deployments
-    for deployment in &running_deployments {
-        if let Some(container_id) = &deployment.container_id {
-            match state.runtime.stats(container_id).await {
-                Ok(stats) => {
-                    total_cpu_percent += stats.cpu_percent;
-                    memory_used_bytes += stats.memory_usage;
-                }
-                Err(e) => {
-                    tracing::debug!("Could not get stats for container {}: {}", container_id, e);
-                }
-            }
-        }
-    }
-
-    // Stats from running databases
-    for database in &running_databases {
-        if let Some(container_id) = &database.container_id {
-            match state.runtime.stats(container_id).await {
-                Ok(stats) => {
-                    total_cpu_percent += stats.cpu_percent;
-                    memory_used_bytes += stats.memory_usage;
-                }
-                Err(e) => {
-                    tracing::debug!(
-                        "Could not get stats for database container {}: {}",
-                        container_id,
-                        e
-                    );
-                }
-            }
-        }
-    }
-
-    // Stats from running services (Docker Compose)
+    // Aggregate container stats for running apps, databases and services.
+    // Stats calls each wait for two Docker samples (~1-2s), so they run
+    // concurrently with a per-container timeout, and the aggregate is cached
+    // briefly (the dashboard polls this endpoint every 10s).
     let running_services: Vec<&Service> =
         services.iter().filter(|s| s.status == "running").collect();
 
-    for service in &running_services {
-        // Get compose project name for this service (e.g., "rivetr-svc-myservice")
-        let project_name = service.compose_project_name();
+    let cache_key = query.team_id.clone().unwrap_or_default();
+    let (total_cpu_percent, memory_used_bytes) = match cached_container_totals(&cache_key) {
+        Some(totals) => totals,
+        None => {
+            let mut container_ids: Vec<String> = running_deployments
+                .iter()
+                .filter_map(|d| d.container_id.clone())
+                .collect();
+            container_ids.extend(
+                running_databases
+                    .iter()
+                    .filter_map(|d| d.container_id.clone()),
+            );
 
-        // List all containers for this compose project by label
-        match state.runtime.list_compose_containers(&project_name).await {
-            Ok(containers) => {
-                for container in containers {
-                    match state.runtime.stats(&container.id).await {
-                        Ok(stats) => {
-                            total_cpu_percent += stats.cpu_percent;
-                            memory_used_bytes += stats.memory_usage;
-                        }
-                        Err(e) => {
-                            tracing::debug!(
-                                "Could not get stats for service container {}: {}",
-                                container.name,
-                                e
-                            );
+            // Compose services: list each project's containers (concurrently), then stat them all.
+            let listings = futures::future::join_all(running_services.iter().map(|service| {
+                let project_name = service.compose_project_name();
+                let runtime = state.runtime.clone();
+                async move { runtime.list_compose_containers(&project_name).await }
+            }))
+            .await;
+            for containers in listings.into_iter().flatten() {
+                container_ids.extend(containers.into_iter().map(|c| c.id));
+            }
+
+            use futures::StreamExt;
+            let totals = futures::stream::iter(container_ids)
+                .map(|id| {
+                    let runtime = state.runtime.clone();
+                    async move {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            runtime.stats(&id),
+                        )
+                        .await
+                        {
+                            Ok(Ok(stats)) => Some((stats.cpu_percent, stats.memory_usage)),
+                            Ok(Err(e)) => {
+                                tracing::debug!("Could not get stats for container {}: {}", id, e);
+                                None
+                            }
+                            Err(_) => {
+                                tracing::debug!("Timed out getting stats for container {}", id);
+                                None
+                            }
                         }
                     }
-                }
-            }
-            Err(e) => {
-                tracing::debug!(
-                    "Could not list containers for service {}: {}",
-                    service.name,
-                    e
-                );
-            }
+                })
+                .buffer_unordered(32)
+                .fold((0.0_f64, 0_u64), |(cpu, mem), item| async move {
+                    match item {
+                        Some((c, m)) => (cpu + c, mem + m),
+                        None => (cpu, mem),
+                    }
+                })
+                .await;
+            store_container_totals(&cache_key, totals);
+            totals
         }
-    }
+    };
 
     // Always use actual system memory as the total — container cgroup limits
     // are not the server's total RAM.
@@ -574,7 +590,9 @@ pub async fn get_system_stats(
     // per-container sum, which can exceed 100%. Fall back to the container sum
     // on non-Linux dev machines where /proc/stat is unavailable.
     let host_cpu = get_host_cpu().await;
-    let total_cpu_percent = host_cpu.map(|c| c.busy_percent).unwrap_or(total_cpu_percent);
+    let total_cpu_percent = host_cpu
+        .map(|c| c.busy_percent)
+        .unwrap_or(total_cpu_percent);
     let cpu_steal_percent = host_cpu.map(|c| c.steal_percent).unwrap_or(0.0);
 
     Ok(Json(SystemStats {

@@ -52,7 +52,8 @@ interface ProxyLog {
   user_agent: string | null;
 }
 
-type ProxyLogListResponse = PaginatedResponse<ProxyLog>;
+// total_capped is true when the server stopped counting at its cap (total is a lower bound)
+type ProxyLogListResponse = PaginatedResponse<ProxyLog> & { total_capped?: boolean };
 
 function statusBadgeClass(status: number): string {
   if (status >= 500) return "bg-red-500/15 text-red-600 border-red-500/30";
@@ -96,6 +97,7 @@ export default function ProxyLogsPage() {
   const logs = data?.items ?? [];
   const totalPages = data?.total_pages ?? 1;
   const total = data?.total ?? 0;
+  const totalCapped = data?.total_capped ?? false;
 
   const handleApplyFilters = (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +218,7 @@ export default function ProxyLogsPage() {
             Access Logs
             {total > 0 && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
-                ({total.toLocaleString()} total)
+                ({total.toLocaleString()}{totalCapped ? "+" : ""} total)
               </span>
             )}
           </CardTitle>

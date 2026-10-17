@@ -120,6 +120,12 @@ export const appsApi = {
   // App Status & Control
   // -------------------------------------------------------------------------
 
+  /** Latest deployment status for every visible app, in one request */
+  getAppStatuses: (params?: { teamId?: string }, token?: string) => {
+    const query = params?.teamId !== undefined ? `?team_id=${encodeURIComponent(params.teamId)}` : "";
+    return apiRequest<Record<string, string>>(`/apps/statuses${query}`, {}, token);
+  },
+
   /** Get the current status of an app */
   getAppStatus: (id: string, token?: string) =>
     apiRequest<AppStatus>(`/apps/${id}/status`, {}, token),
