@@ -1608,6 +1608,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 116: OAuth login CSRF states get their own table (idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/116_oauth_login_states.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

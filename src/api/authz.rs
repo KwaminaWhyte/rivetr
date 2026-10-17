@@ -18,13 +18,13 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{OriginalUri, State},
+    http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 
-use crate::db::{App, ManagedDatabase, Project, Server, Service, User};
+use crate::db::{App, ManagedDatabase, Project, Server, Service, TeamRole, User};
 use crate::AppState;
 use sqlx::SqlitePool;
 
@@ -392,9 +392,19 @@ pub async fn resource_authz_middleware(
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, Response> {
-    // Identify (resource_kind, id) from the path, if any.
-    let path = request.uri().path().to_string();
+    // Identify (resource_kind, id) from the path, if any. The router is mounted with
+    // `.nest("/api", ..)`, which strips the prefix from `request.uri()`, so match on the
+    // original URI or no resource path would ever be recognised.
+    let path = request
+        .extensions()
+        .get::<OriginalUri>()
+        .map(|o| o.0.path().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
     let target = parse_resource_target(&path);
+    let mutating = !matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    );
 
     if let Some((kind, id)) = target {
         // Resolve the caller. Auth middleware already validated the token, so this
@@ -440,9 +450,76 @@ pub async fn resource_authz_middleware(
         if let Err(e) = result {
             return Err(e.into_response());
         }
+        if mutating {
+            if let Err(e) = authorize_write(&state.db, &user, kind, id).await {
+                return Err(e.into_response());
+            }
+        }
     }
 
     Ok(next.run(request).await)
+}
+
+/// SQL returning the owning `team_id` for kinds whose writes are role-gated.
+fn team_sql(kind: ResourceKind) -> Option<&'static str> {
+    Some(match kind {
+        ResourceKind::App => "SELECT team_id FROM apps WHERE id = ?",
+        ResourceKind::Deployment => {
+            "SELECT a.team_id FROM deployments d JOIN apps a ON a.id = d.app_id WHERE d.id = ?"
+        }
+        ResourceKind::Volume => {
+            "SELECT a.team_id FROM volumes v JOIN apps a ON a.id = v.app_id WHERE v.id = ?"
+        }
+        ResourceKind::Preview => {
+            "SELECT a.team_id FROM preview_deployments p JOIN apps a ON a.id = p.app_id WHERE p.id = ?"
+        }
+        ResourceKind::Database => "SELECT team_id FROM databases WHERE id = ?",
+        ResourceKind::Service => "SELECT team_id FROM services WHERE id = ?",
+        ResourceKind::Project => "SELECT team_id FROM projects WHERE id = ?",
+        ResourceKind::Server => "SELECT team_id FROM servers WHERE id = ?",
+        _ => return None,
+    })
+}
+
+/// Mutating requests need at least the `developer` team role. Viewers are read-only, and
+/// a team that only holds an `app_shares` grant (view-only) cannot write at all.
+/// Instance admins, legacy team-less resources and kinds without a team lookup pass.
+async fn authorize_write(
+    db: &SqlitePool,
+    user: &User,
+    kind: ResourceKind,
+    id: &str,
+) -> Result<(), ApiError> {
+    if is_privileged(user) {
+        return Ok(());
+    }
+    let Some(sql) = team_sql(kind) else {
+        return Ok(());
+    };
+    let team: Option<Option<String>> = sqlx::query_scalar(sql)
+        .bind(id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    let Some(Some(team_id)) = team else {
+        return Ok(());
+    };
+    let role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM team_members WHERE team_id = ? AND user_id = ?")
+            .bind(&team_id)
+            .bind(&user.id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    match role {
+        Some(r) if TeamRole::from(r.clone()).has_at_least(TeamRole::Developer) => Ok(()),
+        Some(_) => Err(ApiError::forbidden(
+            "Your team role is read-only; this action requires the developer role or higher",
+        )),
+        None => Err(ApiError::forbidden(
+            "Shared resources are read-only for the receiving team",
+        )),
+    }
 }
 
 const VOLUME_APP_SQL: &str = "SELECT app_id FROM volumes WHERE id = ?";
@@ -758,6 +835,54 @@ mod tests {
         assert_eq!(
             check(&alice, "missing").await.unwrap_err().status(),
             StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn writes_need_developer_role_and_shares_are_read_only() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for sql in [
+            "CREATE TABLE apps (id TEXT, team_id TEXT)",
+            "CREATE TABLE team_members (team_id TEXT, user_id TEXT, role TEXT)",
+            "INSERT INTO team_members VALUES ('t1', 'dev', 'developer')",
+            "INSERT INTO team_members VALUES ('t1', 'view', 'viewer')",
+            "INSERT INTO team_members VALUES ('t1', 'adm', 'admin')",
+            "INSERT INTO apps VALUES ('a1', 't1')",
+            "INSERT INTO apps VALUES ('legacy', NULL)",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        let w = |u: &str, app: &'static str| {
+            let db = db.clone();
+            let u = user(u, "member");
+            async move { authorize_write(&db, &u, ResourceKind::App, app).await }
+        };
+        assert!(w("dev", "a1").await.is_ok());
+        assert!(w("adm", "a1").await.is_ok());
+        assert_eq!(
+            w("view", "a1").await.unwrap_err().status(),
+            StatusCode::FORBIDDEN
+        );
+        // Not a member (shared-only access) is read-only.
+        assert_eq!(
+            w("outsider", "a1").await.unwrap_err().status(),
+            StatusCode::FORBIDDEN
+        );
+        assert!(w("view", "legacy").await.is_ok());
+        assert!(
+            authorize_write(&db, &user("root", "admin"), ResourceKind::App, "a1")
+                .await
+                .is_ok()
+        );
+        // Kinds without a team lookup are not role-gated here.
+        assert!(
+            authorize_write(&db, &user("view", "member"), ResourceKind::SshKey, "x")
+                .await
+                .is_ok()
         );
     }
 

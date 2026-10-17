@@ -270,6 +270,24 @@ pub(super) async fn start_container(
     for old_replica in &old_replicas {
         if let Some(ref cid) = old_replica.container_id {
             old_container_ids.push(cid.clone());
+            // Free the canonical replica name for the new replica, as done for the primary,
+            // or `docker create` fails with a 409 and the app silently loses its replicas.
+            if old_replica.replica_index > 0 {
+                let name = format!("rivetr-{}-{}", app.name, old_replica.replica_index);
+                let prev = format!("{}-prev", name);
+                if runtime.rename_container(&name, &prev).await.is_err() {
+                    let _ = runtime.stop(&prev).await;
+                    let _ = runtime.remove(&prev).await;
+                    if runtime.rename_container(&name, &prev).await.is_err() {
+                        tracing::warn!(
+                            container = %name,
+                            "Could not rename old replica; stopping it now (reduced capacity until the new replica starts)"
+                        );
+                        let _ = runtime.stop(&name).await;
+                        let _ = runtime.remove(&name).await;
+                    }
+                }
+            }
         }
     }
 

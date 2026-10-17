@@ -207,21 +207,18 @@ pub async fn oauth_login_authorize(
     };
 
     // Drop expired CSRF states (best effort) so abandoned logins do not pile up
-    let _ = sqlx::query("DELETE FROM sessions WHERE user_id = 'oauth_state' AND expires_at < ?")
+    let _ = sqlx::query("DELETE FROM oauth_login_states WHERE expires_at < ?")
         .bind(chrono::Utc::now().to_rfc3339())
         .execute(&state.db)
         .await;
 
     // Store state in database for CSRF verification (expires in 10 minutes)
-    let state_id = uuid::Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::minutes(10))
         .unwrap()
         .to_rfc3339();
 
-    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
-        .bind(&state_id)
-        .bind("oauth_state")
+    sqlx::query("INSERT INTO oauth_login_states (state, expires_at) VALUES (?, ?)")
         .bind(&state_param)
         .bind(&expires_at)
         .execute(&state.db)
@@ -272,13 +269,12 @@ pub async fn oauth_login_callback(
         ));
     }
 
-    let consumed: Option<(String,)> = sqlx::query_as(
-        "DELETE FROM sessions WHERE user_id = 'oauth_state' AND token_hash = ? RETURNING expires_at",
-    )
-    .bind(state_param)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let consumed: Option<(String,)> =
+        sqlx::query_as("DELETE FROM oauth_login_states WHERE state = ? RETURNING expires_at")
+            .bind(state_param)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let state_valid = consumed
         .and_then(|(expires_at,)| chrono::DateTime::parse_from_rfc3339(&expires_at).ok())
