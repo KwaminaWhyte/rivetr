@@ -270,7 +270,7 @@ export default function AppSettingsNetwork() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Select value={destinationId} onValueChange={setDestinationId}>
-            <SelectTrigger className="max-w-sm">
+            <SelectTrigger aria-label="Docker network" className="max-w-sm">
               <SelectValue placeholder="Default (rivetr network)" />
             </SelectTrigger>
             <SelectContent>

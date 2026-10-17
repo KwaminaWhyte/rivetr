@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -420,7 +421,7 @@ export default function SsoSettingsPage() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
 
-  const { data: providers = [], isLoading } = useQuery<OidcProvider[]>({
+  const { data: providers = [], isLoading, error: listError, refetch: refetchList } = useQuery<OidcProvider[]>({
     queryKey: ["sso-providers"],
     queryFn: () => ssoApi.listProviders(),
   });
@@ -497,7 +498,9 @@ export default function SsoSettingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="SSO providers" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>

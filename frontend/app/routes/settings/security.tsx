@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -69,7 +70,7 @@ export default function SecuritySettingsPage() {
   const [disableCode, setDisableCode] = useState("");
 
   // Query 2FA status
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ["2fa-status"],
     queryFn: () => twoFactorApi.getStatus(),
   });
@@ -189,6 +190,15 @@ export default function SecuritySettingsPage() {
     setSetupData(null);
     setVerifyCode("");
     setRecoveryCodes([]);
+  }
+
+  if (statusError && !status) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold">Security</h1>
+        <QueryError what="two-factor status" error={statusError} onRetry={() => refetchStatus()} />
+      </div>
+    );
   }
 
   if (isLoading) {

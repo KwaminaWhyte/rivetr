@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -448,7 +449,7 @@ export default function CostsPage() {
   const [viewMode, setViewMode] = useState<"teams" | "projects">("teams");
 
   // Fetch dashboard costs (system-wide summary)
-  const { data: dashboardCosts, isLoading: costsLoading, refetch } = useQuery<DashboardCostResponse | null>({
+  const { data: dashboardCosts, isLoading: costsLoading, error: costsError, refetch } = useQuery<DashboardCostResponse | null>({
     queryKey: ["dashboard-costs", period],
     queryFn: () => api.getDashboardCosts(period),
   });
@@ -522,7 +523,7 @@ export default function CostsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger aria-label="Cost period" className="w-[140px]">
               <SelectValue placeholder="Select period" />
             </SelectTrigger>
             <SelectContent>
@@ -540,6 +541,10 @@ export default function CostsPage() {
           </Button>
         </div>
       </div>
+
+      {costsError && (
+        <QueryError what="cost data" error={costsError} onRetry={() => refetch()} />
+      )}
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -683,7 +688,7 @@ export default function CostsPage() {
               </CardDescription>
             </div>
             <Select value={viewMode} onValueChange={(v) => setViewMode(v as "teams" | "projects")}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger aria-label="Group costs by" className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

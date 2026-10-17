@@ -186,7 +186,7 @@ export default function ServerFilesPage() {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
-        <button
+        <button aria-label="Go to root directory"
           className="hover:text-foreground flex items-center gap-1"
           onClick={() => {
             setCurrentPath("/");

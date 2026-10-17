@@ -777,7 +777,7 @@ export default function AppSettingsBuild() {
                   }}
                   className="font-mono text-sm"
                 />
-                <Button
+                <Button aria-label="Remove build secret"
                   type="button"
                   variant="ghost"
                   size="icon"

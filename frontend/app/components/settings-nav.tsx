@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { isSettingsPath, pathMatches, settingsGroups } from "@/lib/nav";
+import { isSettingsPath, pathMatches, visibleSettingsGroups } from "@/lib/nav";
+import { useIsInstanceAdmin } from "@/lib/auth";
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ function isItemActive(pathname: string, url: string): boolean {
 function SettingsNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const settingsGroups = visibleSettingsGroups(useIsInstanceAdmin());
 
   const current = settingsGroups
     .flatMap((g) => g.items)

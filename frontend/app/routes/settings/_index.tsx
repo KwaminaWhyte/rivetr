@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -50,7 +51,7 @@ function HealthIcon({ healthy }: { healthy: boolean }) {
 export default function SettingsPage() {
   const queryClient = useQueryClient();
 
-  const { data: health, isLoading: healthLoading } = useQuery<SystemHealthStatus>({
+  const { data: health, isLoading: healthLoading, error: healthError, refetch: refetchHealth } = useQuery<SystemHealthStatus>({
     queryKey: ["system-health"],
     queryFn: () => api.getSystemHealth(),
     refetchInterval: 30000,
@@ -63,7 +64,7 @@ export default function SettingsPage() {
   });
 
   // Instance settings
-  const { data: instanceSettings, isLoading: instanceLoading } = useQuery({
+  const { data: instanceSettings, isLoading: instanceLoading, error: instanceError, refetch: refetchInstance } = useQuery({
     queryKey: ["instance-settings"],
     queryFn: () => api.getInstanceSettings(),
   });
@@ -173,6 +174,10 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Settings</h1>
 
+      {healthError && !health && (
+        <QueryError what="system health" error={healthError} onRetry={() => refetchHealth()} />
+      )}
+
       {/* Instance Configuration */}
       <Card>
         <CardHeader>
@@ -185,7 +190,9 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {instanceLoading ? (
+          {instanceError ? (
+            <QueryError what="instance settings" error={instanceError} onRetry={() => refetchInstance()} />
+          ) : instanceLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>Loading…</span>

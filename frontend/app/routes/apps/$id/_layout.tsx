@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useMemo, useEffect } from "react";
 import {
   Link,
@@ -150,6 +151,7 @@ export default function AppDetailLayout() {
     data: app,
     isLoading: appLoading,
     error: appError,
+    refetch: refetchApp,
   } = useQuery<App>({
     queryKey: ["app", id],
     queryFn: () => api.getApp(id!),
@@ -407,7 +409,15 @@ export default function AppDetailLayout() {
     );
   }
 
-  if (appError || !app) {
+  if (appError && !app) {
+    return (
+      <div className="space-y-6">
+        <QueryError what="application" error={appError} onRetry={() => refetchApp()} />
+      </div>
+    );
+  }
+
+  if (!app) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Application Not Found</h1>
@@ -605,7 +615,7 @@ export default function AppDetailLayout() {
           {/* More actions dropdown: Clone + Maintenance */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button aria-label="More app actions" variant="outline" size="icon">
                 <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -820,7 +830,7 @@ export default function AppDetailLayout() {
                   </p>
                 ) : (
                   <Select value={selectedCommitSha} onValueChange={setSelectedCommitSha}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger aria-label="Commit to deploy" className="w-full">
                       <SelectValue placeholder="Choose a commit..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -857,7 +867,7 @@ export default function AppDetailLayout() {
                   </p>
                 ) : (
                   <Select value={selectedTagName} onValueChange={setSelectedTagName}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger aria-label="Tag to deploy" className="w-full">
                       <SelectValue placeholder="Choose a tag..." />
                     </SelectTrigger>
                     <SelectContent>

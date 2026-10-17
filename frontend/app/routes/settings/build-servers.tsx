@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -113,7 +114,7 @@ export default function BuildServersPage() {
   const [sshPassword, setSshPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: servers = [], isLoading } = useQuery<BuildServer[]>({
+  const { data: servers = [], isLoading, error: listError, refetch: refetchList } = useQuery<BuildServer[]>({
     queryKey: ["build-servers"],
     queryFn: () => buildServersApi.list(),
   });
@@ -218,7 +219,9 @@ export default function BuildServersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="build servers" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -378,7 +381,7 @@ export default function BuildServersPage() {
               <div className="col-span-2 space-y-2">
                 <Label>Authentication Method</Label>
                 <Select value={authMethod} onValueChange={(v) => setAuthMethod(v as "key" | "password")}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Authentication method">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

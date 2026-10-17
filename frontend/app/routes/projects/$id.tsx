@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
@@ -57,7 +58,7 @@ export default function ProjectDetailPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editData, setEditData] = useState<UpdateProjectRequest>({});
 
-  const { data: project, isLoading: projectLoading } = useQuery<ProjectWithApps>({
+  const { data: project, isLoading: projectLoading, error: projectError, refetch: refetchProject } = useQuery<ProjectWithApps>({
     queryKey: ["project", id],
     queryFn: () => api.getProject(id!),
     refetchInterval: 5000,
@@ -139,11 +140,15 @@ export default function ProjectDetailPage() {
             Back to Projects
           </Link>
         </Button>
-        <Card>
-          <CardContent className="py-8 text-center text-destructive">
-            Failed to load project. It may have been deleted.
-          </CardContent>
-        </Card>
+        {projectError ? (
+          <QueryError what="project" error={projectError} onRetry={() => refetchProject()} />
+        ) : (
+          <Card>
+            <CardContent className="py-8 text-center text-destructive">
+              Failed to load project. It may have been deleted.
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }

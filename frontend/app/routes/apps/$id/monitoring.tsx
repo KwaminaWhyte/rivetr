@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -183,7 +184,7 @@ function LogSearchSection({ appId }: { appId: string }) {
             />
           </div>
           <Select value={logLevel} onValueChange={setLogLevel}>
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger aria-label="Log level" className="w-[130px]">
               <SelectValue placeholder="Log level" />
             </SelectTrigger>
             <SelectContent>
@@ -307,7 +308,7 @@ function escapeRegex(str: string) {
 function UptimeSection({ appId }: { appId: string }) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
 
-  const { data: uptimeSummary, isLoading: summaryLoading } = useQuery<UptimeSummary>({
+  const { data: uptimeSummary, isLoading: summaryLoading, error: uptimeError, refetch: refetchUptime } = useQuery<UptimeSummary>({
     queryKey: ["uptime", appId, period],
     queryFn: () => monitoringApi.getUptime(appId, period),
     refetchInterval: 60000,
@@ -318,6 +319,10 @@ function UptimeSection({ appId }: { appId: string }) {
     queryFn: () => monitoringApi.getUptimeHistory(appId, period),
     refetchInterval: 60000,
   });
+
+  if (uptimeError && !uptimeSummary) {
+    return <QueryError what="uptime" error={uptimeError} onRetry={() => refetchUptime()} />;
+  }
 
   if (summaryLoading) {
     return (
@@ -592,7 +597,7 @@ function ScheduledRestartsSection({ appId }: { appId: string }) {
   const [formEnabled, setFormEnabled] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<ScheduledRestart | null>(null);
 
-  const { data: restarts, isLoading } = useQuery<ScheduledRestart[]>({
+  const { data: restarts, isLoading, error: restartsError, refetch: refetchRestarts } = useQuery<ScheduledRestart[]>({
     queryKey: ["scheduledRestarts", appId],
     queryFn: () => monitoringApi.getScheduledRestarts(appId),
     refetchInterval: 30000,
@@ -662,7 +667,9 @@ function ScheduledRestartsSection({ appId }: { appId: string }) {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {restartsError ? (
+            <QueryError what="scheduled restarts" error={restartsError} onRetry={() => refetchRestarts()} />
+          ) : isLoading ? (
             <div className="animate-pulse">
               <div className="h-20 bg-muted rounded"></div>
             </div>
@@ -716,7 +723,7 @@ function ScheduledRestartsSection({ appId }: { appId: string }) {
                         {formatDate(restart.next_restart)}
                       </TableCell>
                       <TableCell>
-                        <Button
+                        <Button aria-label="Delete scheduled restart"
                           variant="ghost"
                           size="sm"
                           onClick={() => setDeleteConfirm(restart)}

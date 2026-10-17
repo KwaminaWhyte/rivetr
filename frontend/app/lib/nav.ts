@@ -17,6 +17,12 @@ import {
 export interface NavLink {
   title: string;
   url: string;
+  /**
+   * Instance-admin only. Set only where the backend rejects non-admins
+   * (role != "admin" / not privileged), e.g. SSO provider management and
+   * white label updates. Hidden from everyone else.
+   */
+  adminOnly?: boolean;
 }
 
 export interface PrimaryNavItem {
@@ -52,7 +58,7 @@ export const settingsGroups: NavGroup[] = [
     items: [
       { title: "General", url: "/settings" },
       { title: "Preferences", url: "/settings/preferences" },
-      { title: "White Label", url: "/settings/white-label" },
+      { title: "White Label", url: "/settings/white-label", adminOnly: true },
       { title: "Auto Updates", url: "/settings/auto-update" },
     ],
   },
@@ -61,7 +67,7 @@ export const settingsGroups: NavGroup[] = [
     items: [
       { title: "Teams", url: "/teams" },
       { title: "Authentication", url: "/settings/oauth" },
-      { title: "SSO / OIDC", url: "/settings/sso" },
+      { title: "SSO / OIDC", url: "/settings/sso", adminOnly: true },
       { title: "Security", url: "/settings/security" },
       { title: "API Tokens", url: "/tokens" },
     ],
@@ -88,6 +94,14 @@ export const settingsGroups: NavGroup[] = [
     ],
   },
 ];
+
+/** Settings groups with admin-only links removed for non-admins. Empty groups are dropped. */
+export function visibleSettingsGroups(isAdmin: boolean): NavGroup[] {
+  if (isAdmin) return settingsGroups;
+  return settingsGroups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly) }))
+    .filter((g) => g.items.length > 0);
+}
 
 const settingsUrls = settingsGroups.flatMap((g) => g.items.map((i) => i.url));
 
@@ -144,7 +158,7 @@ export function tabsForPath(pathname: string): NavLink[] | null {
 }
 
 /** Flat list of every navigable page for the command palette. */
-export function allNavPages(): { group: string; title: string; url: string }[] {
+export function allNavPages(isAdmin = true): { group: string; title: string; url: string }[] {
   const seen = new Set<string>();
   const out: { group: string; title: string; url: string }[] = [];
   const add = (group: string, title: string, url: string) => {
@@ -156,7 +170,7 @@ export function allNavPages(): { group: string; title: string; url: string }[] {
   // sidebar entries that link to the same URL (e.g. Infrastructure -> Servers).
   for (const t of monitoringTabs) add("Monitoring", t.title, t.url);
   for (const t of infrastructureTabs) add("Infrastructure", t.title, t.url);
-  for (const g of settingsGroups) {
+  for (const g of visibleSettingsGroups(isAdmin)) {
     for (const i of g.items) add(`Settings: ${g.title}`, i.title, i.url);
   }
   for (const item of primaryNav) add("Pages", item.title, item.url);

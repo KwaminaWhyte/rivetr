@@ -44,7 +44,7 @@ export default function DatabaseNetworkTab() {
   };
 
   const CopyButton = ({ text, field }: { text: string; field: string }) => (
-    <Button
+    <Button aria-label={copiedField === field ? "Copied" : "Copy to clipboard"}
       type="button"
       variant="ghost"
       size="icon"

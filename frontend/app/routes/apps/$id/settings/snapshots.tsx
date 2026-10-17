@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,7 +30,7 @@ export default function AppSettingsSnapshots() {
   const [snapshotDescription, setSnapshotDescription] = useState("");
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
 
-  const { data: snapshots = [], refetch: refetchSnapshots } = useQuery<ConfigSnapshot[]>({
+  const { data: snapshots = [], error: snapshotsError, refetch: refetchSnapshots } = useQuery<ConfigSnapshot[]>({
     queryKey: ["snapshots", app.id],
     queryFn: () => bulkApi.listSnapshots(app.id),
   });
@@ -90,7 +91,9 @@ export default function AppSettingsSnapshots() {
           </Button>
         </CardHeader>
         <CardContent>
-          {snapshots.length === 0 ? (
+          {snapshotsError ? (
+            <QueryError what="snapshots" error={snapshotsError} onRetry={() => refetchSnapshots()} />
+          ) : snapshots.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               No snapshots yet. Take a snapshot to save the current configuration.
             </div>
@@ -120,7 +123,7 @@ export default function AppSettingsSnapshots() {
                       <RotateCcw className="h-3.5 w-3.5" />
                       Restore
                     </Button>
-                    <Button
+                    <Button aria-label="Delete snapshot"
                       variant="ghost"
                       size="sm"
                       className="gap-1.5 text-destructive hover:text-destructive"

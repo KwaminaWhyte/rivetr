@@ -482,7 +482,7 @@ export default function DatabaseSettingsTab() {
                   onValueChange={setSslMode}
                   disabled={isSubmitting}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="SSL mode">
                     <SelectValue placeholder="Select SSL mode" />
                   </SelectTrigger>
                   <SelectContent>

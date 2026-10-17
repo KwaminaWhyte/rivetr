@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useOutletContext } from "react-router";
 import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -90,7 +91,7 @@ export default function AppGeneralTab() {
   const { id } = useParams();
   const runningDeployment = deployments.find((d) => d.status === "running");
 
-  const { data: activityData, isLoading: activityLoading } = useQuery<AuditLogListResponse>({
+  const { data: activityData, isLoading: activityLoading, error: activityError, refetch: refetchActivity } = useQuery<AuditLogListResponse>({
     queryKey: ["appActivity", id],
     queryFn: () => api.getAppActivity(id!),
     enabled: !!id,
@@ -189,7 +190,9 @@ export default function AppGeneralTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {activityLoading ? (
+          {activityError ? (
+            <QueryError what="recent activity" error={activityError} onRetry={() => refetchActivity()} />
+          ) : activityLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
               <RotateCw className="h-4 w-4 animate-spin" />
               Loading activity...

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/command";
 import { api } from "@/lib/api";
 import { allNavPages } from "@/lib/nav";
+import { useIsInstanceAdmin } from "@/lib/auth";
 import { useTeamContext } from "@/lib/team-context";
 import type { App, ManagedDatabase, Project, Service } from "@/types/api";
 
@@ -31,6 +32,7 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { currentTeamId } = useTeamContext();
+  const isAdmin = useIsInstanceAdmin();
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -73,7 +75,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   const pageGroups = useMemo(() => {
     const groups = new Map<string, { title: string; url: string }[]>();
-    for (const page of allNavPages()) {
+    for (const page of allNavPages(isAdmin)) {
       const list = groups.get(page.group) ?? [];
       list.push(page);
       groups.set(page.group, list);
@@ -82,7 +84,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return [...groups.entries()].sort(([a], [b]) =>
       a === "Pages" ? -1 : b === "Pages" ? 1 : 0
     );
-  }, []);
+  }, [isAdmin]);
 
   const go = (url: string) => {
     onOpenChange(false);

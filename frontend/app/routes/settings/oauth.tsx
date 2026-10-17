@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -356,7 +357,7 @@ function OAuthConnectionsCard() {
   const queryClient = useQueryClient();
   const [unlinkId, setUnlinkId] = useState<string | null>(null);
 
-  const { data: connections = [], isLoading } = useQuery<UserOAuthConnection[]>(
+  const { data: connections = [], isLoading, error: connectionsError, refetch: refetchConnections } = useQuery<UserOAuthConnection[]>(
     {
       queryKey: ["oauth-connections"],
       queryFn: () => oauthApi.getOAuthConnections(),
@@ -423,7 +424,9 @@ function OAuthConnectionsCard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {connectionsError ? (
+            <QueryError what="connected accounts" error={connectionsError} onRetry={() => refetchConnections()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
@@ -504,7 +507,7 @@ function OAuthConnectionsCard() {
 export default function OAuthSettingsPage() {
   const queryClient = useQueryClient();
 
-  const { data: providers = [], isLoading } = useQuery<OAuthProviderResponse[]>(
+  const { data: providers = [], isLoading, error: providersError, refetch: refetchProviders } = useQuery<OAuthProviderResponse[]>(
     {
       queryKey: ["oauth-providers"],
       queryFn: () => oauthApi.getOAuthProviders(),
@@ -554,6 +557,10 @@ export default function OAuthSettingsPage() {
   const gitlabConfig = providers.find((p) => p.provider === "gitlab");
   const azureConfig = providers.find((p) => p.provider === "azure");
   const bitbucketConfig = providers.find((p) => p.provider === "bitbucket");
+
+  if (providersError) {
+    return <QueryError what="Bitbucket settings" error={providersError} onRetry={() => refetchProviders()} />;
+  }
 
   if (isLoading) {
     return (

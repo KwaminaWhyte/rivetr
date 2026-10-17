@@ -653,7 +653,7 @@ services:
                             className={entry.secret ? "pr-10" : ""}
                           />
                           {entry.secret && (
-                            <Button
+                            <Button aria-label={showTemplateSecrets[entry.name] ? "Hide secret value" : "Show secret value"}
                               type="button"
                               variant="ghost"
                               size="icon"

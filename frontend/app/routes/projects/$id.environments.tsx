@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
@@ -368,7 +369,7 @@ export default function ProjectEnvironmentsPage() {
     enabled: !!id,
   });
 
-  const { data: environments = [], isLoading } = useQuery<ProjectEnvironment[]>({
+  const { data: environments = [], isLoading, error: environmentsError, refetch: refetchEnvironments } = useQuery<ProjectEnvironment[]>({
     queryKey: ["environments", id],
     queryFn: () => api.getEnvironments(id!),
     enabled: !!id,
@@ -452,6 +453,14 @@ export default function ProjectEnvironmentsPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (environmentsError && environments.length === 0) {
+    return (
+      <div className="container max-w-5xl mx-auto py-6">
+        <QueryError what="environments" error={environmentsError} onRetry={() => refetchEnvironments()} />
       </div>
     );
   }

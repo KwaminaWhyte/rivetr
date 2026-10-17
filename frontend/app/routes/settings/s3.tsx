@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -498,7 +499,7 @@ function TriggerBackupDialog({
           <div className="space-y-2">
             <Label>Storage Configuration</Label>
             <Select value={configId} onValueChange={setConfigId}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Storage configuration">
                 <SelectValue placeholder="Select storage config" />
               </SelectTrigger>
               <SelectContent>
@@ -519,7 +520,7 @@ function TriggerBackupDialog({
               value={backupType}
               onValueChange={(v) => setBackupType(v as S3BackupType)}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="Backup type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -577,7 +578,7 @@ export default function S3StoragePage() {
   const [testingId, setTestingId] = useState<string | null>(null);
 
   // Fetch S3 configs
-  const { data: configs, isLoading: configsLoading } = useQuery<
+  const { data: configs, isLoading: configsLoading, error: configsError, refetch: refetchConfigs } = useQuery<
     S3StorageConfigResponse[]
   >({
     queryKey: ["s3-configs"],
@@ -585,7 +586,7 @@ export default function S3StoragePage() {
   });
 
   // Fetch S3 backups
-  const { data: backups, isLoading: backupsLoading } = useQuery<
+  const { data: backups, isLoading: backupsLoading, error: backupsError, refetch: refetchBackups } = useQuery<
     S3BackupResponse[]
   >({
     queryKey: ["s3-backups"],
@@ -680,7 +681,9 @@ export default function S3StoragePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {configsLoading ? (
+          {configsError ? (
+            <QueryError what="S3 storage configs" error={configsError} onRetry={() => refetchConfigs()} />
+          ) : configsLoading ? (
             <div className="animate-pulse space-y-3">
               <div className="h-4 bg-muted rounded w-2/3"></div>
               <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -718,7 +721,7 @@ export default function S3StoragePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
-                    <Button
+                    <Button aria-label="Test connection"
                       variant="outline"
                       size="sm"
                       onClick={() => handleTestConnection(config.id)}
@@ -810,7 +813,9 @@ export default function S3StoragePage() {
           </div>
         </CardHeader>
         <CardContent>
-          {backupsLoading ? (
+          {backupsError ? (
+            <QueryError what="S3 backups" error={backupsError} onRetry={() => refetchBackups()} />
+          ) : backupsLoading ? (
             <div className="animate-pulse space-y-3">
               <div className="h-4 bg-muted rounded w-2/3"></div>
               <div className="h-4 bg-muted rounded w-1/2"></div>

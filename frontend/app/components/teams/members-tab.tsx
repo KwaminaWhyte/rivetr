@@ -159,7 +159,7 @@ export function MembersTab({
                             }
                             disabled={isUpdatingRole}
                           >
-                            <SelectTrigger className="w-28 h-8">
+                            <SelectTrigger aria-label="Member role" className="w-28 h-8">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>

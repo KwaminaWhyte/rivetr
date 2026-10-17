@@ -632,7 +632,7 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
               <div className="space-y-2">
                 <Label htmlFor="db-version">Version</Label>
                 <Select value={dbVersion} onValueChange={setDbVersion}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Database version">
                     <SelectValue placeholder="Select version" />
                   </SelectTrigger>
                   <SelectContent>

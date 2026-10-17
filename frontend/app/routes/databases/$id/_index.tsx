@@ -44,7 +44,7 @@ export default function DatabaseGeneralTab() {
   };
 
   const CopyButton = ({ text, field }: { text: string; field: string }) => (
-    <Button
+    <Button aria-label={copiedField === field ? "Copied" : "Copy to clipboard"}
       type="button"
       variant="ghost"
       size="icon"
@@ -129,7 +129,7 @@ export default function DatabaseGeneralTab() {
                   readOnly
                   className="font-mono"
                 />
-                <Button
+                <Button aria-label={showPassword ? "Hide password" : "Show password"}
                   type="button"
                   variant="ghost"
                   size="icon"

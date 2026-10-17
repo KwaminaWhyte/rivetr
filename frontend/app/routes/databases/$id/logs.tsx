@@ -169,7 +169,7 @@ export default function DatabaseLogsTab() {
                 value={String(lines)}
                 onValueChange={(v) => setLines(Number(v))}
               >
-                <SelectTrigger className="w-24">
+                <SelectTrigger aria-label="Number of log lines" className="w-24">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

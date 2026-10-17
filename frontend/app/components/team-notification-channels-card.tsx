@@ -666,7 +666,7 @@ export function TeamNotificationChannelsCard({
                   value={channelType}
                   onValueChange={(v) => setChannelType(v as TeamNotificationChannelType)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Channel type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

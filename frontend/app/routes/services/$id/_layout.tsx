@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
 import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -75,7 +76,7 @@ export default function ServiceDetailLayout() {
   const serviceId = id!;
 
   // Use React Query for client-side fetching
-  const { data: service, isLoading } = useQuery<Service>({
+  const { data: service, isLoading, error: serviceError, refetch: refetchService } = useQuery<Service>({
     queryKey: ["service", serviceId],
     queryFn: () => api.getService(serviceId),
     refetchInterval: (query) => {
@@ -172,6 +173,14 @@ export default function ServiceDetailLayout() {
           <div className="h-8 w-48 bg-muted rounded mb-2" />
           <div className="h-4 w-64 bg-muted rounded" />
         </div>
+      </div>
+    );
+  }
+
+  if (serviceError && !service) {
+    return (
+      <div className="space-y-6">
+        <QueryError what="service" error={serviceError} onRetry={() => refetchService()} />
       </div>
     );
   }

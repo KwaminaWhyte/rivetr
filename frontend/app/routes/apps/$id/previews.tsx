@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useOutletContext } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -80,7 +81,7 @@ export default function AppPreviewsTab() {
   const queryClient = useQueryClient();
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const { data: previews = [], isLoading } = useQuery<PreviewDeployment[]>({
+  const { data: previews = [], isLoading, error: previewsError, refetch: refetchPreviews } = useQuery<PreviewDeployment[]>({
     queryKey: ["app-previews", app.id],
     queryFn: () => api.getAppPreviews(app.id),
     refetchInterval: 10000, // Refresh every 10 seconds
@@ -148,7 +149,9 @@ export default function AppPreviewsTab() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {previewsError ? (
+            <QueryError what="preview deployments" error={previewsError} onRetry={() => refetchPreviews()} />
+          ) : isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-16 bg-muted animate-pulse rounded" />
@@ -230,7 +233,7 @@ export default function AppPreviewsTab() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button aria-label="Preview actions" variant="ghost" size="icon">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

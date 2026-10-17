@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -155,7 +156,7 @@ export default function DatabaseBackupsPage() {
   const [retentionCount, setRetentionCount] = useState(5);
 
   // Fetch backups
-  const { data: backups, isLoading: backupsLoading } = useQuery<DatabaseBackup[]>({
+  const { data: backups, isLoading: backupsLoading, error: backupsError, refetch: refetchBackups } = useQuery<DatabaseBackup[]>({
     queryKey: ["database-backups", database.id],
     queryFn: () => api.getDatabaseBackups(database.id, 50),
     refetchInterval: 10000, // Refresh every 10 seconds
@@ -302,7 +303,7 @@ export default function DatabaseBackupsPage() {
                     value={scheduleType}
                     onValueChange={(v) => setScheduleType(v as ScheduleType)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Backup frequency">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -320,7 +321,7 @@ export default function DatabaseBackupsPage() {
                       value={scheduleHour.toString()}
                       onValueChange={(v) => setScheduleHour(parseInt(v))}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="Backup time (UTC)">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -341,7 +342,7 @@ export default function DatabaseBackupsPage() {
                       value={scheduleDay.toString()}
                       onValueChange={(v) => setScheduleDay(parseInt(v))}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="Backup day of week">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -363,7 +364,7 @@ export default function DatabaseBackupsPage() {
                     value={retentionCount.toString()}
                     onValueChange={(v) => setRetentionCount(parseInt(v))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Backup retention count">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -478,7 +479,9 @@ export default function DatabaseBackupsPage() {
             </div>
           )}
 
-          {backupsLoading ? (
+          {backupsError ? (
+            <QueryError what="backups" error={backupsError} onRetry={() => refetchBackups()} />
+          ) : backupsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

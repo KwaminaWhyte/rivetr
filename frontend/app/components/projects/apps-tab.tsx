@@ -203,7 +203,7 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                 value={selectedEnvironmentId}
                 onValueChange={setSelectedEnvironmentId}
               >
-                <SelectTrigger className="w-[180px] h-8">
+                <SelectTrigger aria-label="Filter by environment" className="w-[180px] h-8">
                   <SelectValue placeholder="All environments" />
                 </SelectTrigger>
                 <SelectContent>

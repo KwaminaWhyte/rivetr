@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ export function meta() {
 export default function WhiteLabelSettingsPage() {
   const queryClient = useQueryClient();
 
-  const { data: config, isLoading } = useQuery<WhiteLabel>({
+  const { data: config, isLoading, error: configError, refetch: refetchConfig } = useQuery<WhiteLabel>({
     queryKey: ["white-label"],
     queryFn: whiteLabelApi.get,
   });
@@ -93,6 +94,10 @@ export default function WhiteLabelSettingsPage() {
           Customize the branding and appearance of your Rivetr instance.
         </p>
       </div>
+
+      {configError && (
+        <QueryError what="white label settings" error={configError} onRetry={() => refetchConfig()} />
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Identity */}

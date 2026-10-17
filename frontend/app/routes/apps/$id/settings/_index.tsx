@@ -229,7 +229,7 @@ export default function AppSettingsGeneral() {
                   value={generalForm.environment}
                   onValueChange={(value) => setGeneralForm({ ...generalForm, environment: value as AppEnvironment })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Environment">
                     <SelectValue placeholder="Select environment" />
                   </SelectTrigger>
                   <SelectContent>

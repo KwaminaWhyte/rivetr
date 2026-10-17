@@ -195,7 +195,7 @@ export default function SettingsAuditPage() {
                   value={query.action || ""}
                   onValueChange={(v) => handleFilterChange("action", v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Filter by action type">
                     <SelectValue placeholder="All actions" />
                   </SelectTrigger>
                   <SelectContent>
@@ -215,7 +215,7 @@ export default function SettingsAuditPage() {
                   value={query.resource_type || ""}
                   onValueChange={(v) => handleFilterChange("resource_type", v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Filter by resource type">
                     <SelectValue placeholder="All resources" />
                   </SelectTrigger>
                   <SelectContent>

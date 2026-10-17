@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -117,7 +118,7 @@ function ThresholdCard({ title, icon, metricType, config, onUpdate, isUpdating }
 export default function SettingsAlertDefaultsPage() {
   const queryClient = useQueryClient();
 
-  const { data: defaults, isLoading: defaultsLoading } = useQuery<GlobalAlertDefaultsResponse>({
+  const { data: defaults, isLoading: defaultsLoading, error: defaultsError, refetch: refetchDefaults } = useQuery<GlobalAlertDefaultsResponse>({
     queryKey: ["alert-defaults"],
     queryFn: () => api.getAlertDefaults(),
   });
@@ -220,7 +221,9 @@ export default function SettingsAlertDefaultsPage() {
       </Card>
 
       {/* Threshold Cards */}
-      {isLoading ? (
+      {defaultsError ? (
+        <QueryError what="alert defaults" error={defaultsError} onRetry={() => refetchDefaults()} />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>

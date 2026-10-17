@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -114,7 +115,7 @@ export default function TeamDetailPage() {
 
   const { setItems } = useBreadcrumb();
 
-  const { data: team, isLoading } = useQuery<TeamDetail>({
+  const { data: team, isLoading, error: teamError, refetch: refetchTeam } = useQuery<TeamDetail>({
     queryKey: ["team", id],
     queryFn: () => api.getTeam(id!),
     enabled: !!id,
@@ -317,6 +318,10 @@ export default function TeamDetailPage() {
     );
   }
 
+  if (teamError) {
+    return <QueryError what="team" error={teamError} onRetry={() => refetchTeam()} />;
+  }
+
   if (!team) {
     return <div>Team not found</div>;
   }
@@ -492,7 +497,7 @@ export default function TeamDetailPage() {
                   value={inviteRole}
                   onValueChange={(value) => setInviteRole(value as TeamRole)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Invitation role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

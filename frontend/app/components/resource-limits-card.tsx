@@ -147,7 +147,7 @@ export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
           <div className="space-y-2">
             <Label htmlFor="cpu-limit">CPU Limit</Label>
             <Select value={cpuLimit} onValueChange={setCpuLimit}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger aria-label="CPU limit" className="w-full">
                 <SelectValue placeholder="Select CPU limit" />
               </SelectTrigger>
               <SelectContent>
@@ -166,7 +166,7 @@ export function ResourceLimitsCard({ app, token }: ResourceLimitsCardProps) {
           <div className="space-y-2">
             <Label htmlFor="memory-limit">Memory Limit</Label>
             <Select value={memoryLimit} onValueChange={setMemoryLimit}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger aria-label="Memory limit" className="w-full">
                 <SelectValue placeholder="Select memory limit" />
               </SelectTrigger>
               <SelectContent>

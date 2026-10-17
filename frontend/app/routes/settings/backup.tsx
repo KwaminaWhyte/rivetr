@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,13 +84,15 @@ export default function BackupPage() {
   const {
     data: backups,
     isLoading,
+    error: backupsError,
+    refetch: refetchBackups,
   } = useQuery<BackupInfo[]>({
     queryKey: ["instance-backups"],
     queryFn: () => api.listBackups(),
   });
 
   // Fetch backup schedules
-  const { data: schedules = [], isLoading: schedulesLoading } = useQuery<BackupSchedule[]>({
+  const { data: schedules = [], isLoading: schedulesLoading, error: schedulesError, refetch: refetchSchedules } = useQuery<BackupSchedule[]>({
     queryKey: ["backup-schedules"],
     queryFn: () => api.listBackupSchedules(),
   });
@@ -380,7 +383,9 @@ export default function BackupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {backupsError ? (
+            <QueryError what="backups" error={backupsError} onRetry={() => refetchBackups()} />
+          ) : isLoading ? (
             <div className="animate-pulse space-y-3">
               <div className="h-4 bg-muted rounded w-2/3"></div>
               <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -610,7 +615,9 @@ export default function BackupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {schedulesLoading ? (
+          {schedulesError ? (
+            <QueryError what="backup schedules" error={schedulesError} onRetry={() => refetchSchedules()} />
+          ) : schedulesLoading ? (
             <div className="animate-pulse space-y-3">
               <div className="h-4 bg-muted rounded w-2/3"></div>
               <div className="h-4 bg-muted rounded w-1/2"></div>

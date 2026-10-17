@@ -2,6 +2,7 @@
 // Validates auth state by checking the token against the API
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { apiRequest } from "./api/core";
 
@@ -47,6 +48,22 @@ export interface CurrentUser {
  */
 export async function getCurrentUser(): Promise<CurrentUser> {
   return apiRequest<CurrentUser>("/auth/me");
+}
+
+/**
+ * True when the session may use instance-admin areas (users with role "admin",
+ * and the admin API token which resolves to an admin user). While the user is
+ * loading or the lookup fails this returns true, so nothing is hidden by guess;
+ * the backend still enforces the real checks.
+ */
+export function useIsInstanceAdmin(): boolean {
+  const { data: user } = useQuery({
+    queryKey: ["current-user"],
+    queryFn: getCurrentUser,
+    staleTime: 5 * 60 * 1000,
+  });
+  if (!user) return true;
+  return user.role === "admin" || user.id === "system";
 }
 
 /**

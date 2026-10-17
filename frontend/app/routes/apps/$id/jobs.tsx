@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -207,7 +208,7 @@ export default function JobsPage() {
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
 
   // Fetch jobs
-  const { data: jobs, isLoading } = useQuery<ScheduledJob[]>({
+  const { data: jobs, isLoading, error: jobsError, refetch: refetchJobs } = useQuery<ScheduledJob[]>({
     queryKey: ["jobs", appId],
     queryFn: () => jobsApi.getJobs(appId!),
     enabled: !!appId,
@@ -339,6 +340,10 @@ export default function JobsPage() {
     );
   }
 
+  if (jobsError && !jobs) {
+    return <QueryError what="scheduled jobs" error={jobsError} onRetry={() => refetchJobs()} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -438,7 +443,7 @@ export default function JobsPage() {
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
+                          <Button aria-label="Job actions" variant="ghost" size="sm">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

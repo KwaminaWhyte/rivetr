@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -271,6 +272,8 @@ export default function LogDrainsPage() {
   const {
     data: drains = [],
     isLoading,
+    error: drainsError,
+    refetch: refetchDrains,
   } = useQuery<LogDrain[]>({
     queryKey: ["logDrains", appId],
     queryFn: () => logDrainsApi.getLogDrains(appId!),
@@ -416,6 +419,10 @@ export default function LogDrainsPage() {
     );
   }
 
+  if (drainsError && drains.length === 0) {
+    return <QueryError what="log drains" error={drainsError} onRetry={() => refetchDrains()} />;
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -524,7 +531,7 @@ export default function LogDrainsPage() {
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button aria-label="Log drain actions" variant="ghost" size="icon">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

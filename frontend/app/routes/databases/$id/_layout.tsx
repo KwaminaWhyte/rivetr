@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -102,7 +103,7 @@ export default function DatabaseDetailLayout() {
   const databaseId = id!;
 
   // Fetch database data client-side
-  const { data: database, isLoading, error } = useQuery<ManagedDatabase>({
+  const { data: database, isLoading, error, refetch } = useQuery<ManagedDatabase>({
     queryKey: ["database", databaseId],
     queryFn: () => api.getDatabase(databaseId, true),
     refetchInterval: (query) => {
@@ -206,8 +207,17 @@ export default function DatabaseDetailLayout() {
     );
   }
 
-  // Error or not found state
-  if (error || !database) {
+  // Request failed (not a 404-style missing database)
+  if (error && !database) {
+    return (
+      <div className="space-y-6">
+        <QueryError what="database" error={error} onRetry={() => refetch()} />
+      </div>
+    );
+  }
+
+  // Not found state
+  if (!database) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Database Not Found</h1>

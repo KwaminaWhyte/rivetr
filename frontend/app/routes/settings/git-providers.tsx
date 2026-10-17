@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
@@ -119,7 +120,7 @@ function GitHubAppsTab() {
     }
   }, [registered, installed, appId, action, queryClient]);
 
-  const { data: apps = [], isLoading } = useQuery<GitHubApp[]>({
+  const { data: apps = [], isLoading, error: listError, refetch: refetchList } = useQuery<GitHubApp[]>({
     queryKey: ["github-apps"],
     queryFn: () => api.getGitHubApps(),
   });
@@ -231,7 +232,9 @@ function GitHubAppsTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="GitHub apps" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -484,7 +487,7 @@ function GitLabTab() {
   const [token, setToken] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
-  const { data: providers = [], isLoading } = useQuery<GitProvider[]>({
+  const { data: providers = [], isLoading, error: listError, refetch: refetchList } = useQuery<GitProvider[]>({
     queryKey: ["gitProviders"],
     queryFn: () => api.getGitProviders(),
   });
@@ -545,7 +548,9 @@ function GitLabTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="GitLab connection" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -696,7 +701,7 @@ function BitbucketTab() {
 
   const webhookUrl = `${window.location.origin}/webhooks/bitbucket`;
 
-  const { data: providers = [], isLoading } = useQuery<GitProvider[]>({
+  const { data: providers = [], isLoading, error: listError, refetch: refetchList } = useQuery<GitProvider[]>({
     queryKey: ["gitProviders"],
     queryFn: () => api.getGitProviders(),
   });
@@ -786,7 +791,9 @@ function BitbucketTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="Bitbucket connection" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

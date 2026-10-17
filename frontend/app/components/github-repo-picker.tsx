@@ -257,7 +257,7 @@ export function GitHubRepoPicker({
       <div className="space-y-2">
         <Label>GitHub Account</Label>
         <Select value={installationId} onValueChange={handleInstallationChange}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger aria-label="GitHub account" className="w-full">
             <SelectValue placeholder="Select GitHub account" />
           </SelectTrigger>
           <SelectContent>

@@ -152,7 +152,7 @@ export function AuditTab({ teamId, isActiveTab }: AuditTabProps) {
                 setAuditPage(1);
               }}
             >
-              <SelectTrigger className="w-48">
+              <SelectTrigger aria-label="Filter by action" className="w-48">
                 <SelectValue placeholder="All Actions" />
               </SelectTrigger>
               <SelectContent>
@@ -174,7 +174,7 @@ export function AuditTab({ teamId, isActiveTab }: AuditTabProps) {
                 setAuditPage(1);
               }}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger aria-label="Filter by resource type" className="w-40">
                 <SelectValue placeholder="All Resources" />
               </SelectTrigger>
               <SelectContent>

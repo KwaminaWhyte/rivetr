@@ -183,7 +183,7 @@ export function ResourcePermissionsDialog({
                     value={newResourceType}
                     onValueChange={setNewResourceType}
                   >
-                    <SelectTrigger className="h-8 text-xs">
+                    <SelectTrigger aria-label="Resource type" className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -203,7 +203,7 @@ export function ResourcePermissionsDialog({
                       setNewPermission(v as "allow" | "deny")
                     }
                   >
-                    <SelectTrigger className="h-8 text-xs">
+                    <SelectTrigger aria-label="Permission" className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -225,7 +225,7 @@ export function ResourcePermissionsDialog({
                       if (e.key === "Enter") addPermission();
                     }}
                   />
-                  <Button
+                  <Button aria-label="Add permission"
                     size="sm"
                     className="h-8 shrink-0"
                     onClick={addPermission}

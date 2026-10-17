@@ -156,7 +156,7 @@ export default function SettingsWebhookEventsPage() {
             value={providerFilter}
             onValueChange={(v) => handleFilterChange("provider", v)}
           >
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger aria-label="Filter by provider" className="w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -176,7 +176,7 @@ export default function SettingsWebhookEventsPage() {
             value={statusFilter}
             onValueChange={(v) => handleFilterChange("status", v)}
           >
-            <SelectTrigger className="w-[130px]">
+            <SelectTrigger aria-label="Filter by status" className="w-[130px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

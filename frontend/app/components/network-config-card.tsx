@@ -274,7 +274,7 @@ export function NetworkConfigCard({
                 value={newPort.protocol}
                 onValueChange={(value) => setNewPort({ ...newPort, protocol: value })}
               >
-                <SelectTrigger className="w-20">
+                <SelectTrigger aria-label="Port protocol" className="w-20">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

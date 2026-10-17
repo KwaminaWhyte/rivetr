@@ -414,7 +414,7 @@ export function DomainManagementCard({
                           )
                         }
                       >
-                        <SelectTrigger className="h-7 text-xs w-36">
+                        <SelectTrigger aria-label="WWW redirect mode" className="h-7 text-xs w-36">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -470,7 +470,7 @@ export function DomainManagementCard({
                   })
                 }
               >
-                <SelectTrigger className="h-9 text-sm w-36">
+                <SelectTrigger aria-label="WWW redirect mode" className="h-9 text-sm w-36">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -36,13 +37,13 @@ export default function AppSettingsReplicas() {
   const [isSavingReplicas, setIsSavingReplicas] = useState(false);
   const [restartingReplica, setRestartingReplica] = useState<number | null>(null);
 
-  const { data: replicas = [], refetch: refetchReplicas } = useQuery<AppReplica[]>({
+  const { data: replicas = [], error: replicasError, refetch: refetchReplicas } = useQuery<AppReplica[]>({
     queryKey: ["replicas", app.id],
     queryFn: () => replicasApi.list(app.id),
   });
 
   // Autoscaling state
-  const { data: autoscalingRules = [], refetch: refetchAutoscaling } = useQuery<AutoscalingRule[]>({
+  const { data: autoscalingRules = [], error: autoscalingError, refetch: refetchAutoscaling } = useQuery<AutoscalingRule[]>({
     queryKey: ["autoscaling", app.id],
     queryFn: () => autoscalingApi.list(app.id),
   });
@@ -173,7 +174,9 @@ export default function AppSettingsReplicas() {
           </div>
 
           {/* Replica status table */}
-          {replicas.length > 0 ? (
+          {replicasError ? (
+            <QueryError what="replicas" error={replicasError} onRetry={() => refetchReplicas()} />
+          ) : replicas.length > 0 ? (
             <div className="rounded-md border">
               <table className="w-full text-sm">
                 <thead>
@@ -251,7 +254,9 @@ export default function AppSettingsReplicas() {
           </Button>
         </CardHeader>
         <CardContent>
-          {autoscalingRules.length === 0 ? (
+          {autoscalingError ? (
+            <QueryError what="autoscaling rules" error={autoscalingError} onRetry={() => refetchAutoscaling()} />
+          ) : autoscalingRules.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               No autoscaling rules configured. Add a rule to enable automatic scaling.
             </div>
@@ -282,7 +287,7 @@ export default function AppSettingsReplicas() {
                     >
                       Edit
                     </Button>
-                    <Button
+                    <Button aria-label="Delete autoscaling rule"
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:text-destructive"
@@ -316,7 +321,7 @@ export default function AppSettingsReplicas() {
                   setAutoscalingForm({ ...autoscalingForm, metric: v as "cpu" | "memory" | "request_rate" })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Autoscaling metric">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

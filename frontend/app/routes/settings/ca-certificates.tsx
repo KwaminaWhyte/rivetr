@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -61,7 +62,7 @@ export default function CaCertificatesPage() {
   const [formCert, setFormCert] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: certs = [], isLoading } = useQuery<CaCertificate[]>({
+  const { data: certs = [], isLoading, error: listError, refetch: refetchList } = useQuery<CaCertificate[]>({
     queryKey: ["ca-certificates"],
     queryFn: () => caCertificatesApi.list(),
   });
@@ -142,7 +143,9 @@ export default function CaCertificatesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {listError ? (
+            <QueryError what="CA certificates" error={listError} onRetry={() => refetchList()} />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>

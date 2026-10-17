@@ -172,7 +172,7 @@ export function RollbackSettingsCard({ app }: RollbackSettingsCardProps) {
                   setIsDirty(true);
                 }}
               >
-                <SelectTrigger className="w-48">
+                <SelectTrigger aria-label="Versions to keep" className="w-48">
                   <SelectValue placeholder="Select versions" />
                 </SelectTrigger>
                 <SelectContent>

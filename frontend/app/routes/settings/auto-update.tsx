@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ export default function AutoUpdatePage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
-  const { data: updateStatus, isLoading, refetch, isRefetching } = useQuery<UpdateStatus | null>({
+  const { data: updateStatus, isLoading, error: statusError, refetch, isRefetching } = useQuery<UpdateStatus | null>({
     queryKey: ["update-status"],
     queryFn: () => api.getVersionInfo(),
     refetchInterval: 60000, // Check every minute
@@ -103,7 +104,9 @@ export default function AutoUpdatePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {statusError ? (
+            <QueryError what="update status" error={statusError} onRetry={() => refetch()} />
+          ) : isLoading ? (
             <div className="animate-pulse space-y-3">
               <div className="h-4 bg-muted rounded w-1/3"></div>
               <div className="h-4 bg-muted rounded w-1/2"></div>

@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useParams, Link } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -116,7 +117,7 @@ export default function DeploymentDetailPage() {
   const [diagnosisLoading, setDiagnosisLoading] = useState(false);
   const [diagnosisUnavailable, setDiagnosisUnavailable] = useState(false);
 
-  const { data: deployment, isLoading } = useQuery<Deployment>({
+  const { data: deployment, isLoading, error: deploymentError, refetch: refetchDeployment } = useQuery<Deployment>({
     queryKey: ["deployment", deploymentId],
     queryFn: () => api.getDeployment(deploymentId!),
     enabled: !!deploymentId,
@@ -178,7 +179,9 @@ export default function DeploymentDetailPage() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {deploymentError && !deployment ? (
+        <QueryError what="deployment" error={deploymentError} onRetry={() => refetchDeployment()} />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading deployment…

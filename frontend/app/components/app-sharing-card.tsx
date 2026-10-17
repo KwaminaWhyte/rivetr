@@ -152,7 +152,7 @@ export function AppSharingCard({ app }: AppSharingCardProps) {
                 onValueChange={setSelectedTeamId}
                 disabled={availableTeams.length === 0}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Team to share with">
                   <SelectValue placeholder={
                     availableTeams.length === 0
                       ? "No teams available"

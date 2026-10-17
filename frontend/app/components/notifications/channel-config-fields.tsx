@@ -221,7 +221,7 @@ export function PushoverConfigFields({
       <div className="space-y-2">
         <Label htmlFor="pushover_priority">Priority</Label>
         <Select value={pushoverPriority} onValueChange={setPushoverPriority}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="Pushover priority">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -290,7 +290,7 @@ export function NtfyConfigFields({
       <div className="space-y-2">
         <Label htmlFor="ntfy_priority">Priority</Label>
         <Select value={ntfyPriority} onValueChange={setNtfyPriority}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="ntfy priority">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -528,7 +528,7 @@ export function GotifyConfigFields({
       <div className="space-y-2">
         <Label htmlFor="gotify_priority">Priority</Label>
         <Select value={gotifyPriority} onValueChange={setGotifyPriority}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="Gotify priority">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -716,7 +716,7 @@ export function WebhookConfigFields({
           value={payloadTemplate}
           onValueChange={(v) => setPayloadTemplate(v as "json" | "slack" | "discord" | "custom")}
         >
-          <SelectTrigger>
+          <SelectTrigger aria-label="Payload template">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

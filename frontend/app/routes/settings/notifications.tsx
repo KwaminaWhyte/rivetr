@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -207,7 +208,7 @@ export default function SettingsNotificationsPage() {
   const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");
   const [subAppId, setSubAppId] = useState<string>("__all__");
 
-  const { data: channels = [], isLoading: channelsLoading } = useQuery<NotificationChannel[]>({
+  const { data: channels = [], isLoading: channelsLoading, error: channelsError, refetch: refetchChannels } = useQuery<NotificationChannel[]>({
     queryKey: ["notification-channels"],
     queryFn: () => api.getNotificationChannels(),
   });
@@ -599,7 +600,9 @@ export default function SettingsNotificationsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {channelsLoading ? (
+          {channelsError ? (
+            <QueryError what="notification channels" error={channelsError} onRetry={() => refetchChannels()} />
+          ) : channelsLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
@@ -730,7 +733,7 @@ export default function SettingsNotificationsPage() {
                   value={channelType}
                   onValueChange={(v) => setChannelType(v as NotificationChannelType)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Channel type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -989,7 +992,7 @@ export default function SettingsNotificationsPage() {
                   value={subEventType}
                   onValueChange={(v) => setSubEventType(v as NotificationEventType)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Event type">
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1004,7 +1007,7 @@ export default function SettingsNotificationsPage() {
               <div className="flex-1 space-y-2">
                 <Label>App (optional)</Label>
                 <Select value={subAppId} onValueChange={setSubAppId}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="App">
                     <SelectValue placeholder="All apps" />
                   </SelectTrigger>
                   <SelectContent>

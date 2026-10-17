@@ -366,7 +366,7 @@ export default function NewAppPage() {
               <div className="space-y-2">
                 <Label htmlFor="environment">Environment</Label>
                 <Select name="environment" defaultValue="development">
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger aria-label="Environment" className="w-full">
                     <SelectValue placeholder="Select environment" />
                   </SelectTrigger>
                   <SelectContent>
@@ -928,7 +928,7 @@ export default function NewAppPage() {
                             placeholder="Password or access token"
                             autoComplete="new-password"
                           />
-                          <Button
+                          <Button aria-label={showPassword ? "Hide password" : "Show password"}
                             type="button"
                             variant="ghost"
                             size="sm"
@@ -957,7 +957,7 @@ export default function NewAppPage() {
               <div className="space-y-2">
                 <Label htmlFor="project">Project</Label>
                 <Select name="project_id" defaultValue={projectId} disabled>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger aria-label="Project" className="w-full">
                     <SelectValue placeholder="Select a project" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1020,7 +1020,7 @@ export default function NewAppPage() {
               <div className="space-y-2">
                 <Label htmlFor="cpu_limit">CPU Limit</Label>
                 <Select name="cpu_limit" defaultValue="1">
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger aria-label="CPU limit" className="w-full">
                     <SelectValue placeholder="Select CPU limit" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1039,7 +1039,7 @@ export default function NewAppPage() {
               <div className="space-y-2">
                 <Label htmlFor="memory_limit">Memory Limit</Label>
                 <Select name="memory_limit" defaultValue="512m">
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger aria-label="Memory limit" className="w-full">
                     <SelectValue placeholder="Select memory limit" />
                   </SelectTrigger>
                   <SelectContent>

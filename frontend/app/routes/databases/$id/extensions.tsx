@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useOutletContext } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -104,7 +105,7 @@ export default function DatabaseExtensionsTab() {
   const isPostgres = database.db_type === "postgres";
   const isRunning = database.status === "running";
 
-  const { data: extensionsData, isLoading } = useQuery({
+  const { data: extensionsData, isLoading, error: extensionsError, refetch: refetchExtensions } = useQuery({
     queryKey: ["database-extensions", database.id],
     queryFn: () => api.listDatabaseExtensions(database.id),
     enabled: isPostgres && isRunning,
@@ -161,7 +162,9 @@ export default function DatabaseExtensionsTab() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {extensionsError ? (
+            <QueryError what="extensions" error={extensionsError} onRetry={() => refetchExtensions()} />
+          ) : isLoading ? (
             <div className="flex flex-wrap gap-2">
               {[1, 2, 3].map((i) => (
                 <div

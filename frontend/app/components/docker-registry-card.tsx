@@ -255,7 +255,7 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
                       }
                       autoComplete="new-password"
                     />
-                    <Button
+                    <Button aria-label={showPassword ? "Hide password" : "Show password"}
                       type="button"
                       variant="ghost"
                       size="sm"

@@ -270,7 +270,7 @@ export default function AppSettingsDeployment() {
                       Days: {fw.days_of_week}
                     </p>
                   </div>
-                  <Button
+                  <Button aria-label="Delete freeze window"
                     variant="ghost"
                     size="sm"
                     className="gap-1.5 text-destructive hover:text-destructive"
@@ -326,8 +326,8 @@ export default function AppSettingsDeployment() {
         <CardHeader>
           <CardTitle>Rollback with Data</CardTitle>
           <CardDescription>
-            Dump linked PostgreSQL, MySQL and MariaDB databases before each deployment so a
-            rollback can also restore their data.
+            Dump linked PostgreSQL, MySQL, MariaDB, MongoDB, Redis and KeyDB databases before
+            each deployment so a rollback can also restore their data.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -337,7 +337,9 @@ export default function AppSettingsDeployment() {
                 Snapshot databases before deploy
               </Label>
               <p className="text-sm text-muted-foreground">
-                A failed snapshot never blocks the deployment. Only the most recent
+                A failed snapshot never blocks the deployment. Restoring Redis or KeyDB briefly
+                restarts that database and needs a local data volume without AOF persistence.
+                DragonflyDB and ClickHouse are not snapshotted. Only the most recent
                 snapshots are kept (server setting data_retention.deployment_snapshots_keep).
               </p>
             </div>

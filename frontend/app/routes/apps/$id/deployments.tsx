@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useState, useMemo } from "react";
 import { useOutletContext, useSearchParams, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -127,7 +128,7 @@ export default function AppDeploymentsTab() {
   const perPage = parseInt(searchParams.get("per_page") || "20");
 
   // Fetch deployments with pagination - only if page > 1, otherwise use parent data
-  const { data: deploymentsData, isLoading } = useQuery<DeploymentListResponse>({
+  const { data: deploymentsData, isLoading, error: deploymentsError, refetch: refetchDeployments } = useQuery<DeploymentListResponse>({
     queryKey: ["deployments", app.id, page, perPage],
     queryFn: () => api.getDeployments(app.id, { page, per_page: perPage }),
     enabled: page > 1, // Only fetch when on page 2+
@@ -417,7 +418,9 @@ export default function AppDeploymentsTab() {
           )}
         </CardHeader>
         <CardContent>
-          {isLoading && page > 1 ? (
+          {page > 1 && deploymentsError && !deploymentsData ? (
+            <QueryError what="deployments" error={deploymentsError} onRetry={() => refetchDeployments()} />
+          ) : isLoading && page > 1 ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-16 bg-muted rounded animate-pulse" />

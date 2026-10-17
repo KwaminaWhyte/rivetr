@@ -408,7 +408,7 @@ export function AlertsCard({ appId }: AlertsCardProps) {
                   setNewAlert({ ...newAlert, metric_type: value })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Metric type">
                   <SelectValue placeholder="Select metric type" />
                 </SelectTrigger>
                 <SelectContent>

@@ -1,3 +1,4 @@
+import { QueryError } from "@/components/query-error";
 import { useOutletContext } from "react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -53,7 +54,7 @@ export default function AppSettingsPatches() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingPatch, setEditingPatch] = useState<AppPatch | null>(null);
 
-  const { data: patches = [], isLoading } = useQuery<AppPatch[]>({
+  const { data: patches = [], isLoading, error: patchesError, refetch: refetchPatches } = useQuery<AppPatch[]>({
     queryKey: ["app-patches", app.id],
     queryFn: () => api.listPatches(app.id),
   });
@@ -149,7 +150,9 @@ export default function AppSettingsPatches() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isLoading ? (
+          {patchesError ? (
+            <QueryError what="patches" error={patchesError} onRetry={() => refetchPatches()} />
+          ) : isLoading ? (
             <p className="text-sm text-muted-foreground">Loading patches…</p>
           ) : patches.length === 0 && !isAdding ? (
             <p className="text-sm text-muted-foreground">
@@ -178,7 +181,7 @@ export default function AppSettingsPatches() {
                 />
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                    <Button aria-label="Delete patch" variant="ghost" size="icon" className="text-destructive hover:text-destructive">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </AlertDialogTrigger>
