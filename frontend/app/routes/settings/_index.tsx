@@ -559,6 +559,7 @@ acme_email = "you@yourdomain.com"`}
                       type="button"
                       className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground"
                       onClick={() => setShowApiKey((v) => !v)}
+                      aria-label={showApiKey ? "Hide API key" : "Show API key"}
                       tabIndex={-1}
                     >
                       {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

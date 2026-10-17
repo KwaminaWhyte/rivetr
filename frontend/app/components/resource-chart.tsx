@@ -131,7 +131,7 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
         <div className="flex items-center justify-between">
           <CardTitle>Global Resource Utilization</CardTitle>
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs" aria-label="Time range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
