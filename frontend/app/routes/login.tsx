@@ -13,6 +13,21 @@ import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 import { oauthApi, type OAuthProviderPublic } from "@/lib/api/oauth";
 import { twoFactorApi } from "@/lib/api/two-factor";
 
+// Only same-origin absolute paths are valid post-login destinations (SEC-M7).
+// Rejects "//host", backslash-prefixed paths, absolute URLs and control characters.
+function safeReturnUrl(raw: string): string {
+  if (
+    !raw.startsWith("/") ||
+    raw.startsWith("//") ||
+    raw.startsWith("/\\") ||
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f]/.test(raw)
+  ) {
+    return "/";
+  }
+  return raw;
+}
+
 // Google icon SVG component
 const GoogleIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24">
@@ -116,7 +131,7 @@ export default function LoginPage() {
       const returnUrl = localStorage.getItem("rivetr_return_url");
       if (returnUrl) {
         localStorage.removeItem("rivetr_return_url");
-        navigate(returnUrl, { replace: true });
+        navigate(safeReturnUrl(returnUrl), { replace: true });
       } else {
         navigate("/", { replace: true });
       }
@@ -205,7 +220,7 @@ export default function LoginPage() {
       const returnUrl = localStorage.getItem("rivetr_return_url");
       if (returnUrl) {
         localStorage.removeItem("rivetr_return_url");
-        navigate(returnUrl, { replace: true });
+        navigate(safeReturnUrl(returnUrl), { replace: true });
       } else {
         navigate("/", { replace: true });
       }
@@ -229,7 +244,7 @@ export default function LoginPage() {
       const returnUrl = localStorage.getItem("rivetr_return_url");
       if (returnUrl) {
         localStorage.removeItem("rivetr_return_url");
-        navigate(returnUrl, { replace: true });
+        navigate(safeReturnUrl(returnUrl), { replace: true });
       } else {
         navigate("/", { replace: true });
       }

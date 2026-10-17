@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from "react-router";
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   Breadcrumb,
@@ -16,6 +16,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommandPalette } from "@/components/command-palette";
+import { SectionTabs } from "@/components/section-tabs";
+import { SettingsShell } from "@/components/settings-nav";
 import { useRequireAuth } from "@/lib/auth";
 import { BreadcrumbProvider, useBreadcrumb, type BreadcrumbItem as BreadcrumbItemType } from "@/lib/breadcrumb-context";
 import { TeamProvider } from "@/lib/team-context";
@@ -262,6 +265,7 @@ function DashboardLayoutInner() {
   const location = useLocation();
   const { items: contextItems, setItems } = useBreadcrumb();
   const { isLoading, isAuthenticated } = useRequireAuth();
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Set default breadcrumbs based on route when no context items are set
   useEffect(() => {
@@ -293,7 +297,8 @@ function DashboardLayoutInner() {
 
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar onOpenSearch={() => setSearchOpen(true)} />
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4 flex-1">
@@ -326,7 +331,10 @@ function DashboardLayoutInner() {
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Outlet />
+          <SectionTabs />
+          <SettingsShell>
+            <Outlet />
+          </SettingsShell>
         </div>
       </SidebarInset>
     </SidebarProvider>

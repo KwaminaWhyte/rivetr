@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -66,6 +67,15 @@ export default function ProjectsPage() {
   const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // "New project" action from the command palette links here with ?new=1
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setIsCreateDialogOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
