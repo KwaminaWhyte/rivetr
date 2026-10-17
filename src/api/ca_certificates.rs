@@ -12,8 +12,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::authz;
 use super::error::ApiError;
-use crate::db::{CaCertificate, CreateCaCertificateRequest};
+use crate::db::{CaCertificate, CreateCaCertificateRequest, User};
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -26,8 +27,13 @@ pub struct ListCaCertificatesQuery {
 /// GET /api/ca-certificates
 pub async fn list_ca_certificates(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListCaCertificatesQuery>,
 ) -> Result<Json<Vec<CaCertificate>>, StatusCode> {
+    authz::authorize_team_filter(&state, &user, query.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     let certs = if let Some(team_id) = &query.team_id {
         sqlx::query_as::<_, CaCertificate>(
             "SELECT * FROM ca_certificates WHERE team_id = ? ORDER BY created_at DESC",
@@ -45,6 +51,10 @@ pub async fn list_ca_certificates(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let certs = authz::retain_visible(&state, &user, certs, |c| c.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     Ok(Json(certs))
 }
 
@@ -53,8 +63,11 @@ pub async fn list_ca_certificates(
 /// POST /api/ca-certificates
 pub async fn create_ca_certificate(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateCaCertificateRequest>,
 ) -> Result<(StatusCode, Json<CaCertificate>), ApiError> {
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref()).await?;
+
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::validation_field(

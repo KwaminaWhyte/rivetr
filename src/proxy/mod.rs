@@ -78,6 +78,8 @@ pub struct Backend {
     pub strip_prefix: Option<String>,
     /// If set, this backend is a www-redirect proxy: return 301 to this host instead of proxying
     pub www_redirect_target: Option<String>,
+    /// Whether requests to this backend are written to the proxy access log
+    pub access_logging: bool,
 }
 
 impl Backend {
@@ -93,7 +95,14 @@ impl Backend {
             redirect_rules: Vec::new(),
             strip_prefix: None,
             www_redirect_target: None,
+            access_logging: true,
         }
+    }
+
+    /// Set whether requests to this backend are access-logged
+    pub fn with_access_logging(mut self, enabled: bool) -> Self {
+        self.access_logging = enabled;
+        self
     }
 
     /// Create a new backend with a health check path
@@ -235,6 +244,7 @@ impl RouteTable {
                         replica_backend.basic_auth = primary.basic_auth.clone();
                         replica_backend.redirect_rules = primary.redirect_rules.clone();
                         replica_backend.strip_prefix = primary.strip_prefix.clone();
+                        replica_backend.access_logging = primary.access_logging;
                         return Some(replica_backend);
                     }
                 }

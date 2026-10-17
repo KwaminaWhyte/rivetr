@@ -235,6 +235,7 @@ pub async fn redeploy_preview(
 /// List all preview deployments across all apps (for admin view)
 pub async fn list_all_previews(
     State(state): State<Arc<AppState>>,
+    user: crate::db::User,
 ) -> Result<Json<Vec<PreviewDeploymentResponse>>, StatusCode> {
     let previews: Vec<PreviewDeployment> = sqlx::query_as(
         r#"
@@ -250,8 +251,16 @@ pub async fn list_all_previews(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let responses: Vec<PreviewDeploymentResponse> =
-        previews.into_iter().map(|p| p.into()).collect();
+    // SEC-C3: only previews of apps the caller can access.
+    let app_ids: Vec<String> = previews.iter().map(|p| p.app_id.clone()).collect();
+    let allowed = super::authz::accessible_app_ids(&state, &user, app_ids)
+        .await
+        .map_err(|e| e.status())?;
+    let responses: Vec<PreviewDeploymentResponse> = previews
+        .into_iter()
+        .filter(|p| allowed.contains(&p.app_id))
+        .map(|p| p.into())
+        .collect();
 
     Ok(Json(responses))
 }
@@ -259,6 +268,7 @@ pub async fn list_all_previews(
 /// Get preview deployments by status
 pub async fn list_previews_by_status(
     State(state): State<Arc<AppState>>,
+    user: crate::db::User,
     Path(status): Path<String>,
 ) -> Result<Json<Vec<PreviewDeploymentResponse>>, StatusCode> {
     // Validate status
@@ -284,8 +294,15 @@ pub async fn list_previews_by_status(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let responses: Vec<PreviewDeploymentResponse> =
-        previews.into_iter().map(|p| p.into()).collect();
+    let app_ids: Vec<String> = previews.iter().map(|p| p.app_id.clone()).collect();
+    let allowed = super::authz::accessible_app_ids(&state, &user, app_ids)
+        .await
+        .map_err(|e| e.status())?;
+    let responses: Vec<PreviewDeploymentResponse> = previews
+        .into_iter()
+        .filter(|p| allowed.contains(&p.app_id))
+        .map(|p| p.into())
+        .collect();
 
     Ok(Json(responses))
 }

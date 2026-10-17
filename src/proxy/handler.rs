@@ -176,6 +176,12 @@ fn redirect_regex(pattern: &str) -> Option<Regex> {
     compiled
 }
 
+/// Whether a request should be access-logged: the writer must be running and the
+/// matched backend must not have opted out (unmatched hosts keep logging).
+fn should_log(writer_enabled: bool, backend_flag: Option<bool>) -> bool {
+    writer_enabled && backend_flag.unwrap_or(true)
+}
+
 /// Handles incoming proxy connections
 #[derive(Clone)]
 pub struct ProxyHandler {
@@ -315,26 +321,6 @@ impl ProxyHandler {
         let uri = req.uri().clone();
         let path = uri.path();
 
-        // Capture logging metadata from request headers before they are consumed
-        // (skipped entirely when access logging is disabled)
-        let log_meta = self.log_tx.is_some().then(|| LogMeta {
-            method: method.to_string(),
-            path: path.to_string(),
-            client_ip: req
-                .headers()
-                .get("X-Forwarded-For")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| remote_addr.ip().to_string()),
-            user_agent: req
-                .headers()
-                .get(hyper::header::USER_AGENT)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("")
-                .to_string(),
-        });
-
         // Check for ACME HTTP-01 challenge (must happen before HTTPS redirect)
         if let Some(response) = self.handle_acme_challenge(path) {
             return Ok(response);
@@ -395,6 +381,30 @@ impl ProxyHandler {
             Some(h) => routes.get_backend(h),
             None => None,
         };
+
+        // Capture logging metadata from request headers before they are consumed
+        // (skipped entirely when the writer is off or the backend opted out)
+        let log_meta = should_log(
+            self.log_tx.is_some(),
+            backend.as_ref().map(|b| b.access_logging),
+        )
+        .then(|| LogMeta {
+            method: method.to_string(),
+            path: path.to_string(),
+            client_ip: req
+                .headers()
+                .get("X-Forwarded-For")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| remote_addr.ip().to_string()),
+            user_agent: req
+                .headers()
+                .get(hyper::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+        });
 
         let response = match backend {
             Some(backend) if backend.healthy => {
@@ -852,6 +862,22 @@ fn empty_response(status: StatusCode) -> Response<BoxBody<Bytes, hyper::Error>> 
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[test]
+    fn should_log_respects_writer_and_backend_flag() {
+        assert!(should_log(true, Some(true)));
+        assert!(should_log(true, None));
+        assert!(!should_log(true, Some(false)));
+        assert!(!should_log(false, Some(true)));
+        assert!(!should_log(false, None));
+    }
+
+    #[test]
+    fn backend_access_logging_defaults_on_and_toggles() {
+        let b = Backend::new("c".into(), "127.0.0.1".into(), 3000);
+        assert!(b.access_logging);
+        assert!(!b.with_access_logging(false).access_logging);
+    }
 
     fn entry(path: &str, ip: &str) -> ProxyLogEntry {
         ProxyLogEntry {

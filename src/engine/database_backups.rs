@@ -621,7 +621,7 @@ impl DatabaseBackupTask {
             SELECT id, database_id, backup_type, status, file_path, file_size,
                    backup_format, started_at, completed_at, error_message, created_at, updated_at
             FROM database_backups
-            WHERE database_id = ? AND status = 'completed'
+            WHERE database_id = ? AND status = 'completed' AND backup_type != 'pre_deploy'
             ORDER BY created_at DESC
             "#,
         )

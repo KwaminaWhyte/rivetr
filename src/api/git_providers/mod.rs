@@ -101,9 +101,27 @@ pub async fn list_providers(
     Ok(Json(responses))
 }
 
+/// A Git provider connection holds the owner's OAuth token: only the owner or an
+/// instance admin may use it (SEC-C3).
+fn owns_provider(user: &User, owner_id: &str) -> bool {
+    super::authz::is_privileged_user(user) || user.id == owner_id
+}
+
+fn ensure_provider_owner(user: &User, provider: &GitProvider) -> Result<(), (StatusCode, String)> {
+    if owns_provider(user, &provider.user_id) {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            "Not your Git provider connection".to_string(),
+        ))
+    }
+}
+
 /// Get a specific Git provider connection
 pub async fn get_provider(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let provider: GitProvider = sqlx::query_as("SELECT * FROM git_providers WHERE id = ?")
@@ -112,6 +130,7 @@ pub async fn get_provider(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+    ensure_provider_owner(&user, &provider)?;
 
     let response: GitProviderResponse = provider.into();
     Ok(Json(response))
@@ -124,6 +143,18 @@ pub async fn delete_provider(
     user: User,
     client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // SEC-C3: only the connection's owner (or an instance admin) may disconnect it.
+    let owner: Option<String> = sqlx::query_scalar("SELECT user_id FROM git_providers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if let Some(owner) = owner {
+        if !owns_provider(&user, &owner) {
+            return Err((StatusCode::FORBIDDEN, "Not your Git provider connection".to_string()));
+        }
+    }
+
     let result = sqlx::query("DELETE FROM git_providers WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -424,6 +455,7 @@ pub async fn oauth_callback(
 /// List repositories from a connected Git provider
 pub async fn list_repos(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Query(params): Query<ListReposParams>,
 ) -> Result<Json<Vec<GitRepository>>, (StatusCode, String)> {
@@ -433,6 +465,7 @@ pub async fn list_repos(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+    ensure_provider_owner(&user, &provider)?;
 
     let provider_type: GitProviderType = provider
         .provider

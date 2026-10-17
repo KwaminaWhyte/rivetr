@@ -5,6 +5,7 @@ mod container_monitor;
 mod cost_calculator;
 pub mod database_backups;
 pub mod database_config;
+pub mod deployment_snapshots;
 mod disk_monitor;
 pub mod nixpacks;
 pub mod pack_builder;
@@ -80,6 +81,8 @@ pub struct DeploymentEngine {
     encryption_key: Option<[u8; KEY_LENGTH]>,
     /// Caps how many deployments build concurrently; extra deploys queue on it.
     deploy_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Where pre-deploy database snapshots are written (rollback with data)
+    snapshot_ctx: Option<Arc<deployment_snapshots::SnapshotContext>>,
 }
 
 impl DeploymentEngine {
@@ -106,7 +109,14 @@ impl DeploymentEngine {
             build_limits,
             encryption_key,
             deploy_semaphore,
+            snapshot_ctx: None,
         }
+    }
+
+    /// Enable pre-deploy database snapshots for apps with `snapshot_before_deploy` on.
+    pub fn with_snapshots(mut self, ctx: deployment_snapshots::SnapshotContext) -> Self {
+        self.snapshot_ctx = Some(Arc::new(ctx));
+        self
     }
 
     pub async fn run(mut self) {
@@ -125,6 +135,7 @@ impl DeploymentEngine {
             let build_limits = self.build_limits.clone();
             let encryption_key = self.encryption_key;
             let deploy_semaphore = self.deploy_semaphore.clone();
+            let snapshot_ctx = self.snapshot_ctx.clone();
 
             tokio::spawn(async move {
                 // Gate concurrent deployments. The task is spawned immediately so
@@ -205,6 +216,7 @@ impl DeploymentEngine {
                     &app,
                     &build_limits,
                     encryption_key.as_ref(),
+                    snapshot_ctx.as_deref(),
                 )
                 .await
                 {
@@ -300,6 +312,7 @@ impl DeploymentEngine {
                                     port,
                                 )
                                 .with_healthcheck(app.healthcheck.clone())
+                                .with_access_logging(app.access_logging != 0)
                                 .with_strip_prefix(app.strip_prefix.clone());
 
                                 backend.www_redirect_target = www_redirect_target;
@@ -475,6 +488,7 @@ impl DeploymentEngine {
                                                     port,
                                                 )
                                                 .with_healthcheck(app.healthcheck.clone())
+                                                .with_access_logging(app.access_logging != 0)
                                                 .with_strip_prefix(app.strip_prefix.clone());
 
                                                 backend.www_redirect_target =

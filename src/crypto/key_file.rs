@@ -12,10 +12,14 @@
 //! 4. Otherwise (existing install without a key) behaviour is NOT changed
 //!    silently: the server keeps running without encryption and logs a warning.
 //!
+//! A per-install random salt for the v2 ciphertext format lives next to it in
+//! `<data_dir>/.encryption_salt` (see [`resolve_install_salt`]).
+//!
 //! Decryption of legacy plaintext values stays tolerant (`decrypt_if_encrypted`
-//! passes through values without the `ENC:` prefix), so enabling a key later never
+//! passes through values without an `ENC:`/`ENC2:` prefix), so enabling a key later never
 //! breaks reads of old rows.
 
+use super::SALT_LENGTH;
 use anyhow::{Context, Result};
 use rand::RngCore;
 use sqlx::SqlitePool;
@@ -131,12 +135,138 @@ async fn is_fresh_install(db: &SqlitePool) -> bool {
     true
 }
 
+/// File name of the per-install KDF salt, stored next to the key file.
+pub const SALT_FILE_NAME: &str = ".encryption_salt";
+
+/// Path of the salt file for a given data directory.
+pub fn salt_file_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(SALT_FILE_NAME)
+}
+
+fn parse_salt(raw: &str, path: &Path) -> Result<[u8; SALT_LENGTH]> {
+    let bytes =
+        hex::decode(raw.trim()).with_context(|| format!("{} is not valid hex", path.display()))?;
+    bytes.try_into().map_err(|_| {
+        anyhow::anyhow!(
+            "{} must hold exactly {} bytes ({} hex chars)",
+            path.display(),
+            SALT_LENGTH,
+            SALT_LENGTH * 2
+        )
+    })
+}
+
+/// Read the salt file. `Ok(None)` if it does not exist; an invalid file is an error
+/// (never silently replaced, that would orphan every `ENC2:` value).
+pub fn load_salt_file(path: &Path) -> Result<Option<[u8; SALT_LENGTH]>> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => parse_salt(&s, path).map(Some),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).with_context(|| format!("Failed to read {}", path.display())),
+    }
+}
+
+/// Create the salt file with a random salt (`create_new`, mode 0600 on unix, never
+/// overwritten). If it already exists (including a concurrent creator winning the
+/// race) the existing salt is returned.
+pub fn create_salt_file(path: &Path) -> Result<[u8; SALT_LENGTH]> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+
+    let mut salt = [0u8; SALT_LENGTH];
+    rand::rng().fill_bytes(&mut salt);
+
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+
+    match opts.open(path) {
+        Ok(mut f) => {
+            f.write_all(hex::encode(salt).as_bytes())
+                .and_then(|_| f.write_all(b"\n"))
+                .and_then(|_| f.sync_all())
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+            Ok(salt)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            load_salt_file(path)?.with_context(|| format!("{} exists but is empty", path.display()))
+        }
+        Err(e) => Err(e).with_context(|| format!("Failed to create {}", path.display())),
+    }
+}
+
+/// Count rows already holding v2 ciphertext in the main secret columns.
+async fn count_v2_values(db: &SqlitePool) -> i64 {
+    let mut total = 0;
+    for (table, col) in [
+        ("env_vars", "value"),
+        ("servers", "ssh_private_key"),
+        ("build_servers", "ssh_private_key"),
+    ] {
+        let sql = format!("SELECT COUNT(*) FROM {table} WHERE {col} LIKE 'ENC2:%'");
+        total += sqlx::query_scalar::<_, i64>(&sql)
+            .fetch_one(db)
+            .await
+            .unwrap_or(0);
+    }
+    total
+}
+
+/// Resolve the per-install KDF salt for the v2 ciphertext format.
+///
+/// Call after [`resolve_encryption_key`] with whether a key is in use. Without a key
+/// nothing is encrypted, so no salt is needed (`Ok(None)`). Otherwise the salt file is
+/// loaded, or created on first use (also when the key came from config). If the file is
+/// missing but the database already holds `ENC2:` values, a new salt would make them
+/// unreadable, so none is created: an error is logged and `Ok(None)` keeps writing
+/// legacy `ENC:` until the original salt file is restored.
+pub async fn resolve_install_salt(
+    key_present: bool,
+    data_dir: &Path,
+    db: &SqlitePool,
+) -> Result<Option<[u8; SALT_LENGTH]>> {
+    if !key_present {
+        return Ok(None);
+    }
+    let path = salt_file_path(data_dir);
+    if let Some(salt) = load_salt_file(&path)? {
+        warn_if_loose_permissions(&path);
+        return Ok(Some(salt));
+    }
+    let v2 = count_v2_values(db).await;
+    if v2 > 0 {
+        tracing::error!(
+            v2_values = v2,
+            "{} is missing but the database holds ENC2 values. Restore the original salt file \
+             (it is backed up alongside the key); new values are written in the legacy format \
+             until then.",
+            path.display()
+        );
+        return Ok(None);
+    }
+    let salt = create_salt_file(&path)?;
+    tracing::info!(
+        path = %path.display(),
+        "Created encryption salt file; new secrets use the v2 format. Back it up with {} and the database.",
+        KEY_FILE_NAME
+    );
+    Ok(Some(salt))
+}
+
 /// Count env vars already stored encrypted (used to detect a lost key).
 async fn count_encrypted_env_vars(db: &SqlitePool) -> i64 {
-    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM env_vars WHERE value LIKE 'ENC:%'")
-        .fetch_one(db)
-        .await
-        .unwrap_or(0)
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM env_vars WHERE value LIKE 'ENC:%' OR value LIKE 'ENC2:%'",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap_or(0)
 }
 
 /// Resolve the encryption key and store it in `configured` when one is found or
@@ -331,5 +461,69 @@ mod tests {
             .unwrap();
         assert_eq!(r, KeyResolution::Configured);
         assert_eq!(key.as_deref(), Some("from-config"));
+    }
+
+    // ---- install salt ----
+
+    #[test]
+    fn salt_file_roundtrip_never_overwrites_and_is_0600() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = salt_file_path(dir.path());
+        assert_eq!(load_salt_file(&path).unwrap(), None);
+        let first = create_salt_file(&path).unwrap();
+        assert_eq!(create_salt_file(&path).unwrap(), first);
+        assert_eq!(load_salt_file(&path).unwrap(), Some(first));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
+
+    #[test]
+    fn invalid_salt_file_is_an_error_not_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = salt_file_path(dir.path());
+        std::fs::write(&path, "nothex").unwrap();
+        assert!(load_salt_file(&path).is_err());
+        std::fs::write(&path, "abcd").unwrap();
+        assert!(load_salt_file(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "abcd");
+    }
+
+    #[tokio::test]
+    async fn salt_created_on_first_use_then_stable() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = pool_with(&[]).await;
+        assert_eq!(
+            resolve_install_salt(false, dir.path(), &db).await.unwrap(),
+            None
+        );
+        assert!(!salt_file_path(dir.path()).exists());
+        let a = resolve_install_salt(true, dir.path(), &db)
+            .await
+            .unwrap()
+            .unwrap();
+        let b = resolve_install_salt(true, dir.path(), &db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[tokio::test]
+    async fn missing_salt_with_existing_v2_values_is_not_regenerated() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = pool_with(&[]).await;
+        sqlx::query("INSERT INTO env_vars (id, value) VALUES ('x', 'ENC2:abc')")
+            .execute(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            resolve_install_salt(true, dir.path(), &db).await.unwrap(),
+            None
+        );
+        assert!(!salt_file_path(dir.path()).exists());
     }
 }

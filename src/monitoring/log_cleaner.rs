@@ -165,6 +165,12 @@ pub async fn run_data_retention(db: &DbPool, cfg: &DataRetentionConfig) -> u64 {
         total += prune_scheduled_job_runs(db, cfg.scheduled_job_runs_keep).await;
     }
     total += prune_expired_sessions(db).await;
+    // Dump files are deleted along with their rows; 0 keeps everything.
+    total += crate::engine::deployment_snapshots::prune_deployment_snapshots(
+        db,
+        cfg.deployment_snapshots_keep,
+    )
+    .await;
 
     if total > 0 {
         tracing::info!(total_deleted = total, "Data retention cycle completed");

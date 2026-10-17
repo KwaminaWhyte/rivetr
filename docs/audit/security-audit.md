@@ -30,10 +30,10 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
   - **List endpoints scoped server-side** (privileged → unchanged; non-privileged → only own teams + legacy NULL + shared; a supplied `team_id` the user doesn't belong to → 403): `list_apps` (`apps/crud.rs`), `list_servers` (`servers.rs`), `list_databases` (`databases.rs`), `list_services` (`services/crud.rs`), `list_projects` (`projects.rs`).
   - **WebSocket / SSE (own auth, outside the middleware):** `terminal_ws`, `runtime_logs_ws`, `deployment_logs_ws` (`src/api/ws.rs`), `server_terminal_ws` (`servers.rs`), `service_start_stream_ws`, `database_start_stream_ws` (`start_logs.rs`) all now resolve the user and authorize the target resource.
   - **In-handler defense-in-depth** kept on the worst secret/RCE paths (env vars, db reveal, server creds, file browser, app get/update/delete).
-  - [ ] **REMAINING (tracked, lower impact):**
-    - [ ] Top-level team-scoped *config* resources NOT under the resource-prefix paths, so not covered by the middleware: `build-servers/:id`, `ssh-keys/:id`, `git-providers/:id` (can hold OAuth tokens), `log-drains`, `destinations`, `ca-certificates`, `notification-channels`, `s3` settings. Add `authz` calls or extend the middleware prefix list + add `authorize_*` for these tables.
-    - [ ] Reject a client-supplied `team_id` the user isn't a member of on **create/assign** (create_app/create_server/create_database/create_service/assign_app_project) — privilege-on-create, not read IDOR.
-    - [ ] `app_shares` permission level (`view` vs write) is not yet enforced — a view-shared app is currently reachable for mutations too.
+  - [x] **Config-resource tail FIXED (2026-10-17):** `resource_authz_middleware` now also covers `build-servers/:id`, `notification-channels/:id`, `notification-subscriptions/:id`, `destinations/:id`, `ca-certificates/:id`, `s3/configs/:id`, `s3/backups/:id` (team_id on the row or its config/channel), `volumes/:id` and `previews/:id` (via the owning app), `environments/:id` (via the project) and `ssh-keys/:id` (app-bound keys follow the app; global keys stay shared). Build servers additionally call `authz::authorize_build_server` in every handler (defense in depth), and their list is filtered to own teams plus legacy NULL-team rows. List endpoints for build servers, notification channels, destinations, CA certificates, S3 configs/backups and previews are scoped server-side (a supplied `team_id` the caller is not in gives 403). `git-providers/:id` (get, delete, list repos) is restricted to the connection's owner or an instance admin. Bulk start/stop/restart/deploy authorize each app id. Unit tests in `authz.rs` (path parsing, team access, list filtering).
+  - [x] **Create/assign FIXED:** a client-supplied `team_id` the caller does not belong to is rejected (403) on create_app, create_server, create_database, create_service, create_project, build servers, destinations, CA certificates and S3 configs; `assign_app_project` also authorizes the target project; S3 `trigger_backup` authorizes the storage config.
+  - [ ] **STILL OPEN (lower impact):** `log-drains` are only reachable under `/apps/:id` (covered); Cloudflare tunnels, GitHub Apps and swarm endpoints are instance-level with no team column and remain open to any authenticated user (consider privileged-only); SSH key and tunnel *lists* are not filtered per caller; notification-channel and subscription creation do not set a `team_id`.
+  - [ ] `app_shares` permission level (`view` vs write) is not yet enforced; a view-shared app is currently reachable for mutations too.
 
 ---
 
@@ -98,7 +98,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M3 — OAuth CSRF state not enforced + email-based account linking
 - **Where:** `src/api/oauth.rs:190-208` (state check best-effort, "Don't fail if state verification fails"), `:282-315` (link by email), `:336-341` (open self-registration)
 - **Problem:** Callback continues when state missing/invalid → login-CSRF/session fixation. New identities linked to existing local account by email match with no verified-email check. Open self-registration + SEC-C3 = any outsider gains full cross-tenant access.
-- [~] **PARTIAL:** state is enforced strictly (400 on missing/unknown/expired, consumed atomically, `oauth.rs`) and linking by email now requires a provider-verified email (GitHub `/user/emails`, Google `verified_email`, GitLab `confirmed_at`, Bitbucket `is_confirmed`, Azure single-tenant only). **Still TODO:** state is not bound to a browser cookie; gate self-registration behind admin allowlist/invitation.
+- [~] **PARTIAL:** state is enforced strictly (400 on missing/unknown/expired, consumed atomically, `oauth.rs`) and linking by email now requires a provider-verified email (GitHub `/user/emails`, Google `verified_email`, GitLab `confirmed_at`, Bitbucket `is_confirmed`, Azure single-tenant only). The state is now also bound to the browser (2026-10-17): `oauth_login_authorize` sets an `HttpOnly; SameSite=Lax; Max-Age=600` cookie `rivetr_oauth_state` scoped to `/api/auth/oauth-login` (plus `Secure` when `X-Forwarded-Proto` is https), and the callback requires the `state` to match it (constant time) in addition to the DB row, then clears it. **Still TODO:** gate self-registration behind admin allowlist/invitation; the OIDC/SSO flow (`sso.rs`, separate `sso_states` table, GET redirect) does not use the cookie yet.
 
 ### SEC-M4 — Non-constant-time secret comparisons
 - **Where:** `src/api/auth.rs:570` (`token == config.auth.admin_token`), `src/api/ws.rs:45`, `src/api/webhooks/gitlab.rs:122`
@@ -133,7 +133,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 ### SEC-M10 — Optional encryption-at-rest + fixed KDF salt
 - **Where:** `encryption_key: Option<String>` `src/config/mod.rs:101`; fixed salt + 100k PBKDF2 `src/crypto/mod.rs:25-28,44-54`
 - **Problem:** If `encryption_key` unset, env vars/SSH keys/OAuth secrets/TOTP secrets stored plaintext (silent passthrough). KEK uses hard-coded salt + 100k SHA-256 iterations (low).
-- [x] **Fix:** Require `encryption_key` at startup (refuse boot, or auto-generate+persist). Per-install random salt + memory-hard KDF (Argon2id) for KEK. **Done (partial):** key resolved at startup as config > `<data_dir>/.encryption_key` > auto-generated (mode 0600, create-new) on fresh installs; existing installs without a key get a prominent warning and unchanged behavior; legacy plaintext still decrypts. NOT done: per-install salt + Argon2id (needs a versioned ciphertext format; follow-up).
+- [x] **Fix:** Require `encryption_key` at startup (refuse boot, or auto-generate+persist). Per-install random salt + memory-hard KDF (Argon2id) for KEK. **Done (partial):** key resolved at startup as config > `<data_dir>/.encryption_key` > auto-generated (mode 0600, create-new) on fresh installs; existing installs without a key get a prominent warning and unchanged behavior; legacy plaintext still decrypts. **KDF upgrade done (2026-10-17):** new values are written as `ENC2:` (AES-256-GCM, subkey = HKDF-SHA256(master key, per-install salt from `<data_dir>/.encryption_salt`, mode 0600, create-new, created on first use also when the key comes from config; version tag bound as AAD). Legacy `ENC:` and plaintext still decrypt; v1 values are upgraded lazily on their next write (no bulk re-encrypt: secrets live in many tables/columns and a partial pass would add risk for little gain). Argon2id was not used: configured/generated keys are random 256-bit values, so memory-hard stretching adds nothing; the existing PBKDF2 step still stretches weak passphrases. If the salt file is lost while `ENC2:` rows exist, no new salt is generated (error logged, legacy format used) so values are never silently orphaned.
 
 ---
 
@@ -170,7 +170,7 @@ Backend (Rust/Axum), frontend (React Router v7), and API interaction. All findin
 - [ ] **Fix:** Distinguish network errors from authoritative negatives; surface retry state.
 
 ### SEC-L8 — KDF iterations/salt hardening (see SEC-M10)
-- [ ] **Fix:** Tracked under SEC-M10; logged separately for crypto-hardening backlog.
+- [x] **FIXED:** per-install salt and versioned `ENC2:` format (see SEC-M10). The legacy PBKDF2 master-key step is unchanged by design (needed to read `ENC:` values).
 
 ---
 

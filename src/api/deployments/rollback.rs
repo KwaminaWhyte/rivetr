@@ -10,11 +10,15 @@ use uuid::Uuid;
 use crate::db::{
     actions, resource_types, App, Deployment, TeamAuditAction, TeamAuditResourceType, User,
 };
+use crate::engine::deployment_snapshots::{
+    check_restore_preconditions, load_restorable_snapshots, restore_snapshots, SnapshotContext,
+};
 use crate::engine::run_rollback;
 use crate::proxy::Backend;
 use crate::AppState;
 
 use crate::api::audit::{audit_log, ClientIp};
+use crate::api::authz::authorize_database;
 use crate::api::error::ApiError;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
@@ -27,6 +31,13 @@ pub struct RollbackRequest {
     /// Optional: specify which deployment to roll back to.
     /// If not provided, rolls back to the previous successful deployment.
     pub target_deployment_id: Option<String>,
+    /// Also restore the database snapshots taken while the target deployment was running
+    /// (default: false). Overwrites the current data of the app's linked databases with
+    /// the snapshot: everything written after the snapshot is lost. A safety backup of
+    /// the current data is taken first. Fails before doing anything if the target has no
+    /// usable snapshot.
+    #[serde(default)]
+    pub restore_data: bool,
 }
 
 /// Rollback a deployment to a previous version
@@ -115,6 +126,21 @@ pub async fn rollback_deployment(
         ));
     }
 
+    // Rollback with data: validate everything before touching anything, so a missing
+    // snapshot is a clear error instead of a half-done rollback.
+    let restore_snapshots_list = if body.as_ref().is_some_and(|b| b.restore_data) {
+        let snapshots = load_restorable_snapshots(&state.db, &target_deployment.id).await?;
+        check_restore_preconditions(&snapshots, |p| std::path::Path::new(p).is_file())
+            .map_err(ApiError::bad_request)?;
+        // Overwriting a database requires access to that database, not just the app.
+        for s in &snapshots {
+            authorize_database(&state, &user, &s.database_id).await?;
+        }
+        snapshots
+    } else {
+        Vec::new()
+    };
+
     // Create a new deployment record for the rollback
     let rollback_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -147,6 +173,10 @@ pub async fn rollback_deployment(
     let encryption_key = get_encryption_key(&state);
 
     let app_id_clone = app.id.clone();
+    let snapshot_ctx = SnapshotContext {
+        data_dir: state.config.server.data_dir.clone(),
+        backup_config: state.config.database_backup.clone(),
+    };
     tokio::spawn(async move {
         match run_rollback(
             &db,
@@ -189,8 +219,25 @@ pub async fn rollback_deployment(
                                 "127.0.0.1".to_string(),
                                 port,
                             )
+                            .with_healthcheck(app_clone.healthcheck.clone())
+                            .with_access_logging(app_clone.access_logging != 0)
                             .with_strip_prefix(app_clone.strip_prefix.clone());
                             backend.www_redirect_target = www_redirect_target.clone();
+                            // Keep HTTP Basic Auth after a rollback (skip redirect backends),
+                            // matching the route built by a normal deploy in engine/mod.rs.
+                            if backend.www_redirect_target.is_none()
+                                && app_clone.basic_auth_enabled != 0
+                            {
+                                if let (Some(username), Some(password_hash)) = (
+                                    &app_clone.basic_auth_username,
+                                    &app_clone.basic_auth_password_hash,
+                                ) {
+                                    backend.set_basic_auth(crate::proxy::BasicAuthConfig::new(
+                                        username.clone(),
+                                        password_hash.clone(),
+                                    ));
+                                }
+                            }
                             route_table.add_route(domain.clone(), backend);
                         }
                         tracing::info!(
@@ -213,6 +260,19 @@ pub async fn rollback_deployment(
                         &*runtime,
                         &result.old_container_ids,
                         &result.container_id,
+                    )
+                    .await;
+                }
+
+                // Restore data last: the rollback container is healthy and the old
+                // containers are gone, so nothing is writing the newer schema.
+                if !restore_snapshots_list.is_empty() {
+                    restore_snapshots(
+                        &db,
+                        runtime.clone(),
+                        &snapshot_ctx,
+                        &rollback_id_clone,
+                        &restore_snapshots_list,
                     )
                     .await;
                 }
@@ -250,6 +310,7 @@ pub async fn rollback_deployment(
             "app_id": app.id,
             "from_deployment_id": deployment_id,
             "target_deployment_id": target_deployment.id,
+            "restore_data": body.as_ref().is_some_and(|b| b.restore_data),
         })),
     )
     .await;

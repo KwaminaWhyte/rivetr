@@ -11,8 +11,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::api::authz;
 use crate::crypto;
-use crate::db::{BuildServer, CreateBuildServerRequest, UpdateBuildServerRequest};
+use crate::db::{BuildServer, CreateBuildServerRequest, UpdateBuildServerRequest, User};
 use crate::AppState;
 
 /// Key length for AES-256 encryption
@@ -36,8 +37,14 @@ pub struct ListBuildServersQuery {
 /// List all build servers, optionally filtered by team_id
 pub async fn list_build_servers(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListBuildServersQuery>,
 ) -> Result<Json<Vec<BuildServer>>, StatusCode> {
+    // SEC-C3: a non-privileged user may only filter by a team they belong to.
+    authz::authorize_team_filter(&state, &user, query.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     let servers = if let Some(team_id) = &query.team_id {
         sqlx::query_as::<_, BuildServer>(
             "SELECT * FROM build_servers WHERE team_id = ? ORDER BY created_at DESC",
@@ -55,6 +62,11 @@ pub async fn list_build_servers(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Hide other teams' build servers (legacy NULL-team rows stay visible).
+    let servers = authz::retain_visible(&state, &user, servers, |s| s.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     // Mask secrets in responses (never return raw credentials)
     let masked: Vec<BuildServer> = servers
         .into_iter()
@@ -71,8 +83,14 @@ pub async fn list_build_servers(
 /// Create a new build server record
 pub async fn create_build_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateBuildServerRequest>,
 ) -> Result<(StatusCode, Json<BuildServer>), StatusCode> {
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let port = req.port.unwrap_or(22);
@@ -143,8 +161,12 @@ pub async fn create_build_server(
 /// Get a single build server by ID
 pub async fn get_build_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<Json<BuildServer>, StatusCode> {
+    authz::authorize_build_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
     let mut server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
@@ -165,9 +187,13 @@ pub async fn get_build_server(
 /// Update a build server record
 pub async fn update_build_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
     Json(req): Json<UpdateBuildServerRequest>,
 ) -> Result<Json<BuildServer>, StatusCode> {
+    authz::authorize_build_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
     // Verify server exists
     let _existing = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
         .bind(&id)
@@ -249,8 +275,12 @@ pub async fn update_build_server(
 /// DELETE /api/build-servers/:id/host-key
 pub async fn reset_build_server_host_key(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<axum::Json<serde_json::Value>, StatusCode> {
+    authz::authorize_build_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
     let server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
@@ -272,8 +302,12 @@ pub async fn reset_build_server_host_key(
 
 pub async fn delete_build_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    authz::authorize_build_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
     let result = sqlx::query("DELETE FROM build_servers WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -296,8 +330,12 @@ pub async fn delete_build_server(
 /// then updates the build server record in the database.
 pub async fn check_build_server_health(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(id): Path<String>,
 ) -> Result<Json<BuildServer>, StatusCode> {
+    authz::authorize_build_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
     // Fetch the build server record (with the encrypted key)
     let server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
         .bind(&id)

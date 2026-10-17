@@ -430,6 +430,7 @@ pub async fn run_deployment(
     app: &App,
     build_limits: &BuildLimits,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
+    snapshots: Option<&super::deployment_snapshots::SnapshotContext>,
 ) -> Result<DeploymentResult> {
     // Check if the deployment was cancelled while it was queued (before the pipeline picked it up)
     bail_if_cancelled(db, deployment_id).await?;
@@ -582,6 +583,21 @@ pub async fn run_deployment(
     // before we start a container or touch proxy routes — otherwise a stale
     // build could win the container/route swap over the newer one.
     bail_if_cancelled(db, deployment_id).await?;
+
+    // Rollback with data: dump linked managed databases just before the new container
+    // starts. Never blocks the deploy; problems land in the deployment log.
+    if app.snapshot_before_deploy != 0 {
+        if let Some(ctx) = snapshots {
+            super::deployment_snapshots::take_pre_deploy_snapshots(
+                db,
+                runtime.clone(),
+                ctx,
+                app,
+                deployment_id,
+            )
+            .await;
+        }
+    }
 
     // Start container, health check, and finalize
     let result =

@@ -13,9 +13,10 @@ use uuid::Uuid;
 
 use crate::backup::s3::S3Client;
 use crate::crypto;
+use crate::api::authz;
 use crate::db::{
     CreateS3StorageConfigRequest, S3Backup, S3BackupResponse, S3StorageConfig,
-    S3StorageConfigResponse, TriggerS3BackupRequest, UpdateS3StorageConfigRequest,
+    S3StorageConfigResponse, TriggerS3BackupRequest, UpdateS3StorageConfigRequest, User,
 };
 use crate::AppState;
 
@@ -76,8 +77,12 @@ pub struct ListQuery {
 /// Create a new S3 storage configuration
 pub async fn create_config(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateS3StorageConfigRequest>,
 ) -> Result<Json<S3StorageConfigResponse>, StatusCode> {
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
     let id = Uuid::new_v4().to_string();
     let encryption_key = get_encryption_key(&state);
 
@@ -160,8 +165,13 @@ pub async fn create_config(
 /// List S3 storage configurations
 pub async fn list_configs(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<S3StorageConfigResponse>>, StatusCode> {
+    authz::authorize_team_filter(&state, &user, query.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     let configs = if let Some(team_id) = &query.team_id {
         sqlx::query_as::<_, S3StorageConfig>(
             "SELECT * FROM s3_storage_configs WHERE team_id = ? ORDER BY created_at DESC",
@@ -180,6 +190,10 @@ pub async fn list_configs(
         tracing::error!("Failed to list S3 configs: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    let configs = authz::retain_visible(&state, &user, configs, |c| c.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
 
     let responses: Vec<S3StorageConfigResponse> = configs
         .iter()
@@ -373,6 +387,7 @@ pub async fn test_config(
 /// Trigger a backup to S3
 pub async fn trigger_backup(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<TriggerS3BackupRequest>,
 ) -> Result<Json<S3BackupResponse>, StatusCode> {
     // Validate backup type
@@ -391,6 +406,11 @@ pub async fn trigger_backup(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?
             .ok_or(StatusCode::NOT_FOUND)?;
+
+    // SEC-C3: the caller must have access to the storage config they target.
+    authz::authorize_team_assignment(&state, &user, config.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
 
     let backup_id = Uuid::new_v4().to_string();
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
@@ -521,8 +541,13 @@ pub async fn trigger_backup(
 /// List S3 backups
 pub async fn list_backups(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<S3BackupResponse>>, StatusCode> {
+    authz::authorize_team_filter(&state, &user, query.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
+
     let backups = if let Some(team_id) = &query.team_id {
         sqlx::query_as::<_, S3Backup>(
             "SELECT * FROM s3_backups WHERE team_id = ? ORDER BY created_at DESC",
@@ -539,6 +564,10 @@ pub async fn list_backups(
         tracing::error!("Failed to list S3 backups: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    let backups = authz::retain_visible(&state, &user, backups, |b| b.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
 
     // Fetch config names for the response
     let mut responses = Vec::with_capacity(backups.len());

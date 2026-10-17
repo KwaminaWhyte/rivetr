@@ -207,6 +207,7 @@ Daily pruning of high-volume operational tables. Rows are deleted in bounded bat
 | `webhook_events_days` | i64 | `30` | Days to keep webhook delivery events (`webhook_events`). |
 | `audit_logs_days` | i64 | `90` | Days to keep `audit_logs` and `team_audit_logs`. |
 | `scheduled_job_runs_keep` | i64 | `100` | Most recent runs kept per scheduled job (`scheduled_job_runs`). |
+| `deployment_snapshots_keep` | i64 | `3` | Most recent deployments per app whose pre-deploy database snapshots (`deployment_db_snapshots` and their dump files) are kept. Only used by apps with `snapshot_before_deploy` enabled. |
 
 ## `[email]`
 

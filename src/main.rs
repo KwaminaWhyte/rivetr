@@ -82,6 +82,17 @@ async fn main() -> Result<()> {
     )
     .await?;
 
+    // Per-install KDF salt for the v2 ciphertext format (created on first use).
+    if let Some(salt) = rivetr::crypto::key_file::resolve_install_salt(
+        config.auth.encryption_key.is_some(),
+        &config.server.data_dir,
+        &db,
+    )
+    .await?
+    {
+        rivetr::crypto::set_install_salt(salt);
+    }
+
     // DB takes priority over toml for instance_domain: load from instance_settings table
     // and override the config value so the rest of startup uses the correct domain.
     if let Ok(db_settings) = InstanceSettings::load(&db).await {
@@ -301,7 +312,11 @@ async fn main() -> Result<()> {
         build_limits,
         &config.auth,
         deploy_semaphore.clone(),
-    );
+    )
+    .with_snapshots(rivetr::engine::deployment_snapshots::SnapshotContext {
+        data_dir: config.server.data_dir.clone(),
+        backup_config: config.database_backup.clone(),
+    });
     tokio::spawn(async move {
         // Each deployment already runs in its own isolated child task inside
         // run(); guard the consumer loop itself so a panic in dispatch logs
@@ -680,10 +695,11 @@ async fn restore_routes(
         Option<String>,
         Option<String>,
         Option<String>, // strip_prefix
+        i64,            // access_logging
     )> = sqlx::query_as(
         "SELECT id, name, domain, domains, healthcheck, auto_subdomain, \
                 basic_auth_enabled, basic_auth_username, basic_auth_password_hash, \
-                strip_prefix \
+                strip_prefix, access_logging \
          FROM apps \
          WHERE (domain IS NOT NULL AND domain != '') \
             OR (domains IS NOT NULL AND domains != '' AND domains != '[]') \
@@ -713,6 +729,7 @@ async fn restore_routes(
         basic_auth_username,
         basic_auth_password_hash,
         strip_prefix,
+        access_logging,
     ) in apps
     {
         let container_name = format!("rivetr-{}", app_name);
@@ -814,7 +831,8 @@ async fn restore_routes(
                     let mut backend =
                         Backend::new(container.id.clone(), "127.0.0.1".to_string(), port)
                             .with_healthcheck(healthcheck.clone())
-                            .with_strip_prefix(strip_prefix.clone());
+                            .with_strip_prefix(strip_prefix.clone())
+                            .with_access_logging(access_logging != 0);
 
                     // Restore HTTP Basic Auth configuration if it was enabled
                     if basic_auth_enabled != 0 {

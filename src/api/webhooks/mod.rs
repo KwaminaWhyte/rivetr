@@ -164,34 +164,6 @@ pub(super) trait ChangedFiles {
     fn removed_files(&self) -> &[String];
 }
 
-#[cfg(test)]
-mod tests {
-    use super::commit_skips_deploy;
-
-    #[test]
-    fn skip_markers_are_detected_case_insensitively() {
-        for msg in [
-            "fix typo [skip ci]",
-            "WIP [CI SKIP]",
-            "docs only [skip cd]",
-            "release [CD Skip]",
-            "chore [skip deploy]",
-            "wip [no deploy] more text",
-        ] {
-            assert!(commit_skips_deploy(Some(msg)), "should skip: {msg}");
-        }
-    }
-
-    #[test]
-    fn normal_messages_do_not_skip() {
-        assert!(!commit_skips_deploy(Some("add feature")));
-        assert!(!commit_skips_deploy(Some(
-            "mention skip ci without brackets"
-        )));
-        assert!(!commit_skips_deploy(None));
-    }
-}
-
 /// Generic preview cleanup shared between GitLab and Gitea handlers
 pub(super) async fn handle_generic_preview_cleanup(
     state: &Arc<AppState>,
@@ -236,4 +208,32 @@ pub(super) async fn handle_generic_preview_cleanup(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commit_skips_deploy;
+
+    #[test]
+    fn skip_markers_are_detected_case_insensitively() {
+        for msg in [
+            "fix typo [skip ci]",
+            "WIP [CI SKIP]",
+            "docs only [skip cd]",
+            "release [CD Skip]",
+            "chore [skip deploy]",
+            "wip [no deploy] more text",
+        ] {
+            assert!(commit_skips_deploy(Some(msg)), "should skip: {msg}");
+        }
+    }
+
+    #[test]
+    fn normal_messages_do_not_skip() {
+        assert!(!commit_skips_deploy(Some("add feature")));
+        assert!(!commit_skips_deploy(Some(
+            "mention skip ci without brackets"
+        )));
+        assert!(!commit_skips_deploy(None));
+    }
 }

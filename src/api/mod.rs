@@ -216,6 +216,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/deployments/:id/rollback",
             post(deployments::rollback_deployment),
         )
+        .route(
+            "/deployments/:id/snapshots",
+            get(deployments::list_deployment_snapshots),
+        )
         // Deployment approval workflow
         .route(
             "/deployments/:id/approve",

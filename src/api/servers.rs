@@ -112,8 +112,13 @@ pub async fn list_servers(
 /// Create a new server record
 pub async fn create_server(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateServerRequest>,
 ) -> Result<(StatusCode, Json<Server>), StatusCode> {
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let port = req.port.unwrap_or(22);

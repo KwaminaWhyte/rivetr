@@ -3,12 +3,25 @@
 //! This module provides AES-256-GCM encryption for environment variables
 //! and other sensitive data stored in the database.
 //!
-//! The encryption format is: base64(nonce || ciphertext || tag)
-//! where nonce is 12 bytes, and tag is 16 bytes (AES-GCM authentication tag).
+//! Two ciphertext formats are understood:
+//! - `ENC:` (legacy v1): base64(nonce || ciphertext || tag), AES-256-GCM keyed directly
+//!   with the output of [`derive_key`].
+//! - `ENC2:` (v2): base64(nonce || ciphertext || tag), AES-256-GCM keyed with a subkey
+//!   derived by HKDF-SHA256 from the master key and a per-install random salt
+//!   (`<data_dir>/.encryption_salt`, see [`key_file::resolve_install_salt`]).
 //!
-//! Follow-up (SEC-M10): the KDF uses a fixed salt and 100k PBKDF2 iterations. Changing
-//! either would break existing ciphertext, so a KDF upgrade (per-install salt, Argon2id)
-//! needs a versioned ciphertext format (e.g. `ENC2:`) with `ENC:` kept readable.
+//! New values are written as v2 once the install salt is set ([`set_install_salt`]); until
+//! then (and in unit tests) `encrypt` still writes v1. Decryption dispatches on the prefix,
+//! and values without a prefix are legacy plaintext and pass through. v1 values are
+//! re-encrypted as v2 lazily, the next time the owning row is written.
+//!
+//! KDF choice (SEC-M10): the master key is `PBKDF2-HMAC-SHA256(secret, 100k)` (unchanged,
+//! it must stay for v1) and the v2 subkey is `HKDF-SHA256(master, install_salt, info)`.
+//! Generated and documented keys are random 256-bit values (`openssl rand -hex 32`), so a
+//! memory-hard KDF such as Argon2id adds nothing against them; what v2 adds is a per-install
+//! salt (no cross-install key reuse for identical secrets), domain separation from any other
+//! use of the master key, and an AAD-bound version tag. A weak passphrase is still
+//! stretched by the PBKDF2 step, but operators should use a random key.
 
 pub mod key_file;
 
@@ -18,8 +31,9 @@ use aes_gcm::{
 };
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use ring::pbkdf2;
+use ring::{hkdf, pbkdf2};
 use std::num::NonZeroU32;
+use std::sync::OnceLock;
 
 /// The length of the AES-256 key in bytes
 const KEY_LENGTH: usize = 32;
@@ -36,6 +50,44 @@ const PBKDF2_SALT: &[u8] = b"rivetr-env-var-encryption-v1";
 /// Prefix added to encrypted values to identify them as encrypted
 /// This allows backwards compatibility with unencrypted values
 pub const ENCRYPTED_PREFIX: &str = "ENC:";
+
+/// Prefix of the versioned (v2) format: HKDF subkey with a per-install salt.
+pub const ENCRYPTED_PREFIX_V2: &str = "ENC2:";
+
+/// Length of the per-install salt in bytes.
+pub const SALT_LENGTH: usize = 32;
+
+/// HKDF `info` for the v2 AES-256-GCM subkey (domain separation).
+const HKDF_INFO_V2: &[u8] = b"rivetr/aes-256-gcm/v2";
+
+/// AEAD associated data binding v2 ciphertexts to their format version.
+const AAD_V2: &[u8] = b"rivetr-enc-v2";
+
+static INSTALL_SALT: OnceLock<[u8; SALT_LENGTH]> = OnceLock::new();
+
+/// Install the per-install salt for this process. After this, [`encrypt`] writes v2.
+/// Returns false if a salt was already set (the first one wins).
+pub fn set_install_salt(salt: [u8; SALT_LENGTH]) -> bool {
+    INSTALL_SALT.set(salt).is_ok()
+}
+
+struct Len32;
+
+impl hkdf::KeyType for Len32 {
+    fn len(&self) -> usize {
+        KEY_LENGTH
+    }
+}
+
+/// HKDF-SHA256 subkey for v2 from the master key and install salt.
+fn derive_subkey_v2(master: &[u8; KEY_LENGTH], salt: &[u8; SALT_LENGTH]) -> [u8; KEY_LENGTH] {
+    let prk = hkdf::Salt::new(hkdf::HKDF_SHA256, salt).extract(master);
+    let mut out = [0u8; KEY_LENGTH];
+    prk.expand(&[HKDF_INFO_V2], Len32)
+        .and_then(|okm| okm.fill(&mut out))
+        .expect("HKDF-SHA256 expand of 32 bytes cannot fail");
+    out
+}
 
 /// Derive a 256-bit encryption key from a secret string using PBKDF2.
 ///
@@ -61,18 +113,26 @@ pub fn derive_key(secret: &str) -> [u8; KEY_LENGTH] {
 
 /// Encrypt a plaintext string using AES-256-GCM.
 ///
-/// The output format is: `ENC:` prefix + base64(nonce || ciphertext || tag)
+/// Writes the v2 format (`ENC2:` + base64(nonce || ciphertext || tag)) when the install
+/// salt has been set, otherwise the legacy `ENC:` format.
 ///
 /// # Arguments
 /// * `plaintext` - The string to encrypt
-/// * `key` - The 32-byte AES-256 key (use `derive_key` to generate from a secret)
-///
-/// # Returns
-/// A base64-encoded string containing the nonce and ciphertext, prefixed with "ENC:"
+/// * `key` - The 32-byte master key (use `derive_key` to generate from a secret)
 ///
 /// # Errors
 /// Returns an error if encryption fails
 pub fn encrypt(plaintext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
+    encrypt_with_salt(plaintext, key, INSTALL_SALT.get())
+}
+
+/// Encrypt with an explicit salt: `Some` writes v2, `None` writes legacy v1.
+fn encrypt_with_salt(
+    plaintext: &str,
+    key: &[u8; KEY_LENGTH],
+    salt: Option<&[u8; SALT_LENGTH]>,
+) -> Result<String> {
+    use aes_gcm::aead::Payload;
     use rand::RngCore;
 
     // Generate a random 12-byte nonce
@@ -80,12 +140,20 @@ pub fn encrypt(plaintext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
     rand::rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    // Create the cipher
-    let cipher = Aes256Gcm::new_from_slice(key).context("Failed to create cipher")?;
+    let (prefix, aes_key, aad) = match salt {
+        Some(s) => (ENCRYPTED_PREFIX_V2, derive_subkey_v2(key, s), AAD_V2),
+        None => (ENCRYPTED_PREFIX, *key, &b""[..]),
+    };
 
-    // Encrypt the plaintext
+    let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create cipher")?;
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
+        .encrypt(
+            nonce,
+            Payload {
+                msg: plaintext.as_bytes(),
+                aad,
+            },
+        )
         .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
 
     // Combine nonce and ciphertext: nonce || ciphertext
@@ -93,33 +161,40 @@ pub fn encrypt(plaintext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
     combined.extend_from_slice(&nonce_bytes);
     combined.extend_from_slice(&ciphertext);
 
-    // Base64 encode and add prefix
-    let encoded = BASE64.encode(&combined);
-    Ok(format!("{}{}", ENCRYPTED_PREFIX, encoded))
+    Ok(format!("{}{}", prefix, BASE64.encode(&combined)))
 }
 
-/// Decrypt a ciphertext string using AES-256-GCM.
+/// Decrypt a ciphertext string (v2 `ENC2:` or legacy `ENC:`) using AES-256-GCM.
 ///
 /// # Arguments
-/// * `ciphertext` - The encrypted string (with "ENC:" prefix and base64-encoded)
-/// * `key` - The 32-byte AES-256 key (must be the same key used for encryption)
-///
-/// # Returns
-/// The decrypted plaintext string
+/// * `ciphertext` - The encrypted string (with prefix and base64-encoded)
+/// * `key` - The 32-byte master key (must be the one used for encryption)
 ///
 /// # Errors
-/// Returns an error if:
-/// - The ciphertext doesn't have the expected "ENC:" prefix
-/// - The base64 decoding fails
-/// - The ciphertext is too short
-/// - The decryption or authentication fails
+/// Returns an error if the prefix is unknown, a v2 value is read before the install
+/// salt is set, the base64 or length is invalid, or authentication fails (wrong key,
+/// wrong salt or tampered data).
 pub fn decrypt(ciphertext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
-    // Remove the prefix
-    let encoded = ciphertext
-        .strip_prefix(ENCRYPTED_PREFIX)
-        .context("Ciphertext doesn't have expected prefix")?;
+    decrypt_with_salt(ciphertext, key, INSTALL_SALT.get())
+}
 
-    // Base64 decode
+fn decrypt_with_salt(
+    ciphertext: &str,
+    key: &[u8; KEY_LENGTH],
+    salt: Option<&[u8; SALT_LENGTH]>,
+) -> Result<String> {
+    use aes_gcm::aead::Payload;
+
+    // Version prefix first (ENC2: does not start with ENC:), then legacy.
+    let (encoded, aes_key, aad) = if let Some(rest) = ciphertext.strip_prefix(ENCRYPTED_PREFIX_V2) {
+        let salt = salt.context("ENC2 value but the install salt is not initialised")?;
+        (rest, derive_subkey_v2(key, salt), AAD_V2)
+    } else if let Some(rest) = ciphertext.strip_prefix(ENCRYPTED_PREFIX) {
+        (rest, *key, &b""[..])
+    } else {
+        anyhow::bail!("Ciphertext doesn't have expected prefix");
+    };
+
     let combined = BASE64.decode(encoded).context("Failed to decode base64")?;
 
     // Extract nonce and ciphertext
@@ -130,20 +205,30 @@ pub fn decrypt(ciphertext: &str, key: &[u8; KEY_LENGTH]) -> Result<String> {
     let (nonce_bytes, ciphertext_bytes) = combined.split_at(NONCE_LENGTH);
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    // Create the cipher and decrypt
-    let cipher = Aes256Gcm::new_from_slice(key).context("Failed to create cipher")?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create cipher")?;
     let plaintext = cipher
-        .decrypt(nonce, ciphertext_bytes)
+        .decrypt(
+            nonce,
+            Payload {
+                msg: ciphertext_bytes,
+                aad,
+            },
+        )
         .map_err(|e| anyhow::anyhow!("Decryption failed (wrong key or corrupted data): {}", e))?;
 
     String::from_utf8(plaintext).context("Decrypted data is not valid UTF-8")
 }
 
-/// Check if a value is encrypted (has the ENC: prefix).
+/// Check if a value is encrypted (has the `ENC:` or `ENC2:` prefix).
 ///
 /// This is used for backwards compatibility - existing unencrypted values
 /// will not have this prefix and can be used as-is.
 pub fn is_encrypted(value: &str) -> bool {
+    value.starts_with(ENCRYPTED_PREFIX) || value.starts_with(ENCRYPTED_PREFIX_V2)
+}
+
+/// True for values still in the legacy `ENC:` format (candidates for lazy upgrade).
+pub fn is_legacy_format(value: &str) -> bool {
     value.starts_with(ENCRYPTED_PREFIX)
 }
 
@@ -340,5 +425,155 @@ mod tests {
         let encrypted = encrypt(&plaintext, &key).unwrap();
         let decrypted = decrypt(&encrypted, &key).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    // ---- v2 / versioned format ----
+
+    fn salt(b: u8) -> [u8; SALT_LENGTH] {
+        [b; SALT_LENGTH]
+    }
+
+    #[test]
+    fn v2_roundtrip() {
+        let key = derive_key("k");
+        let s = salt(7);
+        let ct = encrypt_with_salt("hunter2", &key, Some(&s)).unwrap();
+        assert!(ct.starts_with(ENCRYPTED_PREFIX_V2));
+        assert!(!ct.starts_with(ENCRYPTED_PREFIX));
+        assert!(is_encrypted(&ct));
+        assert!(!is_legacy_format(&ct));
+        assert_eq!(decrypt_with_salt(&ct, &key, Some(&s)).unwrap(), "hunter2");
+        // fresh nonce each time
+        assert_ne!(ct, encrypt_with_salt("hunter2", &key, Some(&s)).unwrap());
+    }
+
+    #[test]
+    fn v2_roundtrip_empty_unicode_large() {
+        let key = derive_key("k");
+        let s = salt(1);
+        for p in ["", "Привет 你好 🚀", &"x".repeat(10_000)] {
+            let ct = encrypt_with_salt(p, &key, Some(&s)).unwrap();
+            assert_eq!(decrypt_with_salt(&ct, &key, Some(&s)).unwrap(), p);
+        }
+    }
+
+    #[test]
+    fn legacy_v1_still_decrypts_with_and_without_salt() {
+        let key = derive_key("k");
+        let legacy = encrypt_with_salt("old-secret", &key, None).unwrap();
+        assert!(legacy.starts_with(ENCRYPTED_PREFIX));
+        assert!(is_legacy_format(&legacy));
+        // Salt presence must not affect reading v1 values.
+        assert_eq!(
+            decrypt_with_salt(&legacy, &key, None).unwrap(),
+            "old-secret"
+        );
+        let s = salt(9);
+        assert_eq!(
+            decrypt_with_salt(&legacy, &key, Some(&s)).unwrap(),
+            "old-secret"
+        );
+    }
+
+    #[test]
+    fn legacy_v1_known_vector_format_is_unchanged() {
+        // Build a v1 value by hand exactly as the pre-v2 code did (no AAD, key used directly).
+        use aes_gcm::aead::Aead;
+        let key = derive_key("k");
+        let nonce = [3u8; NONCE_LENGTH];
+        let ct = Aes256Gcm::new_from_slice(&key)
+            .unwrap()
+            .encrypt(Nonce::from_slice(&nonce), "legacy".as_bytes())
+            .unwrap();
+        let mut raw = nonce.to_vec();
+        raw.extend_from_slice(&ct);
+        let stored = format!("ENC:{}", BASE64.encode(raw));
+        assert_eq!(decrypt_with_salt(&stored, &key, None).unwrap(), "legacy");
+    }
+
+    #[test]
+    fn plaintext_passes_through_even_when_it_looks_versioned() {
+        let key = derive_key("k");
+        for p in ["hunter2", "", "v2:abc", "enc2:abc", "ENC", "ENC2"] {
+            assert_eq!(decrypt_if_encrypted(p, Some(&key)).unwrap(), p);
+            assert_eq!(decrypt_if_encrypted(p, None).unwrap(), p);
+            assert!(!is_encrypted(p));
+        }
+    }
+
+    #[test]
+    fn v2_wrong_key_fails() {
+        let s = salt(7);
+        let ct = encrypt_with_salt("x", &derive_key("right"), Some(&s)).unwrap();
+        assert!(decrypt_with_salt(&ct, &derive_key("wrong"), Some(&s)).is_err());
+    }
+
+    #[test]
+    fn v2_wrong_salt_fails() {
+        let key = derive_key("k");
+        let ct = encrypt_with_salt("x", &key, Some(&salt(1))).unwrap();
+        assert!(decrypt_with_salt(&ct, &key, Some(&salt(2))).is_err());
+    }
+
+    #[test]
+    fn v2_without_salt_fails_cleanly() {
+        let key = derive_key("k");
+        let ct = encrypt_with_salt("x", &key, Some(&salt(1))).unwrap();
+        let err = decrypt_with_salt(&ct, &key, None).unwrap_err().to_string();
+        assert!(err.contains("salt"), "{err}");
+    }
+
+    #[test]
+    fn v2_tamper_fails() {
+        let key = derive_key("k");
+        let s = salt(5);
+        let ct = encrypt_with_salt("sensitive", &key, Some(&s)).unwrap();
+        let raw = BASE64
+            .decode(ct.strip_prefix(ENCRYPTED_PREFIX_V2).unwrap())
+            .unwrap();
+        // Flip one bit in every region: nonce, ciphertext body, tag.
+        for idx in [0, NONCE_LENGTH, raw.len() - 1] {
+            let mut t = raw.clone();
+            t[idx] ^= 1;
+            let tampered = format!("{}{}", ENCRYPTED_PREFIX_V2, BASE64.encode(&t));
+            assert!(
+                decrypt_with_salt(&tampered, &key, Some(&s)).is_err(),
+                "idx {idx}"
+            );
+        }
+        // Truncated and garbage payloads.
+        assert!(decrypt_with_salt("ENC2:", &key, Some(&s)).is_err());
+        assert!(decrypt_with_salt("ENC2:!!!notbase64", &key, Some(&s)).is_err());
+    }
+
+    #[test]
+    fn v2_is_bound_to_version_prefix() {
+        // A v1 ciphertext relabelled as v2 (or the reverse) must not decrypt.
+        let key = derive_key("k");
+        let s = salt(5);
+        let v1 = encrypt_with_salt("x", &key, None).unwrap();
+        let relabelled = v1.replacen("ENC:", "ENC2:", 1);
+        assert!(decrypt_with_salt(&relabelled, &key, Some(&s)).is_err());
+        let v2 = encrypt_with_salt("x", &key, Some(&s)).unwrap();
+        let relabelled = v2.replacen("ENC2:", "ENC:", 1);
+        assert!(decrypt_with_salt(&relabelled, &key, Some(&s)).is_err());
+    }
+
+    #[test]
+    fn subkey_is_salt_and_key_dependent() {
+        let k = derive_key("k");
+        assert_ne!(
+            derive_subkey_v2(&k, &salt(1)),
+            derive_subkey_v2(&k, &salt(2))
+        );
+        assert_ne!(derive_subkey_v2(&k, &salt(1)), k);
+        assert_ne!(
+            derive_subkey_v2(&k, &salt(1)),
+            derive_subkey_v2(&derive_key("other"), &salt(1))
+        );
+        assert_eq!(
+            derive_subkey_v2(&k, &salt(1)),
+            derive_subkey_v2(&k, &salt(1))
+        );
     }
 }

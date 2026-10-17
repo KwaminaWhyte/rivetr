@@ -173,6 +173,8 @@ webhook_events_days = 30
 audit_logs_days = 90
 # Most recent runs kept per scheduled job
 scheduled_job_runs_keep = 100
+# Recent deployments per app whose pre-deploy database snapshots are kept (see apps.snapshot_before_deploy)
+deployment_snapshots_keep = 3
 
 [email]
 # Enable email sending for team invitations and notifications (default: false)

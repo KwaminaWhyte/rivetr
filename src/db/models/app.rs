@@ -108,6 +108,9 @@ pub struct App {
     /// Number of previous successful deployments to keep for rollback (default: 10)
     #[serde(default = "default_rollback_retention_count")]
     pub rollback_retention_count: i64,
+    /// Snapshot linked managed databases before each deployment (rollback with data)
+    #[serde(default)]
+    pub snapshot_before_deploy: i32,
     /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
     #[serde(default = "default_restart_policy")]
     pub restart_policy: String,
@@ -168,6 +171,9 @@ pub struct App {
     pub is_static_site: i64,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Write this app's proxied requests to the proxy access log (0/1)
+    #[serde(default = "default_access_logging")]
+    pub access_logging: i64,
     /// Inline Dockerfile content — if set, skip git clone and build from this content directly
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) for this app (nullable)
@@ -176,6 +182,10 @@ pub struct App {
     pub custom_labels: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_access_logging() -> i64 {
+    1
 }
 
 /// Response DTO for App that excludes sensitive fields (password hash)
@@ -254,6 +264,8 @@ pub struct AppResponse {
     pub build_server_id: Option<String>,
     /// Number of previous successful deployments to keep for rollback (default: 10)
     pub rollback_retention_count: i64,
+    /// Snapshot linked managed databases before each deployment (rollback with data)
+    pub snapshot_before_deploy: bool,
     /// Container restart policy: "always", "unless-stopped", "on-failure", or "never"
     pub restart_policy: String,
     // Custom Docker run options
@@ -300,6 +312,8 @@ pub struct AppResponse {
     pub is_static_site: bool,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Write this app's proxied requests to the proxy access log
+    pub access_logging: bool,
     /// Inline Dockerfile content (alternative to git-based build)
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) for this app (nullable)
@@ -371,6 +385,7 @@ impl From<App> for AppResponse {
             server_id: app.server_id,
             build_server_id: app.build_server_id,
             rollback_retention_count: app.rollback_retention_count,
+            snapshot_before_deploy: app.snapshot_before_deploy != 0,
             restart_policy: app.restart_policy,
             privileged: app.privileged != 0,
             cap_add: app.cap_add,
@@ -392,6 +407,7 @@ impl From<App> for AppResponse {
             custom_container_name: app.custom_container_name,
             is_static_site: app.is_static_site != 0,
             strip_prefix: app.strip_prefix,
+            access_logging: app.access_logging != 0,
             inline_dockerfile: app.inline_dockerfile,
             destination_id: app.destination_id,
             custom_labels: app.custom_labels,
@@ -795,6 +811,8 @@ pub struct CreateAppRequest {
     /// Enable PR preview deployments
     #[serde(default)]
     pub preview_enabled: bool,
+    /// Write proxied requests to the access log (default: config `[proxy] access_log_default`)
+    pub access_logging: Option<bool>,
     /// GitHub App installation ID for GitHub-based deployments
     pub github_app_installation_id: Option<String>,
     /// Git provider ID (OAuth) for authenticated HTTPS cloning
@@ -921,6 +939,8 @@ pub struct UpdateAppRequest {
     pub max_rollback_versions: Option<i32>,
     /// Number of previous successful deployments to retain for rollback (1-50)
     pub rollback_retention_count: Option<i64>,
+    /// Snapshot linked managed databases before each deployment (rollback with data)
+    pub snapshot_before_deploy: Option<bool>,
     // Approval and maintenance
     /// Require approval before deployments are executed
     pub require_approval: Option<bool>,
@@ -979,6 +999,8 @@ pub struct UpdateAppRequest {
     pub is_static_site: Option<bool>,
     /// URL prefix to strip from incoming requests before forwarding to the container
     pub strip_prefix: Option<String>,
+    /// Write this app's proxied requests to the proxy access log
+    pub access_logging: Option<bool>,
     /// Inline Dockerfile content — set to empty string to clear
     pub inline_dockerfile: Option<String>,
     /// Docker destination (named network) — set to empty string to clear

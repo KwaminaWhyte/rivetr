@@ -1555,11 +1555,10 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
     // Migration 112: Add built_at to deployments (go-live timestamp, distinct
     // from finished_at which is reused as the replaced/stopped time).
-    let has_built_at: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('deployments') WHERE name = 'built_at'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let has_built_at: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('deployments') WHERE name = 'built_at'")
+            .fetch_optional(pool)
+            .await?;
     if has_built_at.is_none() {
         execute_sql(
             pool,
@@ -1578,6 +1577,33 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(
             pool,
             include_str!("../../migrations/113_password_reset_tokens.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 114: Add access_logging column to apps
+    let has_access_logging: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('apps') WHERE name = 'access_logging'")
+            .fetch_optional(pool)
+            .await?;
+    if has_access_logging.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/114_app_access_logging.sql"),
+        )
+        .await?;
+    }
+
+    // Migration 115: apps.snapshot_before_deploy + deployment_db_snapshots (rollback with data)
+    let has_snapshot_before_deploy: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'snapshot_before_deploy'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_snapshot_before_deploy.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/115_deployment_db_snapshots.sql"),
         )
         .await?;
     }

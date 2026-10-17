@@ -128,6 +128,10 @@ pub async fn create_service(
     client_ip: ClientIp,
     Json(req): Json<CreateServiceRequest>,
 ) -> Result<(StatusCode, Json<ServiceResponse>), StatusCode> {
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
     // Validate name
     if req.name.is_empty() {
         tracing::warn!("Service name is empty");

@@ -315,6 +315,7 @@ fn extract_client_ip(limiter: &RateLimiter, request: &Request<Body>) -> IpAddr {
 }
 
 /// Rate limiting middleware for general API endpoints
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
 pub async fn rate_limit_api(
     State(state): State<Arc<AppState>>,
     request: Request<Body>,
@@ -324,6 +325,7 @@ pub async fn rate_limit_api(
 }
 
 /// Rate limiting middleware for webhook endpoints
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
 pub async fn rate_limit_webhook(
     State(state): State<Arc<AppState>>,
     request: Request<Body>,
@@ -333,6 +335,7 @@ pub async fn rate_limit_webhook(
 }
 
 /// Rate limiting middleware for auth endpoints
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
 pub async fn rate_limit_auth(
     State(state): State<Arc<AppState>>,
     request: Request<Body>,
@@ -342,6 +345,7 @@ pub async fn rate_limit_auth(
 }
 
 /// Core rate limiting logic
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
 async fn rate_limit_with_tier(
     state: Arc<AppState>,
     request: Request<Body>,

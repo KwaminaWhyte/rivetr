@@ -188,7 +188,8 @@ pub async fn set_replica_count(
                                         "127.0.0.1".to_string(),
                                         port,
                                     )
-                                    .with_healthcheck(app.healthcheck.clone());
+                                    .with_healthcheck(app.healthcheck.clone())
+                                    .with_access_logging(app.access_logging != 0);
                                     backend.www_redirect_target = www_redirect_target.clone();
                                     route_table.add_route(domain.clone(), backend);
                                 }

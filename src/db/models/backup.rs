@@ -29,6 +29,8 @@ impl std::fmt::Display for BackupStatus {
 pub enum BackupType {
     Manual,
     Scheduled,
+    /// Taken by the deploy pipeline (rollback with data); exempt from schedule retention
+    PreDeploy,
 }
 
 impl std::fmt::Display for BackupType {
@@ -36,6 +38,7 @@ impl std::fmt::Display for BackupType {
         match self {
             BackupType::Manual => write!(f, "manual"),
             BackupType::Scheduled => write!(f, "scheduled"),
+            BackupType::PreDeploy => write!(f, "pre_deploy"),
         }
     }
 }

@@ -345,7 +345,8 @@ pub async fn run_preview_deployment(
     if let Some(p) = port {
         let route_table = routes.load();
         let backend = Backend::new(container_id.clone(), "127.0.0.1".to_string(), p)
-            .with_healthcheck(app.healthcheck.clone());
+            .with_healthcheck(app.healthcheck.clone())
+            .with_access_logging(app.access_logging != 0);
 
         route_table.add_route(preview.preview_domain.clone(), backend);
 

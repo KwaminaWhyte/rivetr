@@ -26,12 +26,17 @@ use super::validation::validate_uuid;
 /// List all notification channels
 pub async fn list_channels(
     State(state): State<Arc<AppState>>,
+    user: User,
 ) -> Result<Json<Vec<NotificationChannelResponse>>, ApiError> {
     let channels = sqlx::query_as::<_, NotificationChannel>(
         "SELECT * FROM notification_channels ORDER BY created_at DESC",
     )
     .fetch_all(&state.db)
     .await?;
+
+    // SEC-C3: hide other teams' channels (global NULL-team channels stay visible).
+    let channels = super::authz::retain_visible(&state, &user, channels, |c| c.team_id.as_deref())
+        .await?;
 
     let responses: Vec<NotificationChannelResponse> =
         channels.into_iter().map(|c| c.into()).collect();

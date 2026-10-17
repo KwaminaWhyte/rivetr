@@ -156,6 +156,8 @@ pub async fn create_app(
 ) -> Result<(StatusCode, Json<AppResponse>), ApiError> {
     // Validate request
     validate_create_request(&req)?;
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref()).await?;
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -219,10 +221,14 @@ pub async fn create_app(
         .as_ref()
         .map(|v| serde_json::to_string(v).unwrap_or_default());
 
+    let access_logging = req
+        .access_logging
+        .unwrap_or(state.config.proxy.access_log_default);
+
     sqlx::query(
         r#"
-        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, restart_policy, privileged, cap_add, devices, shm_size, init_process, docker_cap_drop, docker_gpus, docker_ulimits, docker_security_opt, replica_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)
+        INSERT INTO apps (id, name, git_url, branch, dockerfile, domain, port, healthcheck, memory_limit, cpu_limit, ssh_key_id, environment, project_id, team_id, dockerfile_path, base_directory, build_target, watch_paths, custom_docker_options, port_mappings, network_aliases, extra_hosts, domains, auto_subdomain, pre_deploy_commands, post_deploy_commands, docker_image, docker_image_tag, registry_url, registry_username, registry_password, container_labels, build_type, nixpacks_config, publish_directory, preview_enabled, git_provider_id, github_app_installation_id, restart_policy, privileged, cap_add, devices, shm_size, init_process, docker_cap_drop, docker_gpus, docker_ulimits, docker_security_opt, replica_count, created_at, updated_at, access_logging)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -272,6 +278,7 @@ pub async fn create_app(
     .bind(req.replica_count)
     .bind(&now)
     .bind(&now)
+    .bind(access_logging)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -431,6 +438,9 @@ pub async fn update_app(
     let max_rollback_versions = req
         .max_rollback_versions
         .unwrap_or(existing.max_rollback_versions);
+    let snapshot_before_deploy = req
+        .snapshot_before_deploy
+        .unwrap_or(existing.snapshot_before_deploy != 0);
     let rollback_retention_count = req
         .rollback_retention_count
         .unwrap_or(existing.rollback_retention_count)
@@ -526,6 +536,9 @@ pub async fn update_app(
     // Strip prefix (migration 097) — empty string clears it
     let strip_prefix = merge_optional_string(&req.strip_prefix, &existing.strip_prefix);
 
+    // Proxy access logging (migration 114)
+    let access_logging = req.access_logging.unwrap_or(existing.access_logging != 0);
+
     // Inline Dockerfile (migration 098) — empty string clears it
     let inline_dockerfile = match &req.inline_dockerfile {
         Some(s) if s.is_empty() => None,
@@ -620,6 +633,7 @@ pub async fn update_app(
             server_id = ?,
             build_server_id = ?,
             rollback_retention_count = ?,
+            snapshot_before_deploy = ?,
             restart_policy = ?,
             privileged = ?,
             cap_add = ?,
@@ -641,6 +655,7 @@ pub async fn update_app(
             custom_container_name = ?,
             is_static_site = ?,
             strip_prefix = ?,
+            access_logging = ?,
             inline_dockerfile = ?,
             destination_id = ?,
             custom_labels = ?,
@@ -692,6 +707,7 @@ pub async fn update_app(
     .bind(&server_id)
     .bind(&build_server_id)
     .bind(rollback_retention_count)
+    .bind(snapshot_before_deploy)
     .bind(&restart_policy)
     .bind(privileged)
     .bind(&update_cap_add)
@@ -713,6 +729,7 @@ pub async fn update_app(
     .bind(&custom_container_name)
     .bind(is_static_site)
     .bind(&strip_prefix)
+    .bind(access_logging)
     .bind(&inline_dockerfile)
     .bind(&destination_id)
     .bind(&custom_labels)
@@ -783,7 +800,8 @@ pub async fn update_app(
                             "127.0.0.1".to_string(),
                             port,
                         )
-                        .with_healthcheck(app.healthcheck.clone());
+                        .with_healthcheck(app.healthcheck.clone())
+                        .with_access_logging(app.access_logging != 0);
 
                         // Set www redirect target
                         backend.www_redirect_target = www_redirect_target.clone();

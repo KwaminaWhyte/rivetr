@@ -724,7 +724,7 @@ pub async fn get_resource_stats(
         .filter_map(|item| async move { item })
         .collect()
         .await;
-    items.sort_by(|a, b| b.memory_usage.cmp(&a.memory_usage));
+    items.sort_by_key(|i| std::cmp::Reverse(i.memory_usage));
 
     if let Ok(mut cache) = resource_stats_cache().lock() {
         cache.insert(team_id, (std::time::Instant::now(), items.clone()));

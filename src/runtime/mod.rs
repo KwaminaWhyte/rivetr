@@ -293,6 +293,8 @@ impl RegistryAuth {
     }
 }
 
+// async_trait adds #[must_use] to the boxed futures; clippy flags it on Result returns
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ContainerRuntime: Send + Sync {
     /// Return the name of the runtime ("Docker" or "Podman")

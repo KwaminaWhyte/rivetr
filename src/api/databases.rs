@@ -134,6 +134,10 @@ pub async fn create_database(
     client_ip: ClientIp,
     Json(req): Json<CreateManagedDatabaseRequest>,
 ) -> Result<(StatusCode, Json<ManagedDatabaseResponse>), StatusCode> {
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref())
+        .await
+        .map_err(|e| e.status())?;
     // Validate name
     if req.name.is_empty() {
         tracing::warn!("Database name is empty");

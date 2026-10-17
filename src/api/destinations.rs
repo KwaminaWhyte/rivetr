@@ -14,8 +14,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::authz;
 use super::error::ApiError;
-use crate::db::{CreateDestinationRequest, Destination};
+use crate::db::{CreateDestinationRequest, Destination, User};
 use crate::AppState;
 
 // ── Query params ──────────────────────────────────────────────────────────────
@@ -32,8 +33,11 @@ pub struct ListDestinationsQuery {
 /// GET /api/destinations
 pub async fn list(
     State(state): State<Arc<AppState>>,
+    user: User,
     Query(query): Query<ListDestinationsQuery>,
 ) -> Result<Json<Vec<Destination>>, ApiError> {
+    authz::authorize_team_filter(&state, &user, query.team_id.as_deref()).await?;
+
     let destinations = if let Some(ref team_id) = query.team_id {
         sqlx::query_as::<_, Destination>(
             "SELECT * FROM destinations WHERE team_id = ? ORDER BY created_at DESC",
@@ -46,6 +50,9 @@ pub async fn list(
             .fetch_all(&state.db)
             .await?
     };
+
+    let destinations =
+        authz::retain_visible(&state, &user, destinations, |d| d.team_id.as_deref()).await?;
 
     Ok(Json(destinations))
 }
@@ -71,8 +78,11 @@ pub async fn get_one(
 /// POST /api/destinations
 pub async fn create(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateDestinationRequest>,
 ) -> Result<(StatusCode, Json<Destination>), ApiError> {
+    authz::authorize_team_assignment(&state, &user, req.team_id.as_deref()).await?;
+
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::validation_field(

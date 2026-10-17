@@ -171,6 +171,7 @@ async fn start_container(state: &Arc<AppState>, app: &App) -> Result<(), String>
                         port,
                     )
                     .with_healthcheck(app.healthcheck.clone())
+                    .with_access_logging(app.access_logging != 0)
                     .with_strip_prefix(app.strip_prefix.clone());
                     state.routes.load().add_route(domain.clone(), backend);
                 }
@@ -244,6 +245,7 @@ async fn restart_container(state: &Arc<AppState>, app: &App) -> Result<(), Strin
                         port,
                     )
                     .with_healthcheck(app.healthcheck.clone())
+                    .with_access_logging(app.access_logging != 0)
                     .with_strip_prefix(app.strip_prefix.clone());
                     state.routes.load().add_route(domain.clone(), backend);
                 }
@@ -289,7 +291,7 @@ pub async fn bulk_start(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match get_app(&state, app_id).await {
+        let app = match super::authz::authorize_app(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -346,7 +348,7 @@ pub async fn bulk_stop(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match get_app(&state, app_id).await {
+        let app = match super::authz::authorize_app(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -403,7 +405,7 @@ pub async fn bulk_restart(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match get_app(&state, app_id).await {
+        let app = match super::authz::authorize_app(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -460,7 +462,7 @@ pub async fn bulk_deploy(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match get_app(&state, app_id).await {
+        let app = match super::authz::authorize_app(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {

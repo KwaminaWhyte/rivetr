@@ -282,6 +282,13 @@ pub struct ProxyConfig {
     /// Domain for accessing the Rivetr dashboard/API itself (e.g., "rivetr.example.com")
     /// When set, the proxy forwards requests for this domain to the API server
     pub instance_domain: Option<String>,
+    /// Default for per-app proxy access logging on newly created apps (default: true)
+    #[serde(default = "default_access_log_default")]
+    pub access_log_default: bool,
+}
+
+fn default_access_log_default() -> bool {
+    true
 }
 
 fn default_acme_cache_dir() -> PathBuf {
@@ -321,6 +328,7 @@ impl Default for ProxyConfig {
             sslip_enabled: false,
             preview_domain: None,
             instance_domain: None,
+            access_log_default: default_access_log_default(),
         }
     }
 }
@@ -759,6 +767,10 @@ pub struct DataRetentionConfig {
     /// Number of most recent runs to keep per scheduled job (default: 100)
     #[serde(default = "default_scheduled_job_runs_keep")]
     pub scheduled_job_runs_keep: i64,
+    /// Number of most recent deployments per app whose pre-deploy database
+    /// snapshots are kept (default: 3, 0 disables pruning)
+    #[serde(default = "default_deployment_snapshots_keep")]
+    pub deployment_snapshots_keep: i64,
 }
 
 fn default_proxy_logs_days() -> i64 {
@@ -777,6 +789,10 @@ fn default_scheduled_job_runs_keep() -> i64 {
     100
 }
 
+fn default_deployment_snapshots_keep() -> i64 {
+    3
+}
+
 impl Default for DataRetentionConfig {
     fn default() -> Self {
         Self {
@@ -784,6 +800,7 @@ impl Default for DataRetentionConfig {
             webhook_events_days: default_webhook_events_days(),
             audit_logs_days: default_audit_logs_days(),
             scheduled_job_runs_keep: default_scheduled_job_runs_keep(),
+            deployment_snapshots_keep: default_deployment_snapshots_keep(),
         }
     }
 }

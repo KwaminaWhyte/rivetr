@@ -296,6 +296,8 @@ pub async fn create_project(
 ) -> Result<(StatusCode, Json<Project>), ApiError> {
     // Validate request
     validate_create_request(&req)?;
+    // SEC-C3: cannot create into a team the caller does not belong to.
+    super::authz::authorize_team_assignment(&state, &user, req.team_id.as_deref()).await?;
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -507,6 +509,7 @@ pub async fn delete_project(
 /// Assign or unassign an app to a project
 pub async fn assign_app_project(
     State(state): State<Arc<AppState>>,
+    user: User,
     Path(app_id): Path<String>,
     Json(req): Json<AssignAppProjectRequest>,
 ) -> Result<Json<AppResponse>, ApiError> {
@@ -536,6 +539,9 @@ pub async fn assign_app_project(
         if project_exists.is_none() {
             return Err(ApiError::not_found("Project not found"));
         }
+
+        // SEC-C3: the target project must be accessible to the caller too.
+        super::authz::authorize_project(&state, &user, project_id).await?;
     }
 
     let now = chrono::Utc::now().to_rfc3339();

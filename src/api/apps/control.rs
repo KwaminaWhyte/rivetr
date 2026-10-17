@@ -310,7 +310,8 @@ pub async fn start_app(
             if let Some(port) = host_port {
                 let backend =
                     crate::proxy::Backend::new(container_id.clone(), "127.0.0.1".to_string(), port)
-                        .with_healthcheck(app.healthcheck.clone());
+                        .with_healthcheck(app.healthcheck.clone())
+                        .with_access_logging(app.access_logging != 0);
 
                 state.routes.load().add_route(domain.clone(), backend);
                 tracing::info!(domain = %domain, "Route re-registered after start");
@@ -636,7 +637,8 @@ pub async fn restart_app(
                         "127.0.0.1".to_string(),
                         port,
                     )
-                    .with_healthcheck(app.healthcheck.clone());
+                    .with_healthcheck(app.healthcheck.clone())
+                    .with_access_logging(app.access_logging != 0);
                     backend.www_redirect_target = www_redirect_target;
                     route_table.add_route(domain, backend);
                 }
@@ -709,7 +711,7 @@ pub async fn restart_app(
         &format!(
             "Zero-downtime restart initiated. Current container: {}, image: {}",
             &old_container_id[..old_container_id.len().min(12)],
-            &image_tag
+            image_tag
         ),
     )
     .await;
@@ -812,7 +814,7 @@ pub async fn restart_app(
         &state,
         &restart_dep_id,
         "info",
-        &format!("Starting new container from image: {}", &image_tag),
+        &format!("Starting new container from image: {}", image_tag),
     )
     .await;
 
@@ -1030,7 +1032,8 @@ pub async fn restart_app(
                 "127.0.0.1".to_string(),
                 new_port,
             )
-            .with_healthcheck(app.healthcheck.clone());
+            .with_healthcheck(app.healthcheck.clone())
+            .with_access_logging(app.access_logging != 0);
             backend.www_redirect_target = www_redirect_target.clone();
             route_table.add_route(domain.clone(), backend);
             tracing::info!(
