@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rivetr Improvement Plan</title>
+<style>
+:root{
+  --bg:#faf9fc; --surface:#fff; --surface2:#f3f0f9; --text:#1c1a24; --muted:#6a6578; --border:#e2dded;
+  --accent:#6d3fd6; --accent-soft:#ece5fb;
+  --crit:#c4263d; --crit-bg:#fde8eb; --high:#c2570c; --high-bg:#fdeedd; --med:#8a6d00; --med-bg:#fbf3d0; --low:#2f6f4f; --low-bg:#e3f4ea;
+  --ok:#2f6f4f; --code:#efeaf8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14121b; --surface:#1d1a27; --surface2:#262234; --text:#ece9f5; --muted:#a29cb6; --border:#34304a;
+    --accent:#a78bfa; --accent-soft:#2c2447;
+    --crit:#ff7a8e; --crit-bg:#3a1a22; --high:#ffa861; --high-bg:#3a2714; --med:#ecd25a; --med-bg:#363012; --low:#7ad1a0; --low-bg:#16301f;
+    --ok:#7ad1a0; --code:#2a2540;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14121b; --surface:#1d1a27; --surface2:#262234; --text:#ece9f5; --muted:#a29cb6; --border:#34304a;
+  --accent:#a78bfa; --accent-soft:#2c2447;
+  --crit:#ff7a8e; --crit-bg:#3a1a22; --high:#ffa861; --high-bg:#3a2714; --med:#ecd25a; --med-bg:#363012; --low:#7ad1a0; --low-bg:#16301f;
+  --ok:#7ad1a0; --code:#2a2540;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+a{color:var(--accent)}
+code{background:var(--code);padding:1px 6px;border-radius:5px;font:12.5px ui-monospace,Menlo,monospace}
+header{padding:28px 16px 12px;max-width:1100px;margin:0 auto}
+header h1{margin:0 0 4px;font-size:26px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted)}
+.wrap{max-width:1100px;margin:0 auto;padding:0 16px 80px}
+nav.tabs{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;gap:6px;overflow-x:auto}
+nav.tabs .in{max-width:1100px;margin:0 auto;display:flex;gap:6px;width:100%}
+nav.tabs button{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:7px 13px;border-radius:999px;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+nav.tabs .spacer{flex:1}
+section.panel{display:none;padding-top:22px}
+section.panel.active{display:block}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:16px;margin:26px 0 8px}
+.lead{color:var(--muted);margin:0 0 18px;max-width:75ch}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.card h4{margin:0 0 6px;font-size:15px}
+.card p{margin:4px 0;color:var(--muted);font-size:14px}
+.stat{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;margin-right:4px;vertical-align:middle}
+.t-critical{background:var(--crit-bg);color:var(--crit)} .t-high{background:var(--high-bg);color:var(--high)}
+.t-medium{background:var(--med-bg);color:var(--med)} .t-low{background:var(--low-bg);color:var(--low)}
+.t-eff{background:var(--surface2);color:var(--muted)} .t-ver{background:var(--accent-soft);color:var(--accent)}
+.t-new{background:var(--low-bg);color:var(--low)}
+.item{background:var(--surface);border:1px solid var(--border);border-left-width:4px;border-radius:10px;padding:12px 14px;margin:10px 0;display:grid;grid-template-columns:auto 1fr;gap:10px}
+.item.s-critical{border-left-color:var(--crit)} .item.s-high{border-left-color:var(--high)} .item.s-medium{border-left-color:var(--med)} .item.s-low{border-left-color:var(--low)}
+.item input{margin-top:5px;accent-color:var(--accent);width:16px;height:16px}
+.item .t{font-weight:600}
+.item .meta{margin:3px 0 6px}
+.item .w{color:var(--muted);font-size:13.5px;margin:3px 0}
+.item .f{font-size:14px;margin:5px 0 0}
+.item .f b{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:block;overflow-x:auto}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--surface2);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 6px}
+.filters button{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:4px 11px;border-radius:999px;font:inherit;font-size:13px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:12px;align-items:center;justify-content:center;z-index:9;transform:translateY(100%);transition:transform .2s}
+.bar.show{transform:none}
+.bar button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}
+.bar button.sec{background:var(--surface2);color:var(--text)}
+.sidebar-demo{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start}
+.sidebar-demo svg{width:100%;height:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+.note{background:var(--accent-soft);border-radius:10px;padding:10px 14px;font-size:14px;margin:12px 0}
+ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:3px 0}
+.src li{margin:4px 0;font-size:13.5px;word-break:break-word}
+.theme{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:7px 12px;cursor:pointer;font:inherit;font-size:14px}
+@media (max-width:560px){header h1{font-size:22px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Rivetr improvement plan</h1>
+  <p>Audit date 2026-10-17 · repo at v0.11.0 · builds on the 2026-06-10 audits in <code>docs/audit/</code>. Open items were re-checked against the code today; anything not re-checked is marked.</p>
+</header>
+
+<nav class="tabs" aria-label="Sections"><div class="in" role="tablist">
+  <button role="tab" data-tab="summary" aria-selected="true">Summary</button>
+  <button role="tab" data-tab="sidebar" aria-selected="false">Sidebar</button>
+  <button role="tab" data-tab="ui" aria-selected="false">UI / UX</button>
+  <button role="tab" data-tab="security" aria-selected="false">Security</button>
+  <button role="tab" data-tab="perf" aria-selected="false">Performance</button>
+  <button role="tab" data-tab="features" aria-selected="false">Pending features</button>
+  <button role="tab" data-tab="market" aria-selected="false">Competitors</button>
+  <button role="tab" data-tab="sources" aria-selected="false">Sources</button>
+  <span class="spacer"></span>
+  <button class="theme" id="themeBtn" aria-label="Toggle theme">Theme</button>
+</div></nav>
+
+<div class="wrap">
+
+<section class="panel active" id="p-summary">
+  <h2>Where things stand</h2>
+  <p class="lead">Feature coverage is not the problem (599/599 tasks, parity or better vs Coolify and Dokploy on most rows). The gaps are first impression (a 15-item sidebar), hardening that the June audits flagged and nobody closed, and a few places where Rivetr can win on trust instead of checkboxes.</p>
+  <div class="grid g3">
+    <div class="card"><div class="stat" id="sCount">0</div><p>open items listed in this report, each tickable to build a prompt</p></div>
+    <div class="card"><div class="stat">15 to 6</div><p>top-level sidebar entries after the proposed regroup (29 reachable links today)</p></div>
+    <div class="card"><div class="stat" id="sVer">0</div><p>items re-verified as still open in the code today</p></div>
+  </div>
+
+  <h3>Top 10, ranked by impact over effort</h3>
+  <table>
+    <tr><th>#</th><th>Item</th><th>Area</th><th>Effort</th><th>Why now</th></tr>
+    <tr><td>1</td><td>Collapse sidebar to 6 entries, add Cmd+K palette</td><td>UI</td><td>S</td><td>Your stated concern; the first thing every new user sees</td></tr>
+    <tr><td>2</td><td>Stop trusting <code>X-Forwarded-For</code> for rate limits; add login lockout</td><td>Security</td><td>S</td><td>Verified open: <code>rate_limit.rs:169</code>. Makes brute force of password and TOTP free</td></tr>
+    <tr><td>3</td><td>Add CSP and HSTS headers</td><td>Security</td><td>S-M</td><td>Verified absent. Token lives in localStorage, so XSS means full takeover</td></tr>
+    <tr><td>4</td><td>Prune and batch <code>proxy_logs</code></td><td>Perf</td><td>S</td><td>Verified: no <code>DELETE</code> anywhere. Unbounded DB growth undermines the light-footprint pitch</td></tr>
+    <tr><td>5</td><td>Require or auto-generate <code>encryption_key</code></td><td>Security</td><td>S</td><td>Verified: still <code>Option</code>. Secrets silently stored in plaintext</td></tr>
+    <tr><td>6</td><td>Enforce OAuth state, link accounts only on verified email</td><td>Security</td><td>S</td><td>Verified: handler says "Don't fail if state verification fails"</td></tr>
+    <tr><td>7</td><td>Stop swallowing query errors; "unknown" is not "stopped"</td><td>UI</td><td>S-M</td><td>An API blip makes every app look down</td></tr>
+    <tr><td>8</td><td>Zero-downtime deploy with connection drain, proven in the UI</td><td>Differentiator</td><td>M</td><td>Coolify users report 18-31s of 502/503 on rolling updates. Rivetr owns its proxy, so it can do this properly</td></tr>
+    <tr><td>9</td><td>Rollback with data: auto DB snapshot before deploy</td><td>Differentiator</td><td>M</td><td>Competitor rollback restores the image only, not data</td></tr>
+    <tr><td>10</td><td>Pin SSH host keys instead of <code>StrictHostKeyChecking=no</code></td><td>Security</td><td>M</td><td>Verified in <code>servers.rs</code> (5 sites)</td></tr>
+  </table>
+  <div class="note">Suggested order: items 1-6 are each under a day and mostly independent. Do them as one "hardening + first impression" release. Items 8-9 are the story for the next minor version. Tick items in the other tabs and use "Copy as prompt" to hand a batch straight back to Claude Code.</div>
+</section>
+
+<section class="panel" id="p-sidebar">
+  <h2>Sidebar: 15 entries down to 6</h2>
+  <p class="lead">Today a new user sees 15 top-level entries across 4 groups, and Settings expands to 15 more (29 links). Several are advanced (Swarm, Build Servers, Tunnels, CA Certificates) and meaningless before the first deploy. <code>/costs</code> exists as a route but is not linked at all.</p>
+  <div class="sidebar-demo" id="sbDemo"></div>
+
+  <h3>Proposed structure</h3>
+  <table>
+    <tr><th>Sidebar entry</th><th>Contains</th><th>How</th></tr>
+    <tr><td><b>Dashboard</b></td><td>-</td><td>unchanged</td></tr>
+    <tr><td><b>Projects</b></td><td>apps, databases, services</td><td>unchanged</td></tr>
+    <tr><td><b>Templates</b></td><td>-</td><td>unchanged</td></tr>
+    <tr><td><b>Monitoring</b></td><td>Monitoring, Costs</td><td>tab strip; links the orphaned <code>/costs</code></td></tr>
+    <tr><td><b>Infrastructure</b></td><td>Servers, Build Servers, Swarm, Tunnels, SSH Keys</td><td>one entry with a tab strip on top; URLs stay <code>/servers</code>, <code>/swarm</code> etc., so nothing breaks</td></tr>
+    <tr><td><b>Settings</b></td><td>everything else, in a left sub-nav inside the page</td><td>grouped as below</td></tr>
+  </table>
+
+  <h3>Settings sub-nav (inside the page, not the sidebar)</h3>
+  <div class="grid g2">
+    <div class="card"><h4>Instance</h4><p>General, Preferences, White Label, Auto Updates</p></div>
+    <div class="card"><h4>Team and access</h4><p>Teams, Authentication, SSO / OIDC, Security (2FA), API Tokens</p></div>
+    <div class="card"><h4>Integrations</h4><p>Git Providers, Webhooks (with Events as a tab), Notifications, Alert Defaults, S3 Storage, Destinations, CA Certificates</p></div>
+    <div class="card"><h4>Data and logs</h4><p>Backup and Restore, Audit Log, Proxy Logs</p></div>
+  </div>
+
+  <h3>Extras that make the small sidebar work</h3>
+  <ul class="tight">
+    <li><b>Cmd+K palette</b> reaching all 40+ pages, apps, and actions. <code>components/ui/command.tsx</code> (cmdk) is already in the repo; no global palette is wired up (verified).</li>
+    <li><b>Role-aware nav:</b> hide Infrastructure and Settings admin groups from viewer and developer roles.</li>
+    <li><b>Progressive disclosure:</b> Swarm, Build Servers, Tunnels show an empty-state CTA inside Infrastructure instead of a permanent nav slot.</li>
+    <li><b>Bug:</b> footer version falls back to a hardcoded <code>"v0.10.8"</code> (<code>app-sidebar.tsx:102</code>); repo is at 0.11.0.</li>
+    <li><b>Cheap first step:</b> change the arrays in <code>app-sidebar.tsx</code> and add two small tab-strip components. About half a day, no route changes.</li>
+  </ul>
+</section>
+
+<section class="panel" id="p-ui">
+  <h2>UI / UX</h2>
+  <p class="lead">Most items come from the June UX audit and are still open. Items tagged "new" are from today. The uncommitted edits to <code>apps/$id/_layout.tsx</code> and the project tabs may already touch some of these; re-check before starting.</p>
+  <div class="filters" data-for="ui"></div>
+  <div id="list-ui"></div>
+</section>
+
+<section class="panel" id="p-security">
+  <h2>Security</h2>
+  <p class="lead">All three Criticals from June are fixed or mostly fixed (MCP auth, 2FA bypass, IDOR middleware), as are webhook fail-closed, remote path injection, and white-label authz. What is left is the hardening tail. "Verified open today" means I confirmed it in the code.</p>
+  <div class="filters" data-for="security"></div>
+  <div id="list-security"></div>
+  <div class="note">Competitive angle: Coolify disclosed 11 critical CVEs in January 2026 and Dokploy shipped a v0.30.4 fix for git-provider secrets leaking to non-owner org members. A published threat model, signed releases and an SBOM would turn the audit work into a selling point.</div>
+</section>
+
+<section class="panel" id="p-perf">
+  <h2>Performance</h2>
+  <p class="lead">The ~30MB idle pitch is the product. The leaks that threaten it are all unbounded growth (logs, tables, channels) and per-request or per-container serial work.</p>
+  <div class="filters" data-for="perf"></div>
+  <div id="list-perf"></div>
+</section>
+
+<section class="panel" id="p-features">
+  <h2>Pending features</h2>
+  <p class="lead">Roadmap says 599/599, but several things are still genuinely open, and <code>docs/planning/tasks.md</code> has about 40 unticked boxes that look stale (features that shipped, per the changelog). Reconcile that file so it stops lying.</p>
+  <div class="filters" data-for="features"></div>
+  <div id="list-features"></div>
+  <div class="note">Parked on purpose: the host resource safety-net (512MB default cap, label-scoped prune) is on hold per your saved note until the new droplet. Changelog 0.10.23 already shipped part of it (default limits, log rotation, critical-disk reclaim); only the remaining pieces are waiting.</div>
+</section>
+
+<section class="panel" id="p-market">
+  <h2>Competitors and pain points</h2>
+  <p class="lead">Mostly secondhand: comparison blogs plus Coolify GitHub issues. Treat vendor-written comparisons skeptically. I could not pull Reddit threads or upvote counts, so check <code>r/selfhosted</code> and GitHub issues sorted by reactions before betting on any one point.</p>
+
+  <h3>What users complain about, and what Rivetr can do with it</h3>
+  <table>
+    <tr><th>Pain point</th><th>Who</th><th>Evidence</th><th>Rivetr opportunity</th></tr>
+    <tr><td>502/503 for 18-31s on every rolling update; zero-downtime silently off with Compose or host port maps</td><td>Coolify</td><td>Issues #8627, #4483; zero-downtime guide</td><td>Health-gated switch plus connection drain in the embedded proxy. Show a "failed requests during deploy" counter on each deployment. Strongest differentiator available.</td></tr>
+    <tr><td>Rollback restores the image only; no DB or volume state; pruned images are gone</td><td>Coolify</td><td>Rollback guides</td><td>Optional pre-deploy DB snapshot tied to the deployment, offered as "rollback with data". Keep N images pinned.</td></tr>
+    <tr><td>Proxy auto-update flips Caddy to Traefik and breaks HTTPS; stale "Traefik outdated" alerts</td><td>Coolify</td><td>Issues #9127, #11619, #11868, #7204</td><td>Proxy is built in, so there is no version drift. Say so in the README. Add "update with automatic pre-update backup and rollback" for Rivetr itself.</td></tr>
+    <tr><td>Resource-hungry control plane (300-500MB reported; older notes say more)</td><td>Coolify</td><td>Comparison blogs</td><td>Already your headline. Publish a reproducible benchmark script so the number is checkable.</td></tr>
+    <tr><td>Security track record: 11 critical CVEs disclosed Jan 2026</td><td>Coolify</td><td>Comparison blogs</td><td>Ship a public threat model, signed binaries, SBOM, disclosure policy (<code>SECURITY.md</code> exists; extend it).</td></tr>
+    <tr><td>Young and fast-moving: 0.x line, secrets-leak fix in v0.30.4</td><td>Dokploy</td><td>Release notes</td><td>Stability as a feature: migration safety tests, upgrade rehearsal in CI.</td></tr>
+    <tr><td>Swarm multi-node still experimental; no Kubernetes</td><td>Coolify</td><td>Comparison blogs</td><td>Not worth chasing. Finish Swarm rolling updates only if users ask.</td></tr>
+    <tr><td>Dated UI, slow releases, solo maintainer</td><td>CapRover</td><td>Comparison blogs</td><td>Not a threat. Keep your release cadence visible.</td></tr>
+    <tr><td>No GUI, no scheduled backups, no multi-server</td><td>Dokku</td><td>Comparison blogs</td><td>Already covered. Position as "Dokku simplicity with a UI".</td></tr>
+  </table>
+
+  <h3>What the leaders shipped recently (the bar to meet)</h3>
+  <div class="grid g2">
+    <div class="card"><h4>Dokploy v0.28 to v0.30 (2026)</h4><p>AI log and build error analysis, MCP server and CLI with full API coverage, shared git providers, LibSQL, non-root multi-server, Docker networks UI (v0.30.0), SSO and Patches (v0.28), Apache 2.0 license.</p><p><b>Rivetr:</b> has AI diagnose, MCP (9 tools), LibSQL, patches. Missing: Docker networks UI, full-coverage CLI.</p></div>
+    <div class="card"><h4>Coolify v4.1 to v4.3 (2026)</h4><p>Railpack beta, structured audit logging, instance-level MCP (read-only), scheduled volume backups with retention (v4.2.0). v5 is in development with multi-server scalability as the focus; no feature list or date found.</p><p><b>Rivetr:</b> ahead on Railpack, audit, MCP. Check scheduled volume backups with retention.</p></div>
+  </div>
+
+  <h3>Where to be careful</h3>
+  <ul class="tight">
+    <li>Do not chase HTTP/3, Kubernetes, or Hetzner provisioning. Neither leader has a strong lead there and the cost is high.</li>
+    <li>SAML 2.0 is the one enterprise ask that is real, but build it only when a paying or pilot user requests it.</li>
+    <li>Template count (about 250 vs 388-400+) is a vanity gap. Quality and one-click reliability matter more than count.</li>
+  </ul>
+</section>
+
+<section class="panel" id="p-sources">
+  <h2>Sources</h2>
+  <ul class="src" id="srcList"></ul>
+  <p class="lead">Internal: <code>docs/audit/security-audit.md</code>, <code>performance-audit.md</code>, <code>ui-ux-audit.md</code>, <code>docs/research/competitive-gap-analysis.md</code>, <code>docs/planning/ai-opportunities.md</code>, <code>ROADMAP.md</code>, <code>CHANGELOG.md</code>.</p>
+</section>
+
+</div>
+
+<div class="bar" id="bar"><span id="barCount"></span><button id="copyBtn">Copy as prompt</button><button class="sec" id="clearBtn">Clear</button></div>
+
+<script>
+const ITEMS = [
+{id:"UI-1",area:"ui",sev:"high",eff:"S",st:"new",t:"Regroup sidebar to 6 entries (see Sidebar tab)",w:"frontend/app/components/app-sidebar.tsx:43-89",f:"Dashboard, Projects, Templates, Monitoring (+Costs), Infrastructure (tabbed), Settings (grouped left sub-nav). Keep URLs unchanged."},
+{id:"UI-2",area:"ui",sev:"high",eff:"S",st:"new",t:"Global Cmd+K command palette",w:"components/ui/command.tsx exists, no palette mounted",f:"Index all routes, apps, databases, services, and common actions (deploy, restart)."},
+{id:"UI-3",area:"ui",sev:"high",eff:"M",st:"new",t:"First-run checklist on the dashboard",w:"No onboarding component exists (only setup.tsx)",f:"Connect git, create first project, deploy a template, add a domain, set a backup. Hide when done. Biggest lever against the scary first impression."},
+{id:"UX-11",area:"ui",sev:"high",eff:"S",st:"open",t:"Stop swallowing query errors; unknown is not stopped",w:"routes/_index.tsx:154,161; monitoring.tsx; projects/_index.tsx:119-121 (June audit, not re-checked)",f:"Remove .catch(() => null), use isError with Retry, add an unknown health state."},
+{id:"UX-10",area:"ui",sev:"high",eff:"M",st:"open",t:"App detail: 12 tabs plus a 12-entry Settings area with duplicate Network and Security",w:"routes/apps/$id/_layout.tsx, routes.ts (uncommitted edits touch this file)",f:"Merge duplicate Network and Security pages; fold Log Drains into Logs and Previews into Deployments; target 8 tabs."},
+{id:"UX-20",area:"ui",sev:"high",eff:"S",st:"open",t:"12-tab TabsList and fixed 4/5-column pickers break on phones",w:"apps/$id/_layout.tsx; projects/$project-id.apps.new.tsx",f:"overflow-x-auto on TabsList; grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 on pickers."},
+{id:"UX-16",area:"ui",sev:"high",eff:"S",st:"open",t:"59 icon-only buttons, 7 aria-labels",w:"databases/$id/backups.tsx, git-providers.tsx, storage.tsx and more",f:"Wrap in an IconButton that requires a label prop; add a lint rule."},
+{id:"UX-07",area:"ui",sev:"medium",eff:"M",st:"open",t:"Settings: 15 flat entries",w:"app-sidebar.tsx:66-89",f:"Covered by UI-1 sub-nav grouping."},
+{id:"UX-09",area:"ui",sev:"medium",eff:"S",st:"open",t:"Stale breadcrumb map, fallback label Page",w:"routes/_layout.tsx:82-109,257",f:"Use route handles; fall back to last path segment."},
+{id:"UX-13",area:"ui",sev:"medium",eff:"S",st:"open",t:"Server restart uses window.confirm; some deletes use plain Dialog",w:"settings/auto-update.tsx:66; jobs.tsx; ssh-keys.tsx",f:"AlertDialog everywhere; type-the-name for app, server, database deletes."},
+{id:"UX-12",area:"ui",sev:"medium",eff:"M",st:"open",t:"Three loading patterns; Loading... rendered as a stat value",w:"monitoring.tsx:243; _index.tsx:225",f:"Skeletons sized to final content."},
+{id:"UX-17",area:"ui",sev:"medium",eff:"S",st:"open",t:"Color-only status dots",w:"recent-events.tsx:124; project-card.tsx",f:"Add icon plus text or sr-only label."},
+{id:"UX-01",area:"ui",sev:"medium",eff:"M",st:"open",t:"Login page gives no context about the product",w:"routes/login.tsx",f:"Short feature panel, docs link, GitHub link. White-label aware (UX-05)."},
+{id:"UX-02",area:"ui",sev:"low",eff:"S",st:"open",t:"Password show/hide on login, setup, invite",w:"login.tsx, setup.tsx",f:"Eye toggle with aria-label."},
+{id:"UX-22",area:"ui",sev:"low",eff:"M",st:"open",t:"Wide tables have no mobile layout",w:"21 routes use Table",f:"Hide secondary columns below md on servers, deployments, backups, tokens."},
+
+{id:"SEC-H3",area:"security",sev:"high",eff:"S",st:"verified",t:"Rate limiter keyed on spoofable X-Forwarded-For; no account lockout",w:"src/api/rate_limit.rs:169; login src/api/auth.rs; 2FA two_factor.rs",f:"Use TCP peer unless the request comes from a configured trusted proxy. Per-account failed-login backoff. Low dedicated limit on /login and /2fa/validate."},
+{id:"SEC-M6",area:"security",sev:"high",eff:"M",st:"verified",t:"No Content-Security-Policy or HSTS",w:"src/api/mod.rs security_headers (no match for either header)",f:"CSP: default-src 'self', frame-ancestors 'none', hash for the inline theme script, connect-src with WS origins. HSTS when HTTPS."},
+{id:"SEC-M10",area:"security",sev:"high",eff:"S",st:"verified",t:"encryption_key is optional; secrets stored plaintext if unset",w:"src/config/mod.rs:101; src/crypto/mod.rs",f:"Auto-generate and persist a key on first boot, or refuse to start. Per-install salt and Argon2id for the KEK (needs a re-encrypt migration)."},
+{id:"SEC-M3",area:"security",sev:"high",eff:"S",st:"verified",t:"OAuth state optional; accounts linked by unverified email; open self-registration",w:"src/api/oauth.rs:190-208 (\"Don't fail if state verification fails\")",f:"Reject on missing or invalid state. Link only when the provider asserts verified email. Gate registration."},
+{id:"SEC-H5",area:"security",sev:"high",eff:"M",st:"open",t:"Session token placed in URL after OAuth login",w:"oauth.rs:442; login.tsx:111 (June audit, not re-checked)",f:"Single-use exchange code, or URL fragment."},
+{id:"SEC-H6",area:"security",sev:"high",eff:"M",st:"open",t:"Tokens in WS and SSE URLs; ?token= accepted on every route",w:"auth.rs:333-350; ws.rs (June audit, not re-checked)",f:"Short-lived single-use stream tickets. Restrict query-token auth to streaming routes."},
+{id:"SEC-M2",area:"security",sev:"medium",eff:"M",st:"verified",t:"SSH StrictHostKeyChecking=no on all remote execution",w:"src/api/servers.rs:562,596,844,875,1111; src/engine/remote.rs",f:"Record host key on first connect, verify after. Stop passing passwords as CLI args."},
+{id:"SEC-M5",area:"security",sev:"medium",eff:"M",st:"verified",t:"Session token in localStorage",w:"frontend/app/lib/auth.ts:20,27",f:"HttpOnly, Secure, SameSite=Strict cookie. Do after CSP lands."},
+{id:"SEC-C3b",area:"security",sev:"medium",eff:"M",st:"open",t:"IDOR tail: build-servers, ssh-keys, git-providers, log-drains, destinations, CA certs, notification-channels, s3",w:"docs/audit/security-audit.md SEC-C3 REMAINING",f:"Extend authz middleware prefixes. Reject client-supplied team_id the caller is not in on create. Enforce app_shares view vs write."},
+{id:"SEC-M4",area:"security",sev:"medium",eff:"S",st:"open",t:"Non-constant-time admin token compare",w:"src/api/auth.rs:570; ws.rs:45",f:"subtle::ConstantTimeEq, as already used in auth_middleware."},
+{id:"SEC-M8",area:"security",sev:"medium",eff:"S",st:"open",t:"DB export via top-level GET navigation",w:"services/$id/settings.tsx:652; export_db.rs",f:"Authenticated fetch to Blob, or single-use download ticket."},
+{id:"SEC-H1",area:"security",sev:"medium",eff:"S",st:"open",t:"DockerHub webhook still unauthenticated (forced redeploy)",w:"src/api/webhooks/dockerhub.rs",f:"Require a per-app secret in the webhook URL or header."},
+{id:"SEC-L2",area:"security",sev:"low",eff:"S",st:"open",t:"7-day sessions, no idle timeout, no revoke-all",w:"auth.rs:183",f:"Idle plus absolute lifetime; revoke-all button."},
+{id:"SEC-L4",area:"security",sev:"low",eff:"S",st:"open",t:"Login timing reveals which emails exist",w:"auth.rs:136-147",f:"Dummy Argon2 verify when user not found."},
+{id:"SEC-M7",area:"security",sev:"low",eff:"S",st:"open",t:"Unvalidated returnUrl after login",w:"login.tsx:116",f:"Allow only a single leading slash."},
+
+{id:"PERF-H1",area:"perf",sev:"high",eff:"S",st:"verified",t:"proxy_logs grows forever; COUNT(*) on every page view",w:"src/proxy/handler.rs; no DELETE FROM proxy_logs anywhere",f:"Daily prune (7-14 days default) in log_cleaner; keyset pagination instead of COUNT."},
+{id:"PERF-H2",area:"perf",sev:"high",eff:"M",st:"verified",t:"One spawned task and one INSERT per proxied request",w:"src/proxy/handler.rs:153 (tokio::spawn)",f:"Bounded mpsc, single writer, batch insert every 1s or 100 rows, drop on full. Make access logging opt-in."},
+{id:"PERF-H3",area:"perf",sev:"high",eff:"M",st:"open",t:"system/stats and stats collector sample Docker serially (2 samples per container)",w:"src/api/system/health.rs:480; engine/stats_collector.rs:88 (June audit, not re-checked)",f:"buffer_unordered(8), one_shot stats with cached previous sample, serve API from the collector snapshot."},
+{id:"PERF-FH2",area:"perf",sev:"high",eff:"M",st:"verified",t:"Dashboard polls one stats request per app every 15s; no batch endpoint",w:"running-services-card.tsx; no container-stats route in src/api/mod.rs",f:"GET /api/system/container-stats returning all running containers; one query."},
+{id:"PERF-FH1",area:"perf",sev:"high",eff:"S",st:"verified",t:"postbuild copies into static/dist without cleaning; stale chunks embed in the binary",w:"frontend/package.json:7. Local static/dist is 12M / 781 assets",f:"rmSync the destination before copying. Add a CI size check on the release binary."},
+{id:"PERF-M3",area:"perf",sev:"medium",eff:"S",st:"verified",t:"No retention for webhook_events, audit logs, scheduled_job_runs, expired sessions",w:"no matching DELETE in src for webhook_events, audit_logs, scheduled_job_runs; sessions only deleted on logout",f:"Extend daily log_cleaner with configurable retention."},
+{id:"PERF-H5",area:"perf",sev:"medium",eff:"M",st:"open",t:"Volume backup buffers whole archive in RAM and blocks a worker",w:"src/api/volumes.rs:357 (June audit, not re-checked)",f:"tokio::process, stream through async gzip to Body::from_stream."},
+{id:"PERF-M5",area:"perf",sev:"medium",eff:"M",st:"open",t:"Build log pipeline: unbounded channel, one INSERT per line",w:"engine/pipeline/build.rs:634",f:"Bounded channel plus batch insert every 100 lines or 250ms."},
+{id:"PERF-FH3",area:"perf",sev:"medium",eff:"M",st:"open",t:"Deployment logs re-sort the full array per WebSocket message",w:"components/deployment-logs.tsx:58-132",f:"Buffer messages and flush every 250ms; cap or virtualize; stop REST polling while WS is connected."},
+{id:"PERF-FL",area:"perf",sev:"low",eff:"S",st:"verified",t:"Dead code: duplicate xterm dep and two unregistered route files",w:"package.json:54; routes/apps/$id.tsx; routes/services/$id.tsx",f:"Delete all three."},
+
+{id:"F-1",area:"features",sev:"high",eff:"M",st:"new",t:"Zero-downtime deploy with drain, and a per-deploy failed-requests counter",w:"engine pipeline Switch stage + proxy",f:"The clearest public differentiator vs Coolify issue #8627."},
+{id:"F-2",area:"features",sev:"high",eff:"M",st:"new",t:"Rollback with data: optional pre-deploy DB snapshot linked to the deployment",w:"backup + deployments modules",f:"One-click rollback of image and restore of snapshot."},
+{id:"F-3",area:"features",sev:"medium",eff:"M",st:"new",t:"Safe self-update: auto backup before update, auto rollback if health check fails",w:"settings/auto-update.tsx, system update path",f:"Directly answers Coolify's auto-update breakages."},
+{id:"F-4",area:"features",sev:"medium",eff:"M",st:"open",t:"Config diff before deploy (env, domain, config changes)",w:"ROADMAP unchecked; tasks T6.2.2",f:"Commit-range diff already exists; this is the pre-deploy config view."},
+{id:"F-5",area:"features",sev:"medium",eff:"M",st:"open",t:"Docker networks management UI",w:"Dokploy shipped in v0.30.0",f:"Rivetr creates per-app networks but exposes no UI."},
+{id:"F-6",area:"features",sev:"medium",eff:"M",st:"open",t:"Full-coverage CLI beyond the TUI",w:"Dokploy v0.29 ships CLI plus MCP",f:"Generate from the API route list, same as the SDK."},
+{id:"F-7",area:"features",sev:"medium",eff:"M",st:"open",t:"AI: compose generation from a prompt",w:"competitive-gap #5; src/ai.rs exists",f:"Extend the diagnose infrastructure."},
+{id:"F-8",area:"features",sev:"low",eff:"S",st:"open",t:"Reconcile docs/planning/tasks.md (about 40 stale unticked boxes)",w:"T1.x, T3.4.x, T5.2.x, T6.x, T7.x sections",f:"Tick what shipped, delete what was dropped."},
+{id:"F-9",area:"features",sev:"low",eff:"L",st:"open",t:"SAML 2.0",w:"ROADMAP v0.6.x",f:"Only on real demand."},
+{id:"F-10",area:"features",sev:"low",eff:"M",st:"open",t:"Swarm: rolling updates, overlay networking, advanced service spec; full remote build execution",w:"ROADMAP future items; competitive-gap #10",f:"Low demand signal so far."},
+{id:"F-11",area:"features",sev:"low",eff:"M",st:"open",t:"Unfinished AI items: uptime anomaly detection, deploy risk score, alert troubleshooting guide, NL app config",w:"docs/planning/ai-opportunities.md items 4, 5, 9, 10",f:"Pick one; deploy risk score pairs well with F-1."},
+{id:"F-12",area:"features",sev:"low",eff:"S",st:"open",t:"Non-root passwordless-sudo server provisioning: verify and document",w:"competitive-gap #9",f:"Test the path, then document it."}
+];
+
+const SOURCES = [
+ ["Self-Hosted PaaS Showdown 2026 (DEV Community)","https://dev.to/deploynix/self-hosted-paas-showdown-2026-coolify-vs-dokploy-vs-caprover-vs-deploynix-46l3"],
+ ["Coolify vs Dokku vs CapRover 2026 (buildmvpfast)","https://www.buildmvpfast.com/blog/coolify-vs-dokku-vs-caprover-self-hosted-paas-production-2026"],
+ ["Coolify vs Dokploy 2026 review (LumaDock)","https://lumadock.com/tutorials/coolify-vs-dokploy"],
+ ["Self-hosted PaaS category gets crowded in 2026 (bex.co)","https://bex.co/blog/2026/07/28/self-hosted-paas-crowded-2026-coolify-dokku-caprover-dokploy"],
+ ["Coolify issue #8627: rolling updates cause 502/503","https://github.com/coollabsio/coolify/issues/8627"],
+ ["Coolify issue #4483: gateway timeouts after deploy","https://github.com/coollabsio/coolify/issues/4483"],
+ ["Coolify issue #9127: auto-update reverts Caddy to Traefik","https://github.com/coollabsio/coolify/issues/9127"],
+ ["Coolify issue #11619: Traefik outdated alert, proxy disabled","https://github.com/coollabsio/coolify/issues/11619"],
+ ["Coolify issue #11868: proxy update warning persists","https://github.com/coollabsio/coolify/issues/11868"],
+ ["Coolify issue #7204: Traefik version hard-coded","https://github.com/coollabsio/coolify/issues/7204"],
+ ["Coolify issue #12138: nonexistent Let's Encrypt resolver","https://github.com/coollabsio/coolify/issues/12138"],
+ ["How to roll back a deployment in Coolify","https://www.itechguides.com/how-to-roll-back-a-deployment-in-coolify/"],
+ ["Coolify v4.2.0 release notes","https://newreleases.io/project/github/coollabsio/coolify/release/v4.2.0"],
+ ["Coolify v5 review (bitdoze)","https://www.bitdoze.com/coolify-v5-self-hosted-paas-review/"],
+ ["Dokploy v0.29.0 release post","https://dokploy.com/blog/v0-29-0-ai-powered-debugging-mcp-server-cli-shared-git-providers"],
+ ["Dokploy releases","https://github.com/Dokploy/dokploy/releases"]
+];
+
+const AREAS = ["ui","security","perf","features"];
+const stLabel = {open:"open", verified:"verified open today", new:"new"};
+const stClass = {open:"t-eff", verified:"t-ver", new:"t-new"};
+const picked = new Set();
+const state = {}; AREAS.forEach(a => state[a] = "all");
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function renderList(area){
+  const wrap = document.getElementById("list-"+area);
+  const f = state[area];
+  const rows = ITEMS.filter(i => i.area===area && (f==="all" || i.sev===f));
+  wrap.innerHTML = rows.map(i => `
+    <label class="item s-${i.sev}">
+      <input type="checkbox" data-id="${i.id}" ${picked.has(i.id)?"checked":""} aria-label="Select ${esc(i.id)}">
+      <div>
+        <div class="t">${esc(i.t)}</div>
+        <div class="meta">
+          <span class="tag t-${i.sev}">${i.sev}</span>
+          <span class="tag t-eff">effort ${i.eff}</span>
+          <span class="tag ${stClass[i.st]}">${stLabel[i.st]}</span>
+          <span class="tag t-eff">${esc(i.id)}</span>
+        </div>
+        <div class="w">${esc(i.w)}</div>
+        <div class="f"><b>Fix:</b> ${esc(i.f)}</div>
+      </div>
+    </label>`).join("") || "<p class='lead'>Nothing at this severity.</p>";
+}
+
+function renderFilters(){
+  document.querySelectorAll(".filters").forEach(el => {
+    const area = el.dataset.for;
+    el.innerHTML = ["all","critical","high","medium","low"].filter(s => s==="all" || ITEMS.some(i=>i.area===area&&i.sev===s))
+      .map(s => `<button data-area="${area}" data-sev="${s}" aria-pressed="${state[area]===s}">${s}</button>`).join("");
+  });
+}
+
+function updateBar(){
+  const n = picked.size;
+  document.getElementById("bar").classList.toggle("show", n>0);
+  document.getElementById("barCount").textContent = n + " selected";
+}
+
+function buildPrompt(){
+  const chosen = ITEMS.filter(i => picked.has(i.id));
+  const lines = ["Work on these Rivetr improvements, in order. Run cargo check / frontend typecheck after each, and keep each as its own commit.",""];
+  chosen.forEach((i,n) => lines.push(`${n+1}. [${i.id}] ${i.t}\n   Where: ${i.w}\n   Fix: ${i.f}`));
+  return lines.join("\n");
+}
+
+document.addEventListener("change", e => {
+  if (e.target.matches("input[type=checkbox][data-id]")) {
+    const id = e.target.dataset.id;
+    e.target.checked ? picked.add(id) : picked.delete(id);
+    updateBar();
+  }
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest(".filters button");
+  if (b) { state[b.dataset.area] = b.dataset.sev; renderFilters(); renderList(b.dataset.area); }
+});
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("copyBtn");
+  try { await navigator.clipboard.writeText(buildPrompt()); btn.textContent = "Copied"; }
+  catch(_) { btn.textContent = "Copy failed"; }
+  setTimeout(()=>btn.textContent="Copy as prompt",1500);
+});
+document.getElementById("clearBtn").addEventListener("click", () => {
+  picked.clear(); AREAS.forEach(renderList); updateBar();
+});
+
+function showTab(name){
+  document.querySelectorAll("section.panel").forEach(p => p.classList.toggle("active", p.id==="p-"+name));
+  document.querySelectorAll("nav.tabs [role=tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===name));
+  try { history.replaceState(null,"","#"+name); } catch(_){}
+  window.scrollTo({top:0});
+}
+document.querySelectorAll("nav.tabs [role=tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme==="dark" || (root.dataset.theme!=="light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  root.dataset.theme = dark ? "light" : "dark";
+});
+
+function sidebarSvg(title, groups, note){
+  const rowH = 22, pad = 14, w = 300;
+  let y = 38, out = "";
+  out += `<text x="${pad}" y="22" font-size="13" font-weight="700" fill="currentColor">${esc(title)}</text>`;
+  groups.forEach(g => {
+    if (g.label) { out += `<text x="${pad}" y="${y+10}" font-size="10" fill="#8a8499" letter-spacing=".6">${esc(g.label.toUpperCase())}</text>`; y += 18; }
+    g.items.forEach(it => {
+      out += `<rect x="${pad}" y="${y-2}" width="${w-2*pad}" height="${rowH-4}" rx="5" fill="${it.hl?'#6d3fd6':'#8a849933'}"/>`;
+      out += `<text x="${pad+8}" y="${y+12}" font-size="11.5" fill="${it.hl?'#fff':'currentColor'}">${esc(it.t)}</text>`;
+      y += rowH;
+    });
+    y += 6;
+  });
+  out += `<text x="${pad}" y="${y+10}" font-size="11" fill="#8a8499">${esc(note)}</text>`;
+  y += 24;
+  return `<svg viewBox="0 0 ${w} ${y}" role="img" aria-label="${esc(title)}" style="color:var(--text)">${out}</svg>`;
+}
+(function(){
+  const before = [
+    {label:"Platform",items:[{t:"Dashboard"},{t:"Projects"},{t:"Monitoring"},{t:"Templates"}]},
+    {label:"Infrastructure",items:[{t:"Servers"},{t:"Build Servers"},{t:"SSH Keys"},{t:"Docker Swarm"},{t:"Tunnels"}]},
+    {label:"Access",items:[{t:"Teams"},{t:"Git Integrations"},{t:"Webhooks"},{t:"Webhook Events"},{t:"API Tokens"}]},
+    {label:"",items:[{t:"Settings  (15 sub-items)"}]}
+  ];
+  const after = [
+    {label:"",items:[{t:"Dashboard"},{t:"Projects"},{t:"Templates"},{t:"Monitoring  (+ Costs tab)"},{t:"Infrastructure  (5 tabs)",hl:true},{t:"Settings  (grouped sub-nav)",hl:true}]}
+  ];
+  document.getElementById("sbDemo").innerHTML =
+    sidebarSvg("Today: 15 entries, 29 links", before, "Costs page exists but is not linked") +
+    sidebarSvg("Proposed: 6 entries", after, "Everything else via tabs or Cmd+K");
+})();
+
+document.getElementById("srcList").innerHTML = SOURCES.map(([t,u]) => `<li><a href="${u}" target="_blank" rel="noopener noreferrer">${esc(t)}</a></li>`).join("");
+
+document.getElementById("sCount").textContent = ITEMS.length;
+document.getElementById("sVer").textContent = ITEMS.filter(i => i.st==="verified").length;
+renderFilters(); AREAS.forEach(renderList); updateBar();
+const h = location.hash.replace("#","");
+if (h && document.getElementById("p-"+h)) showTab(h);
+</script>
+</body>
+</html>
