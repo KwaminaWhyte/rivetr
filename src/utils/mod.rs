@@ -1,5 +1,6 @@
 // Utility modules
 
+pub mod ssh;
 pub mod supervise;
 
 use std::path::Path;

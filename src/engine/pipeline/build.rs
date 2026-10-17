@@ -867,7 +867,9 @@ async fn run_remote_build(
             Command::new("ssh")
         };
         c.arg("-o")
-            .arg("StrictHostKeyChecking=no")
+            .arg("StrictHostKeyChecking=accept-new")
+            .arg("-o")
+            .arg(crate::utils::ssh::known_hosts_option())
             .arg("-o")
             .arg("ConnectTimeout=15");
         if !use_pass {
@@ -947,22 +949,17 @@ async fn run_remote_build(
         let dst = format!("{}:{}", target, remote_dir);
 
         // Build the ssh command string for rsync -e option
+        let host_key_opts = crate::utils::ssh::host_key_opts_string();
         let ssh_e_opt = if use_sshpass {
             let pass = ssh_password_content.as_deref().unwrap_or("");
-            format!(
-                "sshpass -p '{}' ssh -o StrictHostKeyChecking=no -p {}",
-                pass, port
-            )
+            format!("sshpass -p '{}' ssh {} -p {}", pass, host_key_opts, port)
         } else if let Some(ref kp) = key_path {
             format!(
-                "ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p {} -i {}",
-                port, kp
+                "ssh {} -o BatchMode=yes -p {} -i {}",
+                host_key_opts, port, kp
             )
         } else {
-            format!(
-                "ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p {}",
-                port
-            )
+            format!("ssh {} -o BatchMode=yes -p {}", host_key_opts, port)
         };
 
         let rsync_out = Command::new("rsync")
@@ -1050,7 +1047,9 @@ async fn run_remote_build(
 
         stream_ssh_cmd
             .arg("-o")
-            .arg("StrictHostKeyChecking=no")
+            .arg("StrictHostKeyChecking=accept-new")
+            .arg("-o")
+            .arg(crate::utils::ssh::known_hosts_option())
             .arg("-o")
             .arg("ConnectTimeout=15");
         if !use_sshpass {
@@ -1128,7 +1127,9 @@ async fn run_remote_build(
     };
     cleanup_cmd
         .arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=10");
     if !use_cleanup_sshpass {

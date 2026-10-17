@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
 
     // Ensure data directory exists
     rivetr::utils::ensure_dir(&config.server.data_dir)?;
+    rivetr::utils::ssh::init(&config.server.data_dir)?;
 
     // Initialize database
     let db = rivetr::db::init(&config.server.data_dir).await?;

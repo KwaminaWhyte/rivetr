@@ -47,7 +47,9 @@ impl RemoteContext {
 
         command
             .arg("-o")
-            .arg("StrictHostKeyChecking=no")
+            .arg("StrictHostKeyChecking=accept-new")
+            .arg("-o")
+            .arg(crate::utils::ssh::known_hosts_option())
             .arg("-o")
             .arg("ConnectTimeout=10");
 

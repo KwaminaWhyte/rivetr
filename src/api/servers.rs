@@ -290,6 +290,37 @@ pub async fn update_server(
 }
 
 /// Delete a server
+/// Forget the pinned SSH host key for a server, so the next connection trusts
+/// whatever key it presents (use after rebuilding or re-imaging the server).
+/// DELETE /api/servers/:id/host-key
+pub async fn reset_server_host_key(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    authz::authorize_server(&state, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
+
+    let server = sqlx::query_as::<_, Server>("SELECT * FROM servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch server for host key reset: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let removed = crate::utils::ssh::forget_host(&server.host, server.port as u16)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to forget host key for server {}: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(serde_json::json!({ "removed": removed })))
+}
+
 pub async fn delete_server(
     State(state): State<Arc<AppState>>,
     user: User,
@@ -559,7 +590,9 @@ async fn run_ssh_health_check(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=5");
 
@@ -593,7 +626,9 @@ async fn run_ssh_health_check(
                 .arg(pw)
                 .arg("ssh")
                 .arg("-o")
-                .arg("StrictHostKeyChecking=no")
+                .arg("StrictHostKeyChecking=accept-new")
+                .arg("-o")
+                .arg(crate::utils::ssh::known_hosts_option())
                 .arg("-o")
                 .arg("ConnectTimeout=5")
                 .arg("-p")
@@ -841,7 +876,9 @@ async fn run_ssh_install_docker(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=30");
 
@@ -872,7 +909,9 @@ async fn run_ssh_install_docker(
                 .arg(pw)
                 .arg("ssh")
                 .arg("-o")
-                .arg("StrictHostKeyChecking=no")
+                .arg("StrictHostKeyChecking=accept-new")
+                .arg("-o")
+                .arg(crate::utils::ssh::known_hosts_option())
                 .arg("-o")
                 .arg("ConnectTimeout=30")
                 .arg("-p")
@@ -1105,10 +1144,13 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
 
     let use_sshpass = password_content.is_some() && key_path_str.is_empty();
 
+    let known_hosts_opt = crate::utils::ssh::known_hosts_option();
     let mut ssh_args: Vec<&str> = vec![
         "-tt",
         "-o",
-        "StrictHostKeyChecking=no",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        &known_hosts_opt,
         "-o",
         "ConnectTimeout=10",
         "-p",
@@ -1386,7 +1428,9 @@ async fn run_ssh_patch_check(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=10");
 
@@ -1632,7 +1676,9 @@ async fn run_ssh_security_check(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=10");
 
@@ -2061,7 +2107,9 @@ async fn run_fetch_server_details(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=10");
 
@@ -2092,7 +2140,9 @@ async fn run_fetch_server_details(
                 .arg(pw)
                 .arg("ssh")
                 .arg("-o")
-                .arg("StrictHostKeyChecking=no")
+                .arg("StrictHostKeyChecking=accept-new")
+                .arg("-o")
+                .arg(crate::utils::ssh::known_hosts_option())
                 .arg("-o")
                 .arg("ConnectTimeout=10")
                 .arg("-p")

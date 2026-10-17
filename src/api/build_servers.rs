@@ -245,6 +245,31 @@ pub async fn update_build_server(
 }
 
 /// Delete a build server
+/// Forget the pinned SSH host key for a build server (see `reset_server_host_key`).
+/// DELETE /api/build-servers/:id/host-key
+pub async fn reset_build_server_host_key(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<axum::Json<serde_json::Value>, StatusCode> {
+    let server = sqlx::query_as::<_, BuildServer>("SELECT * FROM build_servers WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch build server for host key reset: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let removed = crate::utils::ssh::forget_host(&server.host, server.port as u16)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to forget host key for build server {}: {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(axum::Json(serde_json::json!({ "removed": removed })))
+}
+
 pub async fn delete_build_server(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -445,7 +470,9 @@ async fn run_build_server_health_check(
     };
 
     cmd.arg("-o")
-        .arg("StrictHostKeyChecking=no")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg("-o")
+        .arg(crate::utils::ssh::known_hosts_option())
         .arg("-o")
         .arg("ConnectTimeout=5");
 

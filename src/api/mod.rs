@@ -271,6 +271,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/:id/check", post(servers::check_server_health))
+        .route(
+            "/servers/:id/host-key",
+            delete(servers::reset_server_host_key),
+        )
         .route("/servers/:id/install-docker", post(servers::install_docker))
         .route("/servers/:id/fetch-details", post(servers::fetch_details))
         .route("/servers/:id/patches", get(servers::check_server_patches))
@@ -324,6 +328,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/build-servers/:id/check",
             post(build_servers::check_build_server_health),
+        )
+        .route(
+            "/build-servers/:id/host-key",
+            delete(build_servers::reset_build_server_host_key),
         )
         // Environment Variables
         .route("/apps/:id/env-vars", get(env_vars::list_env_vars))
