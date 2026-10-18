@@ -1,4 +1,5 @@
 import { QueryError } from "@/components/query-error";
+import { useIsInstanceAdmin } from "@/lib/auth";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
@@ -98,6 +99,7 @@ function GitHubAppsTab() {
   const [expandedApp, setExpandedApp] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const isInstanceAdmin = useIsInstanceAdmin();
 
   // Check for query params from GitHub callback
   const registered = searchParams.get("registered");
@@ -154,12 +156,15 @@ function GitHubAppsTab() {
     try {
       const response = await api.createGitHubAppManifest({
         name: "rivetr",
-        is_system_wide: true,
+        // Only instance admins may register an app that every team can use.
+        is_system_wide: isInstanceAdmin,
       });
       if (formRef.current && response.manifest) {
         const manifestInput = formRef.current.querySelector('input[name="manifest"]') as HTMLInputElement;
         if (manifestInput) {
           manifestInput.value = response.manifest;
+          // GitHub echoes this state to the callback, which looks up the scope server-side.
+          formRef.current.action = `https://github.com/settings/apps/new?state=${encodeURIComponent(response.state)}`;
           formRef.current.submit();
         }
       }

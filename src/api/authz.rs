@@ -285,6 +285,29 @@ pub fn github_app_list_team(is_system_wide: bool, team_id: Option<&str>) -> Opti
     github_app_gate(is_system_wide, team_id, false)
 }
 
+/// Global SSH keys (`app_id IS NULL`) have no team owner. Changing one needs an instance
+/// admin or the user who created it; keys that predate `created_by` are admin-only.
+/// App-bound keys are covered by the resource middleware through their app.
+pub async fn authorize_global_ssh_key_write(
+    db: &SqlitePool,
+    user: &User,
+    id: &str,
+) -> Result<(), ApiError> {
+    let row: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT app_id, created_by FROM ssh_keys WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    let (app_id, created_by) = row.ok_or_else(|| ApiError::not_found("SSH key not found"))?;
+    if app_id.is_some() || is_privileged(user) || created_by.as_deref() == Some(user.id.as_str()) {
+        return Ok(());
+    }
+    Err(ApiError::forbidden(
+        "Global SSH keys can only be changed by their creator or an instance administrator",
+    ))
+}
+
 /// Authorize a GitHub App by id. `write` is true for mutating requests.
 pub async fn authorize_github_app(
     db: &SqlitePool,
@@ -1118,6 +1141,54 @@ mod tests {
                 .unwrap_err()
                 .status(),
             StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn global_ssh_keys_are_editable_only_by_creator_or_admin() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for sql in [
+            "CREATE TABLE ssh_keys (id TEXT, app_id TEXT, created_by TEXT)",
+            "INSERT INTO ssh_keys VALUES ('k-mine', NULL, 'alice')",
+            "INSERT INTO ssh_keys VALUES ('k-legacy', NULL, NULL)",
+            "INSERT INTO ssh_keys VALUES ('k-app', 'a1', 'alice')",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        let check = |u: User, id: &'static str| {
+            let db = db.clone();
+            async move { authorize_global_ssh_key_write(&db, &u, id).await }
+        };
+        assert!(check(user("alice", "member"), "k-mine").await.is_ok());
+        assert!(check(user("root", "admin"), "k-mine").await.is_ok());
+        assert_eq!(
+            check(user("bob", "member"), "k-mine")
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // Keys from before created_by existed are admin-only.
+        assert!(check(user("root", "admin"), "k-legacy").await.is_ok());
+        assert_eq!(
+            check(user("alice", "member"), "k-legacy")
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        // App-bound keys are gated by the resource middleware, not here.
+        assert!(check(user("bob", "member"), "k-app").await.is_ok());
+        assert_eq!(
+            check(user("bob", "member"), "missing")
+                .await
+                .unwrap_err()
+                .status(),
+            StatusCode::NOT_FOUND
         );
     }
 

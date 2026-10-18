@@ -1634,6 +1634,22 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 118: GitHub App manifest registration states (idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/118_github_manifest_states.sql"),
+    )
+    .await?;
+
+    // Migration 119: ssh_keys.created_by (owner of global keys)
+    let has_ssh_owner: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('ssh_keys') WHERE name = 'created_by'")
+            .fetch_optional(pool)
+            .await?;
+    if has_ssh_owner.is_none() {
+        execute_sql(pool, include_str!("../../migrations/119_ssh_key_owner.sql")).await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

@@ -53,6 +53,11 @@ pub async fn create_manifest(
         .await
         .map_err(|e| (e.status(), e.to_string()))?;
 
+    // A system-wide app is usable by every team, so only instance admins may create one.
+    if request.is_system_wide {
+        authz::require_privileged(&user).map_err(|e| (e.status(), e.to_string()))?;
+    }
+
     // Generate a state parameter for CSRF protection
     let state_param = uuid::Uuid::new_v4().to_string();
 
@@ -95,21 +100,33 @@ pub async fn create_manifest(
     let manifest_json = serde_json::to_string(&manifest)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Store state and metadata in a temporary way (in production, use a proper cache/session store)
-    // For now, we encode it in the state parameter
-    let state_data = StateData {
-        is_system_wide: request.is_system_wide,
-        team_id: request.team_id,
-    };
-    let state_json = serde_json::to_string(&state_data)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // Record who started the registration and for which team. The callback reads these
+    // back by state, so nothing the browser sends can widen the app's scope.
+    let _ = sqlx::query("DELETE FROM github_manifest_states WHERE expires_at < ?")
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(&state.db)
+        .await;
+    let expires_at = (chrono::Utc::now() + chrono::Duration::minutes(30)).to_rfc3339();
+    sqlx::query(
+        "INSERT INTO github_manifest_states (state, user_id, team_id, is_system_wide, expires_at) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&state_param)
+    .bind(&user.id)
+    .bind(&request.team_id)
+    .bind(request.is_system_wide)
+    .bind(&expires_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Return the manifest JSON for the frontend to POST via form
     // GitHub requires POST to https://github.com/settings/apps/new with manifest in form body
+    // and echoes `state` back to the callback.
     Ok(Json(ManifestStartResponse {
         manifest_url: "https://github.com/settings/apps/new".to_string(),
         manifest: manifest_json,
-        state: format!("{}:{}", state_param, base64_encode(&state_json)),
+        state: state_param,
     }))
 }
 
@@ -121,6 +138,29 @@ pub async fn manifest_callback(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ManifestCallbackQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // The state was issued by create_manifest to an authenticated user; it is single-use
+    // and carries the team / scope, so the callback trusts nothing else.
+    let consumed: Option<(String, Option<String>, bool, String)> = match params.state.as_deref() {
+        Some(s) if !s.is_empty() => sqlx::query_as(
+            "DELETE FROM github_manifest_states WHERE state = ? \
+             RETURNING user_id, team_id, is_system_wide, expires_at",
+        )
+        .bind(s)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        _ => None,
+    };
+    let (created_by, team_id, is_system_wide) = consumed
+        .filter(|(_, _, _, expires_at)| {
+            chrono::DateTime::parse_from_rfc3339(expires_at).is_ok_and(|t| t > chrono::Utc::now())
+        })
+        .map(|(user_id, team_id, system_wide, _)| (user_id, team_id, system_wide))
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            "Invalid or expired registration state. Start the GitHub App setup again.".to_string(),
+        ))?;
+
     // Exchange the code for app credentials
     let client = reqwest::Client::new();
     let response = client
@@ -151,26 +191,6 @@ pub async fn manifest_callback(
         )
     })?;
 
-    // Parse state to get metadata
-    let (is_system_wide, team_id) = if let Some(state_str) = &params.state {
-        if let Some(pos) = state_str.find(':') {
-            let encoded = &state_str[pos + 1..];
-            if let Ok(decoded) = base64_decode(encoded) {
-                if let Ok(state_data) = serde_json::from_str::<StateData>(&decoded) {
-                    (state_data.is_system_wide, state_data.team_id)
-                } else {
-                    (false, None)
-                }
-            } else {
-                (false, None)
-            }
-        } else {
-            (false, None)
-        }
-    } else {
-        (false, None)
-    };
-
     // Encrypt sensitive fields
     let encryption_key = state
         .config
@@ -191,7 +211,6 @@ pub async fn manifest_callback(
     // Create the GitHub App record
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let created_by = "admin".to_string(); // TODO: Get from auth context
 
     sqlx::query(
         r#"
@@ -817,12 +836,6 @@ pub async fn sync_webhook_url(
 
 // Helper types
 
-#[derive(Debug, Serialize, Deserialize)]
-struct StateData {
-    is_system_wide: bool,
-    team_id: Option<String>,
-}
-
 #[derive(Debug, Serialize)]
 struct GitHubAppManifest {
     name: String,
@@ -863,16 +876,4 @@ fn default_page() -> u32 {
 
 fn default_per_page() -> u32 {
     30
-}
-
-// Base64 helpers
-fn base64_encode(s: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    STANDARD.encode(s.as_bytes())
-}
-
-fn base64_decode(s: &str) -> Result<String, base64::DecodeError> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    let bytes = STANDARD.decode(s)?;
-    Ok(String::from_utf8_lossy(&bytes).to_string())
 }

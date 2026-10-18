@@ -92,8 +92,8 @@ pub async fn create_ssh_key(
 
     sqlx::query(
         r#"
-        INSERT INTO ssh_keys (id, name, private_key, public_key, app_id, is_global, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ssh_keys (id, name, private_key, public_key, app_id, is_global, created_at, updated_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -104,6 +104,7 @@ pub async fn create_ssh_key(
     .bind(if req.is_global { 1 } else { 0 })
     .bind(&now)
     .bind(&now)
+    .bind(&user.id)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -151,6 +152,10 @@ pub async fn update_ssh_key(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    authz::authorize_global_ssh_key_write(&state.db, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
 
     // Re-binding a key to another app needs write access to that app.
     if let Some(app_id) = req.app_id.as_deref() {
@@ -222,6 +227,10 @@ pub async fn delete_ssh_key(
     user: User,
     client_ip: ClientIp,
 ) -> Result<StatusCode, StatusCode> {
+    authz::authorize_global_ssh_key_write(&state.db, &user, &id)
+        .await
+        .map_err(|e| e.status())?;
+
     // Fetch key name before deleting so audit log can use it
     let key_name: Option<String> = sqlx::query_scalar("SELECT name FROM ssh_keys WHERE id = ?")
         .bind(&id)
