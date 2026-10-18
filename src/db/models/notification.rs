@@ -506,6 +506,10 @@ pub struct CreateNotificationChannelRequest {
     pub config: serde_json::Value,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Owning team for `POST /api/notification-channels`. Defaults to the caller's first
+    /// team; ignored by the team-scoped route, which takes the team from the path.
+    #[serde(default)]
+    pub team_id: Option<String>,
 }
 
 fn default_enabled() -> bool {

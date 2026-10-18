@@ -67,8 +67,30 @@ pub async fn get_channel(
 /// Create a new notification channel
 pub async fn create_channel(
     State(state): State<Arc<AppState>>,
+    user: User,
     Json(req): Json<CreateNotificationChannelRequest>,
 ) -> Result<(StatusCode, Json<NotificationChannelResponse>), ApiError> {
+    // A channel holds webhook URLs and bot tokens, so it belongs to a team. Instance
+    // admins may still create global (team-less) channels by leaving the team out.
+    let team_id = match req.team_id.clone().filter(|t| !t.is_empty()) {
+        Some(t) => Some(t),
+        None if super::authz::is_privileged_user(&user) => None,
+        None => Some(
+            super::authz::user_team_ids(&state, &user.id)
+                .await?
+                .into_iter()
+                .next()
+                .ok_or_else(|| ApiError::forbidden("Join a team before creating a channel"))?,
+        ),
+    };
+    if let Some(tid) = team_id.as_deref() {
+        if super::authz::is_privileged_user(&user) {
+            super::authz::authorize_team_assignment(&state, &user, Some(tid)).await?;
+        } else {
+            require_team_role(&state.db, tid, &user.id, TeamRole::Admin).await?;
+        }
+    }
+
     // Validate the name
     if req.name.trim().is_empty() {
         return Err(ApiError::validation_field("name", "Name is required"));
@@ -92,8 +114,8 @@ pub async fn create_channel(
 
     sqlx::query(
         r#"
-        INSERT INTO notification_channels (id, name, channel_type, config, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO notification_channels (id, name, channel_type, config, enabled, created_at, updated_at, team_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -103,6 +125,7 @@ pub async fn create_channel(
     .bind(if req.enabled { 1 } else { 0 })
     .bind(&now)
     .bind(&now)
+    .bind(&team_id)
     .execute(&state.db)
     .await
     .map_err(|e| {

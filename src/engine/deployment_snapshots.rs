@@ -18,8 +18,9 @@
 //!
 //! How each type is restored:
 //! - PostgreSQL: public schema dropped and the dump replayed in one transaction.
-//! - MySQL/MariaDB: dump replayed over the database; tables created after the snapshot
-//!   are left in place.
+//! - MySQL/MariaDB: every table and view is dropped, then the dump is replayed, so the
+//!   result matches the snapshot (not transactional: a dump that fails midway leaves a
+//!   partial database).
 //! - MongoDB: archive validated with `mongorestore --dryRun`, then the database is
 //!   dropped and the archive restored (exact rollback; the `admin`, `local` and `config`
 //!   databases are never dropped, only overwritten collection by collection).
@@ -837,8 +838,9 @@ pub fn restore_check_command(db_type: &str, creds: &DatabaseCredentials) -> Opti
 
 /// Command that loads `RESTORE_DATA_PATH` over the current data.
 /// Postgres: the public schema is dropped and the dump replayed in one transaction with
-/// ON_ERROR_STOP, so a failed restore leaves the data as it was. MySQL/MariaDB dumps
-/// carry DROP TABLE IF EXISTS, but tables created after the snapshot are left in place.
+/// ON_ERROR_STOP, so a failed restore leaves the data as it was. MySQL/MariaDB drop every
+/// table and view first and replay the dump (DDL is not transactional there, so a dump
+/// that fails midway leaves a partial database; the safety backup covers that).
 /// MongoDB: the database is dropped and the archive restored, so the result matches the
 /// snapshot exactly. Redis-family types are restored by `restore_rdb`.
 pub fn restore_command(db_type: &str, creds: &DatabaseCredentials) -> Result<Vec<String>> {
@@ -870,8 +872,19 @@ pub fn restore_command(db_type: &str, creds: &DatabaseCredentials) -> Result<Vec
             } else {
                 "mariadb"
             };
+            // Build one script that first drops every table and view currently in the
+            // database (FK checks off), then replays the dump, so tables created after
+            // the snapshot do not survive. The drop list is generated before anything is
+            // touched; `set -e` stops the restore if that query fails.
+            let full = format!("{RESTORE_DATA_PATH}.full");
             Ok(sh(format!(
-                "{client} -u root -p'{password}' {name} < {RESTORE_DATA_PATH}"
+                "set -e; {{ echo 'SET FOREIGN_KEY_CHECKS=0;'; \
+                 {client} -u root -p'{password}' -N -B -e \"SELECT CONCAT('DROP ', \
+                 IF(table_type='VIEW','VIEW','TABLE'), ' IF EXISTS \\`', table_name, '\\`;') \
+                 FROM information_schema.tables WHERE table_schema='{name}'\"; \
+                 cat {RESTORE_DATA_PATH}; echo 'SET FOREIGN_KEY_CHECKS=1;'; }} > {full}; \
+                 set +e; {client} -u root -p'{password}' {name} < {full}; rc=$?; \
+                 rm -f {full}; exit $rc"
             )))
         }
         "mongodb" => Ok(sh(mongo_restore_script(creds))),
@@ -1153,6 +1166,9 @@ mod tests {
         assert!(pg.contains("-d appdb"));
         let my = restore_command("mysql", &creds).unwrap().join(" ");
         assert!(my.contains("mysql -u root -p'rootpw' appdb <"));
+        // Tables created after the snapshot are dropped before the replay.
+        assert!(my.contains("table_schema='appdb'"));
+        assert!(my.contains("FOREIGN_KEY_CHECKS=0"));
         let ma = restore_command("mariadb", &creds).unwrap().join(" ");
         assert!(ma.contains("mariadb -u root"));
         assert!(restore_command("redis", &creds).is_err());

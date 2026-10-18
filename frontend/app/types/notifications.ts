@@ -133,6 +133,8 @@ export interface CreateNotificationChannelRequest {
   channel_type: NotificationChannelType;
   config: SlackConfig | DiscordConfig | EmailConfig | TelegramConfig | TeamsConfig | PushoverConfig | NtfyConfig | MattermostConfig | LarkConfig | GotifyConfig | ResendConfig | SendryConfig;
   enabled?: boolean;
+  /** Owning team; defaults to the caller's first team (instance admins may omit it for a global channel) */
+  team_id?: string;
 }
 
 /** Request to update a notification channel */
