@@ -5,6 +5,7 @@ Deploy applications from Git with a single binary, ~30MB RAM idle, no external d
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![Build](https://img.shields.io/github/actions/workflow/status/KwaminaWhyte/rivetr/ci.yml?branch=main)](https://github.com/KwaminaWhyte/rivetr/actions)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/KwaminaWhyte/badge.svg)](https://hub.xerj.org/contributors/KwaminaWhyte)
 
 ## What is Rivetr?
 
