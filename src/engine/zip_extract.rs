@@ -75,7 +75,9 @@ pub fn validate_zip(zip_data: &[u8]) -> Result<ZipValidation, ZipError> {
         let file = archive
             .by_index(i)
             .map_err(|e| ZipError::InvalidZip(e.to_string()))?;
-        let name = file.name();
+        let name = file
+            .name()
+            .map_err(|e| ZipError::InvalidZip(e.to_string()))?;
 
         // Check for path traversal
         if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
@@ -163,7 +165,10 @@ pub async fn extract_zip(
             let mut file = archive
                 .by_index(i)
                 .context("Failed to read file from archive")?;
-            let name = file.name().to_string();
+            let name = file
+                .name()
+                .context("Invalid file name in archive")?
+                .to_string();
 
             // Re-validate path (defense in depth)
             if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
@@ -199,7 +204,9 @@ pub async fn extract_zip(
                 {
                     use std::os::unix::fs::PermissionsExt;
                     if let Some(mode) = file.unix_mode() {
-                        let permissions = std::fs::Permissions::from_mode(mode);
+                        // Keep only rwx bits: never apply setuid/setgid/sticky
+                        // bits taken from an uploaded archive.
+                        let permissions = std::fs::Permissions::from_mode(mode & 0o777);
                         let _ = std::fs::set_permissions(&out_path, permissions);
                     }
                 }
