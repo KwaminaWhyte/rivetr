@@ -183,7 +183,9 @@ pub async fn run_data_retention(db: &DbPool, cfg: &DataRetentionConfig) -> u64 {
 async fn delete_in_batches(db: &DbPool, label: &str, sql: &str, bind: Option<&str>) -> u64 {
     let mut total: u64 = 0;
     loop {
-        let mut q = sqlx::query(sql);
+        // SAFETY: every caller passes a literal, or SQL built from `&'static str`
+        // table and column names (see `prune_older_than`); nothing user-supplied.
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
         if let Some(b) = bind {
             q = q.bind(b);
         }
@@ -210,11 +212,16 @@ async fn delete_in_batches(db: &DbPool, label: &str, sql: &str, bind: Option<&st
 
 /// Delete rows from a table whose `column` holds a `YYYY-MM-DD HH:MM:SS` timestamp
 /// (SQLite `datetime('now')` format) older than `days`.
-async fn prune_older_than(db: &DbPool, table: &str, column: &str, days: i64) -> u64 {
+async fn prune_older_than(
+    db: &DbPool,
+    table: &'static str,
+    column: &'static str,
+    days: i64,
+) -> u64 {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(days))
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
-    // Table/column names are internal constants, never user input.
+    // Table/column names are `&'static str` constants, never user input.
     let sql = format!(
         "DELETE FROM {table} WHERE rowid IN \
          (SELECT rowid FROM {table} WHERE {column} < ? LIMIT ?)"
@@ -403,7 +410,7 @@ mod tests {
     }
 
     async fn count(db: &DbPool, table: &str) -> i64 {
-        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
             .fetch_one(db)
             .await
             .unwrap()

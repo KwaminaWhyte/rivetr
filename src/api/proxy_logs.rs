@@ -114,7 +114,8 @@ pub async fn list_proxy_logs(
         where_clause,
         TOTAL_COUNT_CAP + 1
     );
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    // SAFETY: the WHERE clause is built only from static `column = ?` conditions.
+    let mut count_query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql.as_str()));
     if let Some(ref domain) = bind_domain {
         count_query = count_query.bind(domain);
     }
@@ -135,7 +136,7 @@ pub async fn list_proxy_logs(
         where_clause
     );
 
-    let mut query = sqlx::query_as::<_, ProxyLog>(&sql);
+    let mut query = sqlx::query_as::<_, ProxyLog>(sqlx::AssertSqlSafe(sql.as_str()));
     if let Some(ref domain) = bind_domain {
         query = query.bind(domain);
     }

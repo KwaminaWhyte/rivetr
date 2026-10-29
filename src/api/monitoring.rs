@@ -90,7 +90,10 @@ pub async fn search_logs(
     bind_values.push(limit.to_string());
 
     // Execute with dynamic binds
-    let mut query_builder = sqlx::query_as::<_, (i64, String, String, String, String)>(&sql);
+    // SAFETY: sql is built only from static clauses with `?` placeholders above.
+    let mut query_builder = sqlx::query_as::<_, (i64, String, String, String, String)>(
+        sqlx::AssertSqlSafe(sql.as_str()),
+    );
     for val in &bind_values[..bind_values.len() - 1] {
         query_builder = query_builder.bind(val);
     }

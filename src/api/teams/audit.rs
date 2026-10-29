@@ -92,14 +92,14 @@ pub async fn list_audit_logs(
     // Execute count query with dynamic binding
     let total: i64 = match params.len() {
         1 => {
-            let (count,): (i64,) = sqlx::query_as(&count_sql)
+            let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
                 .bind(&params[0])
                 .fetch_one(&state.db)
                 .await?;
             count
         }
         2 => {
-            let (count,): (i64,) = sqlx::query_as(&count_sql)
+            let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .fetch_one(&state.db)
@@ -107,7 +107,7 @@ pub async fn list_audit_logs(
             count
         }
         3 => {
-            let (count,): (i64,) = sqlx::query_as(&count_sql)
+            let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])
@@ -116,7 +116,7 @@ pub async fn list_audit_logs(
             count
         }
         4 => {
-            let (count,): (i64,) = sqlx::query_as(&count_sql)
+            let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])
@@ -126,7 +126,7 @@ pub async fn list_audit_logs(
             count
         }
         5 => {
-            let (count,): (i64,) = sqlx::query_as(&count_sql)
+            let (count,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(count_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])
@@ -160,7 +160,7 @@ pub async fn list_audit_logs(
     // Execute select query with dynamic binding
     let logs: Vec<TeamAuditLog> = match params.len() {
         1 => {
-            sqlx::query_as(&select_sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
                 .bind(&params[0])
                 .bind(per_page)
                 .bind(offset)
@@ -168,7 +168,7 @@ pub async fn list_audit_logs(
                 .await?
         }
         2 => {
-            sqlx::query_as(&select_sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(per_page)
@@ -177,7 +177,7 @@ pub async fn list_audit_logs(
                 .await?
         }
         3 => {
-            sqlx::query_as(&select_sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])
@@ -187,7 +187,7 @@ pub async fn list_audit_logs(
                 .await?
         }
         4 => {
-            sqlx::query_as(&select_sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])
@@ -198,7 +198,7 @@ pub async fn list_audit_logs(
                 .await?
         }
         5 => {
-            sqlx::query_as(&select_sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(select_sql.as_str()))
                 .bind(&params[0])
                 .bind(&params[1])
                 .bind(&params[2])

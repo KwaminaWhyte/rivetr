@@ -17,7 +17,7 @@ tower = "0.5"
 tower-http = { version = "0.7", features = ["cors", "compression-gzip", "trace", "fs"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Docker
 bollard = "0.21"

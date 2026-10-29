@@ -271,7 +271,8 @@ pub async fn list_audit_logs(
         "SELECT COUNT(*) as count FROM audit_logs al {}",
         where_clause
     );
-    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    // SAFETY: the WHERE clause is built only from static `column = ?` conditions.
+    let mut count_query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql.as_str()));
     for binding in &bindings {
         count_query = count_query.bind(binding);
     }
@@ -299,7 +300,7 @@ pub async fn list_audit_logs(
         "#,
         where_clause
     );
-    let mut query_builder = sqlx::query_as::<_, AuditLog>(&sql);
+    let mut query_builder = sqlx::query_as::<_, AuditLog>(sqlx::AssertSqlSafe(sql.as_str()));
     for binding in &bindings {
         query_builder = query_builder.bind(binding);
     }

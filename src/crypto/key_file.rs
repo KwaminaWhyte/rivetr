@@ -127,7 +127,11 @@ async fn is_fresh_install(db: &SqlitePool) -> bool {
         "git_providers",
     ] {
         let sql = format!("SELECT COUNT(*) FROM {table}");
-        match sqlx::query_scalar::<_, i64>(&sql).fetch_one(db).await {
+        // SAFETY: `table` comes from the fixed list above, never from input.
+        match sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(db)
+            .await
+        {
             Ok(0) => {}
             _ => return false,
         }
@@ -210,7 +214,8 @@ async fn count_v2_values(db: &SqlitePool) -> i64 {
         ("build_servers", "ssh_private_key"),
     ] {
         let sql = format!("SELECT COUNT(*) FROM {table} WHERE {col} LIKE 'ENC2:%'");
-        total += sqlx::query_scalar::<_, i64>(&sql)
+        // SAFETY: `table` and `col` come from the fixed list above, never from input.
+        total += sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()))
             .fetch_one(db)
             .await
             .unwrap_or(0);
@@ -342,7 +347,7 @@ mod tests {
             .await
             .unwrap();
         for t in ["users", "servers", "build_servers", "git_providers"] {
-            sqlx::query(&format!("CREATE TABLE {t} (id TEXT)"))
+            sqlx::query(sqlx::AssertSqlSafe(format!("CREATE TABLE {t} (id TEXT)")))
                 .execute(&pool)
                 .await
                 .unwrap();
@@ -352,10 +357,12 @@ mod tests {
             .await
             .unwrap();
         for t in rows {
-            sqlx::query(&format!("INSERT INTO {t} (id) VALUES ('x')"))
-                .execute(&pool)
-                .await
-                .unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "INSERT INTO {t} (id) VALUES ('x')"
+            )))
+            .execute(&pool)
+            .await
+            .unwrap();
         }
         pool
     }

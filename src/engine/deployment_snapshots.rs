@@ -241,7 +241,8 @@ pub async fn load_restorable_snapshots(
     let sql = format!(
         "{SNAPSHOT_SELECT} WHERE s.source_deployment_id = ? ORDER BY s.created_at DESC, s.rowid DESC"
     );
-    let rows: Vec<DeploymentSnapshot> = sqlx::query_as(&sql)
+    // SAFETY: SNAPSHOT_SELECT is a constant and the suffix is a static literal.
+    let rows: Vec<DeploymentSnapshot> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(target_deployment_id)
         .fetch_all(db)
         .await?;
@@ -1257,7 +1258,7 @@ mod tests {
     }
 
     async fn count(db: &DbPool, table: &str) -> i64 {
-        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
             .fetch_one(db)
             .await
             .unwrap()

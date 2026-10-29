@@ -1339,7 +1339,8 @@ pub async fn update_database(
     let update_sql = format!("UPDATE databases SET {} WHERE id = ?", updates.join(", "));
 
     // Build and execute the query manually since we have dynamic bindings
-    let mut query = sqlx::query(&update_sql);
+    // SAFETY: update_sql is built only from static `column = ?` fragments above.
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(update_sql.as_str()));
 
     if let Some(public_access) = req.public_access {
         query = query.bind(if public_access { 1i32 } else { 0i32 });

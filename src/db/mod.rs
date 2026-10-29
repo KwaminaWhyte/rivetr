@@ -27,7 +27,11 @@ async fn execute_sql(pool: &SqlitePool, sql: &str) -> Result<()> {
     for statement in stripped.split(';') {
         let trimmed = statement.trim();
         if !trimmed.is_empty() {
-            sqlx::query(trimmed).execute(pool).await?;
+            // SAFETY: only ever called with the `include_str!` migration files compiled
+            // into the binary, never with runtime input.
+            sqlx::query(sqlx::AssertSqlSafe(trimmed))
+                .execute(pool)
+                .await?;
         }
     }
     Ok(())

@@ -222,7 +222,8 @@ pub async fn list_webhook_events(
     // Count total matching rows
     let count_sql = format!("SELECT COUNT(*) FROM webhook_events{}", where_clause);
     let total: i64 = {
-        let q = sqlx::query_scalar(&count_sql);
+        // SAFETY: where_clause is one of four static literals chosen above.
+        let q = sqlx::query_scalar(sqlx::AssertSqlSafe(count_sql.as_str()));
         let q = if has_provider {
             q.bind(query.provider.as_deref().unwrap())
         } else {
@@ -245,7 +246,7 @@ pub async fn list_webhook_events(
         where_clause
     );
     let events: Vec<WebhookEvent> = {
-        let q = sqlx::query_as::<_, WebhookEvent>(&items_sql);
+        let q = sqlx::query_as::<_, WebhookEvent>(sqlx::AssertSqlSafe(items_sql.as_str()));
         let q = if has_provider {
             q.bind(query.provider.as_deref().unwrap())
         } else {
