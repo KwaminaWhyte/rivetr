@@ -1,5 +1,6 @@
 use anyhow::Result;
-use bollard::container::{LogOutput, LogsOptions};
+use bollard::container::LogOutput;
+use bollard::query_parameters::LogsOptionsBuilder;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
 
@@ -11,14 +12,13 @@ pub async fn logs(
     runtime: &DockerRuntime,
     container_id: &str,
 ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
-    let options = LogsOptions::<String> {
-        stdout: true,
-        stderr: true,
-        follow: false,            // Don't follow - just fetch existing logs
-        timestamps: true,         // Include Docker timestamps
-        tail: "1000".to_string(), // Get last 1000 lines
-        ..Default::default()
-    };
+    let options = LogsOptionsBuilder::new()
+        .stdout(true)
+        .stderr(true)
+        .follow(false) // Don't follow - just fetch existing logs
+        .timestamps(true) // Include Docker timestamps
+        .tail("1000") // Get last 1000 lines
+        .build();
 
     let stream = runtime.client.logs(container_id, Some(options));
 
@@ -65,14 +65,13 @@ pub async fn logs_stream(
     runtime: &DockerRuntime,
     container_id: &str,
 ) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>> {
-    let options = LogsOptions::<String> {
-        stdout: true,
-        stderr: true,
-        follow: true, // Follow logs in real-time
-        timestamps: true,
-        tail: "100".to_string(), // Get last 100 lines then continue streaming
-        ..Default::default()
-    };
+    let options = LogsOptionsBuilder::new()
+        .stdout(true)
+        .stderr(true)
+        .follow(true) // Follow logs in real-time
+        .timestamps(true)
+        .tail("100") // Get last 100 lines then continue streaming
+        .build();
 
     let stream = runtime.client.logs(container_id, Some(options));
 

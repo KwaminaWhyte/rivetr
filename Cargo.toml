@@ -20,7 +20,7 @@ tower-http = { version = "0.7", features = ["cors", "compression-gzip", "trace",
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Docker
-bollard = "0.18"
+bollard = "0.21"
 
 # Git (vendored-openssl for cross-compilation support)
 git2 = { version = "0.21", features = ["vendored-openssl"] }

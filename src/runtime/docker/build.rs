@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use bollard::image::BuildImageOptions;
+use bollard::query_parameters::BuildImageOptionsBuilder;
 use bytes::Bytes;
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -256,6 +256,25 @@ async fn build_with_secrets_cli(ctx: &BuildContext) -> Result<String> {
     Ok(ctx.tag.clone())
 }
 
+/// The Docker client library carries build resource limits as `i32`, so a value
+/// above `i32::MAX` (about 2 GiB for memory) cannot be sent. Clamp it and say so
+/// in the log and the build output rather than overflowing or dropping the limit.
+fn limit_as_i32(value: i64, what: &str, ctx: &BuildContext) -> i32 {
+    match i32::try_from(value) {
+        Ok(v) => v,
+        Err(_) => {
+            let message = format!(
+                "WARNING: {what} of {value} exceeds the 2147483647 the Docker client supports; using 2147483647"
+            );
+            tracing::warn!("{message}");
+            if let Some(ref tx) = ctx.log_tx {
+                let _ = tx.send(message);
+            }
+            i32::MAX
+        }
+    }
+}
+
 /// Standard Bollard-based build (no secrets).
 async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Result<String> {
     // Create a tar archive of the build context
@@ -290,20 +309,30 @@ async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Resul
         build_args_map.insert("SOURCE_COMMIT", sha.as_str());
     }
 
-    let options = BuildImageOptions {
-        dockerfile: ctx.dockerfile.trim_start_matches("./"),
-        t: &ctx.tag,
-        rm: true,
-        target,
-        extrahosts: extra_build_args.extra_hosts.as_deref(),
-        nocache: extra_build_args.no_cache || ctx.no_cache,
-        memory: memory.map(|m| m as u64),
-        memswap: memory, // Set memswap equal to memory to disable swap
-        cpuperiod: cpuperiod.map(|p| p as u64),
-        cpuquota: cpuquota.map(|q| q as u64),
-        buildargs: build_args_map,
-        ..Default::default()
-    };
+    let mut builder = BuildImageOptionsBuilder::new()
+        .dockerfile(ctx.dockerfile.trim_start_matches("./"))
+        .t(&ctx.tag)
+        .rm(true)
+        .nocache(extra_build_args.no_cache || ctx.no_cache)
+        .buildargs(&build_args_map);
+    if !target.is_empty() {
+        builder = builder.target(target);
+    }
+    if let Some(hosts) = extra_build_args.extra_hosts.as_deref() {
+        builder = builder.extrahosts(hosts);
+    }
+    if let Some(memory) = memory {
+        let memory = limit_as_i32(memory, "build memory limit", ctx);
+        // Set memswap equal to memory to disable swap
+        builder = builder.memory(memory).memswap(memory);
+    }
+    if let Some(period) = cpuperiod {
+        builder = builder.cpuperiod(limit_as_i32(period, "build CPU period", ctx));
+    }
+    if let Some(quota) = cpuquota {
+        builder = builder.cpuquota(limit_as_i32(quota, "build CPU quota", ctx));
+    }
+    let options = builder.build();
 
     if memory.is_some() || cpuquota.is_some() {
         tracing::info!(
@@ -314,9 +343,11 @@ async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Resul
         );
     }
 
-    let mut stream = runtime
-        .client
-        .build_image(options, None, Some(Bytes::from(tar_data)));
+    let mut stream = runtime.client.build_image(
+        options,
+        None,
+        Some(bollard::body_full(Bytes::from(tar_data))),
+    );
 
     while let Some(result) = stream.next().await {
         match result {
@@ -330,14 +361,24 @@ async fn build_via_bollard(runtime: &DockerRuntime, ctx: &BuildContext) -> Resul
                         tracing::debug!("{}", line);
                     }
                 }
-                if let Some(error) = output.error {
+                if let Some(detail) = output.error_detail {
+                    let error = detail
+                        .message
+                        .unwrap_or_else(|| "unknown build error".to_string());
                     if let Some(ref tx) = ctx.log_tx {
                         let _ = tx.send(format!("ERROR: {}", error));
                     }
                     anyhow::bail!("Build error: {}", error);
                 }
             }
-            Err(e) => anyhow::bail!("Build failed: {}", e),
+            Err(e) => {
+                // The daemon reports a failed build step as a stream error; show the
+                // reason in the deployment log, not only in the returned error.
+                if let Some(ref tx) = ctx.log_tx {
+                    let _ = tx.send(format!("ERROR: {}", e));
+                }
+                anyhow::bail!("Build failed: {}", e)
+            }
         }
     }
 

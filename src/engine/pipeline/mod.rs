@@ -78,10 +78,18 @@ async fn run_registry_deployment(
         None
     };
 
-    runtime
-        .pull_image(&image_ref, auth.as_ref())
-        .await
-        .context("Failed to pull image from registry")?;
+    if let Err(e) = runtime.pull_image(&image_ref, auth.as_ref()).await {
+        // Put the registry's reason (denied, not found, unreachable) in the
+        // deployment log; the wrapped error below only says the pull failed.
+        let _ = add_deployment_log(
+            db,
+            deployment_id,
+            "error",
+            &format!("Failed to pull {}: {:#}", image_ref, e),
+        )
+        .await;
+        return Err(e.context("Failed to pull image from registry"));
+    }
 
     add_deployment_log(db, deployment_id, "info", "Image pulled successfully").await?;
 

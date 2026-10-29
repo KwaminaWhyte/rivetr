@@ -1,13 +1,16 @@
 use anyhow::{Context, Result};
 use bollard::container::LogOutput;
-use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, RemoveContainerOptions, StatsOptions,
-    StopContainerOptions, UpdateContainerOptions,
+use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::models::{
+    ContainerCreateBody, ContainerStatsResponse, ContainerSummaryStateEnum, ContainerUpdateBody,
+    EndpointSettings, NetworkConnectRequest, NetworkCreateRequest,
 };
-use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
-use bollard::image::{CreateImageOptions, PruneImagesOptions, RemoveImageOptions};
-use bollard::models::EndpointSettings;
-use bollard::network::{ConnectNetworkOptions, CreateNetworkOptions};
+use bollard::query_parameters::{
+    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
+    PruneImagesOptionsBuilder, RemoveContainerOptionsBuilder, RemoveImageOptionsBuilder,
+    RenameContainerOptionsBuilder, ResizeExecOptionsBuilder, StatsOptionsBuilder,
+    StopContainerOptionsBuilder,
+};
 use bytes::Bytes;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -79,7 +82,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
 
     let mut port_bindings: HashMap<String, Option<Vec<bollard::service::PortBinding>>> =
         HashMap::new();
-    let mut exposed_ports: HashMap<String, HashMap<(), ()>> = HashMap::new();
+    let mut exposed_ports: Vec<String> = Vec::new();
 
     // Add primary port (legacy)
     let primary_port_binding = format!("{}/tcp", config.port);
@@ -90,7 +93,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
             host_port: None, // Let Docker assign a random port
         }]),
     );
-    exposed_ports.insert(primary_port_binding, HashMap::new());
+    exposed_ports.push(primary_port_binding);
 
     // Add additional port mappings
     for mapping in &config.port_mappings {
@@ -108,7 +111,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
                 host_port,
             }]),
         );
-        exposed_ports.insert(port_key, HashMap::new());
+        exposed_ports.push(port_key);
     }
 
     // Convert extra_hosts to the format Docker expects
@@ -303,7 +306,11 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         Some(merged_labels)
     };
 
-    let container_config = Config {
+    // A mapping that repeats the primary port must not list it twice.
+    exposed_ports.sort();
+    exposed_ports.dedup();
+
+    let container_config = ContainerCreateBody {
         image: Some(config.image.clone()),
         env: Some(final_env),
         exposed_ports: Some(exposed_ports),
@@ -313,10 +320,9 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         ..Default::default()
     };
 
-    let options = CreateContainerOptions {
-        name: &config.name,
-        platform: None,
-    };
+    let options = CreateContainerOptionsBuilder::new()
+        .name(&config.name)
+        .build();
 
     let response = runtime
         .client
@@ -326,7 +332,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
 
     runtime
         .client
-        .start_container::<String>(&response.id, None)
+        .start_container(&response.id, None)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to start container: {}", e))?;
 
@@ -356,14 +362,23 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
 /// The shared Docker network that all Rivetr-managed containers join.
 const RIVETR_NETWORK: &str = "rivetr";
 
+/// Whether a Docker network with this name already exists. The create request no
+/// longer carries `CheckDuplicate`, which engines older than Docker 25 need to
+/// refuse a second network of the same name, so look first.
+async fn network_exists(runtime: &DockerRuntime, name: &str) -> bool {
+    runtime.client.inspect_network(name, None).await.is_ok()
+}
+
 /// Create the `rivetr` Docker network if it does not already exist.
 pub async fn ensure_rivetr_network(runtime: &DockerRuntime) {
+    if network_exists(runtime, RIVETR_NETWORK).await {
+        return;
+    }
     let result = runtime
         .client
-        .create_network(CreateNetworkOptions {
-            name: RIVETR_NETWORK,
-            check_duplicate: true,
-            driver: "bridge",
+        .create_network(NetworkCreateRequest {
+            name: RIVETR_NETWORK.to_string(),
+            driver: Some("bridge".to_string()),
             ..Default::default()
         })
         .await;
@@ -393,12 +408,12 @@ pub async fn connect_to_rivetr_network(
         .client
         .connect_network(
             RIVETR_NETWORK,
-            ConnectNetworkOptions {
-                container: container_id,
-                endpoint_config: EndpointSettings {
+            NetworkConnectRequest {
+                container: container_id.to_string(),
+                endpoint_config: Some(EndpointSettings {
                     aliases: Some(aliases),
                     ..Default::default()
-                },
+                }),
             },
         )
         .await;
@@ -424,12 +439,14 @@ pub async fn connect_to_rivetr_network(
 
 /// Create a Docker bridge network with the given name if it does not already exist.
 pub async fn ensure_named_network(runtime: &DockerRuntime, net_name: &str) {
+    if network_exists(runtime, net_name).await {
+        return;
+    }
     let result = runtime
         .client
-        .create_network(CreateNetworkOptions {
-            name: net_name,
-            check_duplicate: true,
-            driver: "bridge",
+        .create_network(NetworkCreateRequest {
+            name: net_name.to_string(),
+            driver: Some("bridge".to_string()),
             ..Default::default()
         })
         .await;
@@ -456,12 +473,12 @@ pub async fn connect_to_named_network(
         .client
         .connect_network(
             net_name,
-            ConnectNetworkOptions {
-                container: container_id,
-                endpoint_config: EndpointSettings {
+            NetworkConnectRequest {
+                container: container_id.to_string(),
+                endpoint_config: Some(EndpointSettings {
                     aliases: Some(aliases),
                     ..Default::default()
-                },
+                }),
             },
         )
         .await;
@@ -495,7 +512,7 @@ pub async fn rename_container(
         .client
         .rename_container(
             container_id,
-            bollard::container::RenameContainerOptions { name: new_name },
+            RenameContainerOptionsBuilder::new().name(new_name).build(),
         )
         .await
         .context("Failed to rename container")?;
@@ -505,7 +522,7 @@ pub async fn rename_container(
 pub async fn start(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
     runtime
         .client
-        .start_container::<String>(container_id, None)
+        .start_container(container_id, None)
         .await
         .context("Failed to start container")?;
     Ok(())
@@ -522,9 +539,11 @@ pub async fn stop_timeout(
     container_id: &str,
     timeout_secs: Option<i64>,
 ) -> Result<()> {
-    let options = StopContainerOptions {
-        t: timeout_secs.unwrap_or(10),
-    };
+    let options = StopContainerOptionsBuilder::new()
+        .t(timeout_secs
+            .unwrap_or(10)
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+        .build();
     runtime
         .client
         .stop_container(container_id, Some(options))
@@ -534,10 +553,7 @@ pub async fn stop_timeout(
 }
 
 pub async fn remove(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
-    let options = RemoveContainerOptions {
-        force: true,
-        ..Default::default()
-    };
+    let options = RemoveContainerOptionsBuilder::new().force(true).build();
     runtime
         .client
         .remove_container(container_id, Some(options))
@@ -617,11 +633,10 @@ pub async fn list_containers(
     filters.insert("status".to_string(), vec!["running".to_string()]);
     filters.insert("name".to_string(), vec![name_prefix.to_string()]);
 
-    let options = ListContainersOptions {
-        all: false,
-        filters,
-        ..Default::default()
-    };
+    let options = ListContainersOptionsBuilder::new()
+        .all(false)
+        .filters(&filters)
+        .build();
 
     let containers = runtime
         .client
@@ -647,8 +662,11 @@ pub async fn list_containers(
         });
 
         // Check if running based on status
-        let status = container.state.clone().unwrap_or_default();
-        let is_running = status.to_lowercase() == "running";
+        let is_running = container.state == Some(ContainerSummaryStateEnum::RUNNING);
+        let status = container
+            .state
+            .map(|state| state.to_string())
+            .unwrap_or_default();
 
         result.push(ContainerInfo {
             id: container.id.unwrap_or_default(),
@@ -676,11 +694,10 @@ pub async fn list_compose_containers(
         vec![format!("com.docker.compose.project={}", project_name)],
     );
 
-    let options = ListContainersOptions {
-        all: false,
-        filters,
-        ..Default::default()
-    };
+    let options = ListContainersOptionsBuilder::new()
+        .all(false)
+        .filters(&filters)
+        .build();
 
     let containers = runtime
         .client
@@ -704,8 +721,11 @@ pub async fn list_compose_containers(
                 .and_then(|p| p.public_port)
         });
 
-        let status = container.state.clone().unwrap_or_default();
-        let is_running = status.to_lowercase() == "running";
+        let is_running = container.state == Some(ContainerSummaryStateEnum::RUNNING);
+        let status = container
+            .state
+            .map(|state| state.to_string())
+            .unwrap_or_default();
 
         result.push(ContainerInfo {
             id: container.id.unwrap_or_default(),
@@ -724,10 +744,10 @@ pub async fn list_compose_containers(
 pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<ContainerStats> {
     // Use stream mode and take two samples to calculate CPU delta properly.
     // The one_shot mode doesn't provide valid precpu_stats for delta calculation.
-    let options = StatsOptions {
-        stream: true,
-        one_shot: false,
-    };
+    let options = StatsOptionsBuilder::new()
+        .stream(true)
+        .one_shot(false)
+        .build();
 
     let mut stream = runtime.client.stats(container_id, Some(options));
 
@@ -750,21 +770,35 @@ pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<Contai
 
     // Calculate CPU percentage using delta between two samples
     // CPU percentage = (container_delta / system_delta) * num_cpus * 100
-    let cpu_delta = second_stats.cpu_stats.cpu_usage.total_usage as f64
-        - first_stats.cpu_stats.cpu_usage.total_usage as f64;
+    // Every field in the stats payload is optional in the current Docker client.
+    let total_usage = |s: &ContainerStatsResponse| -> u64 {
+        s.cpu_stats
+            .as_ref()
+            .and_then(|c| c.cpu_usage.as_ref())
+            .and_then(|u| u.total_usage)
+            .unwrap_or(0)
+    };
+    let system_usage = |s: &ContainerStatsResponse| -> u64 {
+        s.cpu_stats
+            .as_ref()
+            .and_then(|c| c.system_cpu_usage)
+            .unwrap_or(0)
+    };
 
-    let system_delta = second_stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64
-        - first_stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64;
+    let cpu_delta = total_usage(&second_stats) as f64 - total_usage(&first_stats) as f64;
+    let system_delta = system_usage(&second_stats) as f64 - system_usage(&first_stats) as f64;
 
     let num_cpus = second_stats
         .cpu_stats
-        .online_cpus
-        .or(second_stats
-            .cpu_stats
-            .cpu_usage
-            .percpu_usage
-            .as_ref()
-            .map(|v: &Vec<u64>| v.len() as u64))
+        .as_ref()
+        .and_then(|c| {
+            c.online_cpus.map(u64::from).or_else(|| {
+                c.cpu_usage
+                    .as_ref()
+                    .and_then(|u| u.percpu_usage.as_ref())
+                    .map(|v| v.len() as u64)
+            })
+        })
         .unwrap_or(1) as f64;
 
     let cpu_percent = if system_delta > 0.0 && cpu_delta > 0.0 {
@@ -774,17 +808,24 @@ pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<Contai
     };
 
     // Get memory stats from the latest sample
-    let memory_stats = &second_stats.memory_stats;
-    let memory_usage = memory_stats.usage.unwrap_or(0);
-    let memory_limit = memory_stats.limit.unwrap_or(0);
+    let memory_usage = second_stats
+        .memory_stats
+        .as_ref()
+        .and_then(|m| m.usage)
+        .unwrap_or(0);
+    let memory_limit = second_stats
+        .memory_stats
+        .as_ref()
+        .and_then(|m| m.limit)
+        .unwrap_or(0);
 
     // Get network stats from the latest sample
     let (network_rx, network_tx) = if let Some(networks) = &second_stats.networks {
         let mut rx: u64 = 0;
         let mut tx: u64 = 0;
         for net_stats in networks.values() {
-            rx += net_stats.rx_bytes;
-            tx += net_stats.tx_bytes;
+            rx += net_stats.rx_bytes.unwrap_or(0);
+            tx += net_stats.tx_bytes.unwrap_or(0);
         }
         (rx, tx)
     } else {
@@ -801,10 +842,10 @@ pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<Contai
 }
 
 pub async fn remove_image(runtime: &DockerRuntime, image: &str) -> Result<()> {
-    let options = RemoveImageOptions {
-        force: true,
-        noprune: false,
-    };
+    let options = RemoveImageOptionsBuilder::new()
+        .force(true)
+        .noprune(false)
+        .build();
 
     runtime
         .client
@@ -853,7 +894,7 @@ async fn prune_images_inner(runtime: &DockerRuntime, all: bool) -> Result<u64> {
         // dangling=false ⇒ remove every unused image, not only dangling ones.
         filters.insert("dangling".to_string(), vec!["false".to_string()]);
     }
-    let options = PruneImagesOptions::<String> { filters };
+    let options = PruneImagesOptionsBuilder::new().filters(&filters).build();
 
     let result = runtime
         .client
@@ -908,10 +949,10 @@ pub async fn exec(runtime: &DockerRuntime, config: &ExecConfig) -> Result<ExecHa
     // Spawn resize handler
     tokio::spawn(async move {
         while let Some(size) = resize_rx.recv().await {
-            let options = ResizeExecOptions {
-                height: size.rows,
-                width: size.cols,
-            };
+            let options = ResizeExecOptionsBuilder::new()
+                .h(size.rows as i32)
+                .w(size.cols as i32)
+                .build();
             if let Err(e) = resize_client.resize_exec(&resize_exec_id, options).await {
                 tracing::warn!("Failed to resize exec: {}", e);
             }
@@ -1063,11 +1104,10 @@ pub async fn pull_image(
         (image.to_string(), Some("latest".to_string()))
     };
 
-    let options = CreateImageOptions {
-        from_image: from_image.clone(),
-        tag: tag.clone().unwrap_or_else(|| "latest".to_string()),
-        ..Default::default()
-    };
+    let options = CreateImageOptionsBuilder::new()
+        .from_image(&from_image)
+        .tag(tag.as_deref().unwrap_or("latest"))
+        .build();
 
     tracing::debug!(from_image = %from_image, tag = ?tag, "Parsed image reference");
 
@@ -1094,14 +1134,23 @@ pub async fn pull_image(
             Ok(info) => {
                 // Log progress
                 if let Some(status) = info.status {
-                    if let Some(progress) = info.progress {
-                        tracing::debug!("{}: {}", status, progress);
-                    } else {
-                        tracing::debug!("{}", status);
+                    match info.progress_detail {
+                        Some(p) if p.total.is_some() => tracing::debug!(
+                            "{}: {}/{}",
+                            status,
+                            p.current.unwrap_or(0),
+                            p.total.unwrap_or(0)
+                        ),
+                        _ => tracing::debug!("{}", status),
                     }
                 }
-                if let Some(error) = info.error {
-                    anyhow::bail!("Failed to pull image: {}", error);
+                if let Some(detail) = info.error_detail {
+                    anyhow::bail!(
+                        "Failed to pull image: {}",
+                        detail
+                            .message
+                            .unwrap_or_else(|| "unknown pull error".to_string())
+                    );
                 }
             }
             Err(e) => anyhow::bail!("Failed to pull image: {}", e),
@@ -1123,7 +1172,7 @@ pub async fn update_container_limits(
     let memory = memory_limit.and_then(parse_memory);
     let nano_cpus = cpu_limit.and_then(parse_cpu);
 
-    let options = UpdateContainerOptions::<String> {
+    let options = ContainerUpdateBody {
         memory,
         // Docker rejects a memory update that would leave a larger pre-existing
         // memory-swap limit ("update the memoryswap at the same time"), which
@@ -1184,7 +1233,13 @@ mod published_port_tests {
     fn none_when_nothing_is_published() {
         let mut ports = HashMap::new();
         ports.insert("80/tcp".to_string(), None);
-        ports.insert("3000/tcp".to_string(), Some(vec![PortBinding { host_ip: None, host_port: Some(String::new()) }]));
+        ports.insert(
+            "3000/tcp".to_string(),
+            Some(vec![PortBinding {
+                host_ip: None,
+                host_port: Some(String::new()),
+            }]),
+        );
         assert_eq!(published_host_port(&ports), None);
     }
 }

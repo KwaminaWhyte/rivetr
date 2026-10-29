@@ -39,6 +39,20 @@ impl DockerRuntime {
         })
     }
 
+    /// Agree on an API version with the daemon. The Docker client targets a recent
+    /// API and a daemon rejects clients newer than it supports, so without this
+    /// every call would fail on hosts running an older Docker engine.
+    pub async fn negotiate_version(mut self) -> Self {
+        match self.client.clone().negotiate_version().await {
+            Ok(client) => self.client = client,
+            Err(e) => tracing::warn!(
+                "Docker API version negotiation failed, using the client default: {}",
+                e
+            ),
+        }
+        self
+    }
+
     /// Set the host-protection defaults applied to every container at run time.
     pub fn with_defaults(mut self, defaults: RuntimeDefaults) -> Self {
         self.defaults = defaults;

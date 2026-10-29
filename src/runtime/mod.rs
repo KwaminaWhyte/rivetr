@@ -442,7 +442,10 @@ pub async fn detect_runtime(
     match config.runtime_type {
         RuntimeType::Docker => match DockerRuntime::new(&config.docker_socket) {
             Ok(runtime) => Ok(Arc::new(
-                runtime.with_defaults(RuntimeDefaults::from_config(config)),
+                runtime
+                    .negotiate_version()
+                    .await
+                    .with_defaults(RuntimeDefaults::from_config(config)),
             )),
             Err(e) => {
                 tracing::warn!(
@@ -462,7 +465,10 @@ pub async fn detect_runtime(
                 if docker.is_available().await {
                     tracing::info!("Auto-detected Docker runtime");
                     return Ok(Arc::new(
-                        docker.with_defaults(RuntimeDefaults::from_config(config)),
+                        docker
+                            .negotiate_version()
+                            .await
+                            .with_defaults(RuntimeDefaults::from_config(config)),
                     ));
                 }
             }
