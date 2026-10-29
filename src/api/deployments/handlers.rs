@@ -17,6 +17,7 @@ use crate::AppState;
 
 use crate::api::audit::{audit_log, ClientIp};
 use crate::api::error::ApiError;
+use crate::api::optional_json::OptionalJson;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
 
@@ -110,7 +111,7 @@ pub async fn trigger_deploy(
     user: User,
     client_ip: ClientIp,
     Path(app_id): Path<String>,
-    body: Option<Json<TriggerDeployRequest>>,
+    OptionalJson(body): OptionalJson<TriggerDeployRequest>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
     // Validate app_id format
     if let Err(e) = validate_uuid(&app_id, "app_id") {
@@ -204,7 +205,7 @@ pub async fn trigger_deploy(
     let now = chrono::Utc::now().to_rfc3339();
 
     // Extract deploy options from request body
-    let deploy_opts = body.map(|b| b.0).unwrap_or_default();
+    let deploy_opts = body.unwrap_or_default();
 
     // Check freeze windows before queuing (skip for upload apps — they are manual)
     if !is_upload_app {

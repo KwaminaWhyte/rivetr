@@ -9,6 +9,7 @@ use crate::db::{App, Deployment, User};
 use crate::AppState;
 
 use crate::api::error::ApiError;
+use crate::api::optional_json::OptionalJson;
 use crate::api::validation::validate_uuid;
 
 /// Request body for rejecting a deployment
@@ -105,7 +106,7 @@ pub async fn reject_deployment(
     State(state): State<Arc<AppState>>,
     user: User,
     Path(deployment_id): Path<String>,
-    body: Option<Json<RejectDeployRequest>>,
+    OptionalJson(body): OptionalJson<RejectDeployRequest>,
 ) -> Result<Json<Deployment>, ApiError> {
     if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
         return Err(ApiError::validation_field("deployment_id", e));
@@ -129,7 +130,7 @@ pub async fn reject_deployment(
     }
 
     let reason = body
-        .and_then(|b| b.0.reason)
+        .and_then(|b| b.reason)
         .unwrap_or_else(|| "No reason provided".to_string());
 
     let now = chrono::Utc::now().to_rfc3339();

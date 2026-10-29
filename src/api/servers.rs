@@ -1069,13 +1069,13 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         Ok(Some(s)) => s,
         Ok(None) => {
             let msg = serde_json::json!({"type": "error", "message": "Server not found"});
-            let _ = socket.send(Message::Text(msg.to_string())).await;
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
             return;
         }
         Err(e) => {
             let msg =
                 serde_json::json!({"type": "error", "message": format!("Database error: {}", e)});
-            let _ = socket.send(Message::Text(msg.to_string())).await;
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
             return;
         }
     };
@@ -1186,7 +1186,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
             Ok(c) => c,
             Err(e) => {
                 let msg = serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
-                let _ = socket.send(Message::Text(msg.to_string())).await;
+                let _ = socket.send(Message::Text(msg.to_string().into())).await;
                 return;
             }
         }
@@ -1201,7 +1201,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
             Ok(c) => c,
             Err(e) => {
                 let msg = serde_json::json!({"type": "error", "message": format!("Failed to spawn SSH: {}", e)});
-                let _ = socket.send(Message::Text(msg.to_string())).await;
+                let _ = socket.send(Message::Text(msg.to_string().into())).await;
                 return;
             }
         }
@@ -1213,7 +1213,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         "host": server.host,
     });
     if socket
-        .send(Message::Text(connected_msg.to_string()))
+        .send(Message::Text(connected_msg.to_string().into()))
         .await
         .is_err()
     {
@@ -1224,7 +1224,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         Some(s) => s,
         None => {
             let msg = serde_json::json!({"type": "error", "message": "Failed to open stdin"});
-            let _ = socket.send(Message::Text(msg.to_string())).await;
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
             return;
         }
     };
@@ -1232,7 +1232,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
         Some(s) => s,
         None => {
             let msg = serde_json::json!({"type": "error", "message": "Failed to open stdout"});
-            let _ = socket.send(Message::Text(msg.to_string())).await;
+            let _ = socket.send(Message::Text(msg.to_string().into())).await;
             return;
         }
     };
@@ -1250,7 +1250,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
                     let data = String::from_utf8_lossy(&buf[..n]).to_string();
                     let msg = serde_json::json!({"type": "data", "data": data});
                     if ws_sender
-                        .send(Message::Text(msg.to_string()))
+                        .send(Message::Text(msg.to_string().into()))
                         .await
                         .is_err()
                     {
@@ -1260,7 +1260,9 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
             }
         }
         let end_msg = serde_json::json!({"type": "end", "message": "SSH session ended"});
-        let _ = ws_sender.send(Message::Text(end_msg.to_string())).await;
+        let _ = ws_sender
+            .send(Message::Text(end_msg.to_string().into()))
+            .await;
     });
 
     // Forward WebSocket messages → SSH stdin

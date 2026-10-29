@@ -29,7 +29,6 @@ impl ClientIp {
     }
 }
 
-#[axum::async_trait]
 impl FromRequestParts<Arc<AppState>> for ClientIp {
     type Rejection = Infallible;
 

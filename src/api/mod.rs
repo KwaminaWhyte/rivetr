@@ -35,6 +35,7 @@ pub mod metrics;
 mod monitoring;
 mod notifications;
 pub mod oauth;
+mod optional_json;
 mod patches;
 mod previews;
 mod projects;
@@ -67,6 +68,7 @@ mod ws;
 
 use axum::{
     body::Body,
+    extract::DefaultBodyLimit,
     http::{header, HeaderMap, Request, Response, StatusCode, Uri},
     middleware,
     response::IntoResponse,
@@ -79,6 +81,11 @@ use tower_http::{compression::CompressionLayer, trace::TraceLayer};
 
 use crate::AppState;
 use rate_limit::{rate_limit_api, rate_limit_auth, rate_limit_webhook};
+
+/// Body limit for the ZIP upload routes. axum's 2MB default made any realistic
+/// project upload fail; this matches the 100MB cap on the extracted contents
+/// enforced in `engine::zip_extract`.
+const UPLOAD_BODY_LIMIT: usize = 100 * 1024 * 1024;
 
 /// Embedded static files from the frontend build
 #[derive(Embed)]
@@ -104,11 +111,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // OAuth routes
         .route(
-            "/oauth/:provider/authorize",
+            "/oauth/{provider}/authorize",
             get(git_providers::get_auth_url),
         )
         .route(
-            "/oauth/:provider/callback",
+            "/oauth/{provider}/callback",
             get(git_providers::oauth_callback),
         )
         // GitHub App callbacks (public - GitHub redirects here)
@@ -119,11 +126,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // OAuth login routes (public - social login)
         .route(
-            "/oauth-login/:provider/authorize",
+            "/oauth-login/{provider}/authorize",
             get(oauth::oauth_login_authorize),
         )
         .route(
-            "/oauth-login/:provider/callback",
+            "/oauth-login/{provider}/callback",
             get(oauth::oauth_login_callback),
         )
         // 2FA validation (semi-authenticated - uses temporary session token)
@@ -142,7 +149,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/setup-status", get(auth::setup_status))
         .route("/oauth/providers", get(oauth::list_enabled_providers))
         // Team invitation validation (public - validate before login)
-        .route("/invitations/:token", get(teams::validate_invitation))
+        .route("/invitations/{token}", get(teams::validate_invitation))
         // Apply API-tier rate limiting (more lenient, suitable for frequent polling)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -151,15 +158,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     // WebSocket routes (auth handled in handlers via query param)
     let ws_routes = Router::new()
-        .route("/deployments/:id/logs/stream", get(ws::deployment_logs_ws))
-        .route("/apps/:id/terminal", get(ws::terminal_ws))
-        .route("/servers/:id/terminal", get(servers::server_terminal_ws))
+        .route("/deployments/{id}/logs/stream", get(ws::deployment_logs_ws))
+        .route("/apps/{id}/terminal", get(ws::terminal_ws))
+        .route("/servers/{id}/terminal", get(servers::server_terminal_ws))
         .route(
-            "/services/:id/start-stream",
+            "/services/{id}/start-stream",
             get(start_logs::service_start_stream_ws),
         )
         .route(
-            "/databases/:id/start-stream",
+            "/databases/{id}/start-stream",
             get(start_logs::database_start_stream_ws),
         );
 
@@ -169,137 +176,141 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps", get(apps::list_apps))
         .route("/apps/statuses", get(apps::list_app_statuses))
         .route("/apps", post(apps::create_app))
-        .route("/apps/:id", get(apps::get_app))
-        .route("/apps/:id", put(apps::update_app))
-        .route("/apps/:id", delete(apps::delete_app))
-        .route("/apps/:id/status", get(apps::get_app_status))
-        .route("/apps/:id/start", post(apps::start_app))
-        .route("/apps/:id/stop", post(apps::stop_app))
-        .route("/apps/:id/restart", post(apps::restart_app))
-        .route("/apps/:id/apply-limits", post(apps::apply_resource_limits))
-        .route("/apps/:id/generate-domain", post(apps::generate_domain))
-        .route("/apps/:id/activity", get(apps::get_app_activity))
-        .route("/apps/:id/logs/stream", get(apps::stream_app_logs))
+        .route("/apps/{id}", get(apps::get_app))
+        .route("/apps/{id}", put(apps::update_app))
+        .route("/apps/{id}", delete(apps::delete_app))
+        .route("/apps/{id}/status", get(apps::get_app_status))
+        .route("/apps/{id}/start", post(apps::start_app))
+        .route("/apps/{id}/stop", post(apps::stop_app))
+        .route("/apps/{id}/restart", post(apps::restart_app))
+        .route("/apps/{id}/apply-limits", post(apps::apply_resource_limits))
+        .route("/apps/{id}/generate-domain", post(apps::generate_domain))
+        .route("/apps/{id}/activity", get(apps::get_app_activity))
+        .route("/apps/{id}/logs/stream", get(apps::stream_app_logs))
         .route(
-            "/apps/:id/github-actions-workflow",
+            "/apps/{id}/github-actions-workflow",
             get(apps::get_github_actions_workflow),
         )
         // App Sharing
         .route("/apps/with-sharing", get(apps::list_apps_with_sharing))
-        .route("/apps/:id/shares", get(apps::list_app_shares))
-        .route("/apps/:id/shares", post(apps::create_app_share))
-        .route("/apps/:id/shares/:team_id", delete(apps::delete_app_share))
+        .route("/apps/{id}/shares", get(apps::list_app_shares))
+        .route("/apps/{id}/shares", post(apps::create_app_share))
+        .route("/apps/{id}/shares/{team_id}", delete(apps::delete_app_share))
         // Database ↔ App env-var injection links
-        .route("/apps/:app_id/links", get(database_links::list_links))
-        .route("/apps/:app_id/links", post(database_links::create_link))
+        .route("/apps/{app_id}/links", get(database_links::list_links))
+        .route("/apps/{app_id}/links", post(database_links::create_link))
         .route(
-            "/apps/:app_id/links/:link_id",
+            "/apps/{app_id}/links/{link_id}",
             delete(database_links::delete_link),
         )
         .route(
-            "/apps/:app_id/linked-env-vars",
+            "/apps/{app_id}/linked-env-vars",
             get(database_links::preview_linked_env_vars),
         )
         // Deployments
-        .route("/apps/:id/deploy", post(deployments::trigger_deploy))
-        .route("/apps/:id/deploy/upload", post(deployments::upload_deploy))
-        .route("/apps/:id/deployments", get(deployments::list_deployments))
-        .route("/apps/:id/stats", get(deployments::get_app_stats))
-        .route("/apps/:id/commits", get(deployments::list_commits))
-        .route("/apps/:id/tags", get(deployments::list_tags))
-        .route("/deployments/:id", get(deployments::get_deployment))
-        .route("/deployments/:id/logs", get(deployments::get_logs))
+        .route("/apps/{id}/deploy", post(deployments::trigger_deploy))
         .route(
-            "/deployments/:id/diff",
+            "/apps/{id}/deploy/upload",
+            post(deployments::upload_deploy).layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
+        )
+        .route("/apps/{id}/deployments", get(deployments::list_deployments))
+        .route("/apps/{id}/stats", get(deployments::get_app_stats))
+        .route("/apps/{id}/commits", get(deployments::list_commits))
+        .route("/apps/{id}/tags", get(deployments::list_tags))
+        .route("/deployments/{id}", get(deployments::get_deployment))
+        .route("/deployments/{id}/logs", get(deployments::get_logs))
+        .route(
+            "/deployments/{id}/diff",
             get(deployments::get_deployment_diff),
         )
         .route(
-            "/deployments/:id/rollback",
+            "/deployments/{id}/rollback",
             post(deployments::rollback_deployment),
         )
         .route(
-            "/deployments/:id/snapshots",
+            "/deployments/{id}/snapshots",
             get(deployments::list_deployment_snapshots),
         )
         // Deployment approval workflow
         .route(
-            "/deployments/:id/approve",
+            "/deployments/{id}/approve",
             post(deployments::approve_deployment),
         )
         .route(
-            "/deployments/:id/reject",
+            "/deployments/{id}/reject",
             post(deployments::reject_deployment),
         )
         .route(
-            "/apps/:id/deployments/pending",
+            "/apps/{id}/deployments/pending",
             get(deployments::list_pending_deployments),
         )
         // Deployment cancellation
         .route(
-            "/apps/:app_id/deployments/:id/cancel",
+            "/apps/{app_id}/deployments/{id}/cancel",
             post(deployments::cancel_deployment),
         )
         // Deployment freeze windows (app-scoped)
         .route(
-            "/apps/:id/freeze-windows",
+            "/apps/{id}/freeze-windows",
             get(deployments::list_freeze_windows),
         )
         .route(
-            "/apps/:id/freeze-windows",
+            "/apps/{id}/freeze-windows",
             post(deployments::create_freeze_window),
         )
         .route(
-            "/apps/:id/freeze-windows/:window_id",
+            "/apps/{id}/freeze-windows/{window_id}",
             delete(deployments::delete_freeze_window),
         )
         // Build detection
         .route(
             "/build/detect",
-            post(deployments::detect_build_type_from_upload),
+            post(deployments::detect_build_type_from_upload)
+                .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
         )
         // SSH Keys
         .route("/ssh-keys", get(ssh_keys::list_ssh_keys))
         .route("/ssh-keys", post(ssh_keys::create_ssh_key))
-        .route("/ssh-keys/:id", get(ssh_keys::get_ssh_key))
-        .route("/ssh-keys/:id", put(ssh_keys::update_ssh_key))
-        .route("/ssh-keys/:id", delete(ssh_keys::delete_ssh_key))
-        .route("/apps/:id/ssh-keys", get(ssh_keys::get_app_ssh_keys))
+        .route("/ssh-keys/{id}", get(ssh_keys::get_ssh_key))
+        .route("/ssh-keys/{id}", put(ssh_keys::update_ssh_key))
+        .route("/ssh-keys/{id}", delete(ssh_keys::delete_ssh_key))
+        .route("/apps/{id}/ssh-keys", get(ssh_keys::get_app_ssh_keys))
         // Remote Servers
         .route(
             "/servers",
             get(servers::list_servers).post(servers::create_server),
         )
         .route(
-            "/servers/:id",
+            "/servers/{id}",
             get(servers::get_server)
                 .put(servers::update_server)
                 .delete(servers::delete_server),
         )
-        .route("/servers/:id/check", post(servers::check_server_health))
+        .route("/servers/{id}/check", post(servers::check_server_health))
         .route(
-            "/servers/:id/host-key",
+            "/servers/{id}/host-key",
             delete(servers::reset_server_host_key),
         )
-        .route("/servers/:id/install-docker", post(servers::install_docker))
-        .route("/servers/:id/fetch-details", post(servers::fetch_details))
-        .route("/servers/:id/patches", get(servers::check_server_patches))
+        .route("/servers/{id}/install-docker", post(servers::install_docker))
+        .route("/servers/{id}/fetch-details", post(servers::fetch_details))
+        .route("/servers/{id}/patches", get(servers::check_server_patches))
         .route(
-            "/servers/:id/security-check",
+            "/servers/{id}/security-check",
             get(servers::check_server_security),
         )
         // Remote filesystem browser
         .route(
-            "/servers/:id/files",
+            "/servers/{id}/files",
             get(filesystem::browse_files).delete(filesystem::delete_file),
         )
         .route(
-            "/servers/:id/files/content",
+            "/servers/{id}/files/content",
             get(filesystem::read_file).put(filesystem::write_file),
         )
         // Server app assignments
-        .route("/servers/:id/apps", get(servers::list_server_apps))
+        .route("/servers/{id}/apps", get(servers::list_server_apps))
         .route(
-            "/servers/:id/apps/:app_id",
+            "/servers/{id}/apps/{app_id}",
             post(servers::assign_app_to_server).delete(servers::unassign_app_from_server),
         )
         // Cloudflare Tunnels
@@ -307,16 +318,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/tunnels",
             get(cloudflare_tunnels::list_tunnels).post(cloudflare_tunnels::create_tunnel),
         )
-        .route("/tunnels/:id", delete(cloudflare_tunnels::delete_tunnel))
-        .route("/tunnels/:id/start", post(cloudflare_tunnels::start_tunnel))
-        .route("/tunnels/:id/stop", post(cloudflare_tunnels::stop_tunnel))
+        .route("/tunnels/{id}", delete(cloudflare_tunnels::delete_tunnel))
+        .route("/tunnels/{id}/start", post(cloudflare_tunnels::start_tunnel))
+        .route("/tunnels/{id}/stop", post(cloudflare_tunnels::stop_tunnel))
         .route(
-            "/tunnels/:id/routes",
+            "/tunnels/{id}/routes",
             get(cloudflare_tunnels::list_tunnel_routes)
                 .post(cloudflare_tunnels::create_tunnel_route),
         )
         .route(
-            "/tunnels/:id/routes/:route_id",
+            "/tunnels/{id}/routes/{route_id}",
             delete(cloudflare_tunnels::delete_tunnel_route),
         )
         // Build Servers
@@ -325,302 +336,305 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(build_servers::list_build_servers).post(build_servers::create_build_server),
         )
         .route(
-            "/build-servers/:id",
+            "/build-servers/{id}",
             get(build_servers::get_build_server)
                 .put(build_servers::update_build_server)
                 .delete(build_servers::delete_build_server),
         )
         .route(
-            "/build-servers/:id/check",
+            "/build-servers/{id}/check",
             post(build_servers::check_build_server_health),
         )
         .route(
-            "/build-servers/:id/host-key",
+            "/build-servers/{id}/host-key",
             delete(build_servers::reset_build_server_host_key),
         )
         // Environment Variables
-        .route("/apps/:id/env-vars", get(env_vars::list_env_vars))
-        .route("/apps/:id/env-vars", post(env_vars::create_env_var))
+        .route("/apps/{id}/env-vars", get(env_vars::list_env_vars))
+        .route("/apps/{id}/env-vars", post(env_vars::create_env_var))
         // Resolved env vars endpoint (must be before :key catch-all)
         .route(
-            "/apps/:id/env-vars/resolved",
+            "/apps/{id}/env-vars/resolved",
             get(shared_env_vars::get_resolved_env_vars),
         )
-        .route("/apps/:id/env-vars/:key", get(env_vars::get_env_var))
-        .route("/apps/:id/env-vars/:key", put(env_vars::update_env_var))
-        .route("/apps/:id/env-vars/:key", delete(env_vars::delete_env_var))
+        .route("/apps/{id}/env-vars/{key}", get(env_vars::get_env_var))
+        .route("/apps/{id}/env-vars/{key}", put(env_vars::update_env_var))
+        .route("/apps/{id}/env-vars/{key}", delete(env_vars::delete_env_var))
         // Deployment Patches (file injection before build)
-        .route("/apps/:id/patches", get(patches::list_patches))
-        .route("/apps/:id/patches", post(patches::create_patch))
-        .route("/apps/:id/patches/:patch_id", put(patches::update_patch))
-        .route("/apps/:id/patches/:patch_id", delete(patches::delete_patch))
+        .route("/apps/{id}/patches", get(patches::list_patches))
+        .route("/apps/{id}/patches", post(patches::create_patch))
+        .route("/apps/{id}/patches/{patch_id}", put(patches::update_patch))
+        .route("/apps/{id}/patches/{patch_id}", delete(patches::delete_patch))
         // Alert Configurations
-        .route("/apps/:id/alerts", get(alerts::list_alerts))
-        .route("/apps/:id/alerts", post(alerts::create_alert))
-        .route("/apps/:id/alerts/:alert_id", get(alerts::get_alert))
-        .route("/apps/:id/alerts/:alert_id", put(alerts::update_alert))
-        .route("/apps/:id/alerts/:alert_id", delete(alerts::delete_alert))
-        .route("/apps/:id/alert-events", get(alerts::list_alert_events))
+        .route("/apps/{id}/alerts", get(alerts::list_alerts))
+        .route("/apps/{id}/alerts", post(alerts::create_alert))
+        .route("/apps/{id}/alerts/{alert_id}", get(alerts::get_alert))
+        .route("/apps/{id}/alerts/{alert_id}", put(alerts::update_alert))
+        .route("/apps/{id}/alerts/{alert_id}", delete(alerts::delete_alert))
+        .route("/apps/{id}/alert-events", get(alerts::list_alert_events))
         // App Costs
-        .route("/apps/:id/costs", get(costs::get_app_costs))
+        .route("/apps/{id}/costs", get(costs::get_app_costs))
         // HTTP Basic Auth
-        .route("/apps/:id/basic-auth", get(basic_auth::get_basic_auth))
-        .route("/apps/:id/basic-auth", put(basic_auth::update_basic_auth))
+        .route("/apps/{id}/basic-auth", get(basic_auth::get_basic_auth))
+        .route("/apps/{id}/basic-auth", put(basic_auth::update_basic_auth))
         .route(
-            "/apps/:id/basic-auth",
+            "/apps/{id}/basic-auth",
             delete(basic_auth::delete_basic_auth),
         )
         // URL Redirect Rules
         .route(
-            "/apps/:id/redirects",
+            "/apps/{id}/redirects",
             get(redirect_rules::list_redirect_rules).post(redirect_rules::create_redirect_rule),
         )
         .route(
-            "/apps/:id/redirects/:rid",
+            "/apps/{id}/redirects/{rid}",
             put(redirect_rules::update_redirect_rule).delete(redirect_rules::delete_redirect_rule),
         )
         // Volumes
-        .route("/apps/:id/volumes", get(volumes::list_volumes))
-        .route("/apps/:id/volumes", post(volumes::create_volume))
-        .route("/volumes/:id", get(volumes::get_volume))
-        .route("/volumes/:id", put(volumes::update_volume))
-        .route("/volumes/:id", delete(volumes::delete_volume))
-        .route("/volumes/:id/backup", post(volumes::backup_volume))
+        .route("/apps/{id}/volumes", get(volumes::list_volumes))
+        .route("/apps/{id}/volumes", post(volumes::create_volume))
+        .route("/volumes/{id}", get(volumes::get_volume))
+        .route("/volumes/{id}", put(volumes::update_volume))
+        .route("/volumes/{id}", delete(volumes::delete_volume))
+        .route("/volumes/{id}/backup", post(volumes::backup_volume))
         // Log Drains
-        .route("/apps/:id/log-drains", get(log_drains::list_log_drains))
-        .route("/apps/:id/log-drains", post(log_drains::create_log_drain))
+        .route("/apps/{id}/log-drains", get(log_drains::list_log_drains))
+        .route("/apps/{id}/log-drains", post(log_drains::create_log_drain))
         .route(
-            "/apps/:id/log-drains/:drain_id",
+            "/apps/{id}/log-drains/{drain_id}",
             put(log_drains::update_log_drain),
         )
         .route(
-            "/apps/:id/log-drains/:drain_id",
+            "/apps/{id}/log-drains/{drain_id}",
             delete(log_drains::delete_log_drain),
         )
         .route(
-            "/apps/:id/log-drains/:drain_id/test",
+            "/apps/{id}/log-drains/{drain_id}/test",
             post(log_drains::test_log_drain),
         )
         // Monitoring: Log Search, Retention, Uptime, Scheduled Restarts
-        .route("/apps/:id/logs/search", get(monitoring::search_logs))
+        .route("/apps/{id}/logs/search", get(monitoring::search_logs))
         .route(
-            "/apps/:id/log-retention",
+            "/apps/{id}/log-retention",
             get(monitoring::get_log_retention),
         )
         .route(
-            "/apps/:id/log-retention",
+            "/apps/{id}/log-retention",
             put(monitoring::update_log_retention),
         )
-        .route("/apps/:id/uptime", get(monitoring::get_uptime))
+        .route("/apps/{id}/uptime", get(monitoring::get_uptime))
         .route(
-            "/apps/:id/uptime/history",
+            "/apps/{id}/uptime/history",
             get(monitoring::get_uptime_history),
         )
         .route(
-            "/apps/:id/scheduled-restarts",
+            "/apps/{id}/scheduled-restarts",
             post(monitoring::create_scheduled_restart),
         )
         .route(
-            "/apps/:id/scheduled-restarts",
+            "/apps/{id}/scheduled-restarts",
             get(monitoring::list_scheduled_restarts),
         )
         .route(
-            "/apps/:id/scheduled-restarts/:restart_id",
+            "/apps/{id}/scheduled-restarts/{restart_id}",
             put(monitoring::update_scheduled_restart),
         )
         .route(
-            "/apps/:id/scheduled-restarts/:restart_id",
+            "/apps/{id}/scheduled-restarts/{restart_id}",
             delete(monitoring::delete_scheduled_restart),
         )
         // Scheduled Jobs
-        .route("/apps/:id/jobs", get(jobs::list_jobs))
-        .route("/apps/:id/jobs", post(jobs::create_job))
-        .route("/apps/:id/jobs/:job_id", get(jobs::get_job))
-        .route("/apps/:id/jobs/:job_id", put(jobs::update_job))
-        .route("/apps/:id/jobs/:job_id", delete(jobs::delete_job))
-        .route("/apps/:id/jobs/:job_id/run", post(jobs::trigger_job_run))
-        .route("/apps/:id/jobs/:job_id/runs", get(jobs::list_job_runs))
+        .route("/apps/{id}/jobs", get(jobs::list_jobs))
+        .route("/apps/{id}/jobs", post(jobs::create_job))
+        .route("/apps/{id}/jobs/{job_id}", get(jobs::get_job))
+        .route("/apps/{id}/jobs/{job_id}", put(jobs::update_job))
+        .route("/apps/{id}/jobs/{job_id}", delete(jobs::delete_job))
+        .route("/apps/{id}/jobs/{job_id}/run", post(jobs::trigger_job_run))
+        .route("/apps/{id}/jobs/{job_id}/runs", get(jobs::list_job_runs))
         // Routes (proxy management)
         .route("/routes", get(routes::list_routes))
         .route("/routes", post(routes::add_route))
         .route("/routes/domains", get(routes::list_domains))
         .route("/routes/health", get(routes::routes_health))
-        .route("/routes/:domain", get(routes::get_route))
-        .route("/routes/:domain", delete(routes::remove_route))
-        .route("/routes/:domain/health", put(routes::update_route_health))
+        .route("/routes/{domain}", get(routes::get_route))
+        .route("/routes/{domain}", delete(routes::remove_route))
+        .route("/routes/{domain}/health", put(routes::update_route_health))
         // Git Providers (OAuth connections and PAT)
         .route("/git-providers", get(git_providers::list_providers))
         .route("/git-providers", post(git_providers::add_token_provider))
-        .route("/git-providers/:id", get(git_providers::get_provider))
-        .route("/git-providers/:id", delete(git_providers::delete_provider))
-        .route("/git-providers/:id/repos", get(git_providers::list_repos))
+        .route("/git-providers/{id}", get(git_providers::get_provider))
+        .route("/git-providers/{id}", delete(git_providers::delete_provider))
+        .route("/git-providers/{id}/repos", get(git_providers::list_repos))
         // Projects
         .route("/projects", get(projects::list_projects))
         .route("/projects", post(projects::create_project))
-        .route("/projects/:id", get(projects::get_project))
-        .route("/projects/:id", put(projects::update_project))
-        .route("/projects/:id", delete(projects::delete_project))
-        .route("/projects/:id/apps/upload", post(apps::upload_create_app))
-        .route("/projects/:id/costs", get(costs::get_project_costs))
+        .route("/projects/{id}", get(projects::get_project))
+        .route("/projects/{id}", put(projects::update_project))
+        .route("/projects/{id}", delete(projects::delete_project))
         .route(
-            "/projects/:id/dependency-graph",
+            "/projects/{id}/apps/upload",
+            post(apps::upload_create_app).layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
+        )
+        .route("/projects/{id}/costs", get(costs::get_project_costs))
+        .route(
+            "/projects/{id}/dependency-graph",
             get(projects::get_dependency_graph),
         )
-        .route("/apps/:id/dependencies", post(projects::add_dependency))
+        .route("/apps/{id}/dependencies", post(projects::add_dependency))
         .route(
-            "/apps/:id/dependencies/:dep_id",
+            "/apps/{id}/dependencies/{dep_id}",
             delete(projects::delete_dependency),
         )
-        .route("/apps/:id/project", put(projects::assign_app_project))
+        .route("/apps/{id}/project", put(projects::assign_app_project))
         // Project Shared Env Vars
         .route(
-            "/projects/:id/env-vars",
+            "/projects/{id}/env-vars",
             get(shared_env_vars::list_project_env_vars),
         )
         .route(
-            "/projects/:id/env-vars",
+            "/projects/{id}/env-vars",
             post(shared_env_vars::create_project_env_var),
         )
         .route(
-            "/projects/:id/env-vars/:var_id",
+            "/projects/{id}/env-vars/{var_id}",
             put(shared_env_vars::update_project_env_var),
         )
         .route(
-            "/projects/:id/env-vars/:var_id",
+            "/projects/{id}/env-vars/{var_id}",
             delete(shared_env_vars::delete_project_env_var),
         )
         // Project Environments
         .route(
-            "/projects/:id/environments",
+            "/projects/{id}/environments",
             get(environments::list_environments),
         )
         .route(
-            "/projects/:id/environments",
+            "/projects/{id}/environments",
             post(environments::create_environment),
         )
-        .route("/environments/:id", put(environments::update_environment))
+        .route("/environments/{id}", put(environments::update_environment))
         .route(
-            "/environments/:id",
+            "/environments/{id}",
             delete(environments::delete_environment),
         )
         // Clone environment
         .route(
-            "/projects/:project_id/environments/:env_id/clone",
+            "/projects/{project_id}/environments/{env_id}/clone",
             post(clone::clone_environment),
         )
         // Environment Env Vars
         .route(
-            "/environments/:id/env-vars",
+            "/environments/{id}/env-vars",
             get(environments::list_env_vars),
         )
         .route(
-            "/environments/:id/env-vars",
+            "/environments/{id}/env-vars",
             post(environments::create_env_var),
         )
         .route(
-            "/environments/:env_id/env-vars/:id",
+            "/environments/{env_id}/env-vars/{id}",
             put(environments::update_env_var),
         )
         .route(
-            "/environments/:env_id/env-vars/:id",
+            "/environments/{env_id}/env-vars/{id}",
             delete(environments::delete_env_var),
         )
         // Teams
         .route("/teams", get(teams::list_teams))
         .route("/teams", post(teams::create_team))
-        .route("/teams/:id", get(teams::get_team))
-        .route("/teams/:id", put(teams::update_team))
-        .route("/teams/:id", delete(teams::delete_team))
+        .route("/teams/{id}", get(teams::get_team))
+        .route("/teams/{id}", put(teams::update_team))
+        .route("/teams/{id}", delete(teams::delete_team))
         .route(
-            "/teams/:id/2fa-enforcement",
+            "/teams/{id}/2fa-enforcement",
             put(teams::toggle_2fa_enforcement),
         )
-        .route("/teams/:id/members", get(teams::list_members))
-        .route("/teams/:id/members", post(teams::invite_member))
+        .route("/teams/{id}/members", get(teams::list_members))
+        .route("/teams/{id}/members", post(teams::invite_member))
         .route(
-            "/teams/:id/members/:user_id",
+            "/teams/{id}/members/{user_id}",
             put(teams::update_member_role),
         )
-        .route("/teams/:id/members/:user_id", delete(teams::remove_member))
+        .route("/teams/{id}/members/{user_id}", delete(teams::remove_member))
         // Team member resource permissions (fine-grained RBAC)
         .route(
-            "/teams/:id/members/:user_id/permissions",
+            "/teams/{id}/members/{user_id}/permissions",
             get(teams::list_member_permissions).put(teams::set_member_permissions),
         )
         .route(
-            "/teams/:id/members/:user_id/permissions/:perm_id",
+            "/teams/{id}/members/{user_id}/permissions/{perm_id}",
             delete(teams::delete_member_permission),
         )
         // Team Invitations
-        .route("/teams/:id/invitations", get(teams::list_invitations))
-        .route("/teams/:id/invitations", post(teams::create_invitation))
+        .route("/teams/{id}/invitations", get(teams::list_invitations))
+        .route("/teams/{id}/invitations", post(teams::create_invitation))
         .route(
-            "/teams/:id/invitations/:inv_id",
+            "/teams/{id}/invitations/{inv_id}",
             delete(teams::delete_invitation),
         )
         .route(
-            "/teams/:id/invitations/:inv_id/resend",
+            "/teams/{id}/invitations/{inv_id}/resend",
             post(teams::resend_invitation),
         )
         // Invitation accept (requires auth)
-        .route("/invitations/:token/accept", post(teams::accept_invitation))
+        .route("/invitations/{token}/accept", post(teams::accept_invitation))
         // Team Shared Env Vars
         .route(
-            "/teams/:id/env-vars",
+            "/teams/{id}/env-vars",
             get(shared_env_vars::list_team_env_vars),
         )
         .route(
-            "/teams/:id/env-vars",
+            "/teams/{id}/env-vars",
             post(shared_env_vars::create_team_env_var),
         )
         .route(
-            "/teams/:id/env-vars/:var_id",
+            "/teams/{id}/env-vars/{var_id}",
             put(shared_env_vars::update_team_env_var),
         )
         .route(
-            "/teams/:id/env-vars/:var_id",
+            "/teams/{id}/env-vars/{var_id}",
             delete(shared_env_vars::delete_team_env_var),
         )
         // Team Audit Logs
-        .route("/teams/:id/audit-logs", get(teams::list_audit_logs))
+        .route("/teams/{id}/audit-logs", get(teams::list_audit_logs))
         // Team Costs
-        .route("/teams/:id/costs", get(costs::get_team_costs))
+        .route("/teams/{id}/costs", get(costs::get_team_costs))
         // Team Notification Channels
         .route(
-            "/teams/:id/notification-channels",
+            "/teams/{id}/notification-channels",
             get(notifications::list_team_channels),
         )
         .route(
-            "/teams/:id/notification-channels",
+            "/teams/{id}/notification-channels",
             post(notifications::create_team_channel),
         )
         .route(
-            "/teams/:id/notification-channels/:channel_id",
+            "/teams/{id}/notification-channels/{channel_id}",
             get(notifications::get_team_channel),
         )
         .route(
-            "/teams/:id/notification-channels/:channel_id",
+            "/teams/{id}/notification-channels/{channel_id}",
             put(notifications::update_team_channel),
         )
         .route(
-            "/teams/:id/notification-channels/:channel_id",
+            "/teams/{id}/notification-channels/{channel_id}",
             delete(notifications::delete_team_channel),
         )
         .route(
-            "/teams/:id/notification-channels/:channel_id/test",
+            "/teams/{id}/notification-channels/{channel_id}/test",
             post(notifications::test_team_channel),
         )
         // API Tokens
         .route("/tokens", get(api_tokens::list_tokens))
         .route("/tokens", post(api_tokens::create_token))
-        .route("/tokens/:id", delete(api_tokens::delete_token))
+        .route("/tokens/{id}", delete(api_tokens::delete_token))
         // CA Certificates
         .route(
             "/ca-certificates",
             get(ca_certificates::list_ca_certificates).post(ca_certificates::create_ca_certificate),
         )
         .route(
-            "/ca-certificates/:id",
+            "/ca-certificates/{id}",
             delete(ca_certificates::delete_ca_certificate),
         )
         // Destinations (Docker named networks)
@@ -629,7 +643,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(destinations::list).post(destinations::create),
         )
         .route(
-            "/destinations/:id",
+            "/destinations/{id}",
             get(destinations::get_one).delete(destinations::delete),
         )
         // Notification Channels (Global)
@@ -639,91 +653,91 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(notifications::create_channel),
         )
         .route(
-            "/notification-channels/:id",
+            "/notification-channels/{id}",
             get(notifications::get_channel),
         )
         .route(
-            "/notification-channels/:id",
+            "/notification-channels/{id}",
             put(notifications::update_channel),
         )
         .route(
-            "/notification-channels/:id",
+            "/notification-channels/{id}",
             delete(notifications::delete_channel),
         )
         .route(
-            "/notification-channels/:id/test",
+            "/notification-channels/{id}/test",
             post(notifications::test_channel),
         )
         .route(
-            "/notification-channels/:id/subscriptions",
+            "/notification-channels/{id}/subscriptions",
             get(notifications::list_subscriptions),
         )
         .route(
-            "/notification-channels/:id/subscriptions",
+            "/notification-channels/{id}/subscriptions",
             post(notifications::create_subscription),
         )
         .route(
-            "/notification-subscriptions/:id",
+            "/notification-subscriptions/{id}",
             delete(notifications::delete_subscription),
         )
         // Managed Databases
         .route("/databases", get(databases::list_databases))
         .route("/databases", post(databases::create_database))
-        .route("/databases/:id", get(databases::get_database))
-        .route("/databases/:id", put(databases::update_database))
-        .route("/databases/:id", delete(databases::delete_database))
-        .route("/databases/:id/start", post(databases::start_database))
-        .route("/databases/:id/stop", post(databases::stop_database))
-        .route("/databases/:id/logs", get(databases::get_database_logs))
+        .route("/databases/{id}", get(databases::get_database))
+        .route("/databases/{id}", put(databases::update_database))
+        .route("/databases/{id}", delete(databases::delete_database))
+        .route("/databases/{id}/start", post(databases::start_database))
+        .route("/databases/{id}/stop", post(databases::stop_database))
+        .route("/databases/{id}/logs", get(databases::get_database_logs))
         .route(
-            "/databases/:id/start-events",
+            "/databases/{id}/start-events",
             get(start_logs::database_start_stream_snapshot),
         )
-        .route("/databases/:id/stats", get(databases::get_database_stats))
+        .route("/databases/{id}/stats", get(databases::get_database_stats))
         .route(
-            "/databases/:id/import",
+            "/databases/{id}/import",
             post(databases::import_database_dump),
         )
         // Database Extensions (PostgreSQL only)
         .route(
-            "/databases/:id/extensions",
+            "/databases/{id}/extensions",
             get(database_extensions::list_extensions),
         )
         .route(
-            "/databases/:id/extensions",
+            "/databases/{id}/extensions",
             post(database_extensions::install_extension),
         )
         // Database Backups
         .route(
-            "/databases/:id/backups",
+            "/databases/{id}/backups",
             get(database_backups::list_backups),
         )
         .route(
-            "/databases/:id/backups",
+            "/databases/{id}/backups",
             post(database_backups::create_backup),
         )
         .route(
-            "/databases/:id/backups/:backup_id",
+            "/databases/{id}/backups/{backup_id}",
             get(database_backups::get_backup),
         )
         .route(
-            "/databases/:id/backups/:backup_id",
+            "/databases/{id}/backups/{backup_id}",
             delete(database_backups::delete_backup),
         )
         .route(
-            "/databases/:id/backups/:backup_id/download",
+            "/databases/{id}/backups/{backup_id}/download",
             get(database_backups::download_backup),
         )
         .route(
-            "/databases/:id/backups/schedule",
+            "/databases/{id}/backups/schedule",
             get(database_backups::get_schedule),
         )
         .route(
-            "/databases/:id/backups/schedule",
+            "/databases/{id}/backups/schedule",
             post(database_backups::upsert_schedule),
         )
         .route(
-            "/databases/:id/backups/schedule",
+            "/databases/{id}/backups/schedule",
             delete(database_backups::delete_schedule),
         )
         // Docker Compose Services
@@ -731,41 +745,41 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services", post(services::create_service))
         // Must be before /services/:id to avoid route conflict
         .route("/services/check-port", get(services::check_port))
-        .route("/services/:id", get(services::get_service))
-        .route("/services/:id", put(services::update_service))
-        .route("/services/:id", delete(services::delete_service))
-        .route("/services/:id/start", post(services::start_service))
-        .route("/services/:id/stop", post(services::stop_service))
-        .route("/services/:id/restart", post(services::restart_service))
+        .route("/services/{id}", get(services::get_service))
+        .route("/services/{id}", put(services::update_service))
+        .route("/services/{id}", delete(services::delete_service))
+        .route("/services/{id}/start", post(services::start_service))
+        .route("/services/{id}/stop", post(services::stop_service))
+        .route("/services/{id}/restart", post(services::restart_service))
         .route(
-            "/services/:id/start-events",
+            "/services/{id}/start-events",
             get(start_logs::service_start_stream_snapshot),
         )
-        .route("/services/:id/stats", get(services::get_service_stats))
-        .route("/services/:id/logs", get(services::get_service_logs))
+        .route("/services/{id}/stats", get(services::get_service_stats))
+        .route("/services/{id}/logs", get(services::get_service_logs))
         .route(
-            "/services/:id/logs/stream",
+            "/services/{id}/logs/stream",
             get(services::stream_service_logs),
         )
         .route(
-            "/services/:id/preview-compose",
+            "/services/{id}/preview-compose",
             get(services::preview_compose),
         )
         .route(
-            "/services/:id/generated-vars",
+            "/services/{id}/generated-vars",
             get(services::get_service_generated_vars),
         )
-        .route("/services/:id/import-db", post(services::import_service_db))
-        .route("/services/:id/export-db", get(services::export_service_db))
+        .route("/services/{id}/import-db", post(services::import_service_db))
+        .route("/services/{id}/export-db", get(services::export_service_db))
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
         .route(
             "/templates/categories",
             get(service_templates::list_categories),
         )
-        .route("/templates/:id", get(service_templates::get_template))
+        .route("/templates/{id}", get(service_templates::get_template))
         .route(
-            "/templates/:id/deploy",
+            "/templates/{id}/deploy",
             post(service_templates::deploy_template),
         )
         // Two-Factor Authentication (authenticated)
@@ -801,7 +815,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(oauth::create_oauth_provider),
         )
         .route(
-            "/settings/oauth-providers/:id",
+            "/settings/oauth-providers/{id}",
             delete(oauth::delete_oauth_provider),
         )
         // OAuth Account Connections (user)
@@ -810,7 +824,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(oauth::list_user_connections),
         )
         .route(
-            "/settings/oauth-connections/:id",
+            "/settings/oauth-connections/{id}",
             delete(oauth::delete_user_connection),
         )
         // SSO / OIDC Provider Settings (admin)
@@ -819,7 +833,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(sso::list_providers).post(sso::create_provider),
         )
         .route(
-            "/sso/providers/:id",
+            "/sso/providers/{id}",
             get(sso::get_provider)
                 .put(sso::update_provider)
                 .delete(sso::delete_provider),
@@ -842,13 +856,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/system/backup", post(system::create_backup))
         .route("/system/backup/full", post(system::create_full_backup))
         .route("/system/backups", get(system::list_backups))
-        .route("/system/backups/:name", delete(system::delete_backup))
+        .route("/system/backups/{name}", delete(system::delete_backup))
         .route(
-            "/system/backups/:name/download",
+            "/system/backups/{name}/download",
             get(system::download_backup),
         )
         .route(
-            "/system/backups/:name/upload-to-s3",
+            "/system/backups/{name}/upload-to-s3",
             post(system::upload_backup_to_s3),
         )
         .route("/system/restore", post(system::restore_backup))
@@ -858,15 +872,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(system::list_backup_schedules).post(system::create_backup_schedule),
         )
         .route(
-            "/backups/schedules/:id",
+            "/backups/schedules/{id}",
             delete(system::delete_backup_schedule),
         )
         .route(
-            "/backups/schedules/:id/toggle",
+            "/backups/schedules/{id}/toggle",
             put(system::toggle_backup_schedule),
         )
         .route(
-            "/backups/schedules/:id/run",
+            "/backups/schedules/{id}/run",
             post(system::run_backup_schedule),
         )
         // System log cleanup
@@ -876,14 +890,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // S3 Storage Configs
         .route("/s3/configs", post(s3::create_config))
         .route("/s3/configs", get(s3::list_configs))
-        .route("/s3/configs/:id", put(s3::update_config))
-        .route("/s3/configs/:id", delete(s3::delete_config))
-        .route("/s3/configs/:id/test", post(s3::test_config))
+        .route("/s3/configs/{id}", put(s3::update_config))
+        .route("/s3/configs/{id}", delete(s3::delete_config))
+        .route("/s3/configs/{id}/test", post(s3::test_config))
         // S3 Backups
         .route("/s3/backup", post(s3::trigger_backup))
         .route("/s3/backups", get(s3::list_backups))
-        .route("/s3/backups/:id/restore", post(s3::restore_backup))
-        .route("/s3/backups/:id", delete(s3::delete_backup))
+        .route("/s3/backups/{id}/restore", post(s3::restore_backup))
+        .route("/s3/backups/{id}", delete(s3::delete_backup))
         // Audit logs
         .route("/audit", get(audit::list_logs))
         .route("/audit/actions", get(audit::list_action_types))
@@ -902,60 +916,60 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Get repos by installation ID (simpler pattern for frontend)
         .route(
-            "/github-apps/installations/:installation_id/repos",
+            "/github-apps/installations/{installation_id}/repos",
             get(github_apps::list_repos_by_installation),
         )
         // Get branches for a repo
         .route(
-            "/github-apps/installations/:installation_id/repos/:owner/:repo/branches",
+            "/github-apps/installations/{installation_id}/repos/{owner}/{repo}/branches",
             get(github_apps::list_repo_branches),
         )
         .route(
-            "/github-apps/:id",
+            "/github-apps/{id}",
             get(github_apps::get_app).delete(github_apps::delete_app),
         )
         .route(
-            "/github-apps/:id/install",
+            "/github-apps/{id}/install",
             get(github_apps::get_install_url),
         )
         .route(
-            "/github-apps/:id/installations",
+            "/github-apps/{id}/installations",
             get(github_apps::list_installations),
         )
         .route(
-            "/github-apps/:id/installations/:iid/repos",
+            "/github-apps/{id}/installations/{iid}/repos",
             get(github_apps::list_installation_repos),
         )
         .route(
-            "/github-apps/:id/sync-webhook",
+            "/github-apps/{id}/sync-webhook",
             post(github_apps::sync_webhook_url),
         )
         // Container Replicas
-        .route("/apps/:id/replicas", get(replicas::list_replicas))
-        .route("/apps/:id/replicas/count", put(replicas::set_replica_count))
+        .route("/apps/{id}/replicas", get(replicas::list_replicas))
+        .route("/apps/{id}/replicas/count", put(replicas::set_replica_count))
         .route(
-            "/apps/:id/replicas/:index/restart",
+            "/apps/{id}/replicas/{index}/restart",
             post(replicas::restart_replica),
         )
         // Autoscaling Rules
         .route(
-            "/apps/:id/autoscaling",
+            "/apps/{id}/autoscaling",
             get(autoscaling::list_rules).post(autoscaling::create_rule),
         )
         .route(
-            "/apps/:id/autoscaling/:rule_id",
+            "/apps/{id}/autoscaling/{rule_id}",
             put(autoscaling::update_rule).delete(autoscaling::delete_rule),
         )
         // Preview Deployments (PR previews)
-        .route("/apps/:id/previews", get(previews::list_app_previews))
+        .route("/apps/{id}/previews", get(previews::list_app_previews))
         .route("/previews", get(previews::list_all_previews))
         .route(
-            "/previews/status/:status",
+            "/previews/status/{status}",
             get(previews::list_previews_by_status),
         )
-        .route("/previews/:id", get(previews::get_preview))
-        .route("/previews/:id", delete(previews::delete_preview))
-        .route("/previews/:id/redeploy", post(previews::redeploy_preview))
+        .route("/previews/{id}", get(previews::get_preview))
+        .route("/previews/{id}", delete(previews::delete_preview))
+        .route("/previews/{id}/redeploy", post(previews::redeploy_preview))
         // Docker Swarm Management
         .route("/swarm/init", post(swarm::init_swarm))
         .route("/swarm/status", get(swarm::get_swarm_status))
@@ -963,53 +977,53 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/swarm/nodes", get(swarm::list_nodes))
         .route("/swarm/sync-nodes", post(swarm::sync_nodes))
         .route(
-            "/swarm/nodes/:id/availability",
+            "/swarm/nodes/{id}/availability",
             put(swarm::update_node_availability),
         )
         .route("/swarm/services", get(swarm::list_services))
         .route("/swarm/services", post(swarm::create_service))
-        .route("/swarm/services/:id", delete(swarm::delete_service))
-        .route("/swarm/services/:id/scale", post(swarm::scale_service))
-        .route("/swarm/services/:id/logs", get(swarm::get_service_logs))
+        .route("/swarm/services/{id}", delete(swarm::delete_service))
+        .route("/swarm/services/{id}/scale", post(swarm::scale_service))
+        .route("/swarm/services/{id}/logs", get(swarm::get_service_logs))
         // Bulk operations
         .route("/bulk/start", post(bulk::bulk_start))
         .route("/bulk/stop", post(bulk::bulk_stop))
         .route("/bulk/restart", post(bulk::bulk_restart))
         .route("/bulk/deploy", post(bulk::bulk_deploy))
         // App clone, snapshots, maintenance mode
-        .route("/apps/:id/clone", post(bulk::clone_app))
-        .route("/apps/:id/snapshots", post(bulk::create_snapshot))
-        .route("/apps/:id/snapshots", get(bulk::list_snapshots))
+        .route("/apps/{id}/clone", post(bulk::clone_app))
+        .route("/apps/{id}/snapshots", post(bulk::create_snapshot))
+        .route("/apps/{id}/snapshots", get(bulk::list_snapshots))
         .route(
-            "/apps/:id/snapshots/:sid/restore",
+            "/apps/{id}/snapshots/{sid}/restore",
             post(bulk::restore_snapshot),
         )
-        .route("/apps/:id/snapshots/:sid", delete(bulk::delete_snapshot))
-        .route("/apps/:id/maintenance", put(bulk::set_maintenance_mode))
+        .route("/apps/{id}/snapshots/{sid}", delete(bulk::delete_snapshot))
+        .route("/apps/{id}/maintenance", put(bulk::set_maintenance_mode))
         // Project import/export
-        .route("/projects/:id/export", get(bulk::export_project))
-        .route("/projects/:id/import", post(bulk::import_project))
+        .route("/projects/{id}/export", get(bulk::export_project))
+        .route("/projects/{id}/import", post(bulk::import_project))
         // White Label (update — admin only, protected by auth)
         .route("/white-label", put(white_label::update_white_label))
         // AI Features
         .route(
-            "/apps/:app_id/deployments/:deployment_id/diagnose",
+            "/apps/{app_id}/deployments/{deployment_id}/diagnose",
             post(ai_features::diagnose_deployment),
         )
         .route(
-            "/apps/:app_id/insights",
+            "/apps/{app_id}/insights",
             get(ai_features::get_deployment_insights),
         )
         .route(
-            "/apps/:app_id/cost-suggestions",
+            "/apps/{app_id}/cost-suggestions",
             get(ai_features::get_cost_suggestions),
         )
         .route(
-            "/apps/:app_id/suggest-dockerfile",
+            "/apps/{app_id}/suggest-dockerfile",
             post(ai_features::suggest_dockerfile),
         )
         .route(
-            "/apps/:app_id/security-scan",
+            "/apps/{app_id}/security-scan",
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
@@ -1048,9 +1062,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     // SSO/OIDC auth flow routes (public - no auth required, browser redirects)
     let sso_routes = Router::new()
-        .route("/auth/sso/:provider_id/login", get(sso::initiate_sso_login))
+        .route("/auth/sso/{provider_id}/login", get(sso::initiate_sso_login))
         .route(
-            "/auth/sso/:provider_id/callback",
+            "/auth/sso/{provider_id}/callback",
             get(sso::handle_sso_callback),
         );
 

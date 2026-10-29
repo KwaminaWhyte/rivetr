@@ -30,6 +30,7 @@ use crate::AppState;
 
 use super::audit::{audit_log, ClientIp};
 use super::error::ApiError;
+use super::optional_json::OptionalJson;
 use super::validation::validate_uuid;
 
 // -------------------------------------------------------------------------
@@ -619,7 +620,7 @@ pub async fn clone_app(
     user: User,
     client_ip: ClientIp,
     Path(id): Path<String>,
-    body: Option<Json<CloneAppRequest>>,
+    OptionalJson(body): OptionalJson<CloneAppRequest>,
 ) -> Result<(StatusCode, Json<CloneAppResponse>), ApiError> {
     if let Err(e) = validate_uuid(&id, "app_id") {
         return Err(ApiError::validation_field("app_id", e));

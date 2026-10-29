@@ -263,7 +263,7 @@ async fn handle_start_stream(socket: WebSocket, state: Arc<AppState>, resource_k
     // Replay buffered history first so a late subscriber catches up.
     for entry in snapshot {
         if let Ok(text) = serde_json::to_string(&entry) {
-            if sender.send(Message::Text(text)).await.is_err() {
+            if sender.send(Message::Text(text.into())).await.is_err() {
                 return;
             }
         }
@@ -275,7 +275,7 @@ async fn handle_start_stream(socket: WebSocket, state: Arc<AppState>, resource_k
                 match recv {
                     Ok(entry) => {
                         if let Ok(text) = serde_json::to_string(&entry) {
-                            if sender.send(Message::Text(text)).await.is_err() {
+                            if sender.send(Message::Text(text.into())).await.is_err() {
                                 return;
                             }
                         }
@@ -286,10 +286,10 @@ async fn handle_start_stream(socket: WebSocket, state: Arc<AppState>, resource_k
                             "type": "lag",
                             "dropped": n,
                         });
-                        let _ = sender.send(Message::Text(lag_msg.to_string())).await;
+                        let _ = sender.send(Message::Text(lag_msg.to_string().into())).await;
                         for entry in snap {
                             if let Ok(text) = serde_json::to_string(&entry) {
-                                if sender.send(Message::Text(text)).await.is_err() {
+                                if sender.send(Message::Text(text.into())).await.is_err() {
                                     return;
                                 }
                             }

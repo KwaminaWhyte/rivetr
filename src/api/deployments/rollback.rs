@@ -20,6 +20,7 @@ use crate::AppState;
 use crate::api::audit::{audit_log, ClientIp};
 use crate::api::authz::authorize_database;
 use crate::api::error::ApiError;
+use crate::api::optional_json::OptionalJson;
 use crate::api::teams::log_team_audit;
 use crate::api::validation::validate_uuid;
 
@@ -55,9 +56,8 @@ pub async fn rollback_deployment(
     // Accept missing body / missing Content-Type (Option<Json<...>> instead of
     // Json<Option<...>>).  The body itself is optional — callers usually invoke this
     // with no body to pick the previous successful deployment automatically.
-    body: Option<Json<RollbackRequest>>,
+    OptionalJson(body): OptionalJson<RollbackRequest>,
 ) -> Result<(StatusCode, Json<Deployment>), ApiError> {
-    let body: Option<RollbackRequest> = body.map(|Json(b)| b);
     // Validate deployment_id format
     if let Err(e) = validate_uuid(&deployment_id, "deployment_id") {
         return Err(ApiError::validation_field("deployment_id", e));

@@ -3,7 +3,6 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    async_trait,
     body::Body,
     extract::{FromRequestParts, State},
     http::{request::Parts, Request, StatusCode},
@@ -1135,7 +1134,6 @@ pub struct RegisterWithInvitationResponse {
 }
 
 /// Extractor for getting the current authenticated user from a request
-#[async_trait]
 impl FromRequestParts<Arc<AppState>> for User {
     type Rejection = StatusCode;
 
