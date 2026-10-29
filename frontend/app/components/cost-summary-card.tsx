@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { QueryError } from "@/components/query-error";
+import { cn } from "@/lib/utils";
 import { DollarSign, TrendingUp, TrendingDown, ArrowRight } from "lucide-react";
 import type { DashboardCostResponse, DailyCostPoint } from "@/types/api";
 
@@ -55,7 +56,7 @@ function calculateTrend(data: DailyCostPoint[]): { percent: number; isUp: boolea
   return { percent: Math.abs(percent), isUp: percent > 0 };
 }
 
-export function CostSummaryCard() {
+export function CostSummaryCard({ className }: { className?: string } = {}) {
   const { data: costData, isLoading, error, refetch } = useQuery<DashboardCostResponse | null>({
     queryKey: ["dashboard-costs"],
     queryFn: () => api.getDashboardCosts("30d"),
@@ -81,14 +82,14 @@ export function CostSummaryCard() {
   const topApps = costData?.top_apps ?? [];
 
   return (
-    <Card>
+    <Card className={cn("h-full", className)}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg p-2 bg-emerald-100 dark:bg-emerald-900/30">
               <DollarSign className="h-4 w-4 text-emerald-600" />
             </div>
-            <CardTitle className="text-base">Cost Overview</CardTitle>
+            <CardTitle>Cost overview</CardTitle>
           </div>
           <Button variant="ghost" size="sm" asChild className="text-xs">
             <Link to="/costs">

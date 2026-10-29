@@ -7,7 +7,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,9 +34,16 @@ interface StatsHistoryPoint {
 interface ResourceChartProps {
   cpuPercent: number;
   memoryPercent: number;
+  /** Chart plot height in px. */
+  height?: number;
+  /** Extra classes for the card, e.g. `h-full` when it sits in a stretched grid cell. */
+  className?: string;
 }
 
-const TIME_RANGES = [
+const CPU_COLOR = "#3b82f6";
+const MEMORY_COLOR = "#a855f7";
+
+export const TIME_RANGES = [
   { value: "1", label: "Last 1 hour" },
   { value: "6", label: "Last 6 hours" },
   { value: "24", label: "Last 24 hours" },
@@ -94,23 +100,44 @@ function CustomTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-background border border-border rounded-lg px-3 py-2 shadow-lg text-xs">
-      <p className="font-medium text-muted-foreground mb-1">{label}</p>
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-lg">
+      <p className="mb-1 font-medium text-muted-foreground">{label}</p>
       {payload.map((entry) => (
         <div key={entry.dataKey} className="flex items-center gap-2">
           <span
             className="inline-block h-2 w-2 rounded-full"
             style={{ background: entry.color }}
           />
-          <span className="text-foreground font-medium">{entry.name}:</span>
-          <span className="text-foreground">{entry.value.toFixed(1)}%</span>
+          <span className="font-medium text-foreground">{entry.name}</span>
+          <span className="ml-auto pl-4 tabular-nums text-foreground">
+            {entry.value.toFixed(1)}%
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps) {
+function LegendChip({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span
+        className="inline-block h-2 w-2 rounded-full"
+        style={{ background: color }}
+        aria-hidden="true"
+      />
+      {label}
+      <span className="font-medium tabular-nums text-foreground">{value.toFixed(1)}%</span>
+    </span>
+  );
+}
+
+export function ResourceChart({
+  cpuPercent,
+  memoryPercent,
+  height = 240,
+  className,
+}: ResourceChartProps) {
   const [timeRange, setTimeRange] = useState("24");
 
   const { data: historyData } = useQuery({
@@ -126,12 +153,18 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
   }, [historyData, cpuPercent, memoryPercent]);
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle>Global Resource Utilization</CardTitle>
+    <Card className={className}>
+      <CardHeader className="pb-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <CardTitle>Resource utilization</CardTitle>
+            <div className="flex items-center gap-4">
+              <LegendChip color={CPU_COLOR} label="CPU" value={cpuPercent} />
+              <LegendChip color={MEMORY_COLOR} label="Memory" value={memoryPercent} />
+            </div>
+          </div>
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[140px] h-8 text-xs" aria-label="Time range">
+            <SelectTrigger className="h-8 w-[140px] text-xs" aria-label="Time range">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -144,70 +177,70 @@ export function ResourceChart({ cpuPercent, memoryPercent }: ResourceChartProps)
           </Select>
         </div>
       </CardHeader>
-      <CardContent>
-        {/* min-height/min-width prevents Recharts width(-1) warning before
-            the container has laid out (B19) */}
-        <div className="w-full min-w-[200px] min-h-[220px] h-[220px]">
+      <CardContent className="flex-1">
+        {/* min sizes stop Recharts logging width(-1) before first layout */}
+        <div className="w-full min-w-[200px]" style={{ height, minHeight: height }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-            <defs>
-              <linearGradient id="gradCpu" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
-              </linearGradient>
-              <linearGradient id="gradMemory" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#a855f7" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="hsl(var(--border))"
-              strokeOpacity={0.5}
-              vertical={false}
-            />
-            <XAxis
-              dataKey="time"
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-              tickLine={false}
-              axisLine={false}
-              interval="preserveStartEnd"
-              minTickGap={40}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(v) => `${v}%`}
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend
-              wrapperStyle={{ fontSize: "12px", paddingTop: "10px" }}
-              iconType="circle"
-              iconSize={8}
-            />
-            <Area
-              type="monotone"
-              dataKey="memory"
-              name="Memory"
-              stroke="#a855f7"
-              strokeWidth={2}
-              fill="url(#gradMemory)"
-              dot={false}
-              activeDot={{ r: 4, strokeWidth: 0, fill: "#a855f7" }}
-            />
-            <Area
-              type="monotone"
-              dataKey="cpu"
-              name="CPU"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              fill="url(#gradCpu)"
-              dot={false}
-              activeDot={{ r: 4, strokeWidth: 0, fill: "#3b82f6" }}
-            />
+            <AreaChart data={data} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradCpu" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CPU_COLOR} stopOpacity={0.28} />
+                  <stop offset="95%" stopColor={CPU_COLOR} stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="gradMemory" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={MEMORY_COLOR} stopOpacity={0.22} />
+                  <stop offset="95%" stopColor={MEMORY_COLOR} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--border)"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="time"
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                tickLine={false}
+                axisLine={false}
+                interval="preserveStartEnd"
+                minTickGap={48}
+                tickMargin={8}
+              />
+              <YAxis
+                width={40}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => `${v}%`}
+                domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
+              />
+              <Tooltip
+                content={<CustomTooltip />}
+                cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="memory"
+                name="Memory"
+                stroke={MEMORY_COLOR}
+                strokeWidth={1.75}
+                fill="url(#gradMemory)"
+                dot={false}
+                isAnimationActive={false}
+                activeDot={{ r: 3.5, strokeWidth: 0, fill: MEMORY_COLOR }}
+              />
+              <Area
+                type="monotone"
+                dataKey="cpu"
+                name="CPU"
+                stroke={CPU_COLOR}
+                strokeWidth={1.75}
+                fill="url(#gradCpu)"
+                dot={false}
+                isAnimationActive={false}
+                activeDot={{ r: 3.5, strokeWidth: 0, fill: CPU_COLOR }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>

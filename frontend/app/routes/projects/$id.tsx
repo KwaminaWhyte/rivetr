@@ -1,5 +1,6 @@
 import { QueryError } from "@/components/query-error";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -63,6 +64,13 @@ export default function ProjectDetailPage() {
     queryFn: () => api.getProject(id!),
     refetchInterval: 5000,
   });
+
+  const { setItems } = useBreadcrumb();
+  useEffect(() => {
+    if (project) {
+      setItems([{ label: "Projects", href: "/projects" }, { label: project.name }]);
+    }
+  }, [project, setItems]);
 
   const openEditDialog = () => {
     if (project) {

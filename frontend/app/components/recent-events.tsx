@@ -5,6 +5,7 @@ import { QueryError } from "@/components/query-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { RecentEvent } from "@/types/api";
 
 function getStatusColor(status: RecentEvent["status"]) {
@@ -66,9 +67,10 @@ function formatRelativeTime(timestamp: string): string {
 
 interface RecentEventsProps {
   initialEvents?: RecentEvent[];
+  className?: string;
 }
 
-export function RecentEvents({ initialEvents }: RecentEventsProps) {
+export function RecentEvents({ initialEvents, className }: RecentEventsProps) {
   const { data: events = [], isLoading, error, refetch } = useQuery<RecentEvent[]>({
     queryKey: ["recent-events"],
     queryFn: () => api.getRecentEvents(),
@@ -79,9 +81,9 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
 
   if (isLoading && !initialEvents) {
     return (
-      <Card>
+      <Card className={cn("h-full", className)}>
         <CardHeader>
-          <CardTitle>Recent Events</CardTitle>
+          <CardTitle>Recent events</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -101,15 +103,15 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
   }
 
   return (
-    <Card>
+    <Card className={cn("h-full", className)}>
       <CardHeader>
-        <CardTitle>Recent Events</CardTitle>
+        <CardTitle>Recent events</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {error && events.length === 0 ? (
           <QueryError what="recent events" error={error} onRetry={() => refetch()} />
         ) : events.length === 0 ? (
-          <div className="py-4 text-center space-y-3">
+          <div className="my-auto py-6 text-center space-y-3">
             <p className="text-muted-foreground text-sm">
               No recent events. Deploy your first app to see activity here.
             </p>
@@ -129,7 +131,9 @@ export function RecentEvents({ initialEvents }: RecentEventsProps) {
                   <div
                     className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${getStatusColor(event.status)}`}
                     title={STATUS_LABEL[event.status]}
-                  />
+                  >
+                    <span className="sr-only">{STATUS_LABEL[event.status]}</span>
+                  </div>
                   <div className="flex-1 min-w-0">
                     {link ? (
                       <Link

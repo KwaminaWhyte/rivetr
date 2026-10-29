@@ -3,8 +3,7 @@ import { useOutletContext } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { DetailField, StatusPill, type Tone } from "@/components/metrics";
 import { toast } from "sonner";
 import type { Service } from "@/types/api";
 import {
@@ -155,31 +154,17 @@ function parseComposeContent(content: string): ParsedService[] {
 
 // Status indicator component
 function StatusIndicator({ status }: { status: string }) {
-  const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-    running: { color: "text-green-600", bg: "bg-green-100", label: "Running" },
-    stopped: { color: "text-gray-600", bg: "bg-gray-100", label: "Stopped" },
-    pending: { color: "text-blue-600", bg: "bg-blue-100", label: "Pending" },
-    starting: { color: "text-blue-600", bg: "bg-blue-100", label: "Starting" },
-    failed: { color: "text-red-600", bg: "bg-red-100", label: "Failed" },
+  const statusConfig: Record<string, { tone: Tone; label: string }> = {
+    running: { tone: "ok", label: "Running" },
+    stopped: { tone: "neutral", label: "Stopped" },
+    pending: { tone: "warn", label: "Pending" },
+    starting: { tone: "warn", label: "Starting" },
+    failed: { tone: "bad", label: "Failed" },
   };
 
-  const config = statusConfig[status] || {
-    color: "text-gray-600",
-    bg: "bg-gray-100",
-    label: status,
-  };
+  const config = statusConfig[status] || { tone: "neutral" as Tone, label: status };
 
-  return (
-    <Badge variant="outline" className={`${config.bg} ${config.color} border-0`}>
-      {["pending", "starting"].includes(status) && (
-        <span className="mr-1.5 relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
-        </span>
-      )}
-      {config.label}
-    </Badge>
-  );
+  return <StatusPill tone={config.tone}>{config.label}</StatusPill>;
 }
 
 export default function ServiceGeneralTab() {
@@ -302,30 +287,20 @@ export default function ServiceGeneralTab() {
             </CardTitle>
             <CardDescription>General information about this service</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <div className="flex h-9 items-center">
+          <CardContent>
+            <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+              <DetailField label="Status">
                 <StatusIndicator status={service.status} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Service ID</Label>
-              <div className="flex gap-2">
-                <Input value={service.id} readOnly className="font-mono text-xs" />
-                <CopyButton text={service.id} field="id" />
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Created</Label>
-                <Input aria-label="Created" value={formatDate(service.created_at)} readOnly />
-              </div>
-              <div className="space-y-2">
-                <Label>Updated</Label>
-                <Input aria-label="Updated" value={formatDate(service.updated_at)} readOnly />
-              </div>
-            </div>
+              </DetailField>
+              <DetailField label="Created">{formatDate(service.created_at)}</DetailField>
+              <DetailField label="Updated">{formatDate(service.updated_at)}</DetailField>
+              <DetailField label="Service ID" mono className="sm:col-span-2">
+                <span className="flex items-center gap-1">
+                  <span className="truncate">{service.id}</span>
+                  <CopyButton text={service.id} field="id" />
+                </span>
+              </DetailField>
+            </dl>
           </CardContent>
         </Card>
 

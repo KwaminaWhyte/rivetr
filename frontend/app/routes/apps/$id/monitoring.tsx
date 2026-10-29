@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MetricStrip, MetricTile, StatusPill, type Tone } from "@/components/metrics";
 import {
   Card,
   CardContent,
@@ -110,23 +111,16 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
-function AvailabilityBadge({ percent }: { percent: number }) {
-  if (percent >= 99.9) {
-    return <Badge className="bg-green-500 text-white text-lg px-3 py-1">{percent.toFixed(2)}%</Badge>;
-  }
-  if (percent >= 99.0) {
-    return <Badge className="bg-green-600 text-white text-lg px-3 py-1">{percent.toFixed(2)}%</Badge>;
-  }
-  if (percent >= 95.0) {
-    return (
-      <Badge className="bg-yellow-500 text-white text-lg px-3 py-1">{percent.toFixed(2)}%</Badge>
-    );
-  }
-  return (
-    <Badge variant="destructive" className="text-lg px-3 py-1">
-      {percent.toFixed(2)}%
-    </Badge>
-  );
+function availabilityTone(percent: number): Tone {
+  if (percent >= 99.0) return "ok";
+  if (percent >= 95.0) return "warn";
+  return "bad";
+}
+
+function availabilityLabel(percent: number): string {
+  if (percent >= 99.0) return "Healthy";
+  if (percent >= 95.0) return "Degraded";
+  return "Unreliable";
 }
 
 // ---------------------------------------------------------------------------
@@ -356,34 +350,46 @@ function UptimeSection({ appId }: { appId: string }) {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Summary stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-1">Availability</p>
-            {uptimeSummary && uptimeSummary.total_checks > 0 ? (
-              <AvailabilityBadge percent={uptimeSummary.availability_percent} />
-            ) : (
-              <p className="text-2xl font-bold text-muted-foreground">-</p>
-            )}
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-1">Total Checks</p>
-            <p className="text-2xl font-bold">{uptimeSummary?.total_checks ?? 0}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-1">Avg Response</p>
-            <p className="text-2xl font-bold">
-              {uptimeSummary?.avg_response_time_ms != null
-                ? `${Math.round(uptimeSummary.avg_response_time_ms)}ms`
-                : "-"}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-1">Down Events</p>
-            <p className="text-2xl font-bold text-red-500">
-              {uptimeSummary?.down_checks ?? 0}
-            </p>
-          </div>
-        </div>
+        <MetricStrip className="grid-cols-2 lg:grid-cols-4">
+          <MetricTile
+            label="Availability"
+            value={
+              uptimeSummary && uptimeSummary.total_checks > 0
+                ? uptimeSummary.availability_percent.toFixed(2)
+                : "-"
+            }
+            unit={uptimeSummary && uptimeSummary.total_checks > 0 ? "%" : undefined}
+            detail={
+              uptimeSummary && uptimeSummary.total_checks > 0 ? (
+                <StatusPill tone={availabilityTone(uptimeSummary.availability_percent)}>
+                  {availabilityLabel(uptimeSummary.availability_percent)}
+                </StatusPill>
+              ) : (
+                "No checks yet"
+              )
+            }
+          />
+          <MetricTile
+            label="Total checks"
+            value={uptimeSummary?.total_checks ?? 0}
+            detail="in this period"
+          />
+          <MetricTile
+            label="Avg response"
+            value={
+              uptimeSummary?.avg_response_time_ms != null
+                ? Math.round(uptimeSummary.avg_response_time_ms)
+                : "-"
+            }
+            unit={uptimeSummary?.avg_response_time_ms != null ? "ms" : undefined}
+            detail="per health check"
+          />
+          <MetricTile
+            label="Down events"
+            value={uptimeSummary?.down_checks ?? 0}
+            detail={uptimeSummary?.down_checks ? "failed checks" : "no failed checks"}
+          />
+        </MetricStrip>
 
         {/* Period selector + timeline */}
         <div className="space-y-3">

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AreaChart, Area, ResponsiveContainer, Tooltip } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Cpu, HardDrive, MemoryStick, Network } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { MetricStrip, MetricTile, toneForPercent } from "@/components/metrics";
 import { api } from "@/lib/api";
 import type { ContainerStats } from "@/types/api";
 
@@ -29,134 +29,23 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-// Format percentage with 1 decimal place
-function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
-
-// Recharts-based sparkline
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return null;
-  const chartData = data.map((v, i) => ({ i, v }));
+function SectionHeader({ pollInterval }: { pollInterval: number }) {
   return (
-    <div className="w-20 h-6">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 1, right: 1, bottom: 1, left: 1 }}>
-          <defs>
-            <linearGradient id={`spark-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.3} />
-              <stop offset="95%" stopColor={color} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Tooltip
-            content={() => null}
-            wrapperStyle={{ display: "none" }}
-          />
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke={color}
-            strokeWidth={1.5}
-            fill={`url(#spark-${color.replace("#", "")})`}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="flex items-center justify-between">
+      <h2 className="text-sm font-medium">Resource usage</h2>
+      <span className="text-xs text-muted-foreground">Updated every {pollInterval / 1000}s</span>
     </div>
   );
 }
 
-// Progress bar component
-function ProgressBar({
-  value,
-  max,
-  label,
-  showPercent = true,
-  color = "bg-blue-500",
-}: {
-  value: number;
-  max: number;
-  label: string;
-  showPercent?: boolean;
-  color?: string;
-}) {
-  const percent = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-  const isHighUsage = percent > 80;
-
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className={isHighUsage ? "text-red-500 font-medium" : ""}>
-          {showPercent ? formatPercent(percent) : formatBytes(value)}
-          {max > 0 && !showPercent && ` / ${formatBytes(max)}`}
-        </span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full transition-all duration-300 ${isHighUsage ? "bg-red-500" : color}`}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-// Stat display with icon
-function StatDisplay({
-  label,
-  value,
-  subValue,
-  icon,
-  history,
-  historyColor,
-}: {
-  label: string;
-  value: string;
-  subValue?: string;
-  icon: React.ReactNode;
-  history?: number[];
-  historyColor?: string;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="text-muted-foreground">{icon}</div>
-      <div className="flex-1">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="font-medium text-sm">{value}</div>
-        {subValue && <div className="text-xs text-muted-foreground">{subValue}</div>}
-      </div>
-      {history && history.length > 1 && (
-        <Sparkline data={history} color={historyColor || "#3b82f6"} />
-      )}
-    </div>
-  );
-}
-
-// Icons
-const CpuIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5M4.5 15.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
-  </svg>
-);
-
-const MemoryIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
-  </svg>
-);
-
-const NetworkIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-  </svg>
-);
-
-export function ResourceMonitor({ appId, databaseId, serviceId, token, pollInterval = 5000, cpuLimit }: ResourceMonitorProps) {
-  const [cpuHistory, setCpuHistory] = useState<number[]>([]);
-  const [memoryHistory, setMemoryHistory] = useState<number[]>([]);
-
+export function ResourceMonitor({
+  appId,
+  databaseId,
+  serviceId,
+  token,
+  pollInterval = 5000,
+  cpuLimit,
+}: ResourceMonitorProps) {
   const resourceId = appId || databaseId || serviceId;
   const resourceType = appId ? "app" : serviceId ? "service" : "database";
 
@@ -179,162 +68,75 @@ export function ResourceMonitor({ appId, databaseId, serviceId, token, pollInter
     staleTime: pollInterval - 1000,
   });
 
-  // Normalize CPU% against allocated limit when provided.
-  // Docker reports cpu_percent as % of one full core (e.g. using 0.25 cores = 25%).
-  // Dividing by cpu_limit gives % of the allocated quota (0.25-core limit at 25% usage = 100%).
-  const normalizeCpu = (raw: number) =>
-    cpuLimit && cpuLimit > 0 ? Math.min(raw / cpuLimit, 100) : raw;
-
-  // Update history when stats change
-  useEffect(() => {
-    if (stats) {
-      setCpuHistory((prev) => [...prev.slice(-19), normalizeCpu(stats.cpu_percent)]);
-
-      const memoryPercent =
-        stats.memory_limit > 0 ? (stats.memory_usage / stats.memory_limit) * 100 : 0;
-      setMemoryHistory((prev) => [...prev.slice(-19), memoryPercent]);
-    }
-  }, [stats, cpuLimit]);
-
-  if (isLoading && !stats) {
+  if (isError || (!isLoading && !stats)) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Resource Usage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            Loading metrics...
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (isError || !stats) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Resource Usage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+      <div className="space-y-3">
+        <SectionHeader pollInterval={pollInterval} />
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
             {error instanceof Error
               ? error.message.includes("not found")
                 ? "No running container to monitor"
                 : `Error: ${error.message}`
               : "Unable to load metrics"}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
+  // Docker reports cpu_percent as % of one full core (0.25 cores in use = 25%).
+  // Dividing by the limit gives % of the allocated quota.
+  const cpuPercent = stats
+    ? cpuLimit && cpuLimit > 0
+      ? Math.min(stats.cpu_percent / cpuLimit, 100)
+      : stats.cpu_percent
+    : 0;
   const memoryPercent =
-    stats.memory_limit > 0 ? (stats.memory_usage / stats.memory_limit) * 100 : 0;
-
-  const cpuDisplayPct = normalizeCpu(stats.cpu_percent);
-  const cpuLabel = cpuLimit ? `CPU (of ${cpuLimit} core${cpuLimit !== 1 ? "s" : ""} limit)` : "CPU";
+    stats && stats.memory_limit > 0 ? (stats.memory_usage / stats.memory_limit) * 100 : undefined;
+  const hasStorage = stats?.storage_bytes != null;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Resource Usage</CardTitle>
-          <span className="text-xs text-muted-foreground">
-            Updated every {pollInterval / 1000}s
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {/* CPU Usage */}
-          <div className="space-y-3">
-            <StatDisplay
-              label="CPU Usage"
-              value={formatPercent(cpuDisplayPct)}
-              icon={<CpuIcon />}
-              history={cpuHistory}
-              historyColor={cpuDisplayPct > 80 ? "#ef4444" : "#3b82f6"}
-            />
-            <ProgressBar
-              value={cpuDisplayPct}
-              max={100}
-              label={cpuLabel}
-              color="bg-blue-500"
-            />
-          </div>
-
-          {/* Memory Usage */}
-          <div className="space-y-3">
-            <StatDisplay
-              label="Memory Usage"
-              value={formatBytes(stats.memory_usage)}
-              subValue={stats.memory_limit > 0 ? `of ${formatBytes(stats.memory_limit)}` : "no limit"}
-              icon={<MemoryIcon />}
-              history={memoryHistory}
-              historyColor={memoryPercent > 80 ? "#ef4444" : "#22c55e"}
-            />
-            {stats.memory_limit > 0 ? (
-              <ProgressBar
-                value={stats.memory_usage}
-                max={stats.memory_limit}
-                label="Memory"
-                showPercent={false}
-                color="bg-green-500"
-              />
-            ) : (
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-green-500 w-0" />
-              </div>
-            )}
-          </div>
-
-          {/* Network I/O */}
-          <div className="space-y-3">
-            <StatDisplay
-              label="Network I/O"
-              value={`${formatBytes(stats.network_rx)} / ${formatBytes(stats.network_tx)}`}
-              subValue="Received / Transmitted"
-              icon={<NetworkIcon />}
-            />
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-muted/50 rounded px-2 py-1.5">
-                <span className="text-muted-foreground">RX: </span>
-                <span className="font-medium">{formatBytes(stats.network_rx)}</span>
-              </div>
-              <div className="bg-muted/50 rounded px-2 py-1.5">
-                <span className="text-muted-foreground">TX: </span>
-                <span className="font-medium">{formatBytes(stats.network_tx)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Storage Used (databases only) */}
-          {stats.storage_bytes != null && (
-            <div className="space-y-3">
-              <StatDisplay
-                label="Storage Used"
-                value={formatBytes(stats.storage_bytes)}
-                subValue="Data on disk"
-                icon={
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <ellipse cx="12" cy="6" rx="8" ry="3" />
-                    <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3" />
-                    <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
-                  </svg>
-                }
-              />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <SectionHeader pollInterval={pollInterval} />
+      <MetricStrip
+        className={hasStorage ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}
+      >
+        <MetricTile
+          label="CPU"
+          icon={<Cpu />}
+          loading={!stats}
+          value={`${cpuPercent.toFixed(1)}`}
+          unit="%"
+          percent={cpuPercent}
+          tone={toneForPercent(cpuPercent)}
+          detail={cpuLimit ? `of ${cpuLimit} core${cpuLimit !== 1 ? "s" : ""} limit` : "of one core"}
+        />
+        <MetricTile
+          label="Memory"
+          icon={<MemoryStick />}
+          loading={!stats}
+          value={stats ? formatBytes(stats.memory_usage) : undefined}
+          percent={memoryPercent}
+          tone={memoryPercent !== undefined ? toneForPercent(memoryPercent) : undefined}
+          detail={stats && stats.memory_limit > 0 ? `of ${formatBytes(stats.memory_limit)}` : "no limit set"}
+        />
+        <MetricTile
+          label="Network"
+          icon={<Network />}
+          loading={!stats}
+          value={stats ? formatBytes(stats.network_rx) : undefined}
+          detail={stats ? `received, ${formatBytes(stats.network_tx)} sent` : undefined}
+        />
+        {hasStorage && stats && (
+          <MetricTile
+            label="Storage"
+            icon={<HardDrive />}
+            value={formatBytes(stats.storage_bytes as number)}
+            detail="data on disk"
+          />
+        )}
+      </MetricStrip>
+    </div>
   );
 }

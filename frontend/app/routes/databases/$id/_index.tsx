@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ResourceMonitor } from "@/components/resource-monitor";
+import { DetailField } from "@/components/metrics";
 import { toast } from "sonner";
 import { Eye, EyeOff, Copy, Check, ExternalLink } from "lucide-react";
 
@@ -61,33 +62,47 @@ export default function DatabaseGeneralTab() {
 
   return (
     <div className="space-y-6">
-      {/* Database Info Card */}
+      {/* Resource usage - only show when running */}
+      {database.status === "running" && (
+        <ResourceMonitor databaseId={database.id} />
+      )}
+
+      {/* Overview Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Database Information</CardTitle>
+          <CardTitle>Overview</CardTitle>
           <CardDescription>{DB_DESCRIPTIONS[database.db_type]}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input aria-label="Name" value={database.name} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Input aria-label="Type" value={database.db_type.toUpperCase()} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Version</Label>
-              <Input aria-label="Version" value={database.version} readOnly />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <div className="flex h-9 items-center">
-                <StatusIndicator status={database.status} />
-              </div>
-            </div>
-          </div>
+          <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+            <DetailField label="Type">{database.db_type.toUpperCase()}</DetailField>
+            <DetailField label="Version" mono>
+              {database.version}
+            </DetailField>
+            <DetailField label="Status">
+              <StatusIndicator status={database.status} />
+            </DetailField>
+            <DetailField label="Created">
+              {new Date(database.created_at).toLocaleString()}
+            </DetailField>
+            <DetailField label="Last updated">
+              {new Date(database.updated_at).toLocaleString()}
+            </DetailField>
+            <DetailField label="Container" mono>
+              <span className="flex items-center gap-1">
+                {database.container_id?.substring(0, 12) || "Not running"}
+                {database.container_id && (
+                  <CopyButton text={database.container_id} field="container_id" />
+                )}
+              </span>
+            </DetailField>
+            <DetailField label="Database ID" mono className="sm:col-span-2 lg:col-span-3">
+              <span className="flex items-center gap-1">
+                <span className="truncate">{database.id}</span>
+                <CopyButton text={database.id} field="id" />
+              </span>
+            </DetailField>
+          </dl>
 
           {database.error_message && (
             <div className="rounded-md bg-destructive/10 p-3 text-destructive">
@@ -240,55 +255,6 @@ export default function DatabaseGeneralTab() {
         </CardContent>
       </Card>
 
-      {/* Metadata Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Metadata</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Database ID</Label>
-              <div className="flex gap-2">
-                <Input value={database.id} readOnly className="font-mono text-xs" />
-                <CopyButton text={database.id} field="id" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Container ID</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={database.container_id?.substring(0, 12) || "Not running"}
-                  readOnly
-                  className="font-mono text-xs"
-                />
-                {database.container_id && (
-                  <CopyButton text={database.container_id} field="container_id" />
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Created</Label>
-              <Input aria-label="Created"
-                value={new Date(database.created_at).toLocaleString()}
-                readOnly
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Last Updated</Label>
-              <Input aria-label="Last Updated"
-                value={new Date(database.updated_at).toLocaleString()}
-                readOnly
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Resource Usage - only show when running */}
-      {database.status === "running" && (
-        <ResourceMonitor databaseId={database.id} />
-      )}
     </div>
   );
 }

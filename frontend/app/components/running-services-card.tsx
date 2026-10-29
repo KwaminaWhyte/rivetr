@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { QueryError } from "@/components/query-error";
 import { useTeamContext } from "@/lib/team-context";
-import { Cpu, HardDrive, Activity, Database, Server } from "lucide-react";
+import { Activity, Database, Server } from "lucide-react";
 import { Link } from "react-router";
 import type { Service } from "@/types/api";
 
@@ -27,7 +28,13 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export function RunningServicesCard() {
+const TYPE_META = {
+  app: { label: "App", Icon: Activity, tint: "text-blue-500" },
+  database: { label: "Database", Icon: Database, tint: "text-purple-500" },
+  service: { label: "Service", Icon: Server, tint: "text-emerald-500" },
+} as const;
+
+export function RunningServicesCard({ className }: { className?: string } = {}) {
   const { currentTeamId } = useTeamContext();
 
   const { data: services = [] } = useQuery<Service[]>({
@@ -73,117 +80,86 @@ export function RunningServicesCard() {
     ...serviceInfos,
   ].sort((a, b) => b.memory_usage - a.memory_usage);
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case "app":
-        return <Activity className="h-4 w-4 text-blue-500 shrink-0" />;
-      case "database":
-        return <Database className="h-4 w-4 text-purple-500 shrink-0" />;
-      case "service":
-        return <Server className="h-4 w-4 text-green-500 shrink-0" />;
-      default:
-        return <Activity className="h-4 w-4 shrink-0" />;
-    }
-  };
-
-  // Health dot: green = healthy/running, amber = running but reporting no
-  // resource usage (likely idle or stats unavailable), grey = unknown.
-  const getHealthDot = (service: RunningServiceInfo) => {
-    const healthy =
-      service.status === "running" &&
-      (service.type === "service" ||
-        service.cpu_percent > 0 ||
-        service.memory_usage > 0);
-    const color = service.status !== "running"
-      ? "bg-muted-foreground/40"
-      : healthy
-        ? "bg-green-500"
-        : "bg-amber-500";
-    const label = service.status !== "running"
-      ? service.status
-      : healthy
-        ? "Healthy"
-        : "Idle";
-    return (
-      <span className="relative flex h-2.5 w-2.5 shrink-0" title={label}>
-        {healthy && (
-          <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${color}`} />
-        )}
-        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${color}`} />
-      </span>
-    );
-  };
-
-  const badgeClass = {
-    app: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-    database: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-    service: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  };
+  const isLoading = resourcesQuery.isLoading;
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="pb-2">
+    <Card className={cn("min-h-0", className)}>
+      <CardHeader className="pb-0">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Running Services</CardTitle>
+          <CardTitle>Running services</CardTitle>
           {allRunning.length > 0 && (
-            <Badge variant="secondary" className="text-xs font-normal">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {allRunning.length} active
-            </Badge>
+            </span>
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex-1">
+      <CardContent className="flex min-h-0 flex-1 flex-col px-0">
         {resourcesQuery.isError && resourcesQuery.data === undefined ? (
-          <QueryError
-            what="running services"
-            error={resourcesQuery.error}
-            onRetry={() => resourcesQuery.refetch()}
-          />
+          <div className="px-4">
+            <QueryError
+              what="running services"
+              error={resourcesQuery.error}
+              onRetry={() => resourcesQuery.refetch()}
+            />
+          </div>
+        ) : isLoading ? (
+          <div className="space-y-3 px-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
         ) : allRunning.length === 0 ? (
-          <div className="text-sm text-muted-foreground text-center py-4">
+          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
             No running services
           </div>
         ) : (
-          <div className="space-y-1 max-h-70 overflow-y-auto pr-1">
-            {allRunning.map((service) => (
-              <Link
-                key={`${service.type}-${service.id}`}
-                to={service.url}
-                className="block"
-              >
-                <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {getHealthDot(service)}
-                    {getIcon(service.type)}
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{service.name}</div>
-                      <Badge
-                        variant="secondary"
-                        className={`text-xs ${badgeClass[service.type]}`}
-                      >
-                        {service.type}
-                      </Badge>
-                    </div>
-                  </div>
-                  {service.type === "service" ? (
-                    // Docker Compose services don't have per-container stats available
-                    <span className="text-xs text-muted-foreground shrink-0">running</span>
-                  ) : (
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                      <div className="flex items-center gap-1" title="CPU">
-                        <Cpu className="h-3 w-3" />
-                        <span>{service.cpu_percent.toFixed(1)}%</span>
-                      </div>
-                      <div className="flex items-center gap-1" title="Memory">
-                        <HardDrive className="h-3 w-3" />
-                        <span>{formatBytes(service.memory_usage)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Link>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-[1fr_4rem_5rem] gap-2 px-4 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span>Name</span>
+              <span className="text-right">CPU</span>
+              <span className="text-right">Memory</span>
+            </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto px-2">
+              {allRunning.map((service) => {
+                const { label, Icon, tint } = TYPE_META[service.type];
+                // Compose services have no per-container stats, so show "running".
+                const hasStats = service.type !== "service";
+                return (
+                  <li key={`${service.type}-${service.id}`}>
+                    <Link
+                      to={service.url}
+                      className="grid grid-cols-[1fr_4rem_5rem] items-center gap-2 rounded-md px-2 py-2 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Icon className={cn("h-4 w-4 shrink-0", tint)} aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium leading-tight">
+                            {service.name}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">{label}</span>
+                        </span>
+                      </span>
+                      {hasStats ? (
+                        <>
+                          <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                            {service.cpu_percent.toFixed(1)}%
+                          </span>
+                          <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                            {formatBytes(service.memory_usage)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="col-span-2 text-right text-xs text-muted-foreground">
+                          running
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </CardContent>
     </Card>

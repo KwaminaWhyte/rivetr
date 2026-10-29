@@ -8,7 +8,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
-import type { Service, ServiceStatus } from "@/types/api";
+import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import type { Project, Service, ServiceStatus } from "@/types/api";
 import { Play, Square, Circle, Layers, RotateCw, Activity, ExternalLink } from "lucide-react";
 
 export function meta() {
@@ -86,6 +87,25 @@ export default function ServiceDetailLayout() {
       return isTransitioning ? 2000 : 30000;
     },
   });
+
+  // Project name for the breadcrumb
+  const { setItems } = useBreadcrumb();
+  const { data: project } = useQuery<Project>({
+    queryKey: ["project", service?.project_id],
+    queryFn: () => api.getProject(service!.project_id!),
+    enabled: !!service?.project_id,
+  });
+
+  useEffect(() => {
+    if (service) {
+      setItems([
+        project
+          ? { label: project.name, href: `/projects/${project.id}` }
+          : { label: "Projects", href: "/projects" },
+        { label: service.name },
+      ]);
+    }
+  }, [service, project, setItems]);
 
   // Mutations for start/stop. The mutationFn opens the deploy side panel
   // immediately so the user can watch image-pull / container-start logs flow

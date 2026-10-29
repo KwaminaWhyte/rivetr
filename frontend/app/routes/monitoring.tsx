@@ -1,27 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Activity,
   Server,
-  Database,
   HardDrive,
   MemoryStick,
   Gauge,
-  Clock,
   Cpu,
   CheckCircle2,
   XCircle,
   AlertTriangle,
   RefreshCw,
-  Container,
+  ShieldCheck,
 } from "lucide-react";
-import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer, Cell } from "recharts";
-import { Button } from "@/components/ui/button";
 import { QueryError } from "@/components/query-error";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { ResourceChart } from "@/components/resource-chart";
+import {
+  Meter,
+  MetricStrip,
+  MetricTile,
+  StatusPill,
+  toneForPercent,
+  toneTextClass,
+  type Tone,
+} from "@/components/metrics";
 import type { SystemHealthStatus, DiskStats, CheckResult, SystemStats } from "@/types/api";
 
 export function meta() {
@@ -33,31 +39,41 @@ export function meta() {
 
 function HealthStatusIcon({ passed, critical }: { passed: boolean; critical: boolean }) {
   if (passed) {
-    return <CheckCircle2 className="h-5 w-5 text-green-500" />;
+    return <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Passing" />;
   }
   if (critical) {
-    return <XCircle className="h-5 w-5 text-red-500" />;
+    return <XCircle className="h-4 w-4 text-red-500" aria-label="Failing" />;
   }
-  return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
+  return <AlertTriangle className="h-4 w-4 text-amber-500" aria-label="Warning" />;
 }
 
-function CheckResultCard({ check }: { check: CheckResult }) {
+/** `database_connectivity` -> `Database connectivity` */
+function humanizeCheckName(name: string): string {
+  const spaced = name.replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function CheckRow({ check }: { check: CheckResult }) {
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-      <HealthStatusIcon passed={check.passed} critical={check.critical} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{check.name}</span>
+    <li className="flex items-start gap-3 px-4 py-3">
+      <span className="mt-0.5 shrink-0">
+        <HealthStatusIcon passed={check.passed} critical={check.critical} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">{humanizeCheckName(check.name)}</span>
           {check.critical && (
-            <Badge variant="outline" className="text-xs">Critical</Badge>
+            <Badge variant="outline" className="text-[10px] font-normal uppercase tracking-wide">
+              Critical
+            </Badge>
           )}
         </div>
-        <p className="text-sm text-muted-foreground mt-0.5">{check.message}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">{check.message}</p>
         {check.details && (
-          <p className="text-xs text-muted-foreground mt-1 font-mono">{check.details}</p>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{check.details}</p>
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -81,68 +97,42 @@ function formatUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
-/** Radial gauge showing a single "used vs total" percentage with a labelled breakdown. */
-function UsageGauge({
-  used,
-  total,
-  usedHuman,
-  totalHuman,
-  secondaryLabel,
-  secondaryHuman,
+function DetailRow({
+  label,
+  children,
+  sub,
 }: {
-  used: number;
-  total: number;
-  usedHuman: string;
-  totalHuman: string;
-  secondaryLabel?: string;
-  secondaryHuman?: string;
+  label: string;
+  children: React.ReactNode;
+  sub?: React.ReactNode;
 }) {
-  const percentage = total > 0 ? (used / total) * 100 : 0;
-  const color = percentage >= 90 ? "#ef4444" : percentage >= 75 ? "#eab308" : "#22c55e";
-  const data = [{ value: Math.min(percentage, 100) }];
-
   return (
-    <div className="flex items-center gap-6">
-      <div className="relative w-32 h-32 shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadialBarChart
-            cx="50%"
-            cy="50%"
-            innerRadius="70%"
-            outerRadius="100%"
-            startAngle={90}
-            endAngle={-270}
-            data={data}
-            barSize={10}
-          >
-            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-            <RadialBar dataKey="value" background={{ fill: "hsl(var(--muted))" }} cornerRadius={5}>
-              <Cell fill={color} />
-            </RadialBar>
-          </RadialBarChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-xl font-bold">{percentage.toFixed(0)}%</span>
-          <span className="text-xs text-muted-foreground">used</span>
-        </div>
-      </div>
-      <div className="space-y-2 text-sm">
-        <div>
-          <p className="text-muted-foreground text-xs">Used</p>
-          <p className="font-semibold">{usedHuman}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground text-xs">Total</p>
-          <p className="font-semibold">{totalHuman}</p>
-        </div>
-        {secondaryLabel && secondaryHuman && (
-          <div>
-            <p className="text-muted-foreground text-xs">{secondaryLabel}</p>
-            <p className="font-semibold">{secondaryHuman}</p>
-          </div>
-        )}
-      </div>
+    <div className="flex items-start justify-between gap-4 px-4 py-3">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right">
+        <div className="text-sm font-medium tabular-nums">{children}</div>
+        {sub && <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{sub}</div>}
+      </dd>
     </div>
+  );
+}
+
+function ServiceStatus({
+  ok,
+  okLabel,
+  badLabel,
+  badTone = "bad",
+}: {
+  ok: boolean | undefined;
+  okLabel: string;
+  badLabel: string;
+  badTone?: Tone;
+}) {
+  if (ok === undefined) return <StatusPill tone="neutral">Checking</StatusPill>;
+  return ok ? (
+    <StatusPill tone="ok">{okLabel}</StatusPill>
+  ) : (
+    <StatusPill tone={badTone}>{badLabel}</StatusPill>
   );
 }
 
@@ -150,7 +140,12 @@ export default function MonitoringPage() {
   const { currentTeamId } = useTeamContext();
 
   // Query for system stats, scoped to current team (teamId null = global/personal workspace)
-  const { data: stats, error: statsError, refetch: refetchStats } = useQuery<SystemStats>({
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery<SystemStats>({
     queryKey: ["system-stats", currentTeamId],
     queryFn: () => api.getSystemStats({ teamId: currentTeamId }),
     refetchInterval: 10000, // Refresh every 10 seconds
@@ -158,7 +153,12 @@ export default function MonitoringPage() {
   });
 
   // Query for health status with polling
-  const { data: health, isLoading: healthLoading, error: healthError, refetch: refetchHealth } = useQuery<SystemHealthStatus>({
+  const {
+    data: health,
+    isLoading: healthLoading,
+    error: healthError,
+    refetch: refetchHealth,
+  } = useQuery<SystemHealthStatus>({
     queryKey: ["systemHealth"],
     queryFn: () => api.getSystemHealth(),
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -166,7 +166,12 @@ export default function MonitoringPage() {
   });
 
   // Query for disk stats with polling, same key as dashboard so both pages share one cache entry
-  const { data: disk, isLoading: diskLoading, error: diskError, refetch: refetchDisk } = useQuery<DiskStats>({
+  const {
+    data: disk,
+    isLoading: diskLoading,
+    error: diskError,
+    refetch: refetchDisk,
+  } = useQuery<DiskStats>({
     queryKey: ["diskStats"],
     queryFn: () => api.getDiskStats(),
     refetchInterval: 60000, // Refresh every minute
@@ -202,17 +207,12 @@ export default function MonitoringPage() {
   // Load average relative to CPU count (1.0 per-core == fully loaded).
   const cpuCount = stats?.cpu_count || 1;
   const load1 = stats?.load_average_1m ?? 0;
-  const loadPerCore = cpuCount > 0 ? load1 / cpuCount : 0;
+  const loadPerCorePercent = cpuCount > 0 ? (load1 / cpuCount) * 100 : 0;
 
   // CPU steal: since-boot share of cycles the hypervisor took for other tenants.
   // High = oversubscribed/contended host (a hosting-provider issue, not your apps).
   const cpuSteal = stats?.cpu_steal_percent ?? 0;
-  const stealTone =
-    cpuSteal >= 25
-      ? "text-red-500"
-      : cpuSteal >= 5
-        ? "text-amber-500"
-        : "text-foreground";
+  const stealTone: Tone = cpuSteal >= 25 ? "bad" : cpuSteal >= 5 ? "warn" : "ok";
   const stealNote =
     cpuSteal >= 25
       ? "host heavily oversubscribed"
@@ -220,19 +220,44 @@ export default function MonitoringPage() {
         ? "host contention"
         : "host not oversubscribed";
 
+  const checks = health?.checks ?? [];
+  const passingChecks = checks.filter((c) => c.passed).length;
+  const checksTone: Tone =
+    checks.length === 0
+      ? "neutral"
+      : checks.some((c) => !c.passed && c.critical)
+        ? "bad"
+        : passingChecks === checks.length
+          ? "ok"
+          : "warn";
+
+  const overallPill = healthLoading ? (
+    <StatusPill tone="neutral">Checking</StatusPill>
+  ) : health ? (
+    <StatusPill tone={health.healthy ? "ok" : "bad"}>
+      {health.healthy ? "All systems healthy" : "Needs attention"}
+    </StatusPill>
+  ) : (
+    <StatusPill tone="neutral">Status unavailable</StatusPill>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Monitoring</h1>
-          <p className="text-muted-foreground">
-            System health and resource monitoring
+          <h1 className="text-2xl font-semibold tracking-tight">Monitoring</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Host resources, system health and history
+            {health?.version ? ` · Rivetr v${health.version}` : ""}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          {overallPill}
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {(statsError || healthError || diskError) && (
@@ -243,336 +268,153 @@ export default function MonitoringPage() {
         />
       )}
 
-      {/* Overall Status Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">System Health</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+      {/* Utilisation at a glance */}
+      <MetricStrip className="grid-cols-2 lg:grid-cols-4">
+        <MetricTile
+          label="CPU"
+          icon={<Cpu />}
+          loading={statsLoading}
+          value={stats ? stats.total_cpu_percent.toFixed(1) : undefined}
+          unit={stats ? "%" : undefined}
+          percent={stats?.total_cpu_percent}
+          detail={stats ? `across ${cpuCount} ${cpuCount === 1 ? "core" : "cores"}` : undefined}
+        />
+        <MetricTile
+          label="Memory"
+          icon={<MemoryStick />}
+          loading={statsLoading}
+          value={stats && hostMemTotal > 0 ? memoryPercent.toFixed(1) : undefined}
+          unit={stats && hostMemTotal > 0 ? "%" : undefined}
+          percent={stats && hostMemTotal > 0 ? memoryPercent : undefined}
+          detail={
+            stats && hostMemTotal > 0
+              ? `${formatBytes(hostMemUsed)} / ${formatBytes(hostMemTotal)}`
+              : undefined
+          }
+        />
+        <MetricTile
+          label="Disk"
+          icon={<HardDrive />}
+          loading={diskLoading}
+          value={disk ? disk.usage_percent.toFixed(1) : undefined}
+          unit={disk ? "%" : undefined}
+          percent={disk?.usage_percent}
+          detail={disk ? `${disk.used_human} / ${disk.total_human}` : undefined}
+        />
+        <MetricTile
+          label="Load average"
+          icon={<Gauge />}
+          loading={statsLoading}
+          value={stats && (stats.cpu_count > 0 || load1 > 0) ? load1.toFixed(2) : undefined}
+          unit={stats && (stats.cpu_count > 0 || load1 > 0) ? "1m" : undefined}
+          percent={stats ? loadPerCorePercent : undefined}
+          tone={stats ? toneForPercent(loadPerCorePercent) : undefined}
+          detail={
+            stats
+              ? `${(stats.load_average_5m ?? 0).toFixed(2)} 5m, ${(stats.load_average_15m ?? 0).toFixed(2)} 15m, ${loadPerCorePercent.toFixed(0)}% per core`
+              : undefined
+          }
+        />
+      </MetricStrip>
+
+      {/* History */}
+      <ResourceChart
+        cpuPercent={stats?.total_cpu_percent ?? 0}
+        memoryPercent={memoryPercent}
+        height={260}
+      />
+
+      <div className="grid items-start gap-4 lg:grid-cols-5">
+        {/* Host details */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-0">
+            <CardTitle>Host</CardTitle>
           </CardHeader>
-          <CardContent>
-            {healthLoading ? (
-              <div className="text-2xl font-bold">Loading...</div>
-            ) : health ? (
-              <>
-                <div className="flex items-center gap-2">
-                  {health.healthy ? (
-                    <>
-                      <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      <span className="text-2xl font-bold text-green-600">Healthy</span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-5 w-5 text-red-500" />
-                      <span className="text-2xl font-bold text-red-600">Unhealthy</span>
-                    </>
-                  )}
+          <CardContent className="px-0">
+            <dl className="divide-y divide-border">
+              <DetailRow label="Uptime" sub={stats ? `${stats.uptime_percent.toFixed(2)}% availability` : undefined}>
+                {stats && stats.uptime_seconds > 0 ? formatUptime(stats.uptime_seconds) : "--"}
+              </DetailRow>
+              <DetailRow label="CPU steal" sub={stats ? stealNote : undefined}>
+                <span className={toneTextClass(stealTone)}>
+                  {stats ? `${cpuSteal.toFixed(1)}%` : "--"}
+                </span>
+              </DetailRow>
+              <DetailRow
+                label="Memory available"
+                sub={hostMemTotal > 0 ? `of ${formatBytes(hostMemTotal)}` : undefined}
+              >
+                {hostMemTotal > 0 ? formatBytes(hostMemAvailable) : "--"}
+              </DetailRow>
+              {swapTotal > 0 && (
+                <div className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <dt className="text-sm text-muted-foreground">Swap</dt>
+                    <dd className="text-sm font-medium tabular-nums">
+                      {formatBytes(swapUsed)} / {formatBytes(swapTotal)} ({swapPercent.toFixed(0)}%)
+                    </dd>
+                  </div>
+                  <Meter value={swapPercent} label="Swap used" className="mt-2" />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  v{health.version}
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
+              )}
+              <DetailRow label="Disk free" sub={disk ? `on ${disk.path}` : undefined}>
+                {disk ? disk.free_human : "--"}
+              </DetailRow>
+              <DetailRow label="Database">
+                <ServiceStatus ok={health?.database_healthy} okLabel="Connected" badLabel="Error" />
+              </DetailRow>
+              <DetailRow label="Container runtime">
+                <ServiceStatus
+                  ok={health?.runtime_healthy}
+                  okLabel="Available"
+                  badLabel="Unavailable"
+                  badTone="warn"
+                />
+              </DetailRow>
+            </dl>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Database</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
+        {/* Health checks */}
+        <Card className="lg:col-span-3">
+          <CardHeader className="pb-0">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                Health checks
+              </CardTitle>
+              {checks.length > 0 && (
+                <StatusPill tone={checksTone}>
+                  {passingChecks} of {checks.length} passing
+                </StatusPill>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
-            {health ? (
-              <div className="flex items-center gap-2">
-                {health.database_healthy ? (
-                  <>
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span className="text-2xl font-bold text-green-600">Connected</span>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-5 w-5 text-red-500" />
-                    <span className="text-2xl font-bold text-red-600">Error</span>
-                  </>
-                )}
+          <CardContent className="px-0">
+            {checks.length > 0 ? (
+              <ul className="divide-y divide-border">
+                {checks.map((check) => (
+                  <CheckRow key={check.name} check={check} />
+                ))}
+              </ul>
+            ) : healthLoading ? (
+              <div className="space-y-3 px-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full" />
+                ))}
               </div>
             ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Container Runtime</CardTitle>
-            <Container className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {health ? (
-              <div className="flex items-center gap-2">
-                {health.runtime_healthy ? (
-                  <>
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span className="text-2xl font-bold text-green-600">Available</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                    <span className="text-2xl font-bold text-yellow-600">Unavailable</span>
-                  </>
-                )}
+              <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+                <Server className="mb-3 h-10 w-10 text-muted-foreground" />
+                <h3 className="text-base font-medium">No health data</h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Unable to fetch system health information. The backend may be unavailable.
+                </p>
               </div>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Disk Space</CardTitle>
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {diskLoading ? (
-              <div className="text-2xl font-bold">Loading...</div>
-            ) : disk ? (
-              <>
-                <div className="text-2xl font-bold">
-                  {disk.usage_percent.toFixed(1)}% used
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {disk.used_human} / {disk.total_human}
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Memory Usage</CardTitle>
-            <MemoryStick className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {stats && hostMemTotal > 0 ? (
-              <>
-                <div className="text-2xl font-bold">{memoryPercent.toFixed(1)}% used</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatBytes(hostMemUsed)} / {formatBytes(hostMemTotal)}
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">CPU Usage</CardTitle>
-            <Cpu className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {stats ? (
-              <>
-                <div className="text-2xl font-bold">
-                  {stats.total_cpu_percent.toFixed(1)}%
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  across {cpuCount} {cpuCount === 1 ? "core" : "cores"}
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">CPU Steal</CardTitle>
-            <Cpu className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {stats ? (
-              <>
-                <div className={`text-2xl font-bold ${stealTone}`}>
-                  {cpuSteal.toFixed(1)}%
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{stealNote}</p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Load Average</CardTitle>
-            <Gauge className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {stats && (stats.cpu_count > 0 || load1 > 0) ? (
-              <>
-                <div className="text-2xl font-bold">{load1.toFixed(2)}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {(stats.load_average_5m ?? 0).toFixed(2)} (5m) ·{" "}
-                  {(stats.load_average_15m ?? 0).toFixed(2)} (15m) ·{" "}
-                  {(loadPerCore * 100).toFixed(0)}% / core
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Host Uptime</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {stats && stats.uptime_seconds > 0 ? (
-              <>
-                <div className="text-2xl font-bold">{formatUptime(stats.uptime_seconds)}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.uptime_percent.toFixed(2)}% availability
-                </p>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">--</div>
             )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Resource Utilization Chart */}
-      <ResourceChart
-        cpuPercent={stats?.total_cpu_percent ?? 0}
-        memoryPercent={memoryPercent}
-      />
-
-      {/* Memory Usage Details */}
-      {stats && hostMemTotal > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Memory Usage</CardTitle>
-            <CardDescription>
-              Host RAM{swapTotal > 0 ? " and swap" : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between gap-8">
-              <UsageGauge
-                used={hostMemUsed}
-                total={hostMemTotal}
-                usedHuman={formatBytes(hostMemUsed)}
-                totalHuman={formatBytes(hostMemTotal)}
-                secondaryLabel="Available"
-                secondaryHuman={formatBytes(hostMemAvailable)}
-              />
-              <div className="flex-1 grid grid-cols-1 gap-3 text-sm">
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Used</span>
-                  <span className="font-semibold">{formatBytes(hostMemUsed)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Available</span>
-                  <span className="font-semibold">{formatBytes(hostMemAvailable)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Total</span>
-                  <span className="font-semibold">{formatBytes(hostMemTotal)}</span>
-                </div>
-                {swapTotal > 0 && (
-                  <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                    <span className="text-muted-foreground">Swap</span>
-                    <span className="font-semibold">
-                      {formatBytes(swapUsed)} / {formatBytes(swapTotal)} (
-                      {swapPercent.toFixed(0)}%)
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Disk Usage Details */}
-      {disk && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Disk Usage</CardTitle>
-            <CardDescription>Storage on {disk.path}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between gap-8">
-              <UsageGauge
-                used={disk.used_bytes}
-                total={disk.total_bytes}
-                usedHuman={disk.used_human}
-                totalHuman={disk.total_human}
-                secondaryLabel="Free"
-                secondaryHuman={disk.free_human}
-              />
-              <div className="flex-1 grid grid-cols-1 gap-3 text-sm">
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Used</span>
-                  <span className="font-semibold">{disk.used_human}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Free</span>
-                  <span className="font-semibold">{disk.free_human}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-lg bg-muted/40">
-                  <span className="text-muted-foreground">Total</span>
-                  <span className="font-semibold">{disk.total_human}</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Health Check Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Health Checks</CardTitle>
-          <CardDescription>
-            Detailed status of all system components
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {health && health.checks.length > 0 ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              {health.checks.map((check, index) => (
-                <CheckResultCard key={index} check={check} />
-              ))}
-            </div>
-          ) : healthLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <RefreshCw className="h-8 w-8 text-muted-foreground mb-4 animate-spin" />
-              <p className="text-muted-foreground">Loading health checks...</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Server className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">No Health Data</h3>
-              <p className="text-muted-foreground max-w-sm mt-2">
-                Unable to fetch system health information. The backend may be unavailable.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

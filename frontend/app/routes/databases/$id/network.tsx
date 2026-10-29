@@ -159,7 +159,7 @@ export default function DatabaseNetworkTab() {
               <Globe className="h-4 w-4" />
               External URL (Host Access)
               {database.public_access && (
-                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/30">
                   Public
                 </Badge>
               )}

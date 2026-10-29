@@ -250,13 +250,13 @@ export default function DatabaseLogsTab() {
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className="bg-green-50 text-green-700 border-green-200"
+              className="bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/30"
             >
               stdout: {logs.filter((l) => l.stream === "stdout").length}
             </Badge>
             <Badge
               variant="outline"
-              className="bg-red-50 text-red-700 border-red-200"
+              className="bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/30"
             >
               stderr: {logs.filter((l) => l.stream === "stderr").length}
             </Badge>

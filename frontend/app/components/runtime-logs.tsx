@@ -224,7 +224,7 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
         {error ? (
           <div className="text-sm text-red-500 py-4 text-center">{error}</div>
         ) : (
-          <div className="bg-gray-900 text-gray-100 rounded-md p-4 font-mono text-xs overflow-auto max-h-96 min-w-0 max-w-full">
+          <div className="bg-zinc-950 text-zinc-100 rounded-md p-4 font-mono text-xs leading-relaxed overflow-auto h-[60vh] min-h-64 min-w-0 max-w-full">
             {logs.length === 0 ? (
               <div className="text-gray-500">Waiting for logs...</div>
             ) : (

@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router";
 import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getPrimaryDomain } from "@/lib/utils";
+import { DetailField as Field } from "@/components/metrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -111,68 +112,6 @@ export default function AppGeneralTab() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Environment</div>
-                <div className="font-medium mt-1">
-                  <EnvironmentBadge environment={app.environment} />
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Branch</div>
-                <div className="font-medium">{app.branch}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Port</div>
-                <div className="font-medium">{app.port}</div>
-              </div>
-              {app.build_type === "dockerfile" && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Dockerfile</div>
-                  <div className="font-medium">{app.dockerfile}</div>
-                </div>
-              )}
-              <div>
-                <div className="text-sm text-muted-foreground">Domain</div>
-                <div className="font-medium">{getPrimaryDomain(app) || "-"}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Healthcheck</div>
-                <div className="font-medium">{app.healthcheck || "-"}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="text-sm text-muted-foreground">App ID</div>
-              <div className="font-mono text-sm">{app.id}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Created</div>
-              <div className="font-medium">{formatDate(app.created_at)}</div>
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Updated</div>
-              <div className="font-medium">{formatDate(app.updated_at)}</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <ResourceLimitsCard app={app} token={token} />
-
       {runningDeployment && (
         <ResourceMonitor
           appId={app.id}
@@ -181,6 +120,42 @@ export default function AppGeneralTab() {
         />
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Environment">
+              <EnvironmentBadge environment={app.environment} />
+            </Field>
+            <Field label="Branch" mono>
+              {app.branch}
+            </Field>
+            <Field label="Port" mono>
+              {app.port}
+            </Field>
+            {app.build_type === "dockerfile" && (
+              <Field label="Dockerfile" mono>
+                {app.dockerfile}
+              </Field>
+            )}
+            <Field label="Domain">{getPrimaryDomain(app) || "-"}</Field>
+            <Field label="Healthcheck" mono>
+              {app.healthcheck || "-"}
+            </Field>
+            <Field label="App ID" mono>
+              {app.id}
+            </Field>
+            <Field label="Created">{formatDate(app.created_at)}</Field>
+            <Field label="Updated">{formatDate(app.updated_at)}</Field>
+          </dl>
+        </CardContent>
+      </Card>
+
+      <ResourceLimitsCard app={app} token={token} />
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Activity / Restart history */}
       <Card>
         <CardHeader>
@@ -272,6 +247,7 @@ export default function AppGeneralTab() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
