@@ -55,6 +55,17 @@ At startup the key is resolved in this order:
 3. Fresh install (no users, env vars, servers, build servers or git providers in the DB): a random 256-bit key is generated and written to `<data_dir>/.encryption_key` (mode `0600`, created atomically, never overwritten). A one-time notice is logged. **Back this file up together with the database**: without it, encrypted values cannot be recovered.
 4. Existing install with neither: behavior is unchanged (plaintext) and a startup warning shows the exact line to add. Existing plaintext values stay readable after a key is enabled; new and updated values are encrypted.
 
+#### Encrypting an existing install
+
+A key only protects values written after it exists. To encrypt what is already stored, use `rivetr db encrypt-secrets`:
+
+1. Stop Rivetr and back up the database (and any existing `.encryption_key` / `.encryption_salt`).
+2. Run it as the same user that runs the service, so the key files it creates are readable by the service: `rivetr --config rivetr.toml db encrypt-secrets` shows what it would change; add `--execute` to apply it.
+3. If no key is configured it creates `<data_dir>/.encryption_key` (mode `0600`) and the salt file, then encrypts env vars (app, environment, project and team), SSH keys and passwords for servers and build servers, S3 keys, TOTP secrets and GitHub App secrets in one transaction. Each value is decrypted back and compared before it is written; any mismatch rolls everything back. It is safe to run again.
+4. Copy `.encryption_key` and `.encryption_salt` somewhere off the server, then start Rivetr.
+
+Older database backups and copies made before this step still contain the plaintext values.
+
 The key is stretched with PBKDF2-HMAC-SHA256 (100k iterations, fixed salt). Upgrading the KDF (per-install salt, Argon2id) would break existing ciphertext and needs a versioned ciphertext format first; it is a tracked follow-up.
 
 ## `[runtime]`

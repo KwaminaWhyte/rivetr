@@ -10,6 +10,7 @@
 pub mod backup;
 pub mod database;
 pub mod deploy;
+pub mod secrets;
 pub mod server;
 
 use anyhow::{Context, Result};
@@ -150,6 +151,18 @@ pub enum DbCommands {
         #[arg(long)]
         execute: bool,
     },
+
+    /// Encrypt secrets that were stored in plaintext before an encryption key existed
+    ///
+    /// Creates `<data_dir>/.encryption_key` if no key is configured, then encrypts
+    /// env vars, SSH keys and passwords, S3 keys, TOTP secrets and GitHub App secrets
+    /// in one transaction. Stop the server first, back up the database and key files,
+    /// and restart afterwards.
+    EncryptSecrets {
+        /// Apply the change (without this flag, only reports what would be encrypted)
+        #[arg(long)]
+        execute: bool,
+    },
 }
 
 // ============================================================================
@@ -277,6 +290,9 @@ pub async fn run_command(cli: &Cli) -> Result<()> {
         Some(Commands::Config(ConfigCommands::Check)) => server::cmd_config_check(cli).await,
         Some(Commands::Db(DbCommands::MigrateTeams { execute })) => {
             database::cmd_migrate_teams(cli, *execute).await
+        }
+        Some(Commands::Db(DbCommands::EncryptSecrets { execute })) => {
+            secrets::cmd_encrypt_secrets(cli, *execute).await
         }
         Some(Commands::Backup { output }) => backup::cmd_backup(cli, output.as_deref()).await,
         Some(Commands::Restore { backup_file }) => backup::cmd_restore(cli, backup_file).await,

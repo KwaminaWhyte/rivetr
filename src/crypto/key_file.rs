@@ -329,7 +329,8 @@ pub async fn resolve_encryption_key(
          [auth]\n\
          encryption_key = \"<output of: openssl rand -hex 32>\"\n\
          (or create {} containing the key, mode 600). Existing plaintext values stay readable; \
-         new and updated values will be encrypted. Keep the key backed up.",
+         new and updated values will be encrypted. To encrypt the values already stored, stop \
+         Rivetr and run `rivetr db encrypt-secrets --execute`. Keep the key backed up.",
         path.display()
     );
     Ok(KeyResolution::MissingExistingInstall)
