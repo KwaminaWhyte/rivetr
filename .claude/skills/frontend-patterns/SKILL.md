@@ -1,6 +1,6 @@
 ---
 name: frontend-patterns
-description: React Router v7, React Query, and shadcn/ui patterns used in the Rivetr dashboard. Use when writing new frontend components, routes, or API integrations.
+description: React Router v8, React Query, and shadcn/ui patterns used in the Rivetr dashboard. Use when writing new frontend components, routes, or API integrations.
 allowed-tools: Read, Grep, Glob
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob
 
 ## Stack
 
-React Router v7 (Framework/SSR mode) + Vite + TypeScript + React Query v5 + shadcn/ui + Tailwind CSS v4
+React Router v8 (Framework/SSR mode) + Vite + TypeScript + React Query v5 + shadcn/ui + Tailwind CSS v4
 
 ## Route Structure
 

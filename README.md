@@ -3,9 +3,13 @@
 Deploy applications from Git with a single binary, ~30MB RAM idle, no external dependencies.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org/)
 [![Build](https://img.shields.io/github/actions/workflow/status/KwaminaWhyte/rivetr/ci.yml?branch=main)](https://github.com/KwaminaWhyte/rivetr/actions)
 [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/KwaminaWhyte/badge.svg)](https://hub.xerj.org/contributors/KwaminaWhyte)
+
+![Rivetr projects page](docs/images/projects.png)
+
+![Rivetr app overview with live resource usage](docs/images/app-overview.png)
 
 ## What is Rivetr?
 
@@ -218,7 +222,7 @@ sudo journalctl -u rivetr -f
 
 ### Development Setup
 
-**Prerequisites:** Rust 1.75+, Node.js 20+, Docker or Podman
+**Prerequisites:** Rust 1.95+, Node.js 20+, Docker or Podman
 
 ```bash
 git clone https://github.com/KwaminaWhyte/rivetr.git
@@ -425,7 +429,7 @@ rivetr/
 - **OS**: Linux (x86_64 or aarch64) for production; macOS and Windows for development
 - **Runtime**: Docker Engine 24+ or Podman 4+
 - **Ports**: 80 (HTTP proxy), 443 (HTTPS proxy), 8080 (API and dashboard)
-- **Build from source**: Rust 1.75+, Node.js 20+
+- **Build from source**: Rust 1.95+, Node.js 20+
 
 ## Contributing
 

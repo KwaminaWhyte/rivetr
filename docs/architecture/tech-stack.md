@@ -13,7 +13,7 @@
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| **axum** | 0.7+ | HTTP server, routing, middleware |
+| **axum** | 0.8+ | HTTP server, routing, middleware |
 | tokio | 1.x | Async runtime |
 | tower | 0.4+ | Middleware/service abstractions |
 | tower-http | 0.5+ | CORS, compression, tracing |
@@ -28,7 +28,7 @@
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| **sqlx** | 0.7+ | Async database driver |
+| **sqlx** | 0.9+ | Async database driver |
 | sqlite | (bundled) | Embedded database |
 
 **Why SQLx + SQLite?**
@@ -49,7 +49,7 @@ PRAGMA foreign_keys = ON;
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| **bollard** | 0.15+ | Docker Engine API client |
+| **bollard** | 0.21+ | Docker Engine API client |
 | tokio-process | (in tokio) | Podman CLI wrapper |
 
 **Why Bollard?**
@@ -173,20 +173,20 @@ Command::new("podman")
 name = "rivetr"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.95"
 
 [dependencies]
 # Web
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "compression-gzip", "trace"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Docker
-bollard = "0.15"
+bollard = "0.21"
 
 # Git
 git2 = "0.18"

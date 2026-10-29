@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Rivetr. This document covers prer
 
 | Tool | Version | Notes |
 |---|---|---|
-| [Rust](https://rustup.rs/) | 1.75+ | Install via rustup |
+| [Rust](https://rustup.rs/) | 1.95+ | Install via rustup |
 | [Node.js](https://nodejs.org/) | 20+ | For frontend development |
 | Docker or Podman | Docker 24+ / Podman 4+ | Required for testing deployments |
 | Git | Any recent version | |
@@ -107,7 +107,7 @@ Rust resolves `mod apps;` transparently to either `apps.rs` or `apps/mod.rs`, so
 
 ```
 frontend/app/
-├── routes/       # Page-level route components (React Router v7 file-based routing)
+├── routes/       # Page-level route components (React Router v8 file-based routing)
 ├── components/   # Reusable UI components built with shadcn/ui
 ├── types/        # TypeScript type definitions (barrel-exported from types/index.ts)
 └── lib/          # API client, React Query hooks, and utilities
@@ -130,7 +130,7 @@ See [docs/architecture/code-organization.md](docs/architecture/code-organization
 1. **Add types**: Add TypeScript interfaces to the appropriate file under `frontend/app/types/` and re-export from `frontend/app/types/index.ts`.
 2. **Add API calls**: Add fetch calls or React Query hooks in `frontend/app/lib/`.
 3. **Add components**: Use shadcn/ui primitives where possible. Keep components small and focused.
-4. **Add routes**: New pages go in `frontend/app/routes/`. React Router v7 uses file-based routing.
+4. **Add routes**: New pages go in `frontend/app/routes/`. React Router v8 uses file-based routing.
 
 ### Adding a service template
 

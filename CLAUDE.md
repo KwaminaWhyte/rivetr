@@ -49,7 +49,7 @@ cargo clippy
 ```
 
 Requires `cargo-zigbuild` installed: `cargo install cargo-zigbuild` and Zig on PATH.
-Server: `root@64.226.112.14`, binary installed at `/opt/rivetr/rivetr`.
+Server: `root@187.124.50.183`, binary installed at `/opt/rivetr/rivetr`.
 
 ## Architecture
 
@@ -150,7 +150,7 @@ Skills in `.claude/skills/` provide domain-specific knowledge and workflows:
 | `docker-testing` | Reference | Container runtime testing, Docker/Podman debugging, build types |
 | `database-operations` | Reference | SQLite/SQLx patterns, queries, migrations, models |
 | `deployment-pipeline` | Reference | Pipeline stages, build types, rollbacks, debugging |
-| `frontend-patterns` | Reference | React Router v7, React Query, shadcn/ui patterns for the dashboard |
+| `frontend-patterns` | Reference | React Router v8, React Query, shadcn/ui patterns for the dashboard |
 | `/prd` | Workflow | Generate Product Requirements Documents for new features |
 
 Reference skills are auto-loaded by Claude when relevant. Workflow skills (prefixed with `/`) are invoked manually.
