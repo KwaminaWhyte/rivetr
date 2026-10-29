@@ -103,6 +103,26 @@ export function StatusPill({
   );
 }
 
+/** Small status dot for dense lists. The label is read by screen readers and shown on hover. */
+export function StatusDot({
+  tone,
+  label,
+  className,
+}: {
+  tone: Tone;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <span
+      title={label}
+      className={cn("inline-block h-2 w-2 shrink-0 rounded-full", TONE_DOT[tone], className)}
+    >
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 export interface MetricTileProps {
   label: string;
   icon?: ReactNode;

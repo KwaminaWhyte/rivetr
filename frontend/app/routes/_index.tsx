@@ -205,7 +205,6 @@ export default function DashboardPage() {
           loading={statsLoading}
           value={stats ? formatUptime(stats.uptime_seconds) : undefined}
           detail={stats ? "since last restart" : undefined}
-          className="col-span-2 lg:col-span-1"
         />
       </MetricStrip>
 

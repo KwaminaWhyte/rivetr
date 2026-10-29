@@ -431,10 +431,10 @@ export default function AppDetailLayout() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">{app.name}</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{app.name}</h1>
             <EnvironmentBadge environment={app.environment} />
             <RunningStatusBadge status={appStatus} />
             {isRestarting && (
@@ -456,9 +456,9 @@ export default function AppDetailLayout() {
               </span>
             )}
           </div>
-          <p className="text-muted-foreground">{app.git_url}</p>
+          <p className="break-all text-muted-foreground">{app.git_url}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* Start/Stop/Restart buttons */}
           {appStatus?.status === "running" ? (
             <>

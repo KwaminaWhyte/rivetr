@@ -514,14 +514,14 @@ export default function CostsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Cost Analysis</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Cost Analysis</h1>
+          <p className="text-sm text-muted-foreground">
             Analyze infrastructure costs across your organization
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
             <SelectTrigger aria-label="Cost period" className="w-[140px]">
               <SelectValue placeholder="Select period" />

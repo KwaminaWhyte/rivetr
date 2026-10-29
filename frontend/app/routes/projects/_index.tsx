@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ProjectCard } from "@/components/project-card";
+import { ProjectCard, type ProjectHealth } from "@/components/project-card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
 import type { App, DeploymentStatus, ManagedDatabase, ProjectWithApps } from "@/types/api";
 
@@ -31,13 +38,16 @@ export function meta() {
   ];
 }
 
-type FilterTab = "all" | "healthy" | "issues" | "building";
+type FilterTab = "all" | ProjectHealth;
+type SortKey = "attention" | "name" | "newest";
+
+const HEALTH_RANK: Record<ProjectHealth, number> = { issues: 0, building: 1, healthy: 2 };
 
 function getProjectHealth(
   project: ProjectWithApps,
   appStatuses: Record<string, DeploymentStatus>,
   databaseStatuses: Record<string, string>
-): FilterTab {
+): ProjectHealth {
   const databases = project.databases || [];
   if (project.apps.length === 0 && databases.length === 0) return "healthy";
 
@@ -67,6 +77,8 @@ export default function ProjectsPage() {
   const queryClient = useQueryClient();
   const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("attention");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -131,14 +143,45 @@ export default function ProjectsPage() {
     return statuses;
   }, [databases]);
 
-  // Filter projects by tab
+  // Filter by tab and search text, then sort (problems first by default)
   const filteredProjects = useMemo(() => {
-    if (activeTab === "all") return projects;
-    return projects.filter((project) => {
-      const health = getProjectHealth(project, appStatuses, databaseStatuses);
-      return health === activeTab;
-    });
-  }, [projects, activeTab, appStatuses, databaseStatuses]);
+    const q = search.trim().toLowerCase();
+    const matchesSearch = (project: ProjectWithApps) =>
+      !q ||
+      [
+        project.name,
+        project.description ?? "",
+        ...project.apps.map((a) => a.name),
+        ...(project.databases || []).map((d) => d.name),
+        ...(project.services || []).map((s) => s.name),
+      ].some((text) => text.toLowerCase().includes(q));
+
+    return projects
+      .filter(
+        (p) =>
+          activeTab === "all" || getProjectHealth(p, appStatuses, databaseStatuses) === activeTab
+      )
+      .filter(matchesSearch)
+      .sort((a, b) => {
+        if (sort === "name") return a.name.localeCompare(b.name);
+        if (sort === "newest") return b.created_at.localeCompare(a.created_at);
+        const byHealth =
+          HEALTH_RANK[getProjectHealth(a, appStatuses, databaseStatuses)] -
+          HEALTH_RANK[getProjectHealth(b, appStatuses, databaseStatuses)];
+        return byHealth !== 0 ? byHealth : a.name.localeCompare(b.name);
+      });
+  }, [projects, activeTab, search, sort, appStatuses, databaseStatuses]);
+
+  // "4 projects · 12 apps · 6 databases" subtitle
+  const totals = useMemo(() => {
+    let appTotal = 0;
+    let dbTotal = 0;
+    for (const p of projects) {
+      appTotal += p.apps.length;
+      dbTotal += (p.databases || []).length;
+    }
+    return { apps: appTotal, databases: dbTotal };
+  }, [projects]);
 
   // Count projects by status
   const statusCounts = useMemo(() => {
@@ -184,21 +227,23 @@ export default function ProjectsPage() {
   if (projectsLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Projects</h1>
-            <p className="text-muted-foreground">
-              Manage your applications and service groups
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground">
+            Group related apps, databases and services
+          </p>
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="h-6 w-32 mb-4" />
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3" />
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
               </CardContent>
             </Card>
           ))}
@@ -212,9 +257,11 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Projects</h1>
-          <p className="text-muted-foreground">
-            Manage your applications and service groups
+          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground">
+            {projects.length > 0
+              ? `${projects.length} project${projects.length !== 1 ? "s" : ""} · ${totals.apps} app${totals.apps !== 1 ? "s" : ""} · ${totals.databases} database${totals.databases !== 1 ? "s" : ""}`
+              : "Group related apps, databases and services"}
           </p>
         </div>
 
@@ -292,16 +339,47 @@ export default function ProjectsPage() {
         />
       )}
 
-      {/* Filter Tabs, hidden until there are apps to filter (U4) */}
-      {apps.length > 0 && (
-        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
-          <TabsList>
-            <TabsTrigger value="all">All ({statusCounts.all})</TabsTrigger>
-            <TabsTrigger value="healthy">Healthy ({statusCounts.healthy})</TabsTrigger>
-            <TabsTrigger value="issues">Issues ({statusCounts.issues})</TabsTrigger>
-            <TabsTrigger value="building">Building ({statusCounts.building})</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* Toolbar: status filter (hidden until there are apps to filter, U4), search, sort */}
+      {projects.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {apps.length > 0 ? (
+            <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as FilterTab)}>
+              <TabsList>
+                <TabsTrigger value="all">All ({statusCounts.all})</TabsTrigger>
+                <TabsTrigger value="healthy">Healthy ({statusCounts.healthy})</TabsTrigger>
+                <TabsTrigger value="issues">Issues ({statusCounts.issues})</TabsTrigger>
+                <TabsTrigger value="building">Building ({statusCounts.building})</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : (
+            <div />
+          )}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 sm:flex-none">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                aria-label="Search projects"
+                placeholder="Search projects"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 sm:w-60"
+              />
+            </div>
+            <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+              <SelectTrigger aria-label="Sort projects" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="attention">Needs attention</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="newest">Newest</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       )}
 
       {/* Projects Grid */}
@@ -320,17 +398,18 @@ export default function ProjectsPage() {
               </>
             ) : (
               <p className="text-muted-foreground">
-                No projects match the selected filter.
+                No projects match your search or filter.
               </p>
             )}
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
+              health={getProjectHealth(project, appStatuses, databaseStatuses)}
               appStatuses={appStatuses}
               databaseStatuses={databaseStatuses}
             />

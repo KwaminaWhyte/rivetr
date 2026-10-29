@@ -1,64 +1,61 @@
 import { Link } from "react-router";
-import { Settings, ExternalLink, ArrowRight, Database, Layers } from "lucide-react";
+import { ArrowRight, Box, Database, Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import type { App, ManagedDatabase, ProjectWithApps, DeploymentStatus, Service } from "@/types/api";
+import { StatusDot, StatusPill, type Tone } from "@/components/metrics";
+import type { DeploymentStatus, ProjectWithApps } from "@/types/api";
+
+export type ProjectHealth = "healthy" | "issues" | "building";
 
 interface ProjectCardProps {
   project: ProjectWithApps;
+  health: ProjectHealth;
   appStatuses?: Record<string, DeploymentStatus>;
   databaseStatuses?: Record<string, string>;
 }
 
-function getStatusColor(status?: DeploymentStatus): string {
-  if (!status) return "bg-gray-400";
-
+/** Map any app, database or service status string onto a tone. */
+function toneForStatus(status?: string): Tone {
   switch (status) {
     case "running":
-      return "bg-green-500";
+      return "ok";
     case "building":
     case "cloning":
     case "starting":
     case "checking":
     case "pending":
-      return "bg-yellow-500";
-    case "failed":
-    case "stopped":
-      return "bg-red-500";
-    default:
-      return "bg-gray-400";
-  }
-}
-
-function StatusDot({ status }: { status?: DeploymentStatus | string }) {
-  const color = typeof status === "string" ? getDbStatusColor(status) : getStatusColor(status);
-  return (
-    <span
-      className={`inline-block w-2 h-2 rounded-full ${color}`}
-      title={status || "unknown"}
-    />
-  );
-}
-
-function getDbStatusColor(status?: string): string {
-  if (!status) return "bg-gray-400";
-  switch (status) {
-    case "running":
-      return "bg-green-500";
-    case "starting":
     case "pulling":
-    case "pending":
-      return "bg-yellow-500";
+      return "warn";
     case "failed":
     case "stopped":
-      return "bg-red-500";
+      return "bad";
     default:
-      return "bg-gray-400";
+      return "neutral";
   }
 }
 
-export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }: ProjectCardProps) {
+const HEALTH_PILL: Record<ProjectHealth, { tone: Tone; label: string }> = {
+  healthy: { tone: "ok", label: "Healthy" },
+  issues: { tone: "bad", label: "Needs attention" },
+  building: { tone: "warn", label: "Building" },
+};
+
+const MAX_ROWS = 4;
+
+interface ResourceRow {
+  id: string;
+  name: string;
+  kind: string;
+  to: string;
+  status?: string;
+  icon: typeof Box;
+}
+
+export function ProjectCard({
+  project,
+  health,
+  appStatuses = {},
+  databaseStatuses = {},
+}: ProjectCardProps) {
   const databases = project.databases || [];
   const services = project.services || [];
   const appCount = project.apps.length;
@@ -66,174 +63,109 @@ export function ProjectCard({ project, appStatuses = {}, databaseStatuses = {} }
   const svcCount = services.length;
   const totalCount = appCount + dbCount + svcCount;
 
-  return (
-    <Card className="group hover:shadow-md transition-shadow">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <div className="space-y-1">
-          <CardTitle className="text-lg font-semibold">{project.name}</CardTitle>
-          {project.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">
-              {project.description}
-            </p>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-          asChild
-        >
-          <Link to={`/projects/${project.id}`} title="Project Settings">
-            <Settings className="h-4 w-4" />
-          </Link>
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Services list (apps + databases + compose services) */}
-        <div className="space-y-2">
-          {totalCount === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              No services in this project
-            </p>
-          ) : (
-            <>
-              {/* Apps */}
-              {project.apps.slice(0, 3).map((app) => (
-                <AppListItem
-                  key={app.id}
-                  app={app}
-                  status={appStatuses[app.id]}
-                />
-              ))}
-              {/* Databases */}
-              {databases.slice(0, Math.max(0, 3 - project.apps.length)).map((db) => (
-                <DatabaseListItem
-                  key={db.id}
-                  database={db}
-                  status={databaseStatuses[db.id] || db.status}
-                />
-              ))}
-              {/* Compose Services */}
-              {services.slice(0, Math.max(0, 3 - project.apps.length - databases.length)).map((svc) => (
-                <ServiceListItem
-                  key={svc.id}
-                  service={svc}
-                />
-              ))}
-            </>
-          )}
-          {totalCount > 3 && (
-            <p className="text-xs text-muted-foreground">
-              +{totalCount - 3} more {totalCount - 3 === 1 ? "service" : "services"}
-            </p>
-          )}
-        </div>
+  // Unhealthy resources float to the top so a problem is never hidden behind "+N more".
+  const rows: ResourceRow[] = [
+    ...project.apps.map((app) => ({
+      id: app.id,
+      name: app.name,
+      kind: "App",
+      to: `/apps/${app.id}`,
+      status: appStatuses[app.id],
+      icon: Box,
+    })),
+    ...databases.map((db) => ({
+      id: db.id,
+      name: db.name,
+      kind: db.db_type.toUpperCase(),
+      to: `/databases/${db.id}`,
+      status: databaseStatuses[db.id] || db.status,
+      icon: Database,
+    })),
+    ...services.map((svc) => ({
+      id: svc.id,
+      name: svc.name,
+      kind: "Service",
+      to: `/services/${svc.id}`,
+      status: svc.status,
+      icon: Layers,
+    })),
+  ];
+  const severity = (r: ResourceRow) =>
+    ({ bad: 0, warn: 1, neutral: 2, ok: 3 })[toneForStatus(r.status)];
+  const sorted = [...rows].sort((a, b) => severity(a) - severity(b));
+  const visible = sorted.slice(0, MAX_ROWS);
+  const hidden = totalCount - visible.length;
 
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t">
-          <span className="text-sm text-muted-foreground">
-            {appCount > 0 && `${appCount} app${appCount !== 1 ? "s" : ""}`}
-            {appCount > 0 && (dbCount > 0 || svcCount > 0) && ", "}
-            {dbCount > 0 && `${dbCount} db${dbCount !== 1 ? "s" : ""}`}
-            {dbCount > 0 && svcCount > 0 && ", "}
-            {svcCount > 0 && `${svcCount} svc${svcCount !== 1 ? "s" : ""}`}
-            {totalCount === 0 && "No services"}
+  const counts = [
+    appCount > 0 && `${appCount} app${appCount !== 1 ? "s" : ""}`,
+    dbCount > 0 && `${dbCount} database${dbCount !== 1 ? "s" : ""}`,
+    svcCount > 0 && `${svcCount} service${svcCount !== 1 ? "s" : ""}`,
+  ].filter(Boolean);
+
+  const pill =
+    totalCount === 0 ? { tone: "neutral" as Tone, label: "Empty" } : HEALTH_PILL[health];
+
+  return (
+    <Card className="relative flex h-full flex-col gap-0 py-0 transition-colors hover:bg-muted/20">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 px-4 pb-3 pt-4">
+        <div className="min-w-0 space-y-1">
+          <CardTitle className="truncate text-base font-semibold">
+            <Link
+              to={`/projects/${project.id}`}
+              className="outline-none after:absolute after:inset-0 hover:underline focus-visible:underline"
+            >
+              {project.name}
+            </Link>
+          </CardTitle>
+          {project.description && (
+            <p className="line-clamp-2 text-sm text-muted-foreground">{project.description}</p>
+          )}
+        </div>
+        <StatusPill tone={pill.tone} className="shrink-0">
+          {pill.label}
+        </StatusPill>
+      </CardHeader>
+
+      <CardContent className="flex flex-1 flex-col px-4 pb-4">
+        {totalCount === 0 ? (
+          <p className="flex-1 py-2 text-sm text-muted-foreground">
+            Nothing deployed yet. Open the project to add an app, database or service.
+          </p>
+        ) : (
+          <ul className="flex-1 divide-y divide-border/60">
+            {visible.map((row) => (
+              <li key={`${row.kind}-${row.id}`}>
+                <Link
+                  to={row.to}
+                  className="relative z-10 -mx-2 flex items-center gap-2.5 rounded-md px-2 py-2 text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <StatusDot tone={toneForStatus(row.status)} label={row.status || "unknown"} />
+                  <row.icon
+                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {row.kind}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-3 flex items-center justify-between border-t pt-3 text-sm text-muted-foreground">
+          <span>
+            {hidden > 0
+              ? `${counts.join(", ")}, +${hidden} not shown`
+              : counts.join(", ") || "No resources"}
           </span>
-          <Link
-            to={`/projects/${project.id}`}
-            className="inline-flex items-center text-sm font-medium text-primary hover:underline"
-          >
-            View Project
-            <ArrowRight className="ml-1 h-4 w-4" />
-          </Link>
+          <span className="inline-flex items-center gap-1 font-medium text-foreground">
+            Open
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-interface AppListItemProps {
-  app: App;
-  status?: DeploymentStatus;
-}
-
-function AppListItem({ app, status }: AppListItemProps) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex items-center gap-2 min-w-0">
-        <StatusDot status={status} />
-        <span className="text-sm font-medium truncate">{app.name}</span>
-        <Badge variant="outline" className="text-xs shrink-0">
-          APP
-        </Badge>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0"
-        asChild
-      >
-        <Link to={`/apps/${app.id}`} title="View App">
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-interface DatabaseListItemProps {
-  database: ManagedDatabase;
-  status?: string;
-}
-
-function DatabaseListItem({ database, status }: DatabaseListItemProps) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex items-center gap-2 min-w-0">
-        <StatusDot status={status} />
-        <span className="text-sm font-medium truncate">{database.name}</span>
-        <Badge variant="outline" className="text-xs shrink-0 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-          {database.db_type.toUpperCase()}
-        </Badge>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0"
-        asChild
-      >
-        <Link to={`/databases/${database.id}`} title="View Database">
-          <Database className="h-3 w-3" />
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-interface ServiceListItemProps {
-  service: Service;
-}
-
-function ServiceListItem({ service }: ServiceListItemProps) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex items-center gap-2 min-w-0">
-        <StatusDot status={service.status} />
-        <span className="text-sm font-medium truncate">{service.name}</span>
-        <Badge variant="outline" className="text-xs shrink-0 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-          SVC
-        </Badge>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0"
-        asChild
-      >
-        <Link to={`/projects/${service.project_id}`} title="View Service">
-          <Layers className="h-3 w-3" />
-        </Link>
-      </Button>
-    </div>
   );
 }

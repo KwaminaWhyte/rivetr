@@ -32,7 +32,7 @@ function SettingsNav() {
   return (
     <>
       {/* Narrow screens: compact select */}
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <Select value={current?.url} onValueChange={(url) => navigate(url)}>
           <SelectTrigger className="w-full" aria-label="Settings section">
             <SelectValue placeholder="Settings" />
@@ -53,7 +53,7 @@ function SettingsNav() {
       </div>
 
       {/* md and up: grouped left sub-nav */}
-      <nav aria-label="Settings" className="hidden md:flex md:flex-col md:gap-5">
+      <nav aria-label="Settings" className="hidden lg:flex lg:flex-col lg:gap-5">
         {settingsGroups.map((group) => (
           <div key={group.title} className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -93,8 +93,8 @@ export function SettingsShell({ children }: { children: ReactNode }) {
   if (!isSettingsPath(pathname)) return <>{children}</>;
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:gap-8">
-      <aside className="md:w-52 md:shrink-0">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-8">
+      <aside className="lg:w-52 lg:shrink-0">
         <SettingsNav />
       </aside>
       <div className="min-w-0 flex-1">{children}</div>
