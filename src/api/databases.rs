@@ -16,7 +16,7 @@ use crate::db::{
     User,
 };
 use crate::engine::database_config::{
-    generate_env_vars, generate_password, generate_username, get_config,
+    data_path_for, generate_env_vars, generate_password, generate_username, get_config,
 };
 use crate::runtime::{PortMapping, RunConfig};
 use crate::AppState;
@@ -817,7 +817,11 @@ async fn start_database_container_inner(
 
     // Volume bind mount
     let binds = if let Some(ref volume_path) = database.volume_path {
-        vec![format!("{}:{}", volume_path, config.data_path)]
+        vec![format!(
+            "{}:{}",
+            volume_path,
+            data_path_for(&db_type, &database.version)
+        )]
     } else {
         vec![]
     };

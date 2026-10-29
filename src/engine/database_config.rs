@@ -236,6 +236,27 @@ pub fn get_config(db_type: &DatabaseType) -> DatabaseTypeConfig {
     }
 }
 
+/// Whether a Postgres image tag uses the versioned data directory layout (18 and later).
+///
+/// From 18 the official image refuses a mount at `/var/lib/postgresql/data` and expects
+/// one at `/var/lib/postgresql`, with the cluster in a version subdirectory. Tags that
+/// do not start with a number (`latest`, `alpine`) track the newest release.
+fn postgres_uses_versioned_dir(version: &str) -> bool {
+    let digits: String = version.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits
+        .parse::<u32>()
+        .map(|major| major >= 18)
+        .unwrap_or(true)
+}
+
+/// Container path the data volume must be mounted at for this database version.
+pub fn data_path_for(db_type: &DatabaseType, version: &str) -> &'static str {
+    match db_type {
+        DatabaseType::Postgres if postgres_uses_versioned_dir(version) => "/var/lib/postgresql",
+        _ => get_config(db_type).data_path,
+    }
+}
+
 /// Generate environment variables for container deployment
 pub fn generate_env_vars(
     db_type: &DatabaseType,
@@ -318,6 +339,18 @@ mod tests {
         assert_eq!(config.image, "postgres");
         assert_eq!(config.port, 5432);
         assert_eq!(config.default_version, "17");
+    }
+
+    #[test]
+    fn test_postgres_data_path_follows_version() {
+        let pg = DatabaseType::Postgres;
+        for v in ["12", "16", "17", "17.5-alpine"] {
+            assert_eq!(data_path_for(&pg, v), "/var/lib/postgresql/data", "{v}");
+        }
+        for v in ["18", "18.3-alpine", "19", "latest", "alpine"] {
+            assert_eq!(data_path_for(&pg, v), "/var/lib/postgresql", "{v}");
+        }
+        assert_eq!(data_path_for(&DatabaseType::Redis, "18"), "/data");
     }
 
     #[test]

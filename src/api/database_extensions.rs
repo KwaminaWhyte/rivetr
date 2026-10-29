@@ -219,9 +219,11 @@ pub async fn install_extension(
             "sh".to_string(),
             "-c".to_string(),
             // Only add if not already present
-            "grep -q 'shared_preload_libraries' /var/lib/postgresql/data/postgresql.conf \
-             && sed -i \"s/.*shared_preload_libraries.*/shared_preload_libraries = 'timescaledb'/\" /var/lib/postgresql/data/postgresql.conf \
-             || echo \"shared_preload_libraries = 'timescaledb'\" >> /var/lib/postgresql/data/postgresql.conf".to_string(),
+            // PGDATA moved to a versioned directory in Postgres 18
+            "CONF=\"${PGDATA:-/var/lib/postgresql/data}/postgresql.conf\"; \
+             grep -q 'shared_preload_libraries' \"$CONF\" \
+             && sed -i \"s/.*shared_preload_libraries.*/shared_preload_libraries = 'timescaledb'/\" \"$CONF\" \
+             || echo \"shared_preload_libraries = 'timescaledb'\" >> \"$CONF\"".to_string(),
         ];
         if let Ok(r) = state.runtime.run_command(&container_name, patch_cmd).await {
             if r.exit_code != 0 {
