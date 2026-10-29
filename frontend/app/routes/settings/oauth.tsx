@@ -25,7 +25,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Github,
   Loader2,
   Trash2,
   Shield,
@@ -33,6 +32,7 @@ import {
   ExternalLink,
   Unlink,
 } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import {
   oauthApi,
   type OAuthProviderResponse,

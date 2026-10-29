@@ -2,7 +2,7 @@
 name = "rivetr"
 version = "0.11.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.95"
 description = "A fast, lightweight deployment engine"
 license = "MIT"
 repository = "https://github.com/KwaminaWhyte/rivetr"
@@ -15,7 +15,7 @@ axum = { version = "0.7", features = ["ws", "macros", "multipart"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "compression-gzip", "trace", "fs"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
@@ -24,7 +24,7 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 bollard = "0.18"
 
 # Git (vendored-openssl for cross-compilation support)
-git2 = { version = "0.19", features = ["vendored-openssl"] }
+git2 = { version = "0.21", features = ["vendored-openssl"] }
 
 # Proxy & HTTP
 hyper = { version = "1", features = ["full"] }
@@ -39,13 +39,13 @@ rustls-pemfile = "2"
 # State management
 arc-swap = "1"
 dashmap = "6"
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
-toml = "0.8"
+toml = "1"
 
 # Logging
 tracing = "0.1"
@@ -59,14 +59,14 @@ uuid = { version = "1", features = ["v4", "serde"] }
 regex = "1"
 lazy_static = "1"
 chrono = { version = "0.4", features = ["serde"] }
-cron = "0.12"
+cron = "0.17"
 thiserror = "2"
 anyhow = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "query", "rustls", "webpki-roots", "stream"] }
 
 # TUI (optional — enabled with --features tui)
-ratatui = { version = "0.29", optional = true }
-crossterm = { version = "0.28", optional = true }
+ratatui = { version = "0.30", optional = true }
+crossterm = { version = "0.29", optional = true }
 tar = "0.4"
 async-stream = "0.3"
 futures = "0.3"
@@ -75,28 +75,28 @@ async-trait = "0.1"
 zip = "9"
 
 # Auth
-argon2 = "0.5"
-rand = "0.9"
-sha2 = "0.10"
+argon2 = "0.6"
+rand = "0.10"
+sha2 = "0.11"
 hex = "0.4"
-hmac = "0.12"
-jsonwebtoken = "9"
+hmac = "0.13"
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }  # v10+ needs an explicit crypto backend
 subtle = "2.6"  # Constant-time comparison for security-sensitive operations
-totp-rs = { version = "5", features = ["otpauth", "qr", "gen_secret"] }
+totp-rs = { version = "6", features = ["otpauth", "qr", "gen_secret"] }
 
 # Metrics
 metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.16", default-features = false }
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
 
 # ACME (Let's Encrypt) - using ring for key generation
-rcgen = { version = "0.13", default-features = false, features = ["ring"] }
-base64 = "0.22"
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }
+base64 = "0.23"
 ring = "0.17"
-pem = "3"
-x509-parser = "0.16"
+pem = "4"
+x509-parser = "0.18"
 
 # Encryption (AES-256-GCM for env var encryption)
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 
 # Email (SMTP)
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
@@ -126,7 +126,7 @@ mime_guess = "2"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 [features]
 tui = ["ratatui", "crossterm"]

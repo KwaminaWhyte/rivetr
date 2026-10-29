@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rand::RngCore;
+use rand::Rng;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -349,7 +349,7 @@ impl ProxyConfig {
 
         // Option 2: server IP configured → traefik.me style (like Dokploy)
         if let Some(ref ip) = self.server_ip {
-            use rand::Rng;
+            use rand::RngExt;
             let mut rng = rand::rng();
             let hex: String = (0..6)
                 .map(|_| {
@@ -379,7 +379,7 @@ impl ProxyConfig {
     /// Format: <random-id>.<ip>.sslip.io
     /// Example: abc123def.192.168.1.1.sslip.io
     pub fn generate_sslip_domain(&self, server_ip: Option<&str>) -> Option<String> {
-        use rand::Rng;
+        use rand::RngExt;
         let ip = server_ip.or(self.server_ip.as_deref())?;
         let mut rng = rand::rng();
         let id: String = (0..12)

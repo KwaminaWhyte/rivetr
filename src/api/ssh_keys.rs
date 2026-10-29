@@ -34,7 +34,7 @@ pub async fn list_ssh_keys(
         .map_err(|e| e.status())?;
     let responses: Vec<SshKeyResponse> = keys
         .into_iter()
-        .filter(|k| k.app_id.as_ref().map_or(true, |a| accessible.contains(a)))
+        .filter(|k| k.app_id.as_ref().is_none_or(|a| accessible.contains(a)))
         .map(SshKeyResponse::from)
         .collect();
     Ok(Json(responses))

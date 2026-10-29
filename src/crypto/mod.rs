@@ -133,12 +133,13 @@ fn encrypt_with_salt(
     salt: Option<&[u8; SALT_LENGTH]>,
 ) -> Result<String> {
     use aes_gcm::aead::Payload;
-    use rand::RngCore;
+    use rand::Rng;
 
     // Generate a random 12-byte nonce
     let mut nonce_bytes = [0u8; NONCE_LENGTH];
     rand::rng().fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce =
+        Nonce::try_from(&nonce_bytes[..]).map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
 
     let (prefix, aes_key, aad) = match salt {
         Some(s) => (ENCRYPTED_PREFIX_V2, derive_subkey_v2(key, s), AAD_V2),
@@ -148,7 +149,7 @@ fn encrypt_with_salt(
     let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create cipher")?;
     let ciphertext = cipher
         .encrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: plaintext.as_bytes(),
                 aad,
@@ -203,12 +204,13 @@ fn decrypt_with_salt(
     }
 
     let (nonce_bytes, ciphertext_bytes) = combined.split_at(NONCE_LENGTH);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce =
+        Nonce::try_from(nonce_bytes).map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
 
     let cipher = Aes256Gcm::new_from_slice(&aes_key).context("Failed to create cipher")?;
     let plaintext = cipher
         .decrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: ciphertext_bytes,
                 aad,
@@ -483,7 +485,7 @@ mod tests {
         let nonce = [3u8; NONCE_LENGTH];
         let ct = Aes256Gcm::new_from_slice(&key)
             .unwrap()
-            .encrypt(Nonce::from_slice(&nonce), "legacy".as_bytes())
+            .encrypt(&Nonce::try_from(&nonce[..]).unwrap(), "legacy".as_bytes())
             .unwrap();
         let mut raw = nonce.to_vec();
         raw.extend_from_slice(&ct);

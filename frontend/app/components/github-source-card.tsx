@@ -14,7 +14,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Github, GitBranch, Unlink, ExternalLink, Building2, User, Link2 } from "lucide-react";
+import { GitBranch, Unlink, ExternalLink, Building2, User, Link2 } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import { api } from "@/lib/api";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import type { App, GitHubAppInstallation } from "@/types/api";
@@ -100,7 +101,7 @@ export function GitHubSourceCard({ app }: GitHubSourceCardProps) {
         <CardContent className="space-y-4">
           {/* Connection Status */}
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="gap-1.5 text-green-600 border-green-200 bg-green-50">
+            <Badge variant="outline" className="gap-1.5 text-green-600 border-green-200 bg-green-50 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/30">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-pulse"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>

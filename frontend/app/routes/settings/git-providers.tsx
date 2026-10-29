@@ -46,7 +46,6 @@ import {
 import { api } from "@/lib/api";
 import type { GitProvider, GitHubApp, GitHubAppInstallation } from "@/types/api";
 import {
-  Github,
   Plus,
   MoreVertical,
   Trash2,
@@ -62,6 +61,7 @@ import {
   Copy,
   Webhook,
 } from "lucide-react";
+import { Github } from "@/components/github-icon";
 
 export function meta() {
   return [

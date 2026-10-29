@@ -22,7 +22,7 @@ pub(super) use crate::api::webhook_events::update_webhook_event as update_wh_eve
 
 use axum::http::StatusCode;
 use glob::Pattern;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
 

@@ -4,7 +4,7 @@
 // Supports WebSocket upgrade for real-time applications.
 
 use arc_swap::ArcSwap;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::{password_hash::phc::PasswordHash, Argon2, PasswordVerifier};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bytes::Bytes;
 use dashmap::DashMap;

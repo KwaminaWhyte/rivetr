@@ -21,7 +21,7 @@
 
 use super::SALT_LENGTH;
 use anyhow::{Context, Result};
-use rand::RngCore;
+use rand::Rng;
 use sqlx::SqlitePool;
 use std::io::Write;
 use std::path::{Path, PathBuf};

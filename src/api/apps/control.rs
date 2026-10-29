@@ -1261,7 +1261,7 @@ pub async fn generate_domain(
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
     // Generate a random 8-char lowercase alphanumeric string
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     let random_prefix: String = (0..8)
         .map(|_| {

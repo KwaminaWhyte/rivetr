@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use rand::Rng;
+use rand::RngExt;
 use std::sync::Arc;
 use uuid::Uuid;
 

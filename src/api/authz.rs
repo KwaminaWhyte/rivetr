@@ -165,7 +165,7 @@ async fn retain_visible_db<T>(
             .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
     Ok(items
         .into_iter()
-        .filter(|i| team_of(i).map_or(true, |t| teams.iter().any(|m| m == t)))
+        .filter(|i| team_of(i).is_none_or(|t| teams.iter().any(|m| m == t)))
         .collect())
 }
 

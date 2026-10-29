@@ -409,7 +409,7 @@ pub async fn substitute_magic_vars(
     dry_run: bool,
 ) -> Result<String, String> {
     use base64::Engine as _;
-    use rand::Rng as _;
+    use rand::RngExt as _;
 
     let mut content = compose_yaml.to_string();
 

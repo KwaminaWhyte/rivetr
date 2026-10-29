@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Github, Cpu, Wand2, Copy, RefreshCw } from "lucide-react";
+import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTriangle, Cpu, Wand2, Copy, RefreshCw } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
 import { Badge } from "@/components/ui/badge";

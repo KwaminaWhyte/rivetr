@@ -8,7 +8,8 @@ import {
   FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field";
-import { Rocket, Github, Loader2, ShieldCheck } from "lucide-react";
+import { Rocket, Loader2, ShieldCheck } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 import { oauthApi, type OAuthProviderPublic } from "@/lib/api/oauth";
 import { twoFactorApi } from "@/lib/api/two-factor";

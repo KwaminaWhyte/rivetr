@@ -758,7 +758,7 @@ impl NotificationService {
 
         // Compute HMAC-SHA256 signature if a secret is configured
         if let Some(ref secret) = config.webhook_secret {
-            use hmac::{Hmac, Mac};
+            use hmac::{Hmac, KeyInit, Mac};
             use sha2::Sha256;
             type HmacSha256 = Hmac<Sha256>;
 

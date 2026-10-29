@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Github, Link2, Upload, Zap, Cloud } from "lucide-react";
+import { Eye, EyeOff, GitBranch, Package, Sparkles, FileCode, Link2, Upload, Zap, Cloud } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import { CPU_OPTIONS, MEMORY_OPTIONS } from "@/components/resource-limits-card";
 import { GitHubRepoPicker, type SelectedRepo } from "@/components/github-repo-picker";
 import { GitLabRepoPicker, type SelectedGitLabRepo } from "@/components/gitlab-repo-picker";

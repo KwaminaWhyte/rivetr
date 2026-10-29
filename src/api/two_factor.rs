@@ -7,7 +7,7 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use totp_rs::{Algorithm, Secret, TOTP};
+use totp_rs::{Builder, Secret, Totp};
 
 use crate::crypto;
 use crate::db::User;
@@ -67,36 +67,32 @@ fn get_encryption_key(state: &AppState) -> Option<[u8; 32]> {
 }
 
 /// Build a TOTP instance from a base32 secret.
-fn build_totp(secret_base32: &str, email: &str) -> Result<TOTP, (StatusCode, String)> {
-    let secret_bytes = Secret::Encoded(secret_base32.to_string())
-        .to_bytes()
+fn build_totp(secret_base32: &str, email: &str) -> Result<Totp, (StatusCode, String)> {
+    let secret = Secret::try_from_base32(secret_base32).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Invalid TOTP secret: {}", e),
+        )
+    })?;
+
+    // The builder defaults are SHA1, 6 digits, 1 step of skew and 30s steps: the same
+    // parameters as before, so already-enrolled authenticator apps keep working.
+    Builder::new()
+        .with_secret(secret)
+        .with_issuer(Some("Rivetr"))
+        .with_account_name(email)
+        .build()
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Invalid TOTP secret: {}", e),
+                format!("Failed to create TOTP: {}", e),
             )
-        })?;
-
-    TOTP::new(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-        secret_bytes,
-        Some("Rivetr".to_string()),
-        email.to_string(),
-    )
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create TOTP: {}", e),
-        )
-    })
+        })
 }
 
 /// Generate 10 random recovery codes (8-char alphanumeric).
 fn generate_recovery_codes() -> Vec<String> {
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     (0..10)
@@ -139,13 +135,18 @@ pub async fn setup_2fa(
     }
 
     // Generate a random TOTP secret
-    let secret = Secret::generate_secret();
-    let secret_base32 = secret.to_encoded().to_string();
+    let secret = Secret::generate();
+    let secret_base32 = secret.to_base32();
 
     // Build the TOTP to generate QR code URL
     let totp = build_totp(&secret_base32, &user.email)?;
-    let qr_code_url = totp.get_url();
-    let qr_code_svg = totp.get_qr_base64().map_err(|e| {
+    let qr_code_url = totp.to_url().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to build TOTP URL: {}", e),
+        )
+    })?;
+    let qr_code_svg = totp.to_qr_base64().map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to generate QR code: {}", e),
@@ -208,12 +209,7 @@ pub async fn verify_2fa(
 
     // Validate the code
     let totp = build_totp(&secret_base32, &user.email)?;
-    let is_valid = totp.check_current(&request.code).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("TOTP check failed: {}", e),
-        )
-    })?;
+    let is_valid = totp.check_current(&request.code).is_some();
 
     if !is_valid {
         return Err((
@@ -283,7 +279,7 @@ pub async fn disable_2fa(
             let key = get_encryption_key(&state);
             if let Ok(secret_base32) = crypto::decrypt_if_encrypted(stored_secret, key.as_ref()) {
                 if let Ok(totp) = build_totp(&secret_base32, &user.email) {
-                    if let Ok(true) = totp.check_current(&request.code) {
+                    if totp.check_current(&request.code).is_some() {
                         authorized = true;
                     }
                 }
@@ -398,12 +394,7 @@ pub async fn validate_2fa(
                 })?;
 
             let totp = build_totp(&secret_base32, &user.email)?;
-            validated = totp.check_current(&code).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("TOTP check failed: {}", e),
-                )
-            })?;
+            validated = totp.check_current(&code).is_some();
         }
     }
 
@@ -467,7 +458,7 @@ pub async fn validate_2fa(
 
     // Create a full session
     let new_token = {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         let bytes: [u8; 32] = rng.random();
         hex::encode(bytes)
@@ -514,4 +505,30 @@ pub async fn status_2fa(user: User) -> Json<TwoFactorStatusResponse> {
     Json(TwoFactorStatusResponse {
         enabled: user.totp_enabled,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RFC 6238 appendix B, SHA1 vector: secret "12345678901234567890" at T=59s gives
+    /// 94287082, so the 6-digit code is 287082. Guards that already-enrolled
+    /// authenticator apps keep working across totp-rs upgrades.
+    #[test]
+    fn build_totp_matches_the_rfc6238_sha1_vector() {
+        let totp = build_totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "user@example.com").unwrap();
+        assert!(totp.check("287082", 59).is_some());
+        assert!(totp.check("287083", 59).is_none());
+    }
+
+    #[test]
+    fn generated_secret_round_trips_through_base32() {
+        let secret = Secret::generate();
+        let base32 = secret.to_base32();
+        let totp = build_totp(&base32, "user@example.com").unwrap();
+        let code = totp.generate(59).to_string();
+        assert_eq!(code.len(), 6);
+        assert!(totp.check(&code, 59).is_some());
+        assert!(totp.to_url().unwrap().starts_with("otpauth://totp/"));
+    }
 }

@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import {
-  Github,
   ExternalLink,
   Lock,
   Globe,
@@ -37,6 +36,7 @@ import {
   GitBranch,
   Shield,
 } from "lucide-react";
+import { Github } from "@/components/github-icon";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type {

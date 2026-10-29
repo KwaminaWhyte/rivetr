@@ -275,7 +275,7 @@ pub async fn deploy_template(
     // Auto-generate SERVICE_PASSWORD_*, SERVICE_USER_*, SERVICE_BASE64_* magic variables
     {
         use base64::Engine as _;
-        use rand::Rng;
+        use rand::RngExt;
 
         let magic_var_re =
             regex::Regex::new(r"\$\{(SERVICE_(?:PASSWORD|USER|BASE64)_([A-Z0-9_]+))(?::-[^}]*)?\}")

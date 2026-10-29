@@ -1,5 +1,5 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
 };
 use axum::{
@@ -11,7 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use rand::Rng;
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
@@ -70,9 +70,8 @@ const RESET_TOKEN_TTL_MINUTES: i64 = 30;
 
 /// Hash a password using Argon2
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2.hash_password(password.as_bytes(), &salt)?;
+    // The salt is drawn from the OS RNG inside argon2 (its default `getrandom` feature).
+    let hash: PasswordHash = Argon2::default().hash_password(password.as_bytes())?;
     Ok(hash.to_string())
 }
 
@@ -1166,5 +1165,23 @@ mod tests {
             "dummy hash params must match Argon2::default()"
         );
         assert!(!verify_password("anything", DUMMY_PASSWORD_HASH));
+    }
+
+    /// Hash produced by the independent Argon2 reference CLI (argon2id, m=19456,
+    /// t=2, p=1). Guards that stored hashes keep verifying across argon2 crate upgrades.
+    #[test]
+    fn verifies_a_hash_from_the_reference_argon2_implementation() {
+        const REFERENCE_HASH: &str =
+            "$argon2id$v=19$m=19456,t=2,p=1$YzI5dFpYTmhiSFJ6YjIxbGMyRnNkQQ$14nXxqdcXRls7FKa+1k3e4H27ZNV8OptOBOG+bBHiCM";
+        assert!(verify_password("legacy-check-password", REFERENCE_HASH));
+        assert!(!verify_password("wrong-password", REFERENCE_HASH));
+    }
+
+    #[test]
+    fn hash_then_verify_roundtrip() {
+        let hash = hash_password("correct horse battery staple").unwrap();
+        assert!(hash.starts_with("$argon2id$"));
+        assert!(verify_password("correct horse battery staple", &hash));
+        assert!(!verify_password("Correct horse battery staple", &hash));
     }
 }

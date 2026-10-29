@@ -1,7 +1,7 @@
 //! Database type configurations for managed database deployments
 
 use crate::db::{DatabaseCredentials, DatabaseType};
-use rand::Rng;
+use rand::RngExt;
 
 /// Configuration for a database type
 #[derive(Debug, Clone)]
