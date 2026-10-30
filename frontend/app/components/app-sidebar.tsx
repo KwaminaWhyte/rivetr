@@ -5,8 +5,6 @@ import { ExternalLink, MessageCircle, Search } from "lucide-react";
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { TeamSwitcher } from "@/components/team-switcher";
-import { RivetrBrand } from "@/components/rivetr-logo";
-import { Link } from "react-router";
 import {
   Sidebar,
   SidebarContent,
@@ -84,15 +82,6 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <Link
-          to="/"
-          className="mb-1 rounded-md px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:px-0"
-        >
-          <RivetrBrand
-            className="text-sm [&>span]:group-data-[collapsible=icon]:sr-only"
-            logoClassName="size-8"
-          />
-        </Link>
         <TeamSwitcher
           teams={teams}
           currentTeamId={currentTeamId}

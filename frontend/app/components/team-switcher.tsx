@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useNavigate } from "react-router";
-import { ChevronsUpDown, Plus, Users } from "lucide-react";
+import { ChevronsUpDown, Plus } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -19,6 +19,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { RivetrLogo } from "@/components/rivetr-logo";
+import { useWhiteLabel } from "@/lib/white-label-context";
 import type { TeamWithMemberCount, TeamRole } from "@/types/api";
 
 interface TeamSwitcherProps {
@@ -33,6 +35,7 @@ export function TeamSwitcher({
   onTeamChange,
 }: TeamSwitcherProps) {
   const { isMobile } = useSidebar();
+  const { config } = useWhiteLabel();
   const navigate = useNavigate();
 
   const activeTeam = teams.find((t) => t.id === currentTeamId);
@@ -69,26 +72,19 @@ export function TeamSwitcher({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              tooltip={activeTeam ? activeTeam.name : "Personal"}
+              className="border border-sidebar-border bg-background shadow-xs group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:shadow-none data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg text-xs font-semibold">
-                {activeTeam ? (
-                  getInitials(activeTeam.name)
-                ) : (
-                  <Users className="size-4" />
-                )}
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">
-                  {activeTeam ? activeTeam.name : "Personal"}
+              <RivetrLogo decorative className="size-8 rounded-md" />
+              <div className="grid flex-1 text-left leading-tight">
+                <span className="truncate text-sm font-semibold tracking-tight">
+                  {config?.app_name || "Rivetr"}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {activeTeam
-                    ? `${activeTeam.member_count} member${activeTeam.member_count !== 1 ? "s" : ""}`
-                    : "Your personal workspace"}
+                  {activeTeam ? activeTeam.name : "Personal"}
                 </span>
               </div>
-              <ChevronsUpDown className="ml-auto" />
+              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
