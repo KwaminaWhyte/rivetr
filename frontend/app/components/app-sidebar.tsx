@@ -5,6 +5,8 @@ import { ExternalLink, MessageCircle, Search } from "lucide-react";
 import { NavMain } from "@/components/nav-main";
 import { NavUser } from "@/components/nav-user";
 import { TeamSwitcher } from "@/components/team-switcher";
+import { RivetrBrand } from "@/components/rivetr-logo";
+import { Link } from "react-router";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +19,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useTeamContext } from "@/lib/team-context";
-import { useWhiteLabel } from "@/lib/white-label-context";
 import { api } from "@/lib/api";
 import { primaryNav } from "@/lib/nav";
 import type { UpdateStatus } from "@/types/api";
@@ -79,24 +80,19 @@ export function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar> & { onOpenSearch?: () => void }) {
   const { teams, currentTeamId, setCurrentTeamId } = useTeamContext();
-  const { config: wl } = useWhiteLabel();
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        {/* Branding header: custom logo / app name if configured */}
-        {(wl?.logo_url || (wl?.app_name && wl.app_name !== "Rivetr")) && (
-          <div className="flex items-center gap-2 px-2 py-1 mb-1">
-            {wl.logo_url ? (
-              <img
-                src={wl.logo_url}
-                alt={wl.app_name}
-                className="h-6 w-auto object-contain"
-              />
-            ) : null}
-            <span className="font-semibold text-sm truncate">{wl.app_name}</span>
-          </div>
-        )}
+        <Link
+          to="/"
+          className="mb-1 rounded-md px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:px-0"
+        >
+          <RivetrBrand
+            className="text-sm [&>span]:group-data-[collapsible=icon]:sr-only"
+            logoClassName="size-8"
+          />
+        </Link>
         <TeamSwitcher
           teams={teams}
           currentTeamId={currentTeamId}

@@ -61,17 +61,16 @@ export function WhiteLabelProvider({ children }: { children: ReactNode }) {
     }
   }, [config?.app_name]);
 
-  // Apply custom favicon
+  // Restore the default icon when a custom favicon is cleared.
   useEffect(() => {
-    if (config?.favicon_url) {
-      let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-      if (!link) {
-        link = document.createElement("link");
-        link.rel = "icon";
-        document.head.appendChild(link);
-      }
-      link.href = config.favicon_url;
+    let link = document.querySelector<HTMLLinkElement>("#rivetr-favicon");
+    if (!link) {
+      link = document.createElement("link");
+      link.id = "rivetr-favicon";
+      link.rel = "icon";
+      document.head.appendChild(link);
     }
+    link.href = config?.favicon_url || "/favicon.ico";
   }, [config?.favicon_url]);
 
   // Inject / update custom CSS

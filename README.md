@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/brand/rivetr-mark.png" alt="Rivetr logo" width="88" height="88" />
+</p>
+
 # Rivetr
 
 Deploy applications from Git with a single binary, ~30MB RAM idle, no external dependencies.

@@ -1,3 +1,4 @@
+import { RivetrBrand } from "@/components/rivetr-logo";
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router";
 import { useMutation } from "@tanstack/react-query";
@@ -13,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Users, Clock, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { Users, Clock, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { teamsApi } from "@/lib/api/teams";
 import { getAuthToken, validateAuth, setAuthToken } from "@/lib/auth";
 import type { TeamInvitation, TeamRole } from "@/types/api";
@@ -308,10 +309,7 @@ export default function AcceptInvitationPage() {
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <Link to="/" className="flex items-center gap-2 font-medium">
-            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-              <Rocket className="size-5" />
-            </div>
-            <span className="text-xl font-bold">Rivetr</span>
+            <RivetrBrand className="text-xl font-bold" />
           </Link>
         </div>
 

@@ -1,3 +1,4 @@
+import { RivetrBrand, RivetrLogo } from "@/components/rivetr-logo";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import {
   FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field";
-import { Rocket, Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { Github } from "@/components/github-icon";
 import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 import { oauthApi, type OAuthProviderPublic } from "@/lib/api/oauth";
@@ -299,10 +300,7 @@ export default function LoginPage() {
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex justify-center gap-2 md:justify-start">
           <Link to="/" className="flex items-center gap-2 font-medium">
-            <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-              <Rocket className="size-4" />
-            </div>
-            Rivetr
+            <RivetrBrand logoClassName="size-7" />
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -547,7 +545,7 @@ export default function LoginPage() {
       <div className="bg-muted relative hidden lg:block">
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
           <div className="text-center p-8">
-            <Rocket className="size-24 mx-auto mb-6 text-primary/50" />
+            <RivetrLogo className="size-24 mx-auto mb-6" />
             <h2 className="text-3xl font-bold mb-2">Rivetr</h2>
             <p className="text-muted-foreground">
               Deploy applications with ease

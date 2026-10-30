@@ -1,3 +1,4 @@
+import { RivetrBrand, RivetrLogo } from "@/components/rivetr-logo";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { z } from "zod";
@@ -9,7 +10,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Rocket, CheckCircle } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 
 // Matches server-side validation in src/api/auth/* (min 12 characters)
@@ -126,10 +127,7 @@ export default function SetupPage() {
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex justify-center gap-2 md:justify-start">
           <div className="flex items-center gap-2 font-medium">
-            <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-              <Rocket className="size-4" />
-            </div>
-            Rivetr
+            <RivetrBrand logoClassName="size-7" />
           </div>
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -209,7 +207,7 @@ export default function SetupPage() {
       <div className="bg-muted relative hidden lg:block">
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
           <div className="text-center p-8 max-w-md">
-            <Rocket className="size-24 mx-auto mb-6 text-primary/50" />
+            <RivetrLogo className="size-24 mx-auto mb-6" />
             <h2 className="text-3xl font-bold mb-4">Rivetr</h2>
             <p className="text-muted-foreground mb-6">
               A lightweight deployment engine for your applications
