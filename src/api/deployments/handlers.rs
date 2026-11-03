@@ -424,7 +424,7 @@ pub async fn get_logs(
 /// Get container resource stats for a running app
 /// GET /api/apps/:id/stats
 ///
-/// Returns current CPU, memory, and network statistics for the container.
+/// Returns current CPU, memory, network and storage statistics for the container.
 /// Returns zeroed stats if the app exists but has no running deployment,
 /// rather than a 404, to avoid spurious browser console errors on the dashboard.
 pub async fn get_app_stats(
@@ -464,6 +464,7 @@ pub async fn get_app_stats(
             memory_limit: 0,
             network_rx: 0,
             network_tx: 0,
+            storage_bytes: None,
         }));
     };
 
@@ -474,14 +475,18 @@ pub async fn get_app_stats(
             memory_limit: 0,
             network_rx: 0,
             network_tx: 0,
+            storage_bytes: None,
         }));
     };
 
     // Get stats from the container runtime
-    let stats = state.runtime.stats(&container_id).await.map_err(|e| {
+    let mut stats = state.runtime.stats(&container_id).await.map_err(|e| {
         tracing::warn!("Failed to get container stats for {}: {}", container_id, e);
         ApiError::internal(format!("Failed to get container stats: {}", e))
     })?;
+    stats.storage_bytes = crate::runtime::cached_disk_usage(&state.runtime, &container_id)
+        .await
+        .map(|usage| usage.total());
 
     Ok(Json(stats))
 }

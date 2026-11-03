@@ -1211,8 +1211,8 @@ pub async fn get_service_generated_vars(
 ///
 /// GET /api/services/:id/stats
 ///
-/// Iterates all containers in the compose project and sums CPU, memory, and network
-/// stats. Returns zeroed stats (rather than a 404) when the service is stopped so
+/// Iterates all containers in the compose project and sums CPU, memory, network and
+/// storage stats. Returns zeroed stats (rather than a 404) when the service is stopped so
 /// that the dashboard can poll without getting console errors.
 pub async fn get_service_stats(
     State(state): State<Arc<AppState>>,
@@ -1245,6 +1245,7 @@ pub async fn get_service_stats(
             memory_limit: 0,
             network_rx: 0,
             network_tx: 0,
+            storage_bytes: None,
         }));
     }
 
@@ -1274,6 +1275,7 @@ pub async fn get_service_stats(
             memory_limit: 0,
             network_rx: 0,
             network_tx: 0,
+            storage_bytes: None,
         }));
     }
 
@@ -1283,8 +1285,21 @@ pub async fn get_service_stats(
     let mut total_memory_limit: u64 = 0;
     let mut total_network_rx: u64 = 0;
     let mut total_network_tx: u64 = 0;
+    // Containers in one compose project often share a volume (app and worker),
+    // so volumes are counted once by source while writable layers are summed.
+    let mut writable_layers: u64 = 0;
+    let mut volumes: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut measured_any = false;
 
     for container in &containers {
+        if let Some(usage) = crate::runtime::cached_disk_usage(&state.runtime, &container.id).await
+        {
+            measured_any = true;
+            writable_layers += usage.writable_layer;
+            for (source, bytes) in usage.mounts {
+                volumes.insert(source, bytes);
+            }
+        }
         match state.runtime.stats(&container.id).await {
             Ok(stats) => {
                 total_cpu += stats.cpu_percent;
@@ -1310,6 +1325,7 @@ pub async fn get_service_stats(
         memory_limit: total_memory_limit,
         network_rx: total_network_rx,
         network_tx: total_network_tx,
+        storage_bytes: measured_any.then(|| writable_layers + volumes.values().sum::<u64>()),
     }))
 }
 

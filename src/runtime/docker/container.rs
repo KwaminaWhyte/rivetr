@@ -6,10 +6,10 @@ use bollard::models::{
     EndpointSettings, NetworkConnectRequest, NetworkCreateRequest,
 };
 use bollard::query_parameters::{
-    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
-    PruneImagesOptionsBuilder, RemoveContainerOptionsBuilder, RemoveImageOptionsBuilder,
-    RenameContainerOptionsBuilder, ResizeExecOptionsBuilder, StatsOptionsBuilder,
-    StopContainerOptionsBuilder,
+    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, InspectContainerOptionsBuilder,
+    ListContainersOptionsBuilder, PruneImagesOptionsBuilder, RemoveContainerOptionsBuilder,
+    RemoveImageOptionsBuilder, RenameContainerOptionsBuilder, ResizeExecOptionsBuilder,
+    StatsOptionsBuilder, StopContainerOptionsBuilder,
 };
 use bytes::Bytes;
 use futures::StreamExt;
@@ -18,8 +18,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
 use crate::runtime::{
-    CommandResult, ContainerInfo, ContainerStats, ExecConfig, ExecHandle, RegistryAuth, RunConfig,
-    TtySize,
+    CommandResult, ContainerInfo, ContainerStats, DiskUsage, ExecConfig, ExecHandle, RegistryAuth,
+    RunConfig, TtySize,
 };
 
 use super::DockerRuntime;
@@ -838,7 +838,67 @@ pub async fn stats(runtime: &DockerRuntime, container_id: &str) -> Result<Contai
         memory_limit,
         network_rx,
         network_tx,
+        storage_bytes: None,
     })
+}
+
+/// The container's writable layer (from the daemon) plus the size of each mount,
+/// measured with `du -sk` inside the container so volumes owned by root are
+/// readable even though Rivetr itself does not run as root.
+pub async fn disk_usage(runtime: &DockerRuntime, container_id: &str) -> Result<DiskUsage> {
+    let options = InspectContainerOptionsBuilder::new().size(true).build();
+    let info = runtime
+        .client
+        .inspect_container(container_id, Some(options))
+        .await
+        .context("Failed to inspect container size")?;
+
+    let writable_layer = info.size_rw.unwrap_or(0).max(0) as u64;
+
+    let mounts: Vec<(String, String)> = info
+        .mounts
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|m| {
+            let destination = m.destination?;
+            let source = m.name.or(m.source).unwrap_or_else(|| destination.clone());
+            Some((source, destination))
+        })
+        // The root and runtime sockets are host plumbing, not the container's data.
+        .filter(|(_, destination)| destination != "/" && !destination.ends_with(".sock"))
+        .collect();
+
+    let mut measured = Vec::with_capacity(mounts.len());
+    if !mounts.is_empty() {
+        let mut cmd = vec!["du".to_string(), "-sk".to_string()];
+        cmd.extend(mounts.iter().map(|(_, destination)| destination.clone()));
+        // A non-zero exit only means some entry was unreadable; the lines that
+        // were printed are still correct. A container without `du` gives none.
+        if let Ok(result) = run_command(runtime, container_id, cmd).await {
+            let sizes = parse_du_kib(&result.stdout);
+            for (source, destination) in mounts {
+                if let Some(kib) = sizes.get(destination.as_str()) {
+                    measured.push((source, kib * 1024));
+                }
+            }
+        }
+    }
+
+    Ok(DiskUsage {
+        writable_layer,
+        mounts: measured,
+    })
+}
+
+/// Parse `du -sk` output (`<KiB>\t<path>` per line) into path -> KiB.
+fn parse_du_kib(stdout: &str) -> HashMap<&str, u64> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let (size, path) = line.split_once(char::is_whitespace)?;
+            Some((path.trim(), size.trim().parse::<u64>().ok()?))
+        })
+        .collect()
 }
 
 pub async fn remove_image(runtime: &DockerRuntime, image: &str) -> Result<()> {
@@ -1241,5 +1301,24 @@ mod published_port_tests {
             }]),
         );
         assert_eq!(published_host_port(&ports), None);
+    }
+}
+
+#[cfg(test)]
+mod disk_usage_tests {
+    use super::parse_du_kib;
+
+    #[test]
+    fn parses_du_output_per_path() {
+        let sizes = parse_du_kib("120\t/app/data\n4\t/app/uploads\ngarbage\n");
+        assert_eq!(sizes.get("/app/data"), Some(&120));
+        assert_eq!(sizes.get("/app/uploads"), Some(&4));
+        assert_eq!(sizes.len(), 2);
+    }
+
+    #[test]
+    fn keeps_paths_with_spaces() {
+        let sizes = parse_du_kib("8\t/srv/my files\n");
+        assert_eq!(sizes.get("/srv/my files"), Some(&8));
     }
 }

@@ -140,6 +140,10 @@ impl ContainerRuntime for DockerRuntime {
         container::prune_build_cache(self).await
     }
 
+    async fn disk_usage(&self, container_id: &str) -> Result<crate::runtime::DiskUsage> {
+        container::disk_usage(self, container_id).await
+    }
+
     async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle> {
         container::exec(self, config).await
     }

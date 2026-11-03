@@ -227,6 +227,89 @@ pub struct ContainerStats {
     pub network_rx: u64,
     /// Network bytes transmitted
     pub network_tx: u64,
+    /// Bytes on disk: the writable layer plus mounted volumes. `None` when the
+    /// runtime cannot measure it, in which case the dashboard hides the tile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_bytes: Option<u64>,
+}
+
+/// Disk used by one container, split so callers can dedupe volumes that several
+/// containers share (a compose service's app and worker on one data volume).
+#[derive(Debug, Clone, Default)]
+pub struct DiskUsage {
+    /// Bytes the container wrote outside its mounts (its writable layer).
+    pub writable_layer: u64,
+    /// `(mount source, bytes)` for each mounted volume or bind mount.
+    pub mounts: Vec<(String, u64)>,
+}
+
+impl DiskUsage {
+    pub fn total(&self) -> u64 {
+        self.writable_layer + self.mounts.iter().map(|(_, b)| b).sum::<u64>()
+    }
+}
+
+/// How long a measured disk usage is reused. Measuring walks the container's
+/// files, so the stats endpoints (polled every few seconds) must not do it on
+/// every request.
+const DISK_USAGE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+type DiskUsageCache = dashmap::DashMap<String, (std::time::Instant, Option<DiskUsage>)>;
+
+static DISK_USAGE_CACHE: std::sync::LazyLock<DiskUsageCache> =
+    std::sync::LazyLock::new(dashmap::DashMap::new);
+static DISK_USAGE_IN_FLIGHT: std::sync::LazyLock<dashmap::DashSet<String>> =
+    std::sync::LazyLock::new(dashmap::DashSet::new);
+
+/// Disk usage of a container, measured at most once per [`DISK_USAGE_TTL`].
+///
+/// A stale value is returned at once while a background task refreshes it. The
+/// first request for a container waits up to five seconds for the measurement;
+/// a slower one finishes in the background and shows up on the next poll.
+pub async fn cached_disk_usage(
+    runtime: &Arc<dyn ContainerRuntime>,
+    container_id: &str,
+) -> Option<DiskUsage> {
+    let cached = DISK_USAGE_CACHE
+        .get(container_id)
+        .map(|entry| entry.value().clone());
+    if let Some((measured_at, usage)) = &cached {
+        if measured_at.elapsed() < DISK_USAGE_TTL {
+            return usage.clone();
+        }
+    }
+    let stale = cached.and_then(|(_, usage)| usage);
+
+    if !DISK_USAGE_IN_FLIGHT.insert(container_id.to_string()) {
+        return stale;
+    }
+    if DISK_USAGE_CACHE.len() > 1000 {
+        DISK_USAGE_CACHE.retain(|_, (measured_at, _)| measured_at.elapsed() < DISK_USAGE_TTL);
+    }
+
+    let runtime = runtime.clone();
+    let key = container_id.to_string();
+    let task = tokio::spawn(async move {
+        let usage = match runtime.disk_usage(&key).await {
+            Ok(usage) => Some(usage),
+            Err(e) => {
+                tracing::debug!(container = %key, error = %e, "Could not measure container disk usage");
+                None
+            }
+        };
+        DISK_USAGE_CACHE.insert(key.clone(), (std::time::Instant::now(), usage.clone()));
+        DISK_USAGE_IN_FLIGHT.remove(&key);
+        usage
+    });
+
+    if stale.is_some() {
+        return stale;
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(5), task)
+        .await
+        .ok()
+        .and_then(|joined| joined.ok())
+        .flatten()
 }
 
 /// Configuration for executing a command in a container
@@ -341,6 +424,11 @@ pub trait ContainerRuntime: Send + Sync {
     /// Prune Docker build cache, returns bytes reclaimed
     async fn prune_build_cache(&self) -> Result<u64> {
         Ok(0)
+    }
+    /// Measure what a container stores on disk. Use [`cached_disk_usage`] from
+    /// request handlers. Runtimes that cannot measure it return an error.
+    async fn disk_usage(&self, _container_id: &str) -> Result<DiskUsage> {
+        anyhow::bail!("Disk usage is not supported by this runtime")
     }
     /// Execute a command in a running container with bidirectional I/O
     async fn exec(&self, config: &ExecConfig) -> Result<ExecHandle>;

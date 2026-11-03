@@ -140,7 +140,7 @@ The token is `auth.admin_token` from `rivetr.toml`, or a token created via `POST
 | POST | `/api/apps/:id/deploy` | Trigger a deploy. |
 | POST | `/api/apps/:id/deploy/upload` | Deploy from an uploaded archive. |
 | GET | `/api/apps/:id/deployments` | List deployments for an app. |
-| GET | `/api/apps/:id/stats` | App resource stats. |
+| GET | `/api/apps/:id/stats` | App resource stats, including `storage_bytes` (writable layer plus volumes, refreshed once a minute; omitted when the runtime cannot measure it). |
 | GET | `/api/apps/:id/commits` | List repo commits. |
 | GET | `/api/apps/:id/tags` | List repo tags. |
 | GET | `/api/deployments/:id` | Get a deployment. |
@@ -264,7 +264,7 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 | POST | `/api/services/:id/stop` | Stop a service. |
 | POST | `/api/services/:id/restart` | Restart a service. |
 | GET | `/api/services/:id/start-events` | Start-event snapshot. |
-| GET | `/api/services/:id/stats` | Service stats. |
+| GET | `/api/services/:id/stats` | Service stats summed across its containers, including `storage_bytes` (shared volumes counted once). |
 | GET | `/api/services/:id/logs` | Service logs. |
 | GET | `/api/services/:id/logs/stream` | Stream service logs. |
 | GET | `/api/services/:id/preview-compose` | Preview generated compose file. |

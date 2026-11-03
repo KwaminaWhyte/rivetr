@@ -30,7 +30,10 @@ use super::{
 /// GET /api/apps/statuses (same `team_id` scoping as `GET /api/apps`)
 ///
 /// Lets list pages show status badges without one `/apps/:id/status` call per app.
-/// Apps with no deployment report `stopped`.
+/// Apps with no deployment report `stopped`. A failed or cancelled latest deploy
+/// does not take the app down: the previous deployment keeps serving, so while
+/// one is still running the app reports `running` instead of the failure.
+/// In-progress statuses (`building` and so on) are reported as they are.
 pub async fn list_app_statuses(
     State(state): State<Arc<AppState>>,
     user: User,
@@ -48,17 +51,30 @@ pub async fn list_app_statuses(
     .await?;
     let latest: std::collections::HashMap<String, String> = latest.into_iter().collect();
 
+    let serving: Vec<(String,)> =
+        sqlx::query_as("SELECT DISTINCT app_id FROM deployments WHERE status = 'running'")
+            .fetch_all(&state.db)
+            .await?;
+    let serving: std::collections::HashSet<String> = serving.into_iter().map(|(id,)| id).collect();
+
     Ok(Json(
         apps.into_iter()
             .map(|a| {
-                let status = latest
-                    .get(&a.id)
-                    .cloned()
-                    .unwrap_or_else(|| "stopped".into());
+                let status = effective_app_status(latest.get(&a.id), serving.contains(&a.id));
                 (a.id, status)
             })
             .collect(),
     ))
+}
+
+/// What an app's status badge should say, given its latest deployment's status
+/// and whether any of its deployments is still running.
+fn effective_app_status(latest: Option<&String>, has_running_deployment: bool) -> String {
+    match latest.map(String::as_str) {
+        Some("failed" | "cancelled") if has_running_deployment => "running".into(),
+        Some(status) => status.into(),
+        None => "stopped".into(),
+    }
 }
 
 pub async fn list_apps(
@@ -1040,4 +1056,31 @@ jobs:
         ],
         yaml,
     ))
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::effective_app_status;
+
+    fn status(latest: Option<&str>, running: bool) -> String {
+        effective_app_status(latest.map(str::to_string).as_ref(), running)
+    }
+
+    #[test]
+    fn failed_deploy_with_previous_still_running_is_running() {
+        assert_eq!(status(Some("failed"), true), "running");
+        assert_eq!(status(Some("cancelled"), true), "running");
+    }
+
+    #[test]
+    fn failed_deploy_with_nothing_running_stays_failed() {
+        assert_eq!(status(Some("failed"), false), "failed");
+    }
+
+    #[test]
+    fn in_progress_and_missing_statuses_are_unchanged() {
+        assert_eq!(status(Some("building"), true), "building");
+        assert_eq!(status(Some("stopped"), false), "stopped");
+        assert_eq!(status(None, false), "stopped");
+    }
 }
