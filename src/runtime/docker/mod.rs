@@ -140,6 +140,14 @@ impl ContainerRuntime for DockerRuntime {
         container::prune_build_cache(self).await
     }
 
+    async fn remove_volume(&self, name: &str) -> Result<()> {
+        container::remove_volume(self, name).await
+    }
+
+    async fn remove_host_dir(&self, path: &std::path::Path) -> Result<()> {
+        crate::runtime::remove_dir_via_container("docker", path).await
+    }
+
     async fn disk_usage(&self, container_id: &str) -> Result<crate::runtime::DiskUsage> {
         container::disk_usage(self, container_id).await
     }

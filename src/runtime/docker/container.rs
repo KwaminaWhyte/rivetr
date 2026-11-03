@@ -901,6 +901,22 @@ fn parse_du_kib(stdout: &str) -> HashMap<&str, u64> {
         .collect()
 }
 
+/// Remove a named volume without force, so the daemon refuses one that a
+/// container (running or stopped) still uses. A missing volume is not an error.
+pub async fn remove_volume(runtime: &DockerRuntime, name: &str) -> Result<()> {
+    match runtime
+        .client
+        .remove_volume(name, None::<bollard::query_parameters::RemoveVolumeOptions>)
+        .await
+    {
+        Ok(()) => Ok(()),
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 404, ..
+        }) => Ok(()),
+        Err(e) => Err(e).context("Failed to remove volume"),
+    }
+}
+
 pub async fn remove_image(runtime: &DockerRuntime, image: &str) -> Result<()> {
     let options = RemoveImageOptionsBuilder::new()
         .force(true)

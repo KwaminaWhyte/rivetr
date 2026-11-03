@@ -5,7 +5,7 @@ pub use docker::parse_shm_size;
 pub use docker::DockerRuntime;
 pub use podman::PodmanRuntime;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
@@ -425,6 +425,17 @@ pub trait ContainerRuntime: Send + Sync {
     async fn prune_build_cache(&self) -> Result<u64> {
         Ok(0)
     }
+    /// Remove a named volume. Fails if a container still uses it; a volume that
+    /// does not exist counts as removed.
+    async fn remove_volume(&self, _name: &str) -> Result<()> {
+        anyhow::bail!("Removing volumes is not supported by this runtime")
+    }
+    /// Delete a host directory a container wrote into. Container processes own
+    /// those files under their own user (postgres runs as 999), so when Rivetr
+    /// cannot delete them itself a short-lived container does it.
+    async fn remove_host_dir(&self, _path: &std::path::Path) -> Result<()> {
+        anyhow::bail!("Removing data directories is not supported by this runtime")
+    }
     /// Measure what a container stores on disk. Use [`cached_disk_usage`] from
     /// request handlers. Runtimes that cannot measure it return an error.
     async fn disk_usage(&self, _container_id: &str) -> Result<DiskUsage> {
@@ -455,6 +466,50 @@ pub trait ContainerRuntime: Send + Sync {
     ) -> Result<()> {
         anyhow::bail!("Live resource limit updates not supported by this runtime. Redeploy to apply new limits.")
     }
+}
+
+/// Shared by the Docker and Podman runtimes: delete `path` directly, and if
+/// permissions forbid it, delete it from a throwaway `alpine` container that
+/// mounts the parent directory. `cli` is the runtime's command (`docker`/`podman`).
+pub(crate) async fn remove_dir_via_container(cli: &str, path: &std::path::Path) -> Result<()> {
+    match tokio::fs::remove_dir_all(path).await {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
+        Err(e) => return Err(e).context("Failed to delete data directory"),
+    }
+
+    let parent = path
+        .parent()
+        .context("Data directory has no parent directory")?;
+    let dir_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("Data directory has no usable name")?;
+
+    let output = tokio::process::Command::new(cli)
+        .args([
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            &format!("{}:/parent", parent.display()),
+            "alpine",
+            "rm",
+            "-rf",
+            &format!("/parent/{}", dir_name),
+        ])
+        .output()
+        .await
+        .with_context(|| format!("Failed to run {} to delete data directory", cli))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "Deleting data directory in a container failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
 }
 
 /// A no-op runtime used when no container runtime is available

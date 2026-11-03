@@ -319,6 +319,94 @@ pub async fn create_database(
     Ok((StatusCode::CREATED, Json(database.to_response(true, host))))
 }
 
+/// Remove a database's data: the host data directory Rivetr created for it
+/// and, for databases adopted with a named volume, that volume. Data another
+/// database row still points at (a clone, or an older row with the same name)
+/// is left alone, and so is any directory outside `<data_dir>/databases`.
+async fn remove_database_data(state: &Arc<AppState>, database: &ManagedDatabase) {
+    if let Some(path) = database.volume_path.as_deref().filter(|p| !p.is_empty()) {
+        match data_dir_to_remove(state, &database.id, path).await {
+            Ok(Some(dir)) => match state.runtime.remove_host_dir(&dir).await {
+                Ok(()) => {
+                    tracing::info!(database = %database.name, path = %dir.display(), "Deleted database data directory")
+                }
+                Err(e) => {
+                    tracing::warn!(database = %database.name, path = %dir.display(), error = %e, "Failed to delete database data directory")
+                }
+            },
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(database = %database.name, error = %e, "Could not check database data directory")
+            }
+        }
+    }
+
+    if let Some(name) = database.volume_name.as_deref().filter(|n| !n.is_empty()) {
+        let shared: Result<Option<(String,)>, _> =
+            sqlx::query_as("SELECT id FROM databases WHERE volume_name = ? AND id != ? LIMIT 1")
+                .bind(name)
+                .bind(&database.id)
+                .fetch_optional(&state.db)
+                .await;
+        match shared {
+            Ok(None) => match state.runtime.remove_volume(name).await {
+                Ok(()) => {
+                    tracing::info!(database = %database.name, volume = %name, "Deleted database volume")
+                }
+                Err(e) => {
+                    tracing::warn!(database = %database.name, volume = %name, error = %e, "Failed to delete database volume")
+                }
+            },
+            Ok(Some(_)) => {
+                tracing::info!(database = %database.name, volume = %name, "Keeping volume another database still uses")
+            }
+            Err(e) => {
+                tracing::warn!(database = %database.name, error = %e, "Could not check database volume")
+            }
+        }
+    }
+}
+
+/// The data directory to delete, or `None` when it is missing, shared with
+/// another database, or not a direct child of `<data_dir>/databases`.
+async fn data_dir_to_remove(
+    state: &Arc<AppState>,
+    database_id: &str,
+    path: &str,
+) -> anyhow::Result<Option<std::path::PathBuf>> {
+    let shared: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM databases WHERE volume_path = ? AND id != ? LIMIT 1")
+            .bind(path)
+            .bind(database_id)
+            .fetch_optional(&state.db)
+            .await?;
+    if shared.is_some() {
+        tracing::info!(path = %path, "Keeping data directory another database still uses");
+        return Ok(None);
+    }
+
+    let candidate = match tokio::fs::canonicalize(path).await {
+        Ok(p) => p,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let root = tokio::fs::canonicalize(&state.config.server.data_dir)
+        .await?
+        .join("databases");
+    if is_database_data_dir(&root, &candidate) {
+        Ok(Some(candidate))
+    } else {
+        tracing::warn!(path = %candidate.display(), "Not deleting a data directory outside the databases directory");
+        Ok(None)
+    }
+}
+
+/// Only a direct child of the databases directory may be deleted, never the
+/// directory itself or anything elsewhere. Both paths must be canonical.
+fn is_database_data_dir(root: &std::path::Path, candidate: &std::path::Path) -> bool {
+    candidate.parent() == Some(root)
+}
+
 /// Delete a managed database
 pub async fn delete_database(
     State(state): State<Arc<AppState>>,
@@ -340,6 +428,10 @@ pub async fn delete_database(
             tracing::warn!("Failed to remove database container: {}", e);
         }
     }
+
+    // Delete the data too, as services do with `compose down --volumes`. A
+    // failure here is logged and does not block the delete.
+    remove_database_data(&state, &database).await;
 
     // Delete the database record
     sqlx::query("DELETE FROM databases WHERE id = ?")
@@ -1808,4 +1900,26 @@ pub async fn import_database_dump(
         "message": "Database dump imported successfully",
         "database_id": id
     })))
+}
+
+#[cfg(test)]
+mod data_dir_tests {
+    use super::is_database_data_dir;
+    use std::path::Path;
+
+    #[test]
+    fn only_direct_children_of_the_databases_dir_are_deletable() {
+        let root = Path::new("/var/lib/rivetr/databases");
+        assert!(is_database_data_dir(
+            root,
+            Path::new("/var/lib/rivetr/databases/codm-db-b721f66e")
+        ));
+        assert!(!is_database_data_dir(root, root));
+        assert!(!is_database_data_dir(root, Path::new("/var/lib/rivetr")));
+        assert!(!is_database_data_dir(
+            root,
+            Path::new("/var/lib/rivetr/databases/a/b")
+        ));
+        assert!(!is_database_data_dir(root, Path::new("/etc/passwd")));
+    }
 }

@@ -659,6 +659,22 @@ impl ContainerRuntime for PodmanRuntime {
         })
     }
 
+    async fn remove_volume(&self, name: &str) -> Result<()> {
+        // `podman volume rm` without --force refuses a volume that is in use.
+        match self
+            .run_command(&["volume".to_string(), "rm".to_string(), name.to_string()])
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) if e.to_string().contains("no such volume") => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn remove_host_dir(&self, path: &std::path::Path) -> Result<()> {
+        super::remove_dir_via_container("podman", path).await
+    }
+
     async fn remove_image(&self, image: &str) -> Result<()> {
         self.run_command(&["rmi".to_string(), "-f".to_string(), image.to_string()])
             .await?;

@@ -696,7 +696,7 @@ export default function DatabaseSettingsTab() {
                 </p>
                 <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside">
                   <li>The database container will be stopped and removed</li>
-                  <li>All data stored in the container will be lost</li>
+                  <li>Its data directory or volume on the server will be deleted</li>
                   <li>The database record will be permanently deleted</li>
                 </ul>
               </div>
