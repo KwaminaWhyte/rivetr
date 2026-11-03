@@ -250,6 +250,8 @@ The token is `auth.admin_token` from `rivetr.toml`, or a token created via `POST
 
 ## Services (Docker Compose)
 
+A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the host, so the compose file must publish that port on loopback (for example `"127.0.0.1:32990:3000"`). The domain is added to the instance TLS certificate automatically, the same way app domains are.
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/services` | List services. |

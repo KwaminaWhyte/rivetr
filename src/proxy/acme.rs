@@ -777,6 +777,71 @@ pub struct CertificateResult {
     pub domains: Vec<String>,
 }
 
+/// Every hostname the proxy routes that should be covered by the TLS certificate:
+/// app domains (the legacy `domain` column, the `domains` JSON list and the
+/// auto-generated subdomain) and Docker Compose service domains.
+///
+/// Startup and the renewal loop both use this, so the two can no longer disagree
+/// about what belongs on the certificate. Service domains used to be left out, so
+/// a compose service with a domain was routed but served the instance certificate.
+pub async fn collect_cert_domains(db: &crate::DbPool) -> Result<Vec<String>> {
+    let apps: Vec<(Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT domain, domains, auto_subdomain FROM apps")
+            .fetch_all(db)
+            .await?;
+    let services: Vec<(Option<String>,)> = sqlx::query_as("SELECT domain FROM services")
+        .fetch_all(db)
+        .await?;
+
+    let mut result: Vec<String> = Vec::new();
+    let mut add = |d: String| {
+        let d = d.trim().to_lowercase();
+        if !d.is_empty() && !result.contains(&d) {
+            result.push(d);
+        }
+    };
+
+    for (legacy_domain, domains_json, auto_subdomain) in apps {
+        if let Some(d) = legacy_domain {
+            add(d);
+        }
+        if let Some(json) = domains_json {
+            add_json_domains(&json, &mut add);
+        }
+        if let Some(d) = auto_subdomain {
+            // Wildcard-DNS helper hosts cannot get a certificate from us.
+            if !d.ends_with(".traefik.me") && !d.ends_with(".sslip.io") {
+                add(d);
+            }
+        }
+    }
+    for (domain,) in services {
+        if let Some(d) = domain {
+            add(d);
+        }
+    }
+    Ok(result)
+}
+
+/// The `domains` column is persisted as an array of Domain objects
+/// (`[{"domain":"...","primary":...}]`), but older data may store a plain
+/// `["..."]` array of strings. Accept both shapes.
+fn add_json_domains(json: &str, add: &mut impl FnMut(String)) {
+    if let Ok(values) = serde_json::from_str::<Vec<serde_json::Value>>(json) {
+        for v in values {
+            match v {
+                serde_json::Value::String(s) => add(s),
+                serde_json::Value::Object(ref map) => {
+                    if let Some(d) = map.get("domain").and_then(|x| x.as_str()) {
+                        add(d.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Certificate renewal manager
 pub struct CertificateRenewalManager {
     client: Arc<AcmeClient>,
@@ -862,55 +927,23 @@ impl CertificateRenewalManager {
             None => return,
         };
 
-        // Collect all currently configured app domains from the DB
-        let rows: Vec<(Option<String>, Option<String>, Option<String>)> =
-            match sqlx::query_as("SELECT domain, domains, auto_subdomain FROM apps")
-                .fetch_all(&db)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    warn!(error = %e, "Could not query app domains for cert check");
-                    return;
-                }
-            };
-
-        let mut new_domains: Vec<String> = Vec::new();
-        for (legacy_domain, domains_json, auto_subdomain) in rows {
-            if let Some(d) = legacy_domain {
-                if !d.is_empty() && !self.domains.contains(&d) {
-                    new_domains.push(d);
-                }
+        // Collect every configured app and service domain from the DB
+        let configured = match collect_cert_domains(&db).await {
+            Ok(d) => d,
+            Err(e) => {
+                warn!(error = %e, "Could not query domains for cert check");
+                return;
             }
-            if let Some(json) = domains_json {
-                // The `domains` column is persisted as an array of Domain objects
-                // (`[{"domain":"...","primary":...}]`), but older data may store a
-                // plain `["..."]` array of strings. Accept both: parse generically
-                // and pull the host out of either shape. Without this, secondary
-                // app/tenant domains never get added to the cert SANs.
-                if let Ok(values) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
-                    for v in values {
-                        let d = match v {
-                            serde_json::Value::String(s) => s,
-                            serde_json::Value::Object(ref map) => map
-                                .get("domain")
-                                .and_then(|x| x.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                            _ => String::new(),
-                        };
-                        if !d.is_empty() && !self.domains.contains(&d) {
-                            new_domains.push(d);
-                        }
-                    }
-                }
-            }
-            if let Some(d) = auto_subdomain {
-                if !d.is_empty() && !self.domains.contains(&d) {
-                    new_domains.push(d);
-                }
-            }
-        }
+        };
+        let new_domains: Vec<String> = configured
+            .into_iter()
+            .filter(|d| {
+                !self
+                    .domains
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(d))
+            })
+            .collect();
 
         if new_domains.is_empty() {
             return;
@@ -1079,6 +1112,39 @@ fn parse_cert_expiry(pem_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn collect_cert_domains_covers_apps_and_services() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE apps (domain TEXT, domains TEXT, auto_subdomain TEXT)",
+            "CREATE TABLE services (domain TEXT)",
+            "INSERT INTO apps VALUES ('app.example.com', '[{\"domain\":\"www.example.com\",\"primary\":false}]', 'x.sslip.io')",
+            "INSERT INTO apps VALUES (NULL, '[\"legacy.example.com\"]', 'auto.example.com')",
+            "INSERT INTO apps VALUES ('', NULL, NULL)",
+            "INSERT INTO services VALUES ('Sign.Example.com')",
+            "INSERT INTO services VALUES ('app.example.com')",
+            "INSERT INTO services VALUES (NULL)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+
+        let domains = collect_cert_domains(&pool).await.unwrap();
+        assert_eq!(
+            domains,
+            vec![
+                "app.example.com",
+                "www.example.com",
+                "legacy.example.com",
+                "auto.example.com",
+                "sign.example.com",
+            ]
+        );
+    }
 
     #[test]
     fn test_acme_challenges() {

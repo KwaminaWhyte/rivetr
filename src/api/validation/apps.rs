@@ -547,9 +547,16 @@ pub fn validate_docker_image(image: Option<&str>) -> Result<(), String> {
     // Split by @ to handle digest format (image@sha256:...)
     let image_part = image.split('@').next().unwrap_or(image);
 
-    // Split by : to separate image from tag
-    let parts: Vec<&str> = image_part.splitn(2, ':').collect();
-    let image_name = parts[0];
+    // The tag is whatever follows the last ':' that comes after the last '/'.
+    // A ':' before the last '/' belongs to a registry port ("localhost:5000/app"),
+    // so splitting on the first ':' would misread the port and path as a tag.
+    let last_slash = image_part.rfind('/');
+    let (image_name, tag) = match image_part.rfind(':') {
+        Some(colon) if last_slash.is_none_or(|slash| colon > slash) => {
+            (&image_part[..colon], Some(&image_part[colon + 1..]))
+        }
+        _ => (image_part, None),
+    };
 
     if image_name.is_empty() {
         return Err("Docker image name cannot be empty".to_string());
@@ -557,15 +564,35 @@ pub fn validate_docker_image(image: Option<&str>) -> Result<(), String> {
 
     // Validate the image name (registry/path/name format)
     // Each component should be valid DNS-like or path component
-    for component in image_name.split('/') {
+    let components: Vec<&str> = image_name.split('/').collect();
+    for (index, component) in components.iter().enumerate() {
         if component.is_empty() {
             return Err("Docker image reference contains empty path component".to_string());
         }
 
+        // Only the registry host (the first of several components) may carry a port.
+        let host = if index == 0 && components.len() > 1 {
+            match component.split_once(':') {
+                Some((host, port)) => {
+                    if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
+                        return Err(format!(
+                            "Invalid registry port in docker image: '{}'",
+                            component
+                        ));
+                    }
+                    host
+                }
+                None => component,
+            }
+        } else {
+            component
+        };
+
         // Allow alphanumeric, dashes, underscores, and dots
-        if !component
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        if host.is_empty()
+            || !host
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
         {
             return Err(format!(
                 "Invalid character in docker image component: '{}'",
@@ -575,8 +602,7 @@ pub fn validate_docker_image(image: Option<&str>) -> Result<(), String> {
     }
 
     // If there's a tag, validate it
-    if parts.len() > 1 {
-        let tag = parts[1];
+    if let Some(tag) = tag {
         if tag.is_empty() {
             return Err("Docker image tag cannot be empty if specified".to_string());
         }
@@ -922,6 +948,19 @@ mod tests {
         assert!(validate_docker_image(Some("ghcr.io/user/image")).is_ok());
         assert!(validate_docker_image(Some("registry.example.com/path/image:tag")).is_ok());
         assert!(validate_docker_image(Some("nginx@sha256:abc123")).is_ok());
+        // Registry with a port, with and without a tag
+        assert!(validate_docker_image(Some("localhost:5000/app")).is_ok());
+        assert!(validate_docker_image(Some("localhost:5000/team/app:1.2")).is_ok());
+        assert!(validate_docker_image(Some("registry.example.com:443/app@sha256:abc")).is_ok());
+    }
+
+    #[test]
+    fn test_validate_docker_image_registry_port_rules() {
+        // A port is only valid on the registry host, and must be numeric
+        assert!(validate_docker_image(Some("localhost:abc/app")).is_err());
+        assert!(validate_docker_image(Some("localhost:/app")).is_err());
+        assert!(validate_docker_image(Some("team/app:5000/x")).is_err());
+        assert!(validate_docker_image(Some(":5000/app")).is_err());
     }
 
     #[test]
