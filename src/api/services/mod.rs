@@ -1,8 +1,9 @@
 //! API handlers for Docker Compose services.
 
-mod compose;
+pub(crate) mod compose;
 mod control;
 mod crud;
+mod deployments;
 mod export_db;
 mod import_db;
 
@@ -13,6 +14,10 @@ pub use control::{
 };
 pub use crud::{
     check_port, create_service, delete_service, get_service, list_services, update_service,
+};
+pub use deployments::{
+    deploy_service, get_service_deployment, get_service_deployment_logs, list_service_deployments,
+    service_deployment_logs_ws,
 };
 pub use export_db::export_service_db;
 pub use import_db::import_service_db;

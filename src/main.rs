@@ -172,6 +172,15 @@ async fn main() -> Result<()> {
     // Mark any in-progress deployments as failed on startup.
     // If the server was restarted mid-build, the Docker process was killed but the
     // deployment record was left in "building"/"cloning"/etc. state. Fail them now.
+    // Same for service deployments (compose deploys run in-process).
+    let _ = sqlx::query(
+        "UPDATE service_deployments SET status = 'failed', \
+         error_message = 'Server restarted during deployment', \
+         finished_at = datetime('now') \
+         WHERE status IN ('pending', 'building', 'deploying')",
+    )
+    .execute(&db)
+    .await;
     let stuck_statuses = ["pending", "cloning", "building", "starting", "checking"];
     for status in &stuck_statuses {
         let _ = sqlx::query(

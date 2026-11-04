@@ -14,6 +14,8 @@ import type {
   TemplateCategory,
   DeployTemplateRequest,
   DeployTemplateResponse,
+  ServiceDeployment,
+  ServiceDeploymentLog,
 } from "@/types/api";
 
 /** Options for listing services */
@@ -101,6 +103,26 @@ export const servicesApi = {
       {
         method: "POST",
       },
+      token
+    ),
+
+  /** Deploy a service: pull or build its images and recreate changed containers */
+  deployService: (id: string, token?: string) =>
+    apiRequest<ServiceDeployment>(`/services/${id}/deploy`, { method: "POST" }, token),
+
+  /** Deployment history of a service, newest first */
+  getServiceDeployments: (id: string, limit = 50, token?: string) =>
+    apiRequest<ServiceDeployment[]>(`/services/${id}/deployments?limit=${limit}`, {}, token),
+
+  /** One service deployment */
+  getServiceDeployment: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeployment>(`/services/${id}/deployments/${deploymentId}`, {}, token),
+
+  /** Stored log lines of a service deployment */
+  getServiceDeploymentLogs: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeploymentLog[]>(
+      `/services/${id}/deployments/${deploymentId}/logs`,
+      {},
       token
     ),
 

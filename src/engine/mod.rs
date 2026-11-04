@@ -16,6 +16,7 @@ pub mod remote;
 mod resource_metrics_collector;
 pub mod retire;
 pub mod scheduler;
+pub mod service_deploy;
 pub mod static_builder;
 mod stats_collector;
 pub mod updater;

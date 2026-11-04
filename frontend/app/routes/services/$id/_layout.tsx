@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import type { Project, Service, ServiceStatus } from "@/types/api";
-import { Play, Square, Circle, Layers, RotateCw, Activity, ExternalLink } from "lucide-react";
+import { Play, Square, Circle, Layers, RotateCw, Activity, ExternalLink, Rocket } from "lucide-react";
 
 export function meta() {
   return [
@@ -62,6 +62,7 @@ function StatusBadge({ status }: { status?: ServiceStatus }) {
 
 const tabs = [
   { id: "general", label: "General", path: "" },
+  { id: "deployments", label: "Deployments", path: "/deployments" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "stats", label: "Stats", path: "/stats" },
@@ -159,6 +160,18 @@ export default function ServiceDetailLayout() {
     },
   });
 
+  const deployMutation = useMutation({
+    mutationFn: () => api.deployService(serviceId),
+    onSuccess: (deployment) => {
+      toast.success("Deployment started");
+      queryClient.invalidateQueries({ queryKey: ["service-deployments", serviceId] });
+      navigate(`/services/${serviceId}/deployments?deployment=${deployment.id}`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to start deployment");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteService(serviceId),
     onSuccess: () => {
@@ -174,7 +187,7 @@ export default function ServiceDetailLayout() {
     },
   });
 
-  const isSubmitting = startMutation.isPending || stopMutation.isPending || restartMutation.isPending || deleteMutation.isPending;
+  const isSubmitting = startMutation.isPending || stopMutation.isPending || restartMutation.isPending || deleteMutation.isPending || deployMutation.isPending;
 
   // Determine active tab from path
   const basePath = `/services/${serviceId}`;
@@ -233,7 +246,7 @@ export default function ServiceDetailLayout() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
             <Layers className="h-8 w-8 text-muted-foreground" />
@@ -251,7 +264,7 @@ export default function ServiceDetailLayout() {
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* Open button, shown when running and domain or port is configured */}
           {service.status === "running" && (service.domain || service.port > 0) && (() => {
             const url = service.domain
@@ -266,6 +279,15 @@ export default function ServiceDetailLayout() {
               </Button>
             );
           })()}
+          <Button
+            disabled={isSubmitting}
+            className="gap-2"
+            onClick={() => deployMutation.mutate()}
+            title="Pull or build the images and recreate changed containers"
+          >
+            <Rocket className="h-4 w-4" />
+            Deploy
+          </Button>
           {/* Start/Stop/Restart buttons */}
           {service.status === "running" ? (
             <>

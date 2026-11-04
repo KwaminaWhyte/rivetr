@@ -713,3 +713,127 @@ pub async fn run_compose_command(
         }
     }
 }
+
+/// Why rendering a service's compose file failed.
+#[derive(Debug)]
+pub enum RenderError {
+    /// Magic variable substitution failed (e.g. a required `${VAR:?}` is unset).
+    Substitution(String),
+    /// The compose file could not be written to disk.
+    Write(String),
+}
+
+impl std::fmt::Display for RenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Substitution(e) => write!(f, "{}", e),
+            Self::Write(e) => write!(f, "Failed to write compose file: {}", e),
+        }
+    }
+}
+
+/// Render a service's compose content the way every start path does it:
+/// magic variables, the public port binding and CPU/memory limits (the last two
+/// skipped in raw mode). The result is what [`write_service_compose`] writes.
+pub async fn render_service_compose(
+    db: &sqlx::SqlitePool,
+    service: &crate::db::Service,
+) -> Result<String, RenderError> {
+    let gen_vars_rows: Vec<ServiceGeneratedVar> =
+        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
+            .bind(&service.id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
+        .into_iter()
+        .map(|r| (r.key, r.value))
+        .collect();
+
+    let substituted = substitute_magic_vars(
+        &service.compose_content,
+        &service.id,
+        service.domain.as_deref(),
+        &existing_vars,
+        db,
+        false,
+    )
+    .await
+    .map_err(RenderError::Substitution)?;
+
+    let raw_mode = service.raw_compose_mode != 0;
+
+    let content = if !raw_mode
+        && service.public_access != 0
+        && service.external_port != 0
+        && service.expose_container_port != 0
+    {
+        match inject_public_ports(
+            &substituted,
+            service.external_port,
+            service.expose_container_port,
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject public ports for service {}: {}. Using compose without port injection.",
+                    service.name,
+                    e
+                );
+                substituted
+            }
+        }
+    } else {
+        substituted
+    };
+
+    let content = if !raw_mode && (service.cpu_limit.is_some() || service.memory_limit.is_some()) {
+        match inject_resource_limits(
+            &content,
+            service.cpu_limit.as_deref(),
+            service.memory_limit.as_deref(),
+        ) {
+            Ok(injected) => injected,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to inject resource limits for service {}: {}. Using compose without limit injection.",
+                    service.name,
+                    e
+                );
+                content
+            }
+        }
+    } else {
+        content
+    };
+
+    Ok(content)
+}
+
+/// Write rendered compose content for a service, applying container name
+/// namespacing and network injection unless raw mode is on.
+pub async fn write_service_compose(
+    data_dir: &Path,
+    service: &crate::db::Service,
+    content: &str,
+) -> Result<PathBuf, RenderError> {
+    let raw_mode = service.raw_compose_mode != 0;
+    let isolated_id = if !raw_mode && service.isolated_network != 0 {
+        Some(service.id.as_str())
+    } else {
+        None
+    };
+    write_compose_file_with_options(data_dir, &service.name, content, isolated_id, raw_mode)
+        .await
+        .map_err(|e| RenderError::Write(e.to_string()))
+}
+
+/// Render and write a service's compose file in one step.
+pub async fn render_and_write_service_compose(
+    db: &sqlx::SqlitePool,
+    data_dir: &Path,
+    service: &crate::db::Service,
+) -> Result<PathBuf, RenderError> {
+    let content = render_service_compose(db, service).await?;
+    write_service_compose(data_dir, service, &content).await
+}

@@ -206,3 +206,57 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
     icon: "message-circle",
   },
 ];
+
+// -------------------------------------------------------------------------
+// Service deployments
+// -------------------------------------------------------------------------
+
+export type ServiceDeploymentStatus =
+  | "pending"
+  | "building"
+  | "deploying"
+  | "succeeded"
+  | "failed";
+
+export type ServiceDeploymentTrigger = "manual" | "webhook" | "rollback" | "api";
+
+/** The image one compose service ran at a point in time. */
+export interface ServiceImageState {
+  image: string;
+  image_id?: string;
+  /** Registry digest reference, e.g. `localhost:5000/app@sha256:...` */
+  digest?: string;
+}
+
+export interface ServiceDeployment {
+  id: string;
+  service_id: string;
+  trigger: ServiceDeploymentTrigger | string;
+  triggered_by: string | null;
+  triggered_by_name: string | null;
+  status: ServiceDeploymentStatus;
+  commit_sha: string | null;
+  commit_message: string | null;
+  image_tag: string | null;
+  images_before: Record<string, ServiceImageState>;
+  images_after: Record<string, ServiceImageState>;
+  rollback_of: string | null;
+  error_message: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface ServiceDeploymentLog {
+  id: number;
+  deployment_id: string;
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export const ACTIVE_SERVICE_DEPLOYMENT_STATUSES: ServiceDeploymentStatus[] = [
+  "pending",
+  "building",
+  "deploying",
+];

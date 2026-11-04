@@ -48,7 +48,7 @@ mod s3;
 mod sdk;
 mod servers;
 mod service_templates;
-mod services;
+pub(crate) mod services;
 mod shared_env_vars;
 mod ssh_keys;
 mod sso;
@@ -168,6 +168,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/databases/{id}/start-stream",
             get(start_logs::database_start_stream_ws),
+        )
+        .route(
+            "/services/{id}/deployments/{deployment_id}/logs/stream",
+            get(services::service_deployment_logs_ws),
         );
 
     // Protected API routes
@@ -751,6 +755,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/{id}/start", post(services::start_service))
         .route("/services/{id}/stop", post(services::stop_service))
         .route("/services/{id}/restart", post(services::restart_service))
+        .route("/services/{id}/deploy", post(services::deploy_service))
+        .route(
+            "/services/{id}/deployments",
+            get(services::list_service_deployments),
+        )
+        .route(
+            "/services/{id}/deployments/{deployment_id}",
+            get(services::get_service_deployment),
+        )
+        .route(
+            "/services/{id}/deployments/{deployment_id}/logs",
+            get(services::get_service_deployment_logs),
+        )
         .route(
             "/services/{id}/start-events",
             get(start_logs::service_start_stream_snapshot),

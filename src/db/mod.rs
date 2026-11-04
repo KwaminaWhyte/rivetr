@@ -1654,6 +1654,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/119_ssh_key_owner.sql")).await?;
     }
 
+    // Migration 120: service deployments + logs (CREATE IF NOT EXISTS, idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/120_service_deployments.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
