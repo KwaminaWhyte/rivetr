@@ -263,6 +263,18 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 | POST | `/api/services/:id/start` | Start a service. |
 | POST | `/api/services/:id/stop` | Stop a service. |
 | POST | `/api/services/:id/restart` | Restart a service. |
+| POST | `/api/services/:id/deploy` | Deploy: pull or build images, run hooks, `docker compose up -d`. See [service-deployments.md](service-deployments.md). |
+| GET | `/api/services/:id/deployments` | Service deployment history. |
+| GET | `/api/services/:id/deployments/:deployment_id` | One service deployment. |
+| GET | `/api/services/:id/deployments/:deployment_id/logs` | Service deployment logs. |
+| POST | `/api/services/:id/deployments/:deployment_id/rollback` | Roll back to a deployment's image digests. |
+| GET/PUT | `/api/services/:id/deploy-config` | Build source, images, registry, hooks. |
+| GET | `/api/services/:id/containers` | Containers with state, health and usage. |
+| POST | `/api/services/:id/containers/:container/restart` | Restart one container. |
+| GET | `/api/services/:id/containers/:container/logs` | One container's logs. |
+| GET/POST | `/api/services/:id/env-vars` | Service env vars. |
+| PUT/DELETE | `/api/services/:id/env-vars/:key` | Update or delete a service env var. |
+| POST | `/api/services/:id/env-import` | Import a `.env` file. |
 | GET | `/api/services/:id/start-events` | Start-event snapshot. |
 | GET | `/api/services/:id/stats` | Service stats summed across its containers, including `storage_bytes` (shared volumes counted once). |
 | GET | `/api/services/:id/logs` | Service logs. |
