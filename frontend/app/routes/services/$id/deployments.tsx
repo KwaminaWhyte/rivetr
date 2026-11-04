@@ -19,7 +19,9 @@ import {
   type ServiceDeployment,
   type ServiceImageState,
 } from "@/types/api";
-import { ArrowLeft, History } from "lucide-react";
+import { ArrowLeft, History, Pin } from "lucide-react";
+import { ServiceRollbackButton } from "@/components/service-rollback-button";
+import type { ServiceDeployConfig } from "@/types/api";
 
 export function meta() {
   return [
@@ -75,7 +77,7 @@ function ImageChanges({ deployment }: { deployment: ServiceDeployment }) {
     new Set([
       ...Object.keys(deployment.images_before ?? {}),
       ...Object.keys(deployment.images_after ?? {}),
-    ])
+    ]),
   ).sort();
   if (names.length === 0) {
     return (
@@ -99,8 +101,7 @@ function ImageChanges({ deployment }: { deployment: ServiceDeployment }) {
           {names.map((name) => {
             const before = deployment.images_before?.[name];
             const after = deployment.images_after?.[name];
-            const changed =
-              !!after && (before?.image_id ?? null) !== (after.image_id ?? null);
+            const changed = !!after && (before?.image_id ?? null) !== (after.image_id ?? null);
             return (
               <TableRow key={name}>
                 <TableCell className="font-medium">{name}</TableCell>
@@ -176,7 +177,9 @@ function DeploymentDetail({
                 {formatDuration(deployment.duration_ms)}
               </CardDescription>
             </div>
-            {/* ROLLBACK_SLOT */}
+            {!active && Object.keys(deployment.images_after ?? {}).length > 0 && (
+              <ServiceRollbackButton service={service} deployment={deployment} />
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -238,92 +241,118 @@ export default function ServiceDeploymentsTab() {
     refetchInterval: (q) => (q.state.data?.some(isActive) ? 2000 : 15000),
   });
 
+  const { data: config } = useQuery<ServiceDeployConfig>({
+    queryKey: ["service-deploy-config", service.id],
+    queryFn: () => api.getServiceDeployConfig(service.id),
+    refetchInterval: 15000,
+  });
+  const pins = Object.entries(config?.pinned_images ?? {});
+
   if (selected) {
     return (
-      <DeploymentDetail
-        service={service}
-        deploymentId={selected}
-        onBack={() => setParams({})}
-      />
+      <DeploymentDetail service={service} deploymentId={selected} onBack={() => setParams({})} />
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" />
-          Deployments
-        </CardTitle>
-        <CardDescription>
-          Each deploy pulls (or builds) the images and runs <code>docker compose up -d</code>,
-          which recreates only the containers that changed.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="h-24 animate-pulse rounded bg-muted" />
-        ) : deployments.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No deployments yet. Use Deploy in the header to run the first one.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Trigger</TableHead>
-                  <TableHead>Started</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Changed</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deployments.map((d) => {
-                  const changed = Object.entries(d.images_after ?? {}).filter(
-                    ([name, after]) => d.images_before?.[name]?.image_id !== after.image_id
-                  );
-                  return (
-                    <TableRow
-                      key={d.id}
-                      className="cursor-pointer"
-                      onClick={() => setParams({ deployment: d.id })}
-                    >
-                      <TableCell>
-                        <DeploymentStatusBadge status={d.status} />
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="capitalize">{d.trigger}</div>
-                        {d.triggered_by_name && (
-                          <div className="text-xs text-muted-foreground">
-                            {d.triggered_by_name}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm">
-                        {formatWhen(d.started_at)}
-                      </TableCell>
-                      <TableCell className="text-sm">{formatDuration(d.duration_ms)}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {d.image_tag ?? d.commit_sha?.slice(0, 7) ?? "-"}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {changed.length === 0 ? (
-                          <span className="text-muted-foreground">-</span>
-                        ) : (
-                          changed.map(([name]) => name).join(", ")
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {pins.length > 0 && (
+        <Card className="border-amber-300 dark:border-amber-700">
+          <CardContent className="space-y-1 py-4 text-sm">
+            <div className="flex items-center gap-2 font-medium">
+              <Pin className="h-4 w-4" />
+              Rolled back: images are pinned by digest
+            </div>
+            <ul className="font-mono text-xs text-muted-foreground">
+              {pins.map(([name, ref]) => (
+                <li key={name} className="break-all">
+                  {name}: {ref}
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted-foreground">
+              Start and restart keep these images. The next Deploy goes back to the tags in the
+              compose file.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Deployments
+          </CardTitle>
+          <CardDescription>
+            Each deploy pulls (or builds) the images and runs <code>docker compose up -d</code>,
+            which recreates only the containers that changed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="h-24 animate-pulse rounded bg-muted" />
+          ) : deployments.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No deployments yet. Use Deploy in the header to run the first one.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Trigger</TableHead>
+                    <TableHead>Started</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Version</TableHead>
+                    <TableHead>Changed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {deployments.map((d) => {
+                    const changed = Object.entries(d.images_after ?? {}).filter(
+                      ([name, after]) => d.images_before?.[name]?.image_id !== after.image_id,
+                    );
+                    return (
+                      <TableRow
+                        key={d.id}
+                        className="cursor-pointer"
+                        onClick={() => setParams({ deployment: d.id })}
+                      >
+                        <TableCell>
+                          <DeploymentStatusBadge status={d.status} />
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="capitalize">{d.trigger}</div>
+                          {d.triggered_by_name && (
+                            <div className="text-xs text-muted-foreground">
+                              {d.triggered_by_name}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {formatWhen(d.started_at)}
+                        </TableCell>
+                        <TableCell className="text-sm">{formatDuration(d.duration_ms)}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {d.image_tag ?? d.commit_sha?.slice(0, 7) ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {changed.length === 0 ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            changed.map(([name]) => name).join(", ")
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

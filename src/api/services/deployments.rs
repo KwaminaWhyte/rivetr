@@ -88,6 +88,45 @@ pub async fn deploy_service(
     Ok((StatusCode::ACCEPTED, Json(dep.to_response())))
 }
 
+/// Roll back to the images a previous deployment ran, pinned by digest.
+///
+/// POST /api/services/:id/deployments/:deployment_id/rollback
+pub async fn rollback_service_deployment(
+    State(state): State<Arc<AppState>>,
+    user: User,
+    client_ip: ClientIp,
+    Path((id, deployment_id)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<ServiceDeploymentResponse>), ApiError> {
+    let env = Arc::new(DeployEnv::from_state(&state));
+    let dep = queue_deployment(
+        env,
+        &id,
+        DeployRequest {
+            trigger: service_deployment_trigger::ROLLBACK.to_string(),
+            user_id: Some(user.id.clone()),
+            user_name: Some(user_label(&user)),
+            rollback_of: Some(deployment_id.clone()),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(queue_error)?;
+
+    audit_log(
+        &state,
+        actions::SERVICE_ROLLBACK,
+        resource_types::SERVICE,
+        Some(&id),
+        None,
+        Some(&user.id),
+        client_ip.as_deref(),
+        Some(serde_json::json!({ "deployment_id": dep.id, "rollback_of": deployment_id })),
+    )
+    .await;
+
+    Ok((StatusCode::ACCEPTED, Json(dep.to_response())))
+}
+
 /// GET /api/services/:id/deployments
 pub async fn list_service_deployments(
     State(state): State<Arc<AppState>>,

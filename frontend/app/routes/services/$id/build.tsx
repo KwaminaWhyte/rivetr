@@ -180,8 +180,8 @@ export default function ServiceBuildTab() {
             Build from source
           </CardTitle>
           <CardDescription>
-            Without a source, Deploy pulls the images named in the compose file. With one,
-            Deploy fetches the source, builds each image below tagged with the revision and{" "}
+            Without a source, Deploy pulls the images named in the compose file. With one, Deploy
+            fetches the source, builds each image below tagged with the revision and{" "}
             <code>latest</code>, pushes both tags, runs the pre-deploy hooks and then{" "}
             <code>docker compose up -d</code>.
           </CardDescription>
@@ -245,8 +245,8 @@ export default function ServiceBuildTab() {
               {autoDeploy && (
                 <p className="text-xs text-muted-foreground">
                   Uses the same push webhooks as apps: a connected GitHub App, or a repository
-                  webhook pointing at <code>/webhooks/github</code> (also GitLab and Gitea) on
-                  this Rivetr instance.
+                  webhook pointing at <code>/webhooks/github</code> (also GitLab and Gitea) on this
+                  Rivetr instance.
                 </p>
               )}
             </div>
@@ -377,8 +377,8 @@ export default function ServiceBuildTab() {
           <CardHeader>
             <CardTitle>Registry</CardTitle>
             <CardDescription>
-              Images are pushed to the registry in their name, e.g. a local{" "}
-              <code>registry:2</code> at <code>localhost:5000</code> (no login needed).
+              Images are pushed to the registry in their name, e.g. a local <code>registry:2</code>{" "}
+              at <code>localhost:5000</code> (no login needed).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -429,11 +429,11 @@ export default function ServiceBuildTab() {
         description={
           <>
             Run after the images are built and pulled, before any container is recreated, in a
-            one-off container of the chosen compose service (its image, env, volumes and
-            networks): <code>docker compose run --rm --no-deps</code>. The command goes to the
-            image&apos;s entrypoint like <code>docker run</code>; use <code>sh -c &quot;...&quot;</code>{" "}
-            for shell features. A failing hook stops the deploy and the running containers stay
-            as they are.
+            one-off container of the chosen compose service (its image, env, volumes and networks):{" "}
+            <code>docker compose run --rm --no-deps</code>. The command goes to the image&apos;s
+            entrypoint like <code>docker run</code>; use <code>sh -c &quot;...&quot;</code> for
+            shell features. A failing hook stops the deploy and the running containers stay as they
+            are.
           </>
         }
         hooks={preHooks}
@@ -481,13 +481,13 @@ function MigrationHelp({ service }: { service: Service }) {
             <code>localhost:5000/app:latest</code>.
           </li>
           <li>
-            Pick the source: the git repository and branch, or the directory the script builds
-            from (with its revision file, if any).
+            Pick the source: the git repository and branch, or the directory the script builds from
+            (with its revision file, if any).
           </li>
           <li>
-            Add one image per <code>docker build</code> in the script, in the same order, with
-            the same Dockerfile, context and build args. Replace the script&apos;s revision
-            variable with <code>{"${TAG}"}</code>.
+            Add one image per <code>docker build</code> in the script, in the same order, with the
+            same Dockerfile, context and build args. Replace the script&apos;s revision variable
+            with <code>{"${TAG}"}</code>.
           </li>
           <li>
             Add each step the script runs between build and restart (a database migration) as a

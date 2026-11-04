@@ -19,7 +19,7 @@ pub use crud::{
 pub use deploy_config::{get_deploy_config, update_deploy_config};
 pub use deployments::{
     deploy_service, get_service_deployment, get_service_deployment_logs, list_service_deployments,
-    service_deployment_logs_ws,
+    rollback_service_deployment, service_deployment_logs_ws,
 };
 pub use export_db::export_service_db;
 pub use import_db::import_service_db;

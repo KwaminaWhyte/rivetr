@@ -523,3 +523,100 @@ async fn failed_post_deploy_hook_is_reported_without_failing_the_deploy() {
         .contains("post-deploy hook 'migrate' failed"));
     assert!(h.runner.ran(" up -d"));
 }
+
+#[tokio::test]
+async fn rollback_pins_previous_digests_and_next_deploy_unpins() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    set_config(
+        &h,
+        &format!(
+            "source_type = 'git', git_url = 'https://github.com/acme/shop.git', \
+             images = '[{{\"image\":\"localhost:5000/app\"}}]', pre_deploy_hooks = '{}'",
+            MIGRATE
+        ),
+    )
+    .await;
+    h.runner
+        .on("git rev-parse HEAD", CommandOutput::ok("abcdef0123\n"));
+    let first = deploy(&h, manual()).await;
+    assert_eq!(first.status, "succeeded", "{:?}", first.error_message);
+    let calls_before = h.runner.commands().len();
+
+    let rollback = deploy(
+        &h,
+        DeployRequest {
+            trigger: "rollback".into(),
+            rollback_of: Some(first.id.clone()),
+            ..manual()
+        },
+    )
+    .await;
+    assert_eq!(rollback.status, "succeeded", "{:?}", rollback.error_message);
+    assert_eq!(rollback.image_tag.as_deref(), Some("abcdef0"));
+    let cmds = h.runner.commands()[calls_before..].to_vec();
+    assert!(!cmds
+        .iter()
+        .any(|c| c.starts_with("git clone") || c.starts_with("docker build")));
+    assert!(
+        !cmds.iter().any(|c| c.contains(" run --rm")),
+        "hooks skipped: {:?}",
+        cmds
+    );
+    assert!(cmds.iter().any(|c| c.contains(" up -d")));
+
+    let file = h.env.data_dir.join("services/shop/docker-compose.yml");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.contains("localhost:5000/app@sha256:bbb"),
+        "{}",
+        written
+    );
+    assert!(written.contains("postgres@sha256:ccc"));
+
+    // Start/restart render the stored pins too.
+    let service: Service = sqlx::query_as("SELECT * FROM services WHERE id = ?")
+        .bind(&h.service_id)
+        .fetch_one(&h.env.db)
+        .await
+        .unwrap();
+    let rendered = crate::api::services::compose::render_service_compose(&h.env.db, &service)
+        .await
+        .unwrap();
+    assert!(rendered.contains("localhost:5000/app@sha256:bbb"));
+
+    // A regular deploy goes back to the tags.
+    let next = deploy(&h, manual()).await;
+    assert_eq!(next.status, "succeeded");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("localhost:5000/app:latest"), "{}", written);
+    let pins: Option<String> =
+        sqlx::query_scalar("SELECT pinned_images FROM service_deploy_configs WHERE service_id = ?")
+            .bind(&h.service_id)
+            .fetch_one(&h.env.db)
+            .await
+            .unwrap();
+    assert!(pins.is_none());
+}
+
+#[tokio::test]
+async fn rollback_needs_recorded_digests() {
+    let h = harness().await;
+    sqlx::query(
+        "INSERT INTO service_deployments (id, service_id, status) VALUES ('old', ?, 'failed')",
+    )
+    .bind(&h.service_id)
+    .execute(&h.env.db)
+    .await
+    .unwrap();
+    let r = create_deployment(
+        &h.env,
+        &h.service_id,
+        DeployRequest {
+            rollback_of: Some("old".into()),
+            ..manual()
+        },
+    )
+    .await;
+    assert!(matches!(r, Err(QueueError::Invalid(_))));
+}

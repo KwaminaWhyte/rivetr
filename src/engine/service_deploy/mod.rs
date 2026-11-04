@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::services::compose::{
-    get_compose_dir, render_service_compose, write_service_compose, RenderError,
+    get_compose_dir, render_service_compose_with, write_service_compose, RenderError,
 };
 use crate::db::{
     service_deployment_status as status, Service, ServiceDeployConfig, ServiceDeployment,
@@ -433,9 +433,47 @@ async fn pipeline_inner(
         }
     }
 
+    // A rollback redeploys the images a previous deployment ran, pinned by
+    // digest, so `latest` moving since then does not matter.
+    let rollback_pins = match &dep.rollback_of {
+        Some(target_id) => {
+            let target: ServiceDeployment =
+                sqlx::query_as("SELECT * FROM service_deployments WHERE id = ?")
+                    .bind(target_id)
+                    .fetch_one(&env.db)
+                    .await
+                    .context("Deployment to roll back to not found")?;
+            let pins: std::collections::BTreeMap<String, String> = target
+                .images_after_map()
+                .into_iter()
+                .filter_map(|(svc, state)| state.pin_ref().map(|p| (svc, p)))
+                .collect();
+            if pins.is_empty() {
+                anyhow::bail!("That deployment has no recorded image digests");
+            }
+            log.info(&format!(
+                "Rolling back to deployment {} ({})",
+                &target.id[..target.id.len().min(8)],
+                pins.iter()
+                    .map(|(s, p)| format!("{}={}", s, p))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+            .await;
+            progress.image_tag = target.image_tag.clone();
+            progress.commit_sha = target.commit_sha.clone();
+            progress.commit_message = target.commit_message.clone();
+            Some(pins)
+        }
+        None => None,
+    };
+    let is_rollback = rollback_pins.is_some();
+
     // 2. Build from source when configured.
     let mut built_repos = std::collections::BTreeSet::new();
-    if cfg.builds_from_source() {
+    if is_rollback {
+        log.info("Rollback: skipping build and hooks").await;
+    } else if cfg.builds_from_source() {
         set_status(env, &dep.id, status::BUILDING).await;
         let source = build::fetch_source(env, &cfg, &service.name, &dep.id, log).await?;
         *cleanup = source.cleanup.clone();
@@ -460,7 +498,8 @@ async fn pipeline_inner(
     //    failure before `up` leaves the stack exactly as it was.
     let compose_file = compose_dir.join("docker-compose.yml");
     let previous_compose = tokio::fs::read_to_string(&compose_file).await.ok();
-    let content = render_service_compose(&env.db, service)
+    let pins = rollback_pins.clone().unwrap_or_default();
+    let content = render_service_compose_with(&env.db, service, Some(&pins))
         .await
         .map_err(|e| match e {
             RenderError::Substitution(e) => anyhow::anyhow!("Compose variables: {}", e),
@@ -508,7 +547,7 @@ async fn pipeline_inner(
 
     // 5. Pre-deploy hooks (migrations). A failure stops here: nothing has
     //    been recreated, and the compose file and `latest` tags are restored.
-    let pre_hooks = cfg.pre_hooks();
+    let pre_hooks = if is_rollback { vec![] } else { cfg.pre_hooks() };
     if !pre_hooks.is_empty() {
         if let Err(msg) = hooks::run_hooks(
             runner,
@@ -588,9 +627,36 @@ async fn pipeline_inner(
         }
     }
 
+    // Keep the pins so start/restart run the rolled-back images too; a
+    // regular deploy clears them and the stack follows its tags again.
+    let stored = if pins.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&pins).ok()
+    };
+    if stored.is_some() || cfg.pinned_images.is_some() {
+        sqlx::query(
+            "INSERT INTO service_deploy_configs (service_id, pinned_images) VALUES (?, ?) \
+             ON CONFLICT(service_id) DO UPDATE SET pinned_images = excluded.pinned_images, \
+             updated_at = datetime('now')",
+        )
+        .bind(&service.id)
+        .bind(&stored)
+        .execute(&env.db)
+        .await?;
+        if stored.is_none() {
+            log.info("Cleared the image pins of an earlier rollback")
+                .await;
+        }
+    }
+
     // 8. Post-deploy hooks. The new containers are already running, so a
     //    failure is reported on the deployment but does not fail it.
-    let post_hooks = cfg.post_hooks();
+    let post_hooks = if is_rollback {
+        vec![]
+    } else {
+        cfg.post_hooks()
+    };
     if !post_hooks.is_empty() {
         if let Err(msg) = hooks::run_hooks(
             runner,

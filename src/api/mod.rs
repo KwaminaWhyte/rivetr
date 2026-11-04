@@ -773,6 +773,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(services::get_service_deployment_logs),
         )
         .route(
+            "/services/{id}/deployments/{deployment_id}/rollback",
+            post(services::rollback_service_deployment),
+        )
+        .route(
             "/services/{id}/start-events",
             get(start_logs::service_start_stream_snapshot),
         )

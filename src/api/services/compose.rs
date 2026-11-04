@@ -739,6 +739,17 @@ pub async fn render_service_compose(
     db: &sqlx::SqlitePool,
     service: &crate::db::Service,
 ) -> Result<String, RenderError> {
+    render_service_compose_with(db, service, None).await
+}
+
+/// Like [`render_service_compose`], with explicit image pins. `None` uses the
+/// pins a rollback stored on the service (what start/restart need); a deploy
+/// passes its own (empty for a regular deploy, which moves back to the tags).
+pub async fn render_service_compose_with(
+    db: &sqlx::SqlitePool,
+    service: &crate::db::Service,
+    pins: Option<&std::collections::BTreeMap<String, String>>,
+) -> Result<String, RenderError> {
     let gen_vars_rows: Vec<ServiceGeneratedVar> =
         sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
             .bind(&service.id)
@@ -785,6 +796,33 @@ pub async fn render_service_compose(
         }
     } else {
         substituted
+    };
+
+    let stored_pins;
+    let pins = match pins {
+        Some(p) => p,
+        None => {
+            let json: Option<Option<String>> = sqlx::query_scalar(
+                "SELECT pinned_images FROM service_deploy_configs WHERE service_id = ?",
+            )
+            .bind(&service.id)
+            .fetch_optional(db)
+            .await
+            .unwrap_or_default();
+            stored_pins = json
+                .flatten()
+                .and_then(|j| serde_json::from_str(&j).ok())
+                .unwrap_or_default();
+            &stored_pins
+        }
+    };
+    let content = if pins.is_empty() {
+        content
+    } else {
+        apply_image_pins(&content, pins).unwrap_or_else(|e| {
+            tracing::warn!("Failed to pin images for service {}: {}", service.name, e);
+            content
+        })
     };
 
     let content = if !raw_mode && (service.cpu_limit.is_some() || service.memory_limit.is_some()) {
@@ -836,4 +874,54 @@ pub async fn render_and_write_service_compose(
 ) -> Result<PathBuf, RenderError> {
     let content = render_service_compose(db, service).await?;
     write_service_compose(data_dir, service, &content).await
+}
+
+/// Replace the `image:` of each listed compose service with a pinned
+/// reference (`repo@sha256:...` or a local image ID). Services that are not
+/// listed, or have no `image:` key, are left as they are.
+pub fn apply_image_pins(
+    content: &str,
+    pins: &std::collections::BTreeMap<String, String>,
+) -> Result<String, String> {
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+    let Some(services) = yaml.get_mut("services").and_then(|s| s.as_mapping_mut()) else {
+        return Ok(content.to_string());
+    };
+    let mut changed = false;
+    for (name, def) in services.iter_mut() {
+        let (Some(name), Some(def)) = (name.as_str(), def.as_mapping_mut()) else {
+            continue;
+        };
+        let Some(pin) = pins.get(name) else { continue };
+        let key = serde_yaml::Value::String("image".to_string());
+        if def.contains_key(&key) {
+            def.insert(key, serde_yaml::Value::String(pin.clone()));
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(content.to_string());
+    }
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+
+    #[test]
+    fn pins_replace_only_listed_images() {
+        let compose = "services:\n  web:\n    image: localhost:5000/app:latest\n  db:\n    image: postgres:18\n  local:\n    build: .\n";
+        let mut pins = std::collections::BTreeMap::new();
+        pins.insert("web".to_string(), "localhost:5000/app@sha256:aaa".to_string());
+        pins.insert("local".to_string(), "sha256:bbb".to_string());
+        pins.insert("gone".to_string(), "x@sha256:ccc".to_string());
+        let out = apply_image_pins(compose, &pins).unwrap();
+        let y: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(y["services"]["web"]["image"], "localhost:5000/app@sha256:aaa");
+        assert_eq!(y["services"]["db"]["image"], "postgres:18");
+        assert!(y["services"]["local"].get("image").is_none());
+        assert_eq!(apply_image_pins(compose, &Default::default()).unwrap(), compose);
+    }
 }

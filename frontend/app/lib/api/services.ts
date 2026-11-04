@@ -128,6 +128,14 @@ export const servicesApi = {
       token
     ),
 
+  /** Redeploy the images a previous deployment ran, pinned by digest */
+  rollbackServiceDeployment: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeployment>(
+      `/services/${id}/deployments/${deploymentId}/rollback`,
+      { method: "POST" },
+      token
+    ),
+
   /** Build source, images, registry and hooks of a service */
   getServiceDeployConfig: (id: string, token?: string) =>
     apiRequest<ServiceDeployConfig>(`/services/${id}/deploy-config`, {}, token),

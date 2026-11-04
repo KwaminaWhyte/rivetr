@@ -40,11 +40,12 @@ export function ServiceHooksEditor({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {hooks.length === 0 && (
-          <p className="text-sm text-muted-foreground">No hooks.</p>
-        )}
+        {hooks.length === 0 && <p className="text-sm text-muted-foreground">No hooks.</p>}
         {hooks.map((hook, i) => (
-          <div key={i} className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_1fr_2fr_auto_auto]">
+          <div
+            key={i}
+            className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_1fr_2fr_auto_auto]"
+          >
             <div className="grid gap-1.5">
               <Label>Name</Label>
               <Input
@@ -108,9 +109,7 @@ export function ServiceHooksEditor({
           variant="outline"
           size="sm"
           className="gap-2"
-          onClick={() =>
-            onChange([...hooks, { service: composeServices[0] ?? "", command: "" }])
-          }
+          onClick={() => onChange([...hooks, { service: composeServices[0] ?? "", command: "" }])}
         >
           <Plus className="h-4 w-4" />
           Add hook
