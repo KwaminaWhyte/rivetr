@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DetailField, StatusPill, type Tone } from "@/components/metrics";
 import { toast } from "sonner";
+import { ResourceMonitor } from "@/components/resource-monitor";
 import type { Service } from "@/types/api";
 import {
   Clock,
@@ -273,6 +274,31 @@ export default function ServiceGeneralTab() {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live resource usage (was the Stats tab) */}
+      {service.status === "running" ? (
+        <div className="space-y-3">
+          {(service.cpu_limit || service.memory_limit) && (
+            <p className="text-sm text-muted-foreground">
+              Limits per container:{" "}
+              <span className="font-medium text-foreground">
+                {service.cpu_limit ? `${service.cpu_limit} CPU` : "no CPU cap"}
+              </span>
+              {" · "}
+              <span className="font-medium text-foreground">
+                {service.memory_limit ?? "no memory cap"}
+              </span>
+            </p>
+          )}
+          <ResourceMonitor serviceId={service.id} />
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="py-6 text-center text-sm text-muted-foreground">
+            No live metrics. Start the service to see CPU, RAM and network usage.
           </CardContent>
         </Card>
       )}
