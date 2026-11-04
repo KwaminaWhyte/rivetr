@@ -221,7 +221,8 @@ rivetr/
 │   │   ├── mod.rs
 │   │   ├── pipeline.rs      # Deployment pipeline
 │   │   ├── builder.rs       # Build orchestration
-│   │   └── health.rs        # Health checking
+│   │   ├── health.rs        # Health checking
+│   │   └── service_deploy/  # Compose service deploys (build, hooks, rollback)
 │   ├── runtime/             # Container abstraction
 │   │   ├── mod.rs
 │   │   ├── docker.rs        # Bollard implementation

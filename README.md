@@ -55,6 +55,7 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 
 - Managed databases: PostgreSQL, MySQL, MongoDB, Redis, DragonFlyDB, KeyDB, ClickHouse (one-click provisioning)
 - Docker Compose multi-container deployments with optional raw mode (skip Rivetr network injection)
+- Service deployments: Deploy button with recorded history and live logs, build images from git or a server path and push to a registry, pre/post-deploy hooks (for example migrations), rollback by image digest, per-container logs/restart/terminal, encrypted env vars written to a managed `.env` (see [docs/reference/service-deployments.md](docs/reference/service-deployments.md))
 - 273 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
 - Scheduled jobs: cron-based command execution inside running containers
 - Community template submissions: users can submit custom templates for admin review and promotion
@@ -390,6 +391,7 @@ rivetr/
 │   │   └── validation/      # Request validation layer
 │   ├── engine/              # Deployment pipeline
 │   │   ├── pipeline/        # Clone → build → start → rollback
+│   │   ├── service_deploy/  # Compose service deploys: build, hooks, images, rollback
 │   │   ├── container_monitor/ # Crash detection and recovery
 │   │   └── scheduler.rs     # Cron-based job scheduler
 │   ├── runtime/             # Container runtime abstraction
@@ -450,6 +452,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | System design and component breakdown |
 | [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md) | Technology choices and crate selection |
 | [docs/reference/service-templates.md](docs/reference/service-templates.md) | Catalogue of all 273 service templates by category |
+| [docs/reference/service-deployments.md](docs/reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
 | [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Feature comparison with Coolify and Dokploy |
 | [docs/architecture/code-organization.md](docs/architecture/code-organization.md) | Code organization and module splitting guide |
 | [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
