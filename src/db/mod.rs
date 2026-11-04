@@ -1668,6 +1668,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 122: service environment variables
+    execute_sql(
+        pool,
+        include_str!("../../migrations/122_service_env_vars.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

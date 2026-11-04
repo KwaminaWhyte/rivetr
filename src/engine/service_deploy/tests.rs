@@ -580,7 +580,7 @@ async fn rollback_pins_previous_digests_and_next_deploy_unpins() {
         .fetch_one(&h.env.db)
         .await
         .unwrap();
-    let rendered = crate::api::services::compose::render_service_compose(&h.env.db, &service)
+    let rendered = crate::api::services::compose::render_service_compose(&h.env.db, &service, None)
         .await
         .unwrap();
     assert!(rendered.contains("localhost:5000/app@sha256:bbb"));
@@ -619,4 +619,85 @@ async fn rollback_needs_recorded_digests() {
     )
     .await;
     assert!(matches!(r, Err(QueueError::Invalid(_))));
+}
+
+async fn add_env(h: &Harness, key: &str, value: &str) {
+    sqlx::query(
+        "INSERT INTO service_env_vars (id, service_id, key, value, is_secret) VALUES (?, ?, ?, ?, 1)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&h.service_id)
+    .bind(key)
+    .bind(value)
+    .execute(&h.env.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn env_vars_are_written_to_a_private_env_file_and_injected() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    // An existing external env_file (the mega-sign setup) keeps working.
+    sqlx::query("UPDATE services SET compose_content = ? WHERE id = ?")
+        .bind("services:\n  web:\n    image: localhost:5000/app:latest\n    env_file:\n    - /etc/megasign/megasign.env\n  db:\n    image: postgres:18\n")
+        .bind(&h.service_id)
+        .execute(&h.env.db)
+        .await
+        .unwrap();
+    add_env(&h, "DATABASE_URL", "postgres://u:p@db/x").await;
+    add_env(&h, "QUOTE", "it's").await;
+    set_config(&h, "inject_env_file = 1").await;
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded", "{:?}", dep.error_message);
+
+    let dir = h.env.data_dir.join("services/shop");
+    let env = std::fs::read_to_string(dir.join(".env")).unwrap();
+    assert!(env.contains("DATABASE_URL='postgres://u:p@db/x'"));
+    assert!(env.contains("QUOTE=\"it's\""));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(dir.join(".env"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    let compose: serde_yaml::Value =
+        serde_yaml::from_str(&std::fs::read_to_string(dir.join("docker-compose.yml")).unwrap())
+            .unwrap();
+    assert_eq!(
+        compose["services"]["web"]["env_file"][0],
+        "/etc/megasign/megasign.env"
+    );
+    assert_eq!(compose["services"]["web"]["env_file"][1], ".env");
+    assert_eq!(compose["services"]["db"]["env_file"][0], ".env");
+}
+
+#[tokio::test]
+async fn env_file_without_injection_and_foreign_env_files_are_left_alone() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    add_env(&h, "A", "1").await;
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded");
+    let dir = h.env.data_dir.join("services/shop");
+    // Written for ${VAR} interpolation, but not added to the services.
+    assert!(std::fs::read_to_string(dir.join(".env"))
+        .unwrap()
+        .contains("A='1'"));
+    assert!(!std::fs::read_to_string(dir.join("docker-compose.yml"))
+        .unwrap()
+        .contains("env_file"));
+
+    // A .env Rivetr did not write is never replaced.
+    std::fs::write(dir.join(".env"), "MINE=1\n").unwrap();
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded");
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".env")).unwrap(),
+        "MINE=1\n"
+    );
 }

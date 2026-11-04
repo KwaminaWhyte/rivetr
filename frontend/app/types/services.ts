@@ -358,3 +358,24 @@ export interface ServiceContainerLogLine {
   stream: "stdout" | "stderr";
   message: string;
 }
+
+// -------------------------------------------------------------------------
+// Service environment variables
+// -------------------------------------------------------------------------
+
+export interface ServiceEnvVar {
+  id: string;
+  service_id: string;
+  key: string;
+  /** "********" for secrets unless revealed */
+  value: string;
+  is_secret: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceEnvImportResult {
+  created: number;
+  updated: number;
+  skipped: string[];
+}

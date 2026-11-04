@@ -76,6 +76,7 @@ export default [
       route("deployments", "routes/services/$id/deployments.tsx"),
       route("build", "routes/services/$id/build.tsx"),
       route("containers", "routes/services/$id/containers.tsx"),
+      route("environment", "routes/services/$id/environment.tsx"),
       route("network", "routes/services/$id/network.tsx"),
       route("logs", "routes/services/$id/logs.tsx"),
       route("stats", "routes/services/$id/stats.tsx"),

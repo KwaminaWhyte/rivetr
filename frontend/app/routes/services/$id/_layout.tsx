@@ -65,6 +65,7 @@ const tabs = [
   { id: "deployments", label: "Deployments", path: "/deployments" },
   { id: "build", label: "Build & Hooks", path: "/build" },
   { id: "containers", label: "Containers", path: "/containers" },
+  { id: "environment", label: "Environment", path: "/environment" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "stats", label: "Stats", path: "/stats" },

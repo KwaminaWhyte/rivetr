@@ -20,6 +20,8 @@ import type {
   UpdateServiceDeployConfigRequest,
   ServiceContainer,
   ServiceContainerLogLine,
+  ServiceEnvVar,
+  ServiceEnvImportResult,
 } from "@/types/api";
 
 /** Options for listing services */
@@ -163,6 +165,52 @@ export const servicesApi = {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}/api/services/${id}/containers/${encodeURIComponent(container)}/terminal?token=${encodeURIComponent(token)}`;
   },
+
+  /** Environment variables of a service (secrets masked unless revealed) */
+  getServiceEnvVars: (id: string, reveal = false, token?: string) =>
+    apiRequest<ServiceEnvVar[]>(`/services/${id}/env-vars?reveal=${reveal}`, {}, token),
+
+  createServiceEnvVar: (
+    id: string,
+    data: { key: string; value: string; is_secret: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvVar>(
+      `/services/${id}/env-vars`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  updateServiceEnvVar: (
+    id: string,
+    key: string,
+    data: { value?: string; is_secret?: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvVar>(
+      `/services/${id}/env-vars/${encodeURIComponent(key)}`,
+      { method: "PUT", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteServiceEnvVar: (id: string, key: string, token?: string) =>
+    apiRequest<void>(
+      `/services/${id}/env-vars/${encodeURIComponent(key)}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  /** Import KEY=VALUE lines from a pasted .env file */
+  importServiceEnvVars: (
+    id: string,
+    data: { content: string; overwrite: boolean; is_secret: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvImportResult>(
+      `/services/${id}/env-import`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
 
   /** Build source, images, registry and hooks of a service */
   getServiceDeployConfig: (id: string, token?: string) =>

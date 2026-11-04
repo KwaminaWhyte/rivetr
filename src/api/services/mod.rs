@@ -6,6 +6,7 @@ mod control;
 mod crud;
 mod deploy_config;
 mod deployments;
+mod env_vars;
 mod export_db;
 mod import_db;
 
@@ -25,6 +26,10 @@ pub use deploy_config::{get_deploy_config, update_deploy_config};
 pub use deployments::{
     deploy_service, get_service_deployment, get_service_deployment_logs, list_service_deployments,
     rollback_service_deployment, service_deployment_logs_ws,
+};
+pub use env_vars::{
+    create_service_env_var, delete_service_env_var, import_service_env_vars, list_service_env_vars,
+    update_service_env_var,
 };
 pub use export_db::export_service_db;
 pub use import_db::import_service_db;

@@ -25,7 +25,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::services::compose::{
-    get_compose_dir, render_service_compose_with, write_service_compose, RenderError,
+    get_compose_dir, render_service_compose_with, write_service_compose, write_service_env_file,
+    RenderError, ENV_FILE_NAME,
 };
 use crate::db::{
     service_deployment_status as status, Service, ServiceDeployConfig, ServiceDeployment,
@@ -499,22 +500,38 @@ async fn pipeline_inner(
     let compose_file = compose_dir.join("docker-compose.yml");
     let previous_compose = tokio::fs::read_to_string(&compose_file).await.ok();
     let pins = rollback_pins.clone().unwrap_or_default();
-    let content = render_service_compose_with(&env.db, service, Some(&pins))
-        .await
-        .map_err(|e| match e {
-            RenderError::Substitution(e) => anyhow::anyhow!("Compose variables: {}", e),
-            other => anyhow::anyhow!("{}", other),
-        })?;
+    let content =
+        render_service_compose_with(&env.db, service, Some(&pins), env.encryption_key.as_ref())
+            .await
+            .map_err(|e| match e {
+                RenderError::Substitution(e) => anyhow::anyhow!("Compose variables: {}", e),
+                other => anyhow::anyhow!("{}", other),
+            })?;
+    let env_file = compose_dir.join(ENV_FILE_NAME);
+    let previous_env = tokio::fs::read(&env_file).await.ok();
     write_service_compose(&env.data_dir, service, &content)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    write_service_env_file(&env.db, &env.data_dir, service, env.encryption_key.as_ref())
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let restore = |reason: String| {
         let compose_file = compose_file.clone();
         let previous = previous_compose.clone();
+        let env_file = env_file.clone();
+        let previous_env = previous_env.clone();
         async move {
             if let Some(prev) = previous {
                 let _ = tokio::fs::write(&compose_file, prev).await;
+            }
+            match previous_env {
+                Some(prev) => {
+                    let _ = tokio::fs::write(&env_file, prev).await;
+                }
+                None => {
+                    let _ = tokio::fs::remove_file(&env_file).await;
+                }
             }
             anyhow::anyhow!(reason)
         }

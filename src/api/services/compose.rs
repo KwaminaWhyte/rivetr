@@ -738,8 +738,9 @@ impl std::fmt::Display for RenderError {
 pub async fn render_service_compose(
     db: &sqlx::SqlitePool,
     service: &crate::db::Service,
+    key: Option<&[u8; 32]>,
 ) -> Result<String, RenderError> {
-    render_service_compose_with(db, service, None).await
+    render_service_compose_with(db, service, None, key).await
 }
 
 /// Like [`render_service_compose`], with explicit image pins. `None` uses the
@@ -749,6 +750,7 @@ pub async fn render_service_compose_with(
     db: &sqlx::SqlitePool,
     service: &crate::db::Service,
     pins: Option<&std::collections::BTreeMap<String, String>>,
+    key: Option<&[u8; 32]>,
 ) -> Result<String, RenderError> {
     let gen_vars_rows: Vec<ServiceGeneratedVar> =
         sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
@@ -756,10 +758,12 @@ pub async fn render_service_compose_with(
             .fetch_all(db)
             .await
             .unwrap_or_default();
-    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
+    // Service env vars count as set for `${VAR:?}` checks; generated vars win
+    // on a name clash.
+    let env_vars = load_service_env(db, &service.id, key).await;
+    let mut existing_vars: std::collections::HashMap<String, String> =
+        env_vars.iter().cloned().collect();
+    existing_vars.extend(gen_vars_rows.into_iter().map(|r| (r.key, r.value)));
 
     let substituted = substitute_magic_vars(
         &service.compose_content,
@@ -798,24 +802,18 @@ pub async fn render_service_compose_with(
         substituted
     };
 
-    let stored_pins;
-    let pins = match pins {
-        Some(p) => p,
-        None => {
-            let json: Option<Option<String>> = sqlx::query_scalar(
-                "SELECT pinned_images FROM service_deploy_configs WHERE service_id = ?",
-            )
-            .bind(&service.id)
-            .fetch_optional(db)
-            .await
-            .unwrap_or_default();
-            stored_pins = json
-                .flatten()
-                .and_then(|j| serde_json::from_str(&j).ok())
-                .unwrap_or_default();
-            &stored_pins
-        }
-    };
+    let cfg_row: Option<(Option<String>, i32)> = sqlx::query_as(
+        "SELECT pinned_images, inject_env_file FROM service_deploy_configs WHERE service_id = ?",
+    )
+    .bind(&service.id)
+    .fetch_optional(db)
+    .await
+    .unwrap_or_default();
+    let (stored_json, inject_env) = cfg_row.unwrap_or((None, 0));
+    let stored_pins: std::collections::BTreeMap<String, String> = stored_json
+        .and_then(|j| serde_json::from_str(&j).ok())
+        .unwrap_or_default();
+    let pins = pins.unwrap_or(&stored_pins);
     let content = if pins.is_empty() {
         content
     } else {
@@ -823,6 +821,14 @@ pub async fn render_service_compose_with(
             tracing::warn!("Failed to pin images for service {}: {}", service.name, e);
             content
         })
+    };
+    let content = if inject_env != 0 && !env_vars.is_empty() {
+        inject_env_file_ref(&content, ENV_FILE_NAME).unwrap_or_else(|e| {
+            tracing::warn!("Failed to add env_file to service {}: {}", service.name, e);
+            content
+        })
+    } else {
+        content
     };
 
     let content = if !raw_mode && (service.cpu_limit.is_some() || service.memory_limit.is_some()) {
@@ -871,9 +877,268 @@ pub async fn render_and_write_service_compose(
     db: &sqlx::SqlitePool,
     data_dir: &Path,
     service: &crate::db::Service,
+    key: Option<&[u8; 32]>,
 ) -> Result<PathBuf, RenderError> {
-    let content = render_service_compose(db, service).await?;
-    write_service_compose(data_dir, service, &content).await
+    let content = render_service_compose(db, service, key).await?;
+    let dir = write_service_compose(data_dir, service, &content).await?;
+    write_service_env_file(db, data_dir, service, key).await?;
+    Ok(dir)
+}
+
+/// Name of the Rivetr-managed env file in a service's compose directory.
+pub const ENV_FILE_NAME: &str = ".env";
+const ENV_FILE_HEADER: &str = "# Managed by Rivetr: edit these in the service's Environment tab.";
+
+/// Decrypted `(key, value)` pairs of a service's env vars, sorted by key.
+pub async fn load_service_env(
+    db: &sqlx::SqlitePool,
+    service_id: &str,
+    key: Option<&[u8; 32]>,
+) -> Vec<(String, String)> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT key, value FROM service_env_vars WHERE service_id = ? ORDER BY key")
+            .bind(service_id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+    rows.into_iter()
+        .map(|(k, v)| {
+            let plain = crate::crypto::decrypt_if_encrypted(&v, key).unwrap_or(v);
+            (k, plain)
+        })
+        .collect()
+}
+
+/// Quote a value for compose's dotenv parser: single quotes keep it literal;
+/// values with a `'` or a newline use double quotes with `\`, `\"`, `\$`
+/// and `\n` escapes.
+pub fn quote_env_value(value: &str) -> String {
+    if !value.contains('\'') && !value.contains('\n') && !value.contains('\r') {
+        return format!("'{}'", value);
+    }
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '$' => out.push_str("\\$"),
+            '\n' => out.push_str("\\n"),
+            '\r' => {}
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Contents of the `.env` file for a set of variables.
+pub fn format_env_file(vars: &[(String, String)]) -> String {
+    let mut out = String::from(ENV_FILE_HEADER);
+    out.push('\n');
+    for (k, v) in vars {
+        out.push_str(k);
+        out.push('=');
+        out.push_str(&quote_env_value(v));
+        out.push('\n');
+    }
+    out
+}
+
+/// Parse a pasted `.env` file into `(key, value)` pairs. Handles comments,
+/// `export KEY=...`, single quotes (literal) and double quotes (escapes).
+pub fn parse_env_file(content: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let k = k.trim();
+        if k.is_empty() || !k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let v = v.trim();
+        let value = if let Some(inner) = v.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')) {
+            inner.to_string()
+        } else if let Some(inner) = v.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+            let mut s = String::new();
+            let mut chars = inner.chars();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    match chars.next() {
+                        Some('n') => s.push('\n'),
+                        Some('r') => s.push('\r'),
+                        Some('t') => s.push('\t'),
+                        Some(o) => s.push(o),
+                        None => s.push('\\'),
+                    }
+                } else {
+                    s.push(c);
+                }
+            }
+            s
+        } else {
+            // Unquoted: an inline comment starts at " #".
+            match v.find(" #") {
+                Some(i) => v[..i].trim_end().to_string(),
+                None => v.to_string(),
+            }
+        };
+        out.push((k.to_string(), value));
+    }
+    out
+}
+
+/// Write (or remove) the Rivetr-managed `.env` next to the compose file.
+/// A `.env` Rivetr did not write is never overwritten or deleted.
+pub async fn write_service_env_file(
+    db: &sqlx::SqlitePool,
+    data_dir: &Path,
+    service: &crate::db::Service,
+    key: Option<&[u8; 32]>,
+) -> Result<(), RenderError> {
+    let path = get_compose_dir(data_dir, &service.name).join(ENV_FILE_NAME);
+    let vars = load_service_env(db, &service.id, key).await;
+    let existing = tokio::fs::read_to_string(&path).await.ok();
+    let ours = existing
+        .as_deref()
+        .map(|c| c.starts_with(ENV_FILE_HEADER))
+        .unwrap_or(true);
+    if !ours {
+        if !vars.is_empty() {
+            tracing::warn!(
+                "Not writing {}: the file was not created by Rivetr",
+                path.display()
+            );
+        }
+        return Ok(());
+    }
+    if vars.is_empty() {
+        if existing.is_some() {
+            let _ = tokio::fs::remove_file(&path).await;
+        }
+        return Ok(());
+    }
+    let content = format_env_file(&vars);
+    // Write to a 0600 temp file and rename so the secrets are never world-readable.
+    let tmp = path.with_extension("rivetr-tmp");
+    {
+        let mut opts = tokio::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        let mut f = opts
+            .open(&tmp)
+            .await
+            .map_err(|e| RenderError::Write(e.to_string()))?;
+        use tokio::io::AsyncWriteExt;
+        f.write_all(content.as_bytes())
+            .await
+            .map_err(|e| RenderError::Write(e.to_string()))?;
+    }
+    tokio::fs::rename(&tmp, &path)
+        .await
+        .map_err(|e| RenderError::Write(e.to_string()))?;
+    Ok(())
+}
+
+/// Add `env_file` to every compose service so its containers get the
+/// Rivetr-managed variables. An existing env_file (string or list) is kept and
+/// the Rivetr file is appended once.
+pub fn inject_env_file_ref(content: &str, file: &str) -> Result<String, String> {
+    let mut yaml: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Invalid YAML: {}", e))?;
+    let Some(services) = yaml.get_mut("services").and_then(|s| s.as_mapping_mut()) else {
+        return Ok(content.to_string());
+    };
+    let file_val = serde_yaml::Value::String(file.to_string());
+    let key = serde_yaml::Value::String("env_file".to_string());
+    for (_, def) in services.iter_mut() {
+        let Some(def) = def.as_mapping_mut() else {
+            continue;
+        };
+        let entry = def
+            .entry(key.clone())
+            .or_insert_with(|| serde_yaml::Value::Sequence(vec![]));
+        if let serde_yaml::Value::String(one) = entry.clone() {
+            *entry = serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(one)]);
+        }
+        if let Some(seq) = entry.as_sequence_mut() {
+            let present = seq
+                .iter()
+                .any(|v| v == &file_val || v.get("path").and_then(|p| p.as_str()) == Some(file));
+            if !present {
+                seq.push(file_val.clone());
+            }
+        }
+    }
+    serde_yaml::to_string(&yaml).map_err(|e| format!("Failed to serialize YAML: {}", e))
+}
+
+#[cfg(test)]
+mod env_file_tests {
+    use super::*;
+
+    #[test]
+    fn env_values_round_trip_through_quoting() {
+        let vars = vec![
+            ("A".to_string(), "plain $HOME ${X} \"q\" # x".to_string()),
+            ("B".to_string(), "it's \"dq\"\nline2 \\ $HOME".to_string()),
+            ("C".to_string(), String::new()),
+        ];
+        let file = format_env_file(&vars);
+        assert!(file.starts_with(ENV_FILE_HEADER));
+        assert!(file.contains("A='plain $HOME ${X} \"q\" # x'"));
+        assert!(file.contains("B=\"it's \\\"dq\\\"\\nline2 \\\\ \\$HOME\""));
+        assert_eq!(parse_env_file(&file), vars);
+    }
+
+    #[test]
+    fn parses_pasted_env_files() {
+        let parsed = parse_env_file(
+            "# comment\nexport DATABASE_URL=postgres://u:p@db/x\nEMPTY=\nPORT=3000 # inline\nbad line\n1X=y\n",
+        );
+        assert_eq!(
+            parsed,
+            vec![
+                (
+                    "DATABASE_URL".to_string(),
+                    "postgres://u:p@db/x".to_string()
+                ),
+                ("EMPTY".to_string(), String::new()),
+                ("PORT".to_string(), "3000".to_string()),
+                ("1X".to_string(), "y".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn env_file_is_added_once_next_to_existing_files() {
+        let compose = "services:\n  api:\n    image: a\n    env_file:\n    - /etc/megasign/megasign.env\n  web:\n    image: a\n    env_file: other.env\n  db:\n    image: b\n";
+        let out = inject_env_file_ref(compose, ".env").unwrap();
+        let again = inject_env_file_ref(&out, ".env").unwrap();
+        let y: serde_yaml::Value = serde_yaml::from_str(&again).unwrap();
+        assert_eq!(
+            y["services"]["api"]["env_file"][0],
+            "/etc/megasign/megasign.env"
+        );
+        assert_eq!(y["services"]["api"]["env_file"][1], ".env");
+        assert_eq!(
+            y["services"]["api"]["env_file"]
+                .as_sequence()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(y["services"]["web"]["env_file"][0], "other.env");
+        assert_eq!(y["services"]["web"]["env_file"][1], ".env");
+        assert_eq!(y["services"]["db"]["env_file"][0], ".env");
+    }
 }
 
 /// Replace the `image:` of each listed compose service with a pinned
@@ -914,14 +1179,23 @@ mod pin_tests {
     fn pins_replace_only_listed_images() {
         let compose = "services:\n  web:\n    image: localhost:5000/app:latest\n  db:\n    image: postgres:18\n  local:\n    build: .\n";
         let mut pins = std::collections::BTreeMap::new();
-        pins.insert("web".to_string(), "localhost:5000/app@sha256:aaa".to_string());
+        pins.insert(
+            "web".to_string(),
+            "localhost:5000/app@sha256:aaa".to_string(),
+        );
         pins.insert("local".to_string(), "sha256:bbb".to_string());
         pins.insert("gone".to_string(), "x@sha256:ccc".to_string());
         let out = apply_image_pins(compose, &pins).unwrap();
         let y: serde_yaml::Value = serde_yaml::from_str(&out).unwrap();
-        assert_eq!(y["services"]["web"]["image"], "localhost:5000/app@sha256:aaa");
+        assert_eq!(
+            y["services"]["web"]["image"],
+            "localhost:5000/app@sha256:aaa"
+        );
         assert_eq!(y["services"]["db"]["image"], "postgres:18");
         assert!(y["services"]["local"].get("image").is_none());
-        assert_eq!(apply_image_pins(compose, &Default::default()).unwrap(), compose);
+        assert_eq!(
+            apply_image_pins(compose, &Default::default()).unwrap(),
+            compose
+        );
     }
 }

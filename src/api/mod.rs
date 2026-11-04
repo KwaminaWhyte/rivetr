@@ -761,6 +761,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/{id}/restart", post(services::restart_service))
         .route("/services/{id}/deploy", post(services::deploy_service))
         .route(
+            "/services/{id}/env-vars",
+            get(services::list_service_env_vars).post(services::create_service_env_var),
+        )
+        .route(
+            "/services/{id}/env-import",
+            post(services::import_service_env_vars),
+        )
+        .route(
+            "/services/{id}/env-vars/{key}",
+            put(services::update_service_env_var).delete(services::delete_service_env_var),
+        )
+        .route(
             "/services/{id}/containers",
             get(services::list_service_containers),
         )

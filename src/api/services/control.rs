@@ -25,6 +25,16 @@ use super::compose::{
     run_compose_command, run_compose_command_streaming, substitute_magic_vars, RenderError,
 };
 
+/// Key for decrypting service env vars when the compose file is written.
+fn encryption_key(state: &AppState) -> Option<[u8; 32]> {
+    state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|s| crate::crypto::derive_key(s))
+}
+
 /// Service log entry
 #[derive(serde::Serialize)]
 pub struct ServiceLogEntry {
@@ -91,7 +101,14 @@ pub async fn start_service(
 
     // Render the compose file from the database content (magic variables,
     // public port binding, resource limits, network injection) and write it.
-    match render_and_write_service_compose(&state.db, data_dir, &service).await {
+    match render_and_write_service_compose(
+        &state.db,
+        data_dir,
+        &service,
+        encryption_key(&state).as_ref(),
+    )
+    .await
+    {
         Ok(_) => {}
         Err(RenderError::Substitution(e)) => {
             tracing::error!(
@@ -386,7 +403,14 @@ pub async fn restart_service(
 
     // Render the compose file from the database content (magic variables,
     // public port binding, resource limits, network injection) and write it.
-    match render_and_write_service_compose(&state.db, data_dir, &service).await {
+    match render_and_write_service_compose(
+        &state.db,
+        data_dir,
+        &service,
+        encryption_key(&state).as_ref(),
+    )
+    .await
+    {
         Ok(_) => {}
         Err(RenderError::Substitution(e)) => {
             tracing::error!(
@@ -554,12 +578,17 @@ pub async fn restart_service_internal(state: &Arc<AppState>, id: &str) -> Result
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    render_and_write_service_compose(&state.db, data_dir, &service)
-        .await
-        .map_err(|e| match e {
-            RenderError::Substitution(e) => format!("Magic var substitution failed: {}", e),
-            other => other.to_string(),
-        })?;
+    render_and_write_service_compose(
+        &state.db,
+        data_dir,
+        &service,
+        encryption_key(state).as_ref(),
+    )
+    .await
+    .map_err(|e| match e {
+        RenderError::Substitution(e) => format!("Magic var substitution failed: {}", e),
+        other => other.to_string(),
+    })?;
 
     // Stop (ignore errors — containers may already be down)
     let _ = run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await;
