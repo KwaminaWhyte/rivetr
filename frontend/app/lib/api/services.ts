@@ -16,6 +16,8 @@ import type {
   DeployTemplateResponse,
   ServiceDeployment,
   ServiceDeploymentLog,
+  ServiceDeployConfig,
+  UpdateServiceDeployConfigRequest,
 } from "@/types/api";
 
 /** Options for listing services */
@@ -123,6 +125,22 @@ export const servicesApi = {
     apiRequest<ServiceDeploymentLog[]>(
       `/services/${id}/deployments/${deploymentId}/logs`,
       {},
+      token
+    ),
+
+  /** Build source, images, registry and hooks of a service */
+  getServiceDeployConfig: (id: string, token?: string) =>
+    apiRequest<ServiceDeployConfig>(`/services/${id}/deploy-config`, {}, token),
+
+  /** Update the deploy config (omitted fields keep their value) */
+  updateServiceDeployConfig: (
+    id: string,
+    data: UpdateServiceDeployConfigRequest,
+    token?: string
+  ) =>
+    apiRequest<ServiceDeployConfig>(
+      `/services/${id}/deploy-config`,
+      { method: "PUT", body: JSON.stringify(data) },
       token
     ),
 

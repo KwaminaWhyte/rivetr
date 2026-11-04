@@ -1661,6 +1661,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 121: per-service deploy configuration (build source, hooks, pins)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/121_service_deploy_configs.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

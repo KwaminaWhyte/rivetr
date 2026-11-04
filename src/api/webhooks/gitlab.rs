@@ -179,6 +179,19 @@ async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
         return Ok(StatusCode::OK);
     }
 
+    // Compose services built from this repo and branch (auto deploy on).
+    crate::engine::service_deploy::queue_push_deploys(
+        &state,
+        &[
+            payload.project.git_http_url.as_str(),
+            payload.project.git_ssh_url.as_str(),
+        ],
+        branch,
+        payload.commits.last().map(|c| c.id.clone()),
+        payload.commits.last().map(|c| c.message.clone()),
+    )
+    .await;
+
     let apps = sqlx::query_as::<_, App>(
         "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
     )

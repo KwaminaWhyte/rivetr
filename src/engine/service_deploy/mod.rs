@@ -9,6 +9,7 @@
 //! All external commands go through [`runner::CommandRunner`] so the pipeline
 //! is tested with a recording mock instead of a Docker daemon.
 
+pub mod build;
 pub mod images;
 pub mod runner;
 
@@ -26,7 +27,8 @@ use crate::api::services::compose::{
     get_compose_dir, render_service_compose, write_service_compose, RenderError,
 };
 use crate::db::{
-    service_deployment_status as status, Service, ServiceDeployment, ServiceImageMap, ServiceStatus,
+    service_deployment_status as status, Service, ServiceDeployConfig, ServiceDeployment,
+    ServiceImageMap, ServiceStatus,
 };
 use crate::proxy::RouteTable;
 use crate::DbPool;
@@ -297,7 +299,7 @@ pub async fn run_deployment(env: &DeployEnv, deployment_id: &str) -> Result<()> 
             (status::SUCCEEDED, None)
         }
         Err(e) => {
-            let msg = format!("{:#}", e);
+            let msg = log.redact(&format!("{:#}", e));
             log.error(&format!("Deployment failed: {}", msg)).await;
             (status::FAILED, Some(msg))
         }
@@ -365,6 +367,16 @@ fn short_digest(d: &str) -> String {
     format!("sha256:{}", &hex[..hex.len().min(12)])
 }
 
+/// Load a service's deploy config; services without one deploy pull-only.
+pub async fn load_deploy_config(db: &DbPool, service_id: &str) -> Result<ServiceDeployConfig> {
+    let cfg: Option<ServiceDeployConfig> =
+        sqlx::query_as("SELECT * FROM service_deploy_configs WHERE service_id = ?")
+            .bind(service_id)
+            .fetch_optional(db)
+            .await?;
+    Ok(cfg.unwrap_or_else(|| ServiceDeployConfig::default_for(service_id)))
+}
+
 async fn pipeline(
     env: &DeployEnv,
     service: &Service,
@@ -372,7 +384,24 @@ async fn pipeline(
     log: &DbLog,
     progress: &mut Progress,
 ) -> Result<()> {
+    let mut cleanup: Option<PathBuf> = None;
+    let result = pipeline_inner(env, service, dep, log, progress, &mut cleanup).await;
+    if let Some(dir) = cleanup {
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+    result
+}
+
+async fn pipeline_inner(
+    env: &DeployEnv,
+    service: &Service,
+    dep: &ServiceDeployment,
+    log: &DbLog,
+    progress: &mut Progress,
+    cleanup: &mut Option<PathBuf>,
+) -> Result<()> {
     let runner = env.runner.as_ref();
+    let cfg = load_deploy_config(&env.db, &service.id).await?;
     let compose_dir = get_compose_dir(&env.data_dir, &service.name);
     let project = service.compose_project_name();
 
@@ -401,7 +430,30 @@ async fn pipeline(
         }
     }
 
-    // 2. Render and write the compose file, keeping the previous one so a
+    // 2. Build from source when configured.
+    let mut built_repos = std::collections::BTreeSet::new();
+    if cfg.builds_from_source() {
+        set_status(env, &dep.id, status::BUILDING).await;
+        let source = build::fetch_source(env, &cfg, &service.name, &dep.id, log).await?;
+        *cleanup = source.cleanup.clone();
+        progress.image_tag = Some(source.tag.clone());
+        if source.commit_sha.is_some() {
+            progress.commit_sha = source.commit_sha.clone();
+            progress.commit_message = source.commit_message.clone();
+        }
+        let password = cfg.registry_password.as_deref().map(|p| {
+            crate::crypto::decrypt_if_encrypted(p, env.encryption_key.as_ref())
+                .unwrap_or_else(|_| p.to_string())
+        });
+        built_repos =
+            build::build_and_push(runner, &cfg, password.as_deref(), &source, log).await?;
+        set_status(env, &dep.id, status::DEPLOYING).await;
+    } else {
+        log.info("No build source configured; deploying by pulling the images")
+            .await;
+    }
+
+    // 3. Render and write the compose file, keeping the previous one so a
     //    failure before `up` leaves the stack exactly as it was.
     let compose_file = compose_dir.join("docker-compose.yml");
     let previous_compose = tokio::fs::read_to_string(&compose_file).await.ok();
@@ -426,20 +478,32 @@ async fn pipeline(
         }
     };
 
-    // 3. Pull. Images that only exist locally (built by hand or by Rivetr
+    // 4. Pull. Images that only exist locally (built by hand or by Rivetr
     //    without a registry) cannot be pulled; `up` then uses the local copy.
-    log.info("Pulling images (docker compose pull)").await;
-    let pull = run_logged(
-        runner,
-        compose_cmd(&compose_dir, &project, &["pull", "--ignore-pull-failures"]).streamed(),
-        log,
-    )
-    .await?;
-    if !pull.success {
-        return Err(restore(format!("docker compose pull failed: {}", pull.error_tail())).await);
+    //    Images this deployment just built are not pulled at all.
+    let pull_targets = build::services_to_pull(&content, &built_repos);
+    if matches!(&pull_targets, Some(list) if list.is_empty()) {
+        log.info("Nothing to pull: every image was just built")
+            .await;
+    } else {
+        let mut args: Vec<String> = vec!["pull".into(), "--ignore-pull-failures".into()];
+        args.extend(pull_targets.unwrap_or_default());
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        log.info("Pulling images (docker compose pull)").await;
+        let pull = run_logged(
+            runner,
+            compose_cmd(&compose_dir, &project, &arg_refs).streamed(),
+            log,
+        )
+        .await?;
+        if !pull.success {
+            return Err(
+                restore(format!("docker compose pull failed: {}", pull.error_tail())).await,
+            );
+        }
     }
 
-    // 4. Recreate what changed.
+    // 5. Recreate what changed.
     log.info("Recreating changed containers (docker compose up -d)")
         .await;
     let up = run_logged(
@@ -461,7 +525,7 @@ async fn pipeline(
         anyhow::bail!(msg);
     }
 
-    // 5. What runs now.
+    // 6. What runs now.
     match capture_images(runner, &compose_dir, &project).await {
         Ok(after) => {
             if let Some(before) = &progress.images_before {
@@ -512,4 +576,66 @@ async fn run_logged(
 ) -> Result<CommandOutput> {
     log.info(&format!("$ {}", spec.display())).await;
     runner.run(&spec, Some(log)).await
+}
+
+/// Services with a git source and auto deploy on whose repo matches one of
+/// `repo_urls` and whose branch is `branch`.
+pub async fn services_for_push(db: &DbPool, repo_urls: &[&str], branch: &str) -> Vec<String> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT service_id, git_url FROM service_deploy_configs \
+         WHERE source_type = 'git' AND auto_deploy = 1 AND branch = ?",
+    )
+    .bind(branch)
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+    let wanted: Vec<String> = repo_urls
+        .iter()
+        .filter(|u| !u.is_empty())
+        .map(|u| build::normalize_git_url(u))
+        .collect();
+    rows.into_iter()
+        .filter(|(_, url)| {
+            url.as_deref()
+                .map(|u| wanted.contains(&build::normalize_git_url(u)))
+                .unwrap_or(false)
+        })
+        .map(|(id, _)| id)
+        .collect()
+}
+
+/// Queue a webhook deployment for every compose service built from the pushed
+/// repo and branch. Returns how many were queued.
+pub async fn queue_push_deploys(
+    state: &crate::AppState,
+    repo_urls: &[&str],
+    branch: &str,
+    commit_sha: Option<String>,
+    commit_message: Option<String>,
+) -> usize {
+    let ids = services_for_push(&state.db, repo_urls, branch).await;
+    if ids.is_empty() {
+        return 0;
+    }
+    let env = Arc::new(DeployEnv::from_state(state));
+    let mut queued = 0;
+    for id in ids {
+        let req = DeployRequest {
+            trigger: crate::db::service_deployment_trigger::WEBHOOK.to_string(),
+            user_name: Some("push webhook".to_string()),
+            commit_sha: commit_sha.clone(),
+            commit_message: commit_message.clone(),
+            ..Default::default()
+        };
+        match queue_deployment(env.clone(), &id, req).await {
+            Ok(dep) => {
+                tracing::info!(service = %id, deployment = %dep.id, "Queued service deployment from push");
+                queued += 1;
+            }
+            Err(e) => {
+                tracing::warn!(service = %id, "Push did not start a service deployment: {}", e)
+            }
+        }
+    }
+    queued
 }

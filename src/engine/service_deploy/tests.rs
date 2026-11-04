@@ -216,3 +216,205 @@ fn log_redacts_registered_secrets() {
         );
     });
 }
+
+pub(super) async fn set_config(h: &Harness, sql_set: &str) {
+    sqlx::query("INSERT OR IGNORE INTO service_deploy_configs (service_id) VALUES (?)")
+        .bind(&h.service_id)
+        .execute(&h.env.db)
+        .await
+        .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "UPDATE service_deploy_configs SET {} WHERE service_id = ?",
+        sql_set
+    )))
+    .bind(&h.service_id)
+    .execute(&h.env.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn git_source_builds_tags_pushes_then_deploys() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    set_config(
+        &h,
+        "source_type = 'git', git_url = 'https://github.com/acme/shop.git', branch = 'main', \
+         images = '[{\"image\":\"localhost:5000/app\",\"dockerfile\":\"infra/Dockerfile\"}]'",
+    )
+    .await;
+    h.runner.on(
+        "git rev-parse HEAD",
+        CommandOutput::ok("0123456789abcdef0123456789abcdef01234567\n"),
+    );
+    h.runner
+        .on("git log -1", CommandOutput::ok("Fix the cart\n"));
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded", "{:?}", dep.error_message);
+    assert_eq!(dep.image_tag.as_deref(), Some("0123456"));
+    assert_eq!(dep.commit_message.as_deref(), Some("Fix the cart"));
+
+    let clone = h
+        .runner
+        .position("git clone --depth 1 --branch main -- https://github.com/acme/shop.git")
+        .unwrap();
+    let build = h
+        .runner
+        .position("docker build --progress=plain -f")
+        .unwrap();
+    let push_tag = h
+        .runner
+        .position("docker push localhost:5000/app:0123456")
+        .unwrap();
+    let push_latest = h
+        .runner
+        .position("docker push localhost:5000/app:latest")
+        .unwrap();
+    let up = h.runner.position(" up -d").unwrap();
+    assert!(clone < build && build < push_tag && push_tag < push_latest && push_latest < up);
+    let cmds = h.runner.commands();
+    let build_cmd = &cmds[build];
+    assert!(build_cmd.contains("-t localhost:5000/app:0123456 -t localhost:5000/app:latest"));
+    assert!(build_cmd.contains("infra/Dockerfile"));
+    // The freshly built web image is not pulled; postgres still is.
+    let pull = cmds.iter().find(|c| c.contains(" pull")).unwrap();
+    assert!(pull.ends_with("pull --ignore-pull-failures db"), "{}", pull);
+    // The clone is removed after the deployment.
+    assert!(!h
+        .env
+        .data_dir
+        .join("service-builds/shop")
+        .join(&dep.id)
+        .exists());
+}
+
+#[tokio::test]
+async fn failed_build_does_not_touch_containers() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    set_config(
+        &h,
+        "source_type = 'git', git_url = 'https://github.com/acme/shop.git', \
+         images = '[{\"image\":\"localhost:5000/app\"}]'",
+    )
+    .await;
+    h.runner
+        .on("git rev-parse HEAD", CommandOutput::ok("abcdef0123\n"));
+    h.runner.on(
+        "docker build",
+        CommandOutput::failed(1, "ERROR: failed to solve"),
+    );
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "failed");
+    assert!(dep.error_message.unwrap().contains("failed to solve"));
+    assert!(!h.runner.ran("docker push"));
+    assert!(!h.runner.ran(" up -d"));
+    assert!(!h.runner.ran(" pull"));
+}
+
+#[tokio::test]
+async fn path_source_uses_revision_file_and_build_arg_tag() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    let src = h.env.data_dir.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    let rev = h.env.data_dir.join("REVISION");
+    std::fs::write(&rev, "efb7da8\n").unwrap();
+    set_config(
+        &h,
+        &format!(
+            "source_type = 'path', source_path = '{}', revision_file = '{}', images = '{}'",
+            src.display(),
+            rev.display(),
+            r#"[{"image":"localhost:5000/app","dockerfile":"infra/Dockerfile"},{"image":"localhost:5000/worker","dockerfile":"/opt/megasign/Dockerfile.worker","context":"/opt/megasign","build_args":{"BASE":"localhost:5000/app:${TAG}"}}]"#
+        ),
+    )
+    .await;
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded", "{:?}", dep.error_message);
+    assert_eq!(dep.image_tag.as_deref(), Some("efb7da8"));
+    let cmds = h.runner.commands();
+    let builds: Vec<&String> = cmds
+        .iter()
+        .filter(|c| c.starts_with("docker build"))
+        .collect();
+    assert_eq!(builds.len(), 2);
+    assert!(builds[0].contains("-t localhost:5000/app:efb7da8"));
+    assert!(builds[1].contains("--build-arg BASE=localhost:5000/app:efb7da8 /opt/megasign"));
+    assert!(!h.runner.ran("git clone"));
+    // The source directory on the server is never deleted.
+    assert!(src.exists());
+}
+
+#[tokio::test]
+async fn registry_login_uses_a_private_docker_config_and_masks_the_password() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    let src = h.env.data_dir.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    set_config(
+        &h,
+        &format!(
+            "source_type = 'path', source_path = '{}', registry_username = 'bot', \
+             registry_password = 'hunter2-secret', images = '[{{\"image\":\"ghcr.io/acme/app\"}}]'",
+            src.display()
+        ),
+    )
+    .await;
+    h.runner.on(
+        "docker login",
+        CommandOutput::failed(1, "denied for hunter2-secret"),
+    );
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "failed");
+    let login = h
+        .runner
+        .calls
+        .lock()
+        .iter()
+        .find(|c| {
+            c.display()
+                .contains("docker login ghcr.io -u bot --password-stdin")
+        })
+        .cloned()
+        .expect("login ran");
+    assert_eq!(login.stdin.as_deref(), Some("hunter2-secret"));
+    assert!(login.env.iter().any(|(k, _)| k == "DOCKER_CONFIG"));
+    let lines = logs(&h, &dep).await.join("\n");
+    assert!(!lines.contains("hunter2-secret"), "{}", lines);
+    assert!(!dep
+        .error_message
+        .unwrap_or_default()
+        .contains("hunter2-secret"));
+}
+
+#[tokio::test]
+async fn push_webhook_matches_repo_and_branch() {
+    let h = harness().await;
+    set_config(
+        &h,
+        "source_type = 'git', git_url = 'https://github.com/Acme/Shop.git', branch = 'main', \
+         auto_deploy = 1, images = '[{\"image\":\"a\"}]'",
+    )
+    .await;
+    let urls = [
+        "https://github.com/acme/shop.git",
+        "git@github.com:acme/shop.git",
+    ];
+    assert_eq!(
+        services_for_push(&h.env.db, &urls, "main").await,
+        vec![h.service_id.clone()]
+    );
+    assert!(services_for_push(&h.env.db, &urls, "dev").await.is_empty());
+    assert!(
+        services_for_push(&h.env.db, &["https://github.com/acme/other"], "main")
+            .await
+            .is_empty()
+    );
+    set_config(&h, "auto_deploy = 0").await;
+    assert!(services_for_push(&h.env.db, &urls, "main").await.is_empty());
+}

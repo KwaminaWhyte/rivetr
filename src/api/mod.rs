@@ -757,6 +757,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/{id}/restart", post(services::restart_service))
         .route("/services/{id}/deploy", post(services::deploy_service))
         .route(
+            "/services/{id}/deploy-config",
+            get(services::get_deploy_config).put(services::update_deploy_config),
+        )
+        .route(
             "/services/{id}/deployments",
             get(services::list_service_deployments),
         )

@@ -260,3 +260,66 @@ export const ACTIVE_SERVICE_DEPLOYMENT_STATUSES: ServiceDeploymentStatus[] = [
   "building",
   "deploying",
 ];
+
+// -------------------------------------------------------------------------
+// Service deploy configuration (build from source, hooks)
+// -------------------------------------------------------------------------
+
+export type ServiceSourceType = "none" | "git" | "path";
+
+export interface ServiceBuildImage {
+  name?: string;
+  /** Target repository, e.g. localhost:5000/megasign-app */
+  image: string;
+  dockerfile: string;
+  context: string;
+  build_args: Record<string, string>;
+  target?: string;
+}
+
+export interface ServiceDeployHook {
+  name?: string;
+  /** Compose service whose image, env and networks the hook uses */
+  service: string;
+  command: string;
+  timeout_secs?: number;
+}
+
+export interface ServiceDeployConfig {
+  service_id: string;
+  source_type: ServiceSourceType;
+  git_url: string | null;
+  branch: string;
+  github_app_installation_id: string | null;
+  git_provider_id: string | null;
+  source_path: string | null;
+  revision_file: string | null;
+  images: ServiceBuildImage[];
+  push_images: boolean;
+  registry_username: string | null;
+  has_registry_password: boolean;
+  pre_deploy_hooks: ServiceDeployHook[];
+  post_deploy_hooks: ServiceDeployHook[];
+  auto_deploy: boolean;
+  pinned_images: Record<string, string>;
+  inject_env_file: boolean;
+}
+
+export interface UpdateServiceDeployConfigRequest {
+  source_type?: ServiceSourceType;
+  git_url?: string;
+  branch?: string;
+  github_app_installation_id?: string;
+  git_provider_id?: string;
+  source_path?: string;
+  revision_file?: string;
+  images?: ServiceBuildImage[];
+  push_images?: boolean;
+  registry_username?: string;
+  /** Empty string clears the stored password; omit to keep it */
+  registry_password?: string;
+  pre_deploy_hooks?: ServiceDeployHook[];
+  post_deploy_hooks?: ServiceDeployHook[];
+  auto_deploy?: boolean;
+  inject_env_file?: boolean;
+}

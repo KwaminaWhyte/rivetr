@@ -281,6 +281,8 @@ export const api = {
   getServiceDeployments: servicesApi.getServiceDeployments,
   getServiceDeployment: servicesApi.getServiceDeployment,
   getServiceDeploymentLogs: servicesApi.getServiceDeploymentLogs,
+  getServiceDeployConfig: servicesApi.getServiceDeployConfig,
+  updateServiceDeployConfig: servicesApi.updateServiceDeployConfig,
   getServiceStats: servicesApi.getServiceStats,
   getServiceLogs: servicesApi.getServiceLogs,
   getServiceLogsStreamUrl: servicesApi.getServiceLogsStreamUrl,

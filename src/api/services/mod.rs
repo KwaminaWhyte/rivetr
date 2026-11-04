@@ -3,6 +3,7 @@
 pub(crate) mod compose;
 mod control;
 mod crud;
+mod deploy_config;
 mod deployments;
 mod export_db;
 mod import_db;
@@ -15,6 +16,7 @@ pub use control::{
 pub use crud::{
     check_port, create_service, delete_service, get_service, list_services, update_service,
 };
+pub use deploy_config::{get_deploy_config, update_deploy_config};
 pub use deployments::{
     deploy_service, get_service_deployment, get_service_deployment_logs, list_service_deployments,
     service_deployment_logs_ws,
