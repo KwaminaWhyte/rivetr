@@ -202,7 +202,7 @@ impl CommandRunner for CliRunner {
                 tokio::select! {
                     line = out_lines.next_line(), if !out_done => match line {
                         Ok(Some(l)) => {
-                            if stream {
+                            if stream && !l.trim().is_empty() {
                                 if let Some(log) = log { log.info(&l).await; }
                             }
                             out.push_str(&l);
@@ -212,7 +212,7 @@ impl CommandRunner for CliRunner {
                     },
                     line = err_lines.next_line(), if !err_done => match line {
                         Ok(Some(l)) => {
-                            if stream {
+                            if stream && !l.trim().is_empty() {
                                 if let Some(log) = log { log.info(&l).await; }
                             }
                             err.push_str(&l);

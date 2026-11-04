@@ -66,10 +66,10 @@ pub(super) fn fake_stack(runner: &Arc<MockRunner>) {
     );
     let u = ups.clone();
     runner.on_fn("docker inspect --format", move |_| {
-        let web = if u.load(Ordering::SeqCst) > 0 {
-            "sha256:new"
-        } else {
-            "sha256:old"
+        let web = match u.load(Ordering::SeqCst) {
+            0 => "sha256:old",
+            1 => "sha256:new",
+            _ => "sha256:newer",
         };
         Some(CommandOutput::ok(&format!(
             "c1full {}\nc2full sha256:pg\n",
@@ -81,6 +81,7 @@ pub(super) fn fake_stack(runner: &Arc<MockRunner>) {
         CommandOutput::ok(
             "sha256:old [\"localhost:5000/app@sha256:aaa\"]\n\
              sha256:new [\"localhost:5000/app@sha256:bbb\"]\n\
+             sha256:newer [\"localhost:5000/app@sha256:ddd\"]\n\
              sha256:pg [\"postgres@sha256:ccc\"]\n",
         ),
     );
@@ -541,6 +542,12 @@ async fn rollback_pins_previous_digests_and_next_deploy_unpins() {
         .on("git rev-parse HEAD", CommandOutput::ok("abcdef0123\n"));
     let first = deploy(&h, manual()).await;
     assert_eq!(first.status, "succeeded", "{:?}", first.error_message);
+    let second = deploy(&h, manual()).await;
+    assert_eq!(second.status, "succeeded");
+    assert_eq!(
+        second.images_after_map()["web"].digest.as_deref(),
+        Some("localhost:5000/app@sha256:ddd")
+    );
     let calls_before = h.runner.commands().len();
 
     let rollback = deploy(
@@ -572,7 +579,8 @@ async fn rollback_pins_previous_digests_and_next_deploy_unpins() {
         "{}",
         written
     );
-    assert!(written.contains("postgres@sha256:ccc"));
+    // db runs the same image as in the target, so it is not pinned (not recreated).
+    assert!(written.contains("image: postgres:18"), "{}", written);
 
     // Start/restart render the stored pins too.
     let service: Service = sqlx::query_as("SELECT * FROM services WHERE id = ?")
@@ -700,4 +708,26 @@ async fn env_file_without_injection_and_foreign_env_files_are_left_alone() {
         std::fs::read_to_string(dir.join(".env")).unwrap(),
         "MINE=1\n"
     );
+}
+
+#[test]
+fn rollback_pins_only_services_that_changed() {
+    use crate::db::ServiceImageState;
+    let st = |id: &str, digest: Option<&str>| ServiceImageState {
+        image: "x".into(),
+        image_id: Some(id.into()),
+        digest: digest.map(String::from),
+    };
+    let mut target = ServiceImageMap::new();
+    target.insert("web".into(), st("sha256:1", Some("app@sha256:d1")));
+    target.insert("db".into(), st("sha256:9", Some("pg@sha256:d9")));
+    target.insert("local".into(), st("sha256:5", None));
+    let mut current = ServiceImageMap::new();
+    current.insert("web".into(), st("sha256:2", None));
+    current.insert("db".into(), st("sha256:9", None));
+    let pins = rollback_pins_for(&target, &current);
+    assert_eq!(pins.get("web").map(String::as_str), Some("app@sha256:d1"));
+    assert!(!pins.contains_key("db"));
+    // Never pushed: pinned by local image ID.
+    assert_eq!(pins.get("local").map(String::as_str), Some("sha256:5"));
 }

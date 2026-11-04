@@ -444,14 +444,12 @@ async fn pipeline_inner(
                     .fetch_one(&env.db)
                     .await
                     .context("Deployment to roll back to not found")?;
-            let pins: std::collections::BTreeMap<String, String> = target
-                .images_after_map()
-                .into_iter()
-                .filter_map(|(svc, state)| state.pin_ref().map(|p| (svc, p)))
-                .collect();
-            if pins.is_empty() {
+            let target_images = target.images_after_map();
+            if target_images.values().all(|s| s.pin_ref().is_none()) {
                 anyhow::bail!("That deployment has no recorded image digests");
             }
+            let current = progress.images_before.clone().unwrap_or_default();
+            let pins = rollback_pins_for(&target_images, &current);
             log.info(&format!(
                 "Rolling back to deployment {} ({})",
                 &target.id[..target.id.len().min(8)],
@@ -540,10 +538,33 @@ async fn pipeline_inner(
     // 4. Pull. Images that only exist locally (built by hand or by Rivetr
     //    without a registry) cannot be pulled; `up` then uses the local copy.
     //    Images this deployment just built are not pulled at all.
-    let pull_targets = build::services_to_pull(&content, &built_repos);
+    let pull_targets = if is_rollback {
+        // Only pinned images that are no longer on this server need a pull.
+        let mut missing = vec![];
+        for (svc, pin) in &pins {
+            let present = runner
+                .run(
+                    &CommandSpec::new("docker", &["image", "inspect", pin]),
+                    None,
+                )
+                .await
+                .map(|o| o.success)
+                .unwrap_or(false);
+            if !present {
+                missing.push(svc.clone());
+            }
+        }
+        Some(missing)
+    } else {
+        build::services_to_pull(&content, &built_repos)
+    };
     if matches!(&pull_targets, Some(list) if list.is_empty()) {
-        log.info("Nothing to pull: every image was just built")
-            .await;
+        log.info(if is_rollback {
+            "Nothing to pull: the pinned images are on this server"
+        } else {
+            "Nothing to pull: every image was just built"
+        })
+        .await;
     } else {
         let mut args: Vec<String> = vec!["pull".into(), "--ignore-pull-failures".into()];
         args.extend(pull_targets.unwrap_or_default());
@@ -738,6 +759,27 @@ async fn revert_latest_tags(
         log.info(&format!("{} points at the previous image again", latest))
             .await;
     }
+}
+
+/// Pins for a rollback: the target deployment's image (by digest, else by
+/// local image ID) for every compose service that runs a different image now.
+/// Services already on the target image keep their compose reference, so
+/// they are not recreated.
+pub fn rollback_pins_for(
+    target: &ServiceImageMap,
+    current: &ServiceImageMap,
+) -> std::collections::BTreeMap<String, String> {
+    target
+        .iter()
+        .filter(|(svc, state)| {
+            let same = current
+                .get(*svc)
+                .map(|c| c.image_id.is_some() && c.image_id == state.image_id)
+                .unwrap_or(false);
+            !same
+        })
+        .filter_map(|(svc, state)| state.pin_ref().map(|p| (svc.clone(), p)))
+        .collect()
 }
 
 /// Run a command, logging its command line first. Spawn errors become `Err`.
