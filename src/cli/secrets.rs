@@ -17,6 +17,8 @@ use crate::crypto::{self, key_file};
 /// `(table, column)` pairs the application encrypts on write and decrypts on read.
 const SECRET_COLUMNS: &[(&str, &str)] = &[
     ("env_vars", "value"),
+    ("service_env_vars", "value"),
+    ("service_deploy_configs", "registry_password"),
     ("environment_env_vars", "value"),
     ("project_env_vars", "value"),
     ("team_env_vars", "value"),

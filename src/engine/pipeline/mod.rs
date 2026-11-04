@@ -3,6 +3,7 @@ mod clone;
 mod rollback;
 mod start;
 
+pub use clone::{authenticated_git_url, is_ssh_url, AuthenticatedGitUrl};
 pub use rollback::run_rollback;
 
 use anyhow::{Context, Result};

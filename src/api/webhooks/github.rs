@@ -267,6 +267,19 @@ async fn handle_github_push(
         return Ok(StatusCode::OK);
     }
 
+    // Compose services built from this repo and branch (auto deploy on).
+    crate::engine::service_deploy::queue_push_deploys(
+        &state,
+        &[
+            payload.repository.clone_url.as_str(),
+            payload.repository.ssh_url.as_str(),
+        ],
+        branch,
+        payload.head_commit.as_ref().map(|c| c.id.clone()),
+        payload.head_commit.as_ref().map(|c| c.message.clone()),
+    )
+    .await;
+
     let apps = sqlx::query_as::<_, App>(
         "SELECT * FROM apps WHERE (git_url LIKE ? OR git_url LIKE ?) AND branch = ?",
     )

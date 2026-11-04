@@ -257,6 +257,9 @@ Features required for enterprise adoption and high availability.
 
 ## Recent Bug Fixes (Unreleased)
 
+### Service Deployments (Unreleased)
+- **Deploy pipeline for Docker Compose services** ✅: Deploy button with recorded history (who, trigger, duration, logs, per-service image digests), build from git or a server path with push to a registry and auto deploy on push (GitHub, GitLab, Gitea), pre/post-deploy hooks with a safe abort on pre-hook failure, rollback pinned by digest, Containers tab (status, usage, restart, logs, terminal), Environment tab with encrypted vars and a managed `.env` (migrations 120-122). Not yet: Bitbucket push trigger, cancelling a running service deploy, deploy notifications.
+
 ### Reliability Hardening (Unreleased: production-readiness pass)
 - **Panic isolation** ✅: Release profile switched `panic = "abort"` → `"unwind"`; a panic in any spawned task no longer kills the whole process. `utils::supervise::guarded()` wraps all 16 background loops + the deploy-engine consumer; 8 reverse-proxy hot-path `Response::builder().unwrap()` calls hardened against control-char header injection.
 - **Host-protection resource defaults** ✅: Every container inherits `runtime.default_memory_limit` (512m, swap disabled), `default_pids_limit` (512), `default_oom_score_adj` (500) when it sets no limit. A runaway app/db/service is OOM-killed instead of hanging the host. Docker + Podman.

@@ -14,6 +14,14 @@ import type {
   TemplateCategory,
   DeployTemplateRequest,
   DeployTemplateResponse,
+  ServiceDeployment,
+  ServiceDeploymentLog,
+  ServiceDeployConfig,
+  UpdateServiceDeployConfigRequest,
+  ServiceContainer,
+  ServiceContainerLogLine,
+  ServiceEnvVar,
+  ServiceEnvImportResult,
 } from "@/types/api";
 
 /** Options for listing services */
@@ -101,6 +109,122 @@ export const servicesApi = {
       {
         method: "POST",
       },
+      token
+    ),
+
+  /** Deploy a service: pull or build its images and recreate changed containers */
+  deployService: (id: string, token?: string) =>
+    apiRequest<ServiceDeployment>(`/services/${id}/deploy`, { method: "POST" }, token),
+
+  /** Deployment history of a service, newest first */
+  getServiceDeployments: (id: string, limit = 50, token?: string) =>
+    apiRequest<ServiceDeployment[]>(`/services/${id}/deployments?limit=${limit}`, {}, token),
+
+  /** One service deployment */
+  getServiceDeployment: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeployment>(`/services/${id}/deployments/${deploymentId}`, {}, token),
+
+  /** Stored log lines of a service deployment */
+  getServiceDeploymentLogs: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeploymentLog[]>(
+      `/services/${id}/deployments/${deploymentId}/logs`,
+      {},
+      token
+    ),
+
+  /** Redeploy the images a previous deployment ran, pinned by digest */
+  rollbackServiceDeployment: (id: string, deploymentId: string, token?: string) =>
+    apiRequest<ServiceDeployment>(
+      `/services/${id}/deployments/${deploymentId}/rollback`,
+      { method: "POST" },
+      token
+    ),
+
+  /** Containers of a service with state, health and resource usage */
+  getServiceContainers: (id: string, token?: string) =>
+    apiRequest<ServiceContainer[]>(`/services/${id}/containers`, {}, token),
+
+  /** Restart one container of a service */
+  restartServiceContainer: (id: string, container: string, token?: string) =>
+    apiRequest<void>(
+      `/services/${id}/containers/${encodeURIComponent(container)}/restart`,
+      { method: "POST" },
+      token
+    ),
+
+  /** Recent log lines of one container */
+  getServiceContainerLogs: (id: string, container: string, lines = 200, token?: string) =>
+    apiRequest<ServiceContainerLogLine[]>(
+      `/services/${id}/containers/${encodeURIComponent(container)}/logs?lines=${lines}`,
+      {},
+      token
+    ),
+
+  /** WebSocket URL for a shell in one container */
+  getServiceContainerTerminalWsUrl: (id: string, container: string, token: string): string => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/services/${id}/containers/${encodeURIComponent(container)}/terminal?token=${encodeURIComponent(token)}`;
+  },
+
+  /** Environment variables of a service (secrets masked unless revealed) */
+  getServiceEnvVars: (id: string, reveal = false, token?: string) =>
+    apiRequest<ServiceEnvVar[]>(`/services/${id}/env-vars?reveal=${reveal}`, {}, token),
+
+  createServiceEnvVar: (
+    id: string,
+    data: { key: string; value: string; is_secret: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvVar>(
+      `/services/${id}/env-vars`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  updateServiceEnvVar: (
+    id: string,
+    key: string,
+    data: { value?: string; is_secret?: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvVar>(
+      `/services/${id}/env-vars/${encodeURIComponent(key)}`,
+      { method: "PUT", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteServiceEnvVar: (id: string, key: string, token?: string) =>
+    apiRequest<void>(
+      `/services/${id}/env-vars/${encodeURIComponent(key)}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  /** Import KEY=VALUE lines from a pasted .env file */
+  importServiceEnvVars: (
+    id: string,
+    data: { content: string; overwrite: boolean; is_secret: boolean },
+    token?: string
+  ) =>
+    apiRequest<ServiceEnvImportResult>(
+      `/services/${id}/env-import`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  /** Build source, images, registry and hooks of a service */
+  getServiceDeployConfig: (id: string, token?: string) =>
+    apiRequest<ServiceDeployConfig>(`/services/${id}/deploy-config`, {}, token),
+
+  /** Update the deploy config (omitted fields keep their value) */
+  updateServiceDeployConfig: (
+    id: string,
+    data: UpdateServiceDeployConfigRequest,
+    token?: string
+  ) =>
+    apiRequest<ServiceDeployConfig>(
+      `/services/${id}/deploy-config`,
+      { method: "PUT", body: JSON.stringify(data) },
       token
     ),
 

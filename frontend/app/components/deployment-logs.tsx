@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { getAuthToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 
-interface LogEntry {
-  id: string;
+export interface LogEntry {
+  id: string | number;
   deployment_id: string;
   level: string;
   message: string;
@@ -25,6 +25,11 @@ interface DeploymentLogsProps {
   deploymentId: string;
   isActive: boolean;
   token?: string;
+  /** WebSocket path under /api (defaults to the app deployment log stream). */
+  streamPath?: string;
+  /** REST loader for the stored logs (defaults to the app deployment logs). */
+  loadLogs?: () => Promise<LogEntry[]>;
+  title?: string;
 }
 
 const levelColors: Record<string, string> = {
@@ -38,6 +43,9 @@ export function DeploymentLogs({
   deploymentId,
   isActive,
   token: propToken,
+  streamPath,
+  loadLogs,
+  title = "Build Logs",
 }: DeploymentLogsProps) {
   const token = propToken || getAuthToken() || "";
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -68,13 +76,16 @@ export function DeploymentLogs({
   // Fetch all logs from REST API and merge (never replaces, always merges)
   const fetchLogs = useCallback(async () => {
     try {
-      const result = await api.getDeploymentLogs(deploymentId, token || undefined);
+      const result = loadLogs
+        ? await loadLogs()
+        : await api.getDeploymentLogs(deploymentId, token || undefined);
       if (result && result.length > 0) {
         mergeLogs(result as LogEntry[]);
       }
     } catch {
       // ignore fetch errors
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentId, token, mergeLogs]);
 
   // Initial load on mount
@@ -103,7 +114,8 @@ export function DeploymentLogs({
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/deployments/${deploymentId}/logs/stream?token=${encodeURIComponent(token)}`;
+    const path = streamPath ?? `/deployments/${deploymentId}/logs/stream`;
+    const wsUrl = `${protocol}//${window.location.host}/api${path}?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -142,7 +154,7 @@ export function DeploymentLogs({
       // Fetch latest logs in case WS missed any
       fetchLogs();
     };
-  }, [deploymentId, token, mergeLogs, fetchLogs]);
+  }, [deploymentId, token, mergeLogs, fetchLogs, streamPath]);
 
   // Auto-connect WebSocket when active
   useEffect(() => {
@@ -184,7 +196,7 @@ export function DeploymentLogs({
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            Build Logs
+            {title}
             {connected && !ended && (
               <span className="flex items-center gap-1.5 text-sm font-normal text-green-600">
                 <span className="relative flex h-2 w-2">

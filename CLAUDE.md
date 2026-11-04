@@ -67,6 +67,7 @@ The application runs as a single binary with these main subsystems:
    - Clone → Build → Start → Health Check → Switch
    - Jobs processed via Tokio MPSC channels (no Redis)
    - Pipeline state tracked in `deployments` table
+   - Compose services deploy through `src/engine/service_deploy/` (build, pre/post hooks, digest rollback), tracked in `service_deployments`; see `docs/reference/service-deployments.md`
 
 3. **Container Runtime** (`src/runtime/`) - Abstraction over container engines:
    - `DockerRuntime` uses Bollard crate (socket API)

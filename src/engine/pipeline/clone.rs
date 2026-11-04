@@ -142,7 +142,7 @@ async fn run_git_lfs_pull(dest: &PathBuf) -> Result<()> {
 }
 
 /// Check if a URL is an SSH URL (git@host:path or ssh://...)
-pub(super) fn is_ssh_url(url: &str) -> bool {
+pub fn is_ssh_url(url: &str) -> bool {
     url.starts_with("git@") || url.starts_with("ssh://")
 }
 
@@ -188,12 +188,48 @@ pub(super) async fn get_authenticated_url(
     app: &App,
     encryption_key: Option<&[u8; 32]>,
 ) -> Result<String> {
-    if is_ssh_url(&app.git_url) {
-        return Ok(app.git_url.clone());
+    let provider_id: Option<Option<String>> =
+        sqlx::query_scalar("SELECT git_provider_id FROM apps WHERE id = ?")
+            .bind(&app.id)
+            .fetch_optional(db)
+            .await?;
+    let auth = authenticated_git_url(
+        db,
+        &app.git_url,
+        app.github_app_installation_id.as_deref(),
+        provider_id.flatten().as_deref(),
+        encryption_key,
+    )
+    .await?;
+    Ok(auth.url)
+}
+
+/// A clone URL with credentials injected, plus the secret so callers can mask it.
+pub struct AuthenticatedGitUrl {
+    pub url: String,
+    pub secret: Option<String>,
+}
+
+/// Build an authenticated clone URL from a GitHub App installation (preferred)
+/// or a git provider's OAuth/PAT token. SSH URLs and unlinked sources are
+/// returned unchanged. Shared by app and compose-service deploys.
+pub async fn authenticated_git_url(
+    db: &DbPool,
+    git_url: &str,
+    github_app_installation_id: Option<&str>,
+    git_provider_id: Option<&str>,
+    encryption_key: Option<&[u8; 32]>,
+) -> Result<AuthenticatedGitUrl> {
+    let plain = || AuthenticatedGitUrl {
+        url: git_url.to_string(),
+        secret: None,
+    };
+    if is_ssh_url(git_url) {
+        return Ok(plain());
     }
 
     // Check for GitHub App installation first (takes precedence over OAuth)
-    if let Some(ref installation_id_str) = app.github_app_installation_id {
+    if let Some(installation_id_str) = github_app_installation_id {
         let installation = sqlx::query_as::<_, GitHubAppInstallation>(
             "SELECT * FROM github_app_installations WHERE id = ?",
         )
@@ -222,7 +258,10 @@ pub(super) async fn get_authenticated_url(
                 {
                     Ok(token_response) => {
                         let token = token_response.token;
-                        return Ok(inject_github_token_into_url(&app.git_url, &token));
+                        return Ok(AuthenticatedGitUrl {
+                            url: inject_github_token_into_url(git_url, &token),
+                            secret: Some(token),
+                        });
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -236,25 +275,21 @@ pub(super) async fn get_authenticated_url(
     }
 
     // Fall back to OAuth/PAT token via git_provider_id
-    let provider_id: Option<Option<String>> =
-        sqlx::query_scalar("SELECT git_provider_id FROM apps WHERE id = ?")
-            .bind(&app.id)
-            .fetch_optional(db)
-            .await?;
-
-    let provider_id = match provider_id.flatten() {
-        Some(id) => id,
-        None => return Ok(app.git_url.clone()),
+    let Some(provider_id) = git_provider_id else {
+        return Ok(plain());
     };
 
     let provider = sqlx::query_as::<_, GitProvider>("SELECT * FROM git_providers WHERE id = ?")
-        .bind(&provider_id)
+        .bind(provider_id)
         .fetch_optional(db)
         .await?;
 
     match provider {
-        Some(p) => Ok(inject_credentials_into_url(&app.git_url, &p)),
-        None => Ok(app.git_url.clone()),
+        Some(p) => Ok(AuthenticatedGitUrl {
+            url: inject_credentials_into_url(git_url, &p),
+            secret: Some(p.access_token.clone()),
+        }),
+        None => Ok(plain()),
     }
 }
 

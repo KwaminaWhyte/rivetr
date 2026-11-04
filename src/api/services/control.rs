@@ -21,10 +21,19 @@ use crate::AppState;
 
 use super::super::audit::{audit_log, ClientIp};
 use super::compose::{
-    get_compose_dir, get_service_compose_dir, inject_public_ports, inject_resource_limits,
-    run_compose_command, run_compose_command_streaming, substitute_magic_vars,
-    write_compose_file_with_options,
+    get_compose_dir, get_service_compose_dir, render_and_write_service_compose,
+    run_compose_command, run_compose_command_streaming, substitute_magic_vars, RenderError,
 };
+
+/// Key for decrypting service env vars when the compose file is written.
+fn encryption_key(state: &AppState) -> Option<[u8; 32]> {
+    state
+        .config
+        .auth
+        .encryption_key
+        .as_ref()
+        .map(|s| crate::crypto::derive_key(s))
+}
 
 /// Service log entry
 #[derive(serde::Serialize)]
@@ -90,31 +99,18 @@ pub async fn start_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    // Fetch generated vars for this service to pass as existing_vars context
-    let gen_vars_rows: Vec<crate::db::ServiceGeneratedVar> =
-        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
-            .bind(&service.id)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default();
-    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
-
-    // Substitute magic variables (SERVICE_PASSWORD_*, SERVICE_BASE64_*, required vars, FQDN/URL)
-    let substituted_compose = match substitute_magic_vars(
-        &service.compose_content,
-        &service.id,
-        service.domain.as_deref(),
-        &existing_vars,
+    // Render the compose file from the database content (magic variables,
+    // public port binding, resource limits, network injection) and write it.
+    match render_and_write_service_compose(
         &state.db,
-        false,
+        data_dir,
+        &service,
+        encryption_key(&state).as_ref(),
     )
     .await
     {
-        Ok(content) => content,
-        Err(e) => {
+        Ok(_) => {}
+        Err(RenderError::Substitution(e)) => {
             tracing::error!(
                 "Failed to substitute magic vars in compose for service {}: {}",
                 service.name,
@@ -131,78 +127,10 @@ pub async fn start_service(
             .await;
             return Err(StatusCode::UNPROCESSABLE_ENTITY);
         }
-    };
-
-    // Always write/overwrite compose file from database content (in case it was updated).
-    // Inject isolated network if enabled (default: yes), unless raw mode is active.
-    let raw_mode = service.raw_compose_mode != 0;
-    let isolated_id = if !raw_mode && service.isolated_network != 0 {
-        Some(service.id.as_str())
-    } else {
-        None
-    };
-
-    // If public_access is enabled (and not in raw mode), inject the host port binding before
-    // writing the compose file to disk so Docker picks it up on the next `up`.
-    let compose_to_write = if !raw_mode
-        && service.public_access != 0
-        && service.external_port != 0
-        && service.expose_container_port != 0
-    {
-        match inject_public_ports(
-            &substituted_compose,
-            service.external_port,
-            service.expose_container_port,
-        ) {
-            Ok(injected) => injected,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to inject public ports for service {}: {}. Using compose without port injection.",
-                    service.name,
-                    e
-                );
-                substituted_compose
-            }
+        Err(e) => {
+            tracing::error!("{}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    } else {
-        substituted_compose
-    };
-
-    // Inject per-service CPU/memory limits (deploy.resources.limits) unless in
-    // raw mode (which deploys the compose verbatim) or no limits are configured.
-    let compose_to_write = if !raw_mode
-        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
-    {
-        match inject_resource_limits(
-            &compose_to_write,
-            service.cpu_limit.as_deref(),
-            service.memory_limit.as_deref(),
-        ) {
-            Ok(injected) => injected,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to inject resource limits for service {}: {}. Using compose without limit injection.",
-                    service.name,
-                    e
-                );
-                compose_to_write
-            }
-        }
-    } else {
-        compose_to_write
-    };
-
-    if let Err(e) = write_compose_file_with_options(
-        data_dir,
-        &service.name,
-        &compose_to_write,
-        isolated_id,
-        raw_mode,
-    )
-    .await
-    {
-        tracing::error!("Failed to write compose file: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     // Clean up any orphaned containers from previous failed deployments
@@ -473,36 +401,24 @@ pub async fn restart_service(
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    // Fetch generated vars for this service to pass as existing_vars context
-    let gen_vars_rows: Vec<crate::db::ServiceGeneratedVar> =
-        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
-            .bind(&service.id)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default();
-    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
-
-    // Substitute magic variables
-    let substituted_compose = match substitute_magic_vars(
-        &service.compose_content,
-        &service.id,
-        service.domain.as_deref(),
-        &existing_vars,
+    // Render the compose file from the database content (magic variables,
+    // public port binding, resource limits, network injection) and write it.
+    match render_and_write_service_compose(
         &state.db,
-        false,
+        data_dir,
+        &service,
+        encryption_key(&state).as_ref(),
     )
     .await
     {
-        Ok(content) => content,
-        Err(e) => {
+        Ok(_) => {}
+        Err(RenderError::Substitution(e)) => {
             tracing::error!(
                 "Failed to substitute magic vars in compose for service {}: {}",
                 service.name,
                 e
             );
+            // Update status to failed with error message
             let _ = sqlx::query(
                 "UPDATE services SET status = ?, error_message = ?, updated_at = datetime('now') WHERE id = ?",
             )
@@ -513,77 +429,10 @@ pub async fn restart_service(
             .await;
             return Err(StatusCode::UNPROCESSABLE_ENTITY);
         }
-    };
-
-    // Always write/overwrite compose file from database content.
-    // Inject isolated network if enabled (default: yes), unless raw mode is active.
-    let raw_mode = service.raw_compose_mode != 0;
-    let isolated_id = if !raw_mode && service.isolated_network != 0 {
-        Some(service.id.as_str())
-    } else {
-        None
-    };
-
-    // Inject public port binding if enabled (and not raw mode)
-    let compose_to_write = if !raw_mode
-        && service.public_access != 0
-        && service.external_port != 0
-        && service.expose_container_port != 0
-    {
-        match inject_public_ports(
-            &substituted_compose,
-            service.external_port,
-            service.expose_container_port,
-        ) {
-            Ok(injected) => injected,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to inject public ports for service {}: {}. Using compose without port injection.",
-                    service.name,
-                    e
-                );
-                substituted_compose
-            }
+        Err(e) => {
+            tracing::error!("{}", e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    } else {
-        substituted_compose
-    };
-
-    // Inject per-service CPU/memory limits (deploy.resources.limits) unless in
-    // raw mode (which deploys the compose verbatim) or no limits are configured.
-    let compose_to_write = if !raw_mode
-        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
-    {
-        match inject_resource_limits(
-            &compose_to_write,
-            service.cpu_limit.as_deref(),
-            service.memory_limit.as_deref(),
-        ) {
-            Ok(injected) => injected,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to inject resource limits for service {}: {}. Using compose without limit injection.",
-                    service.name,
-                    e
-                );
-                compose_to_write
-            }
-        }
-    } else {
-        compose_to_write
-    };
-
-    if let Err(e) = write_compose_file_with_options(
-        data_dir,
-        &service.name,
-        &compose_to_write,
-        isolated_id,
-        raw_mode,
-    )
-    .await
-    {
-        tracing::error!("Failed to write compose file: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     // Remove proxy route before restarting
@@ -596,9 +445,11 @@ pub async fn restart_service(
     // Run docker compose restart, streaming each line to the live panel.
     let stream_handle = state.start_log_streams.clone();
     let stream_key_for_restart = resource_key.clone();
-    state
-        .start_log_streams
-        .info(&resource_key, "starting", "Running docker compose up -d --force-recreate");
+    state.start_log_streams.info(
+        &resource_key,
+        "starting",
+        "Running docker compose up -d --force-recreate",
+    );
     // Use `up -d --force-recreate` rather than `compose restart`: a plain restart
     // only restarts the existing container processes and does NOT re-read the
     // compose file, so config changes made since the last start (resource limits,
@@ -727,85 +578,17 @@ pub async fn restart_service_internal(state: &Arc<AppState>, id: &str) -> Result
     let compose_dir = get_compose_dir(data_dir, &service.name);
     let project_name = service.compose_project_name();
 
-    // Fetch generated vars
-    let gen_vars_rows: Vec<ServiceGeneratedVar> =
-        sqlx::query_as("SELECT * FROM service_generated_vars WHERE service_id = ?")
-            .bind(&service.id)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default();
-    let existing_vars: std::collections::HashMap<String, String> = gen_vars_rows
-        .into_iter()
-        .map(|r| (r.key, r.value))
-        .collect();
-
-    // Substitute magic vars
-    let substituted = substitute_magic_vars(
-        &service.compose_content,
-        &service.id,
-        service.domain.as_deref(),
-        &existing_vars,
+    render_and_write_service_compose(
         &state.db,
-        false,
-    )
-    .await
-    .map_err(|e| format!("Magic var substitution failed: {}", e))?;
-
-    let raw_mode = service.raw_compose_mode != 0;
-    let isolated_id = if !raw_mode && service.isolated_network != 0 {
-        Some(service.id.as_str())
-    } else {
-        None
-    };
-
-    // Inject public ports if needed
-    let compose_to_write = if !raw_mode
-        && service.public_access != 0
-        && service.external_port != 0
-        && service.expose_container_port != 0
-    {
-        match inject_public_ports(
-            &substituted,
-            service.external_port,
-            service.expose_container_port,
-        ) {
-            Ok(injected) => injected,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to inject public ports for service {} during internal restart: {}",
-                    service.name,
-                    e
-                );
-                substituted
-            }
-        }
-    } else {
-        substituted
-    };
-
-    // Inject per-service CPU/memory limits unless raw mode / no limits configured.
-    let compose_to_write = if !raw_mode
-        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
-    {
-        inject_resource_limits(
-            &compose_to_write,
-            service.cpu_limit.as_deref(),
-            service.memory_limit.as_deref(),
-        )
-        .unwrap_or(compose_to_write)
-    } else {
-        compose_to_write
-    };
-
-    write_compose_file_with_options(
         data_dir,
-        &service.name,
-        &compose_to_write,
-        isolated_id,
-        raw_mode,
+        &service,
+        encryption_key(state).as_ref(),
     )
     .await
-    .map_err(|e| format!("Failed to write compose file: {}", e))?;
+    .map_err(|e| match e {
+        RenderError::Substitution(e) => format!("Magic var substitution failed: {}", e),
+        other => other.to_string(),
+    })?;
 
     // Stop (ignore errors — containers may already be down)
     let _ = run_compose_command(&compose_dir, &project_name, &["down", "--remove-orphans"]).await;

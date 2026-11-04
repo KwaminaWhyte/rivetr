@@ -73,6 +73,10 @@ export default [
     // Services (nested layout with tabs)
     route("services/:id", "routes/services/$id/_layout.tsx", [
       index("routes/services/$id/_index.tsx"),
+      route("deployments", "routes/services/$id/deployments.tsx"),
+      route("build", "routes/services/$id/build.tsx"),
+      route("containers", "routes/services/$id/containers.tsx"),
+      route("environment", "routes/services/$id/environment.tsx"),
       route("network", "routes/services/$id/network.tsx"),
       route("logs", "routes/services/$id/logs.tsx"),
       route("stats", "routes/services/$id/stats.tsx"),

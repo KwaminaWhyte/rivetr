@@ -206,3 +206,176 @@ export const TEMPLATE_CATEGORIES: TemplateCategoryInfo[] = [
     icon: "message-circle",
   },
 ];
+
+// -------------------------------------------------------------------------
+// Service deployments
+// -------------------------------------------------------------------------
+
+export type ServiceDeploymentStatus =
+  | "pending"
+  | "building"
+  | "deploying"
+  | "succeeded"
+  | "failed";
+
+export type ServiceDeploymentTrigger = "manual" | "webhook" | "rollback" | "api";
+
+/** The image one compose service ran at a point in time. */
+export interface ServiceImageState {
+  image: string;
+  image_id?: string;
+  /** Registry digest reference, e.g. `localhost:5000/app@sha256:...` */
+  digest?: string;
+}
+
+export interface ServiceDeployment {
+  id: string;
+  service_id: string;
+  trigger: ServiceDeploymentTrigger | string;
+  triggered_by: string | null;
+  triggered_by_name: string | null;
+  status: ServiceDeploymentStatus;
+  commit_sha: string | null;
+  commit_message: string | null;
+  image_tag: string | null;
+  images_before: Record<string, ServiceImageState>;
+  images_after: Record<string, ServiceImageState>;
+  rollback_of: string | null;
+  error_message: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface ServiceDeploymentLog {
+  id: number;
+  deployment_id: string;
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export const ACTIVE_SERVICE_DEPLOYMENT_STATUSES: ServiceDeploymentStatus[] = [
+  "pending",
+  "building",
+  "deploying",
+];
+
+// -------------------------------------------------------------------------
+// Service deploy configuration (build from source, hooks)
+// -------------------------------------------------------------------------
+
+export type ServiceSourceType = "none" | "git" | "path";
+
+export interface ServiceBuildImage {
+  name?: string;
+  /** Target repository, e.g. localhost:5000/megasign-app */
+  image: string;
+  dockerfile: string;
+  context: string;
+  build_args: Record<string, string>;
+  target?: string;
+}
+
+export interface ServiceDeployHook {
+  name?: string;
+  /** Compose service whose image, env and networks the hook uses */
+  service: string;
+  command: string;
+  timeout_secs?: number;
+}
+
+export interface ServiceDeployConfig {
+  service_id: string;
+  source_type: ServiceSourceType;
+  git_url: string | null;
+  branch: string;
+  github_app_installation_id: string | null;
+  git_provider_id: string | null;
+  source_path: string | null;
+  revision_file: string | null;
+  images: ServiceBuildImage[];
+  push_images: boolean;
+  registry_username: string | null;
+  has_registry_password: boolean;
+  pre_deploy_hooks: ServiceDeployHook[];
+  post_deploy_hooks: ServiceDeployHook[];
+  auto_deploy: boolean;
+  pinned_images: Record<string, string>;
+  inject_env_file: boolean;
+}
+
+export interface UpdateServiceDeployConfigRequest {
+  source_type?: ServiceSourceType;
+  git_url?: string;
+  branch?: string;
+  github_app_installation_id?: string;
+  git_provider_id?: string;
+  source_path?: string;
+  revision_file?: string;
+  images?: ServiceBuildImage[];
+  push_images?: boolean;
+  registry_username?: string;
+  /** Empty string clears the stored password; omit to keep it */
+  registry_password?: string;
+  pre_deploy_hooks?: ServiceDeployHook[];
+  post_deploy_hooks?: ServiceDeployHook[];
+  auto_deploy?: boolean;
+  inject_env_file?: boolean;
+}
+
+// -------------------------------------------------------------------------
+// Service containers
+// -------------------------------------------------------------------------
+
+export interface ServiceContainerPort {
+  URL: string;
+  TargetPort: number;
+  PublishedPort: number;
+  Protocol: string;
+}
+
+export interface ServiceContainer {
+  id: string;
+  name: string;
+  /** Compose service name */
+  service: string;
+  image: string;
+  state: string;
+  /** healthy | unhealthy | starting | "" when the image has no healthcheck */
+  health: string;
+  status: string;
+  created_at: string;
+  exit_code: number;
+  ports: ServiceContainerPort[];
+  cpu_percent: number | null;
+  memory_usage: number | null;
+  memory_limit: number | null;
+}
+
+export interface ServiceContainerLogLine {
+  timestamp: string;
+  stream: "stdout" | "stderr";
+  message: string;
+}
+
+// -------------------------------------------------------------------------
+// Service environment variables
+// -------------------------------------------------------------------------
+
+export interface ServiceEnvVar {
+  id: string;
+  service_id: string;
+  key: string;
+  /** "********" for secrets unless revealed */
+  value: string;
+  is_secret: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceEnvImportResult {
+  created: number;
+  updated: number;
+  skipped: string[];
+}

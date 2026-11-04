@@ -94,6 +94,9 @@ pub mod actions {
     pub const SERVICE_DELETE: &str = "service.delete";
     pub const SERVICE_START: &str = "service.start";
     pub const SERVICE_STOP: &str = "service.stop";
+    pub const SERVICE_DEPLOY: &str = "service.deploy";
+    pub const SERVICE_ROLLBACK: &str = "service.rollback";
+    pub const SERVICE_CONTAINER_RESTART: &str = "service.container_restart";
 
     // Project actions
     pub const PROJECT_CREATE: &str = "project.create";

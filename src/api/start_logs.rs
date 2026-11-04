@@ -209,7 +209,10 @@ impl Default for StartLogRegistry {
 }
 
 /// Resolve the user behind a WS token (None/invalid → None) for start-stream auth.
-async fn resolve_ws_user(state: &Arc<AppState>, token: Option<&str>) -> Option<crate::db::User> {
+pub(crate) async fn resolve_ws_user(
+    state: &Arc<AppState>,
+    token: Option<&str>,
+) -> Option<crate::db::User> {
     let token = match token {
         Some(t) if !t.is_empty() => t,
         _ => return None,
