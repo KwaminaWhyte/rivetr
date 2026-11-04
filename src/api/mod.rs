@@ -64,7 +64,7 @@ mod volumes;
 mod webhook_events;
 mod webhooks;
 mod white_label;
-mod ws;
+pub(crate) mod ws;
 
 use axum::{
     body::Body,
@@ -172,6 +172,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/services/{id}/deployments/{deployment_id}/logs/stream",
             get(services::service_deployment_logs_ws),
+        )
+        .route(
+            "/services/{id}/containers/{container}/terminal",
+            get(services::service_container_terminal_ws),
         );
 
     // Protected API routes
@@ -756,6 +760,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/services/{id}/stop", post(services::stop_service))
         .route("/services/{id}/restart", post(services::restart_service))
         .route("/services/{id}/deploy", post(services::deploy_service))
+        .route(
+            "/services/{id}/containers",
+            get(services::list_service_containers),
+        )
+        .route(
+            "/services/{id}/containers/{container}/restart",
+            post(services::restart_service_container),
+        )
+        .route(
+            "/services/{id}/containers/{container}/logs",
+            get(services::get_service_container_logs),
+        )
         .route(
             "/services/{id}/deploy-config",
             get(services::get_deploy_config).put(services::update_deploy_config),

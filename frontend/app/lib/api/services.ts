@@ -18,6 +18,8 @@ import type {
   ServiceDeploymentLog,
   ServiceDeployConfig,
   UpdateServiceDeployConfigRequest,
+  ServiceContainer,
+  ServiceContainerLogLine,
 } from "@/types/api";
 
 /** Options for listing services */
@@ -135,6 +137,32 @@ export const servicesApi = {
       { method: "POST" },
       token
     ),
+
+  /** Containers of a service with state, health and resource usage */
+  getServiceContainers: (id: string, token?: string) =>
+    apiRequest<ServiceContainer[]>(`/services/${id}/containers`, {}, token),
+
+  /** Restart one container of a service */
+  restartServiceContainer: (id: string, container: string, token?: string) =>
+    apiRequest<void>(
+      `/services/${id}/containers/${encodeURIComponent(container)}/restart`,
+      { method: "POST" },
+      token
+    ),
+
+  /** Recent log lines of one container */
+  getServiceContainerLogs: (id: string, container: string, lines = 200, token?: string) =>
+    apiRequest<ServiceContainerLogLine[]>(
+      `/services/${id}/containers/${encodeURIComponent(container)}/logs?lines=${lines}`,
+      {},
+      token
+    ),
+
+  /** WebSocket URL for a shell in one container */
+  getServiceContainerTerminalWsUrl: (id: string, container: string, token: string): string => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/services/${id}/containers/${encodeURIComponent(container)}/terminal?token=${encodeURIComponent(token)}`;
+  },
 
   /** Build source, images, registry and hooks of a service */
   getServiceDeployConfig: (id: string, token?: string) =>

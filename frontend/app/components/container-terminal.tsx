@@ -11,11 +11,13 @@ interface TerminalMessage {
 }
 
 interface ContainerTerminalProps {
-  appId: string;
+  appId?: string;
   token?: string;
+  /** Build the WebSocket URL for another target (e.g. one service container). */
+  wsUrlFor?: (token: string) => string;
 }
 
-export function ContainerTerminal({ appId, token: propToken }: ContainerTerminalProps) {
+export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: ContainerTerminalProps) {
   // Get token from props or localStorage
   const token = propToken || getAuthToken() || "";
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -117,7 +119,7 @@ export function ContainerTerminal({ appId, token: propToken }: ContainerTerminal
         term.writeln("\x1b[1;34m[Rivetr Terminal]\x1b[0m Connecting to container...");
 
         // Connect to WebSocket
-        const wsUrl = api.getTerminalWsUrl(appId, token);
+        const wsUrl = wsUrlFor ? wsUrlFor(token) : api.getTerminalWsUrl(appId ?? "", token);
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 

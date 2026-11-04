@@ -323,3 +323,38 @@ export interface UpdateServiceDeployConfigRequest {
   auto_deploy?: boolean;
   inject_env_file?: boolean;
 }
+
+// -------------------------------------------------------------------------
+// Service containers
+// -------------------------------------------------------------------------
+
+export interface ServiceContainerPort {
+  URL: string;
+  TargetPort: number;
+  PublishedPort: number;
+  Protocol: string;
+}
+
+export interface ServiceContainer {
+  id: string;
+  name: string;
+  /** Compose service name */
+  service: string;
+  image: string;
+  state: string;
+  /** healthy | unhealthy | starting | "" when the image has no healthcheck */
+  health: string;
+  status: string;
+  created_at: string;
+  exit_code: number;
+  ports: ServiceContainerPort[];
+  cpu_percent: number | null;
+  memory_usage: number | null;
+  memory_limit: number | null;
+}
+
+export interface ServiceContainerLogLine {
+  timestamp: string;
+  stream: "stdout" | "stderr";
+  message: string;
+}

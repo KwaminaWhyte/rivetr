@@ -371,7 +371,7 @@ pub async fn terminal_ws(
 }
 
 async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id: String) {
-    let (mut sender, mut receiver) = socket.split();
+    let (mut sender, receiver) = socket.split();
 
     // Find the latest running deployment for this app
     let deployment = match sqlx::query_as::<_, Deployment>(
@@ -415,6 +415,26 @@ async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id
         }
     };
 
+    bridge_terminal(
+        sender,
+        receiver,
+        state,
+        container_id,
+        serde_json::json!({ "app_id": app_id }),
+    )
+    .await;
+}
+
+/// Run an interactive `/bin/sh` in `container_id` and bridge it to the
+/// WebSocket halves. `extra` fields are added to the `connected` message.
+/// Shared by the app terminal and the per-container service terminal.
+pub(crate) async fn bridge_terminal(
+    mut sender: futures::stream::SplitSink<WebSocket, Message>,
+    mut receiver: futures::stream::SplitStream<WebSocket>,
+    state: Arc<AppState>,
+    container_id: String,
+    extra: serde_json::Value,
+) {
     // Start exec session with shell
     let exec_config = ExecConfig {
         container_id: container_id.clone(),
@@ -437,11 +457,15 @@ async fn handle_terminal_session(socket: WebSocket, state: Arc<AppState>, app_id
     };
 
     // Send connection established message
-    let connected_msg = serde_json::json!({
+    let mut connected_msg = serde_json::json!({
         "type": "connected",
         "container_id": container_id,
-        "app_id": app_id,
     });
+    if let (Some(msg), Some(extra)) = (connected_msg.as_object_mut(), extra.as_object()) {
+        for (k, v) in extra {
+            msg.insert(k.clone(), v.clone());
+        }
+    }
     if sender
         .send(Message::Text(connected_msg.to_string().into()))
         .await

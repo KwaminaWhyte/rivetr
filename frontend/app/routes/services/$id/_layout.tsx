@@ -64,6 +64,7 @@ const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "deployments", label: "Deployments", path: "/deployments" },
   { id: "build", label: "Build & Hooks", path: "/build" },
+  { id: "containers", label: "Containers", path: "/containers" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "stats", label: "Stats", path: "/stats" },
@@ -327,7 +328,7 @@ export default function ServiceDetailLayout() {
 
       {/* Tabs Navigation */}
       <Tabs value={activeTab} className="w-full">
-        <TabsList className="w-full justify-start">
+        <TabsList className="w-full justify-start overflow-x-auto">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
               <Link to={`${basePath}${tab.path}`}>{tab.label}</Link>
