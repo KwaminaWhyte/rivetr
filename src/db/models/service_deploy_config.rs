@@ -48,7 +48,8 @@ pub struct ServiceDeployHook {
     pub name: Option<String>,
     /// Compose service whose image, env and networks the hook uses.
     pub service: String,
-    /// Shell command, run with `sh -c`.
+    /// Command and arguments (split like a shell), passed to the image entrypoint
+    /// like `docker run <image> <command>`. Use `sh -c "..."` for shell features.
     pub command: String,
     /// Seconds before the hook is killed (default 600).
     #[serde(default, skip_serializing_if = "Option::is_none")]

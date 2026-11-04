@@ -63,7 +63,7 @@ function StatusBadge({ status }: { status?: ServiceStatus }) {
 const tabs = [
   { id: "general", label: "General", path: "" },
   { id: "deployments", label: "Deployments", path: "/deployments" },
-  { id: "build", label: "Build", path: "/build" },
+  { id: "build", label: "Build & Hooks", path: "/build" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
   { id: "stats", label: "Stats", path: "/stats" },

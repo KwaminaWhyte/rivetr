@@ -10,6 +10,7 @@
 //! is tested with a recording mock instead of a Docker daemon.
 
 pub mod build;
+pub mod hooks;
 pub mod images;
 pub mod runner;
 
@@ -264,6 +265,8 @@ struct Progress {
     image_tag: Option<String>,
     commit_sha: Option<String>,
     commit_message: Option<String>,
+    /// Problem that did not fail the deployment (a post-deploy hook).
+    warning: Option<String>,
 }
 
 /// Run a recorded deployment to completion and store the outcome.
@@ -296,7 +299,7 @@ pub async fn run_deployment(env: &DeployEnv, deployment_id: &str) -> Result<()> 
                 started.elapsed().as_secs_f64()
             ))
             .await;
-            (status::SUCCEEDED, None)
+            (status::SUCCEEDED, progress.warning.clone())
         }
         Err(e) => {
             let msg = log.redact(&format!("{:#}", e));
@@ -503,7 +506,27 @@ async fn pipeline_inner(
         }
     }
 
-    // 5. Recreate what changed.
+    // 5. Pre-deploy hooks (migrations). A failure stops here: nothing has
+    //    been recreated, and the compose file and `latest` tags are restored.
+    let pre_hooks = cfg.pre_hooks();
+    if !pre_hooks.is_empty() {
+        if let Err(msg) = hooks::run_hooks(
+            runner,
+            &compose_dir,
+            &project,
+            &dep.id,
+            "pre",
+            &pre_hooks,
+            log,
+        )
+        .await
+        {
+            revert_latest_tags(runner, &cfg, &built_repos, progress, log).await;
+            return Err(restore(format!("{}; the running containers were not changed", msg)).await);
+        }
+    }
+
+    // 6. Recreate what changed.
     log.info("Recreating changed containers (docker compose up -d)")
         .await;
     let up = run_logged(
@@ -525,7 +548,7 @@ async fn pipeline_inner(
         anyhow::bail!(msg);
     }
 
-    // 6. What runs now.
+    // 7. What runs now.
     match capture_images(runner, &compose_dir, &project).await {
         Ok(after) => {
             if let Some(before) = &progress.images_before {
@@ -565,7 +588,73 @@ async fn pipeline_inner(
         }
     }
 
+    // 8. Post-deploy hooks. The new containers are already running, so a
+    //    failure is reported on the deployment but does not fail it.
+    let post_hooks = cfg.post_hooks();
+    if !post_hooks.is_empty() {
+        if let Err(msg) = hooks::run_hooks(
+            runner,
+            &compose_dir,
+            &project,
+            &dep.id,
+            "post",
+            &post_hooks,
+            log,
+        )
+        .await
+        {
+            log.error(&format!("{}; the new containers stay up", msg))
+                .await;
+            progress.warning = Some(msg);
+        }
+    }
+
     Ok(())
+}
+
+/// After a failed pre-deploy hook, point `<repo>:latest` back at the image the
+/// stack was running, so a later restart does not start the unmigrated build.
+async fn revert_latest_tags(
+    runner: &dyn CommandRunner,
+    cfg: &ServiceDeployConfig,
+    built_repos: &std::collections::BTreeSet<String>,
+    progress: &Progress,
+    log: &DbLog,
+) {
+    let Some(before) = &progress.images_before else {
+        return;
+    };
+    for repo in built_repos {
+        let previous = before
+            .values()
+            .find(|s| images::image_repo(&s.image) == repo)
+            .and_then(|s| s.image_id.clone());
+        let Some(previous) = previous else {
+            continue;
+        };
+        let latest = format!("{}:latest", repo);
+        let tag = runner
+            .run(
+                &CommandSpec::new("docker", &["tag", &previous, &latest]),
+                None,
+            )
+            .await;
+        if !matches!(tag, Ok(ref o) if o.success) {
+            log.warn(&format!(
+                "Could not point {} back at the previous image",
+                latest
+            ))
+            .await;
+            continue;
+        }
+        if cfg.push_images != 0 {
+            let _ = runner
+                .run(&CommandSpec::new("docker", &["push", &latest]), Some(log))
+                .await;
+        }
+        log.info(&format!("{} points at the previous image again", latest))
+            .await;
+    }
 }
 
 /// Run a command, logging its command line first. Spawn errors become `Err`.

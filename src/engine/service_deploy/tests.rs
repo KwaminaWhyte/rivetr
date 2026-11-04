@@ -418,3 +418,108 @@ async fn push_webhook_matches_repo_and_branch() {
     set_config(&h, "auto_deploy = 0").await;
     assert!(services_for_push(&h.env.db, &urls, "main").await.is_empty());
 }
+
+const MIGRATE: &str =
+    r#"[{"name":"migrate","service":"web","command":"bun run db:migrate","timeout_secs":60}]"#;
+
+#[tokio::test]
+async fn pre_deploy_hook_runs_after_pull_and_before_up() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    set_config(
+        &h,
+        &format!(
+            "pre_deploy_hooks = '{}', post_deploy_hooks = '{}'",
+            MIGRATE, r#"[{"service":"web","command":"sh -c \"echo warm\""}]"#
+        ),
+    )
+    .await;
+    h.runner.on(
+        " run --rm -T --no-deps",
+        CommandOutput::ok("migrations applied\n"),
+    );
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded", "{:?}", dep.error_message);
+    let pull = h.runner.position(" pull").unwrap();
+    let hook = h
+        .runner
+        .position("run --rm -T --no-deps --name rivetr-svc-shop-pre-hook-")
+        .unwrap();
+    let up = h.runner.position(" up -d").unwrap();
+    let post = h.runner.position("rivetr-svc-shop-post-hook-").unwrap();
+    assert!(pull < hook && hook < up && up < post);
+    assert!(h.runner.commands()[hook].ends_with(" web bun run db:migrate"));
+    assert!(h.runner.commands()[post].ends_with(" web sh -c echo warm"));
+    let lines = logs(&h, &dep).await;
+    assert!(
+        lines.iter().any(|l| l == "migrations applied"),
+        "{:?}",
+        lines
+    );
+}
+
+#[tokio::test]
+async fn failed_pre_deploy_hook_leaves_running_containers_untouched() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    let dir = h.env.data_dir.join("services/shop");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("docker-compose.yml"), "# running file\n").unwrap();
+    set_config(
+        &h,
+        &format!(
+            "source_type = 'git', git_url = 'https://github.com/acme/shop.git', \
+             images = '[{{\"image\":\"localhost:5000/app\"}}]', pre_deploy_hooks = '{}'",
+            MIGRATE
+        ),
+    )
+    .await;
+    h.runner
+        .on("git rev-parse HEAD", CommandOutput::ok("abcdef0123\n"));
+    h.runner.on(
+        " run --rm -T --no-deps",
+        CommandOutput::failed(1, "relation exists"),
+    );
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "failed");
+    let err = dep.error_message.unwrap();
+    assert!(
+        err.contains("pre-deploy hook 'migrate' failed (exit code 1)"),
+        "{}",
+        err
+    );
+    assert!(err.contains("not changed"));
+    assert!(!h.runner.ran(" up -d"));
+    assert_eq!(
+        std::fs::read_to_string(dir.join("docker-compose.yml")).unwrap(),
+        "# running file\n"
+    );
+    // latest points at the image the stack was running before the build.
+    let tag = h
+        .runner
+        .position("docker tag sha256:old localhost:5000/app:latest")
+        .expect("latest re-tagged");
+    let repush = h.runner.commands()[tag..]
+        .iter()
+        .any(|c| c == "docker push localhost:5000/app:latest");
+    assert!(repush);
+}
+
+#[tokio::test]
+async fn failed_post_deploy_hook_is_reported_without_failing_the_deploy() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    set_config(&h, &format!("post_deploy_hooks = '{}'", MIGRATE)).await;
+    h.runner
+        .on(" run --rm -T --no-deps", CommandOutput::failed(2, "boom"));
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded");
+    assert!(dep
+        .error_message
+        .unwrap()
+        .contains("post-deploy hook 'migrate' failed"));
+    assert!(h.runner.ran(" up -d"));
+}

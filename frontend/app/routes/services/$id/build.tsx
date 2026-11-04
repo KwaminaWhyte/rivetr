@@ -25,7 +25,8 @@ import type {
   ServiceSourceType,
 } from "@/types/api";
 import { Hammer, Plus, Trash2, BookOpen } from "lucide-react";
-// HOOKS_IMPORT
+import { ServiceHooksEditor } from "@/components/service-hooks-editor";
+import { composeServiceNames } from "@/lib/compose";
 
 export function meta() {
   return [
@@ -112,6 +113,7 @@ export default function ServiceBuildTab() {
   const [preHooks, setPreHooks] = useState<ServiceDeployHook[]>([]);
   const [postHooks, setPostHooks] = useState<ServiceDeployHook[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+  const composeServices = composeServiceNames(service.compose_content);
 
   useEffect(() => {
     if (!config) return;
@@ -422,7 +424,31 @@ export default function ServiceBuildTab() {
         </Card>
       )}
 
-      {/* HOOKS_SLOT */}
+      <ServiceHooksEditor
+        title="Pre-deploy hooks"
+        description={
+          <>
+            Run after the images are built and pulled, before any container is recreated, in a
+            one-off container of the chosen compose service (its image, env, volumes and
+            networks): <code>docker compose run --rm --no-deps</code>. The command goes to the
+            image&apos;s entrypoint like <code>docker run</code>; use <code>sh -c &quot;...&quot;</code>{" "}
+            for shell features. A failing hook stops the deploy and the running containers stay
+            as they are.
+          </>
+        }
+        hooks={preHooks}
+        onChange={setPreHooks}
+        composeServices={composeServices}
+        placeholder="bun run db:migrate"
+      />
+
+      <ServiceHooksEditor
+        title="Post-deploy hooks"
+        description="Run the same way after the new containers are up. A failure is shown on the deployment but does not undo it."
+        hooks={postHooks}
+        onChange={setPostHooks}
+        composeServices={composeServices}
+      />
 
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
