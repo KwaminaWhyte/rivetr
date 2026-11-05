@@ -15,7 +15,9 @@ Fresh sweep of both competitors' late-2025→2026 releases, cross-checked agains
 
 ### Genuinely missing / partial in Rivetr (new findings)
 
-> **Update 2026-05-27 (Unreleased):** items #1, #2, #3, #4, #6 below have since been **implemented** (see CHANGELOG `[Unreleased]`). Remaining open: #5, #7, #8, #9, #10.
+> **Update 2026-05-27 (Unreleased):** items #1, #2, #3, #4, #6 below have since been **implemented** (see CHANGELOG `[Unreleased]`).
+>
+> **Update 2026-11-05 (branch `feat/gaps`):** #5, #8, #9 and #10 are now **implemented**. Only #7 (HTTP/3) remains open, deferred.
 
 | # | Feature | Competitor | Rivetr status | Effort | Notes |
 |---|---------|------------|---------------|--------|-------|
@@ -23,12 +25,12 @@ Fresh sweep of both competitors' late-2025→2026 releases, cross-checked agains
 | 2 | Configurable stop grace period (`stop_timeout` before SIGKILL) | Coolify (2026) | ✅ Done | **Low** | Per-app `stop_grace_period`; `ContainerRuntime::stop_timeout()` (Docker `t`, Podman `--time`); migration 107; Docker Options UI. |
 | 3 | PostgreSQL 18 + pgvector 18 | Coolify (2026) | ✅ Done | **Low** | Added 17/18 to version list; default bumped to 17. |
 | 4 | LibSQL / Turso DB engine | Dokploy v0.29 | ✅ Done | Medium | `DatabaseType::Libsql`; `ghcr.io/tursodatabase/libsql-server`; auth-less HTTP API on 8080. |
-| 5 | AI-generated Docker Compose from NL prompt | Dokploy v0.19 | 🔴 Missing | Medium | Rivetr already has AI infra (`ai_features.rs` diagnose) — extend with a compose-gen endpoint. |
+| 5 | AI-generated Docker Compose from NL prompt | Dokploy v0.19 | ✅ Done | Medium | `POST /api/ai/compose/generate` + `GET /api/ai/status` (`src/api/ai_compose.rs`): prompt plus optional existing compose, validated with `validate_compose_content`, never deploys; tests use a mocked completion. UI: "Describe it" tab in both new-service dialogs (`frontend/app/components/services/compose-input-tabs.tsx`), disabled state links to the AI provider settings. |
 | 6 | MCP tool coverage | Coolify (read-only set), Dokploy (508 tools) | ✅ Done | Medium | Expanded 4 → 9 tools (added list_deployments, get_deployment_status, list_services, list_databases, list_projects, restart_app). Credentials masked. |
 | 7 | HTTP/3 (QUIC) in proxy | Dokploy (default, Traefik v3.5) | 🔴 Missing | **High** | Custom Axum proxy is HTTP/1.1+2 only. QUIC = significant work; low user-impact. Defer. |
-| 8 | First-class Tailscale integration | Coolify + Dokploy (documented) | 🟡 Partial | Low | Rivetr ships Tailscale only as a deployable template, not a managed connectivity backend. Competitors' support is also doc-only patterns — minor gap. |
-| 9 | Non-root multi-server (passwordless sudo) | Dokploy v0.29 | 🟡 Partial | Low | SSH supports configurable non-root user; passwordless-sudo provisioning path unverified. Confirm + document. |
-| 10 | Advanced Swarm service spec | Dokploy | 🟡 Partial | Medium | Constraints/placement/update+rollback config/reservations still not in UI (carried over from prior analysis). |
+| 8 | First-class Tailscale integration | Coolify + Dokploy (documented) | ✅ Done | Low | Per-server network mode (public / tailscale) + Tailscale IP or MagicDNS name (migration 131, `Server::ssh_host()`); every SSH path uses it. `POST /api/servers/{id}/network-check` (`src/api/server_network.rs`): tailscaled on the Rivetr host, `tailscale ping`, SSH port. Network section on the server General page. Docs: `docs/reference/remote-servers.md`. Rivetr does not manage tailnet keys. |
+| 9 | Non-root multi-server (passwordless sudo) | Dokploy v0.29 | ✅ Done | Low | One helper, `src/utils/privileged.rs`: `$SUDO` (`sudo -n` for non-root) and a container CLI wrapper that uses sudo only when the user cannot reach the daemon. Used by health/install/patch/security checks, server details, build servers, remote builds and server operations. Health check reports root / passwordless sudo available / missing with the exact sudoers line. Docs: `docs/reference/remote-servers.md`. |
+| 10 | Advanced Swarm service spec | Dokploy | ✅ Done | Medium | Placement constraints, spread preferences, max replicas per node, update and rollback config, reservations, restart policy per app (migration 130 `app_swarm_specs`, `src/api/swarm_spec.rs`, mapped to bollard `ServiceSpec` with tests). `GET/PUT /api/apps/{id}/swarm-spec`; Swarm services are created through the Docker API with the spec, and saving re-applies it. UI section on the app Docker options page when the app targets Swarm. |
 
 ### Stale entries corrected (Rivetr now HAS these — earlier doc was wrong/outdated)
 
@@ -55,7 +57,7 @@ Fresh sweep of both competitors' late-2025→2026 releases, cross-checked agains
 4. ~~Expand MCP tool surface (Medium) — #6~~ ✅ done (Unreleased, 4 → 9 tools).
 5. ~~LibSQL engine (Medium) — #4~~ ✅ done (Unreleased).
 
-Deferred / low-priority (still open): AI compose-gen (#5), HTTP/3 (#7), first-class Tailscale (#8), non-root sudo verification (#9), advanced Swarm spec (#10).
+Done 2026-11-05: AI compose-gen (#5), first-class Tailscale (#8), non-root sudo (#9), advanced Swarm spec (#10). Deferred (still open): HTTP/3 (#7).
 
 ---
 
@@ -63,6 +65,12 @@ Deferred / low-priority (still open): AI compose-gen (#5), HTTP/3 (#7), first-cl
 
 | Feature | Status | Notes |
 |---------|--------|-------|
+| AI-generated Docker Compose | ✅ Implemented (2026-11-05) | `src/api/ai_compose.rs`; `POST /api/ai/compose/generate`; "Describe it" tab in the new-service dialogs |
+| Advanced Swarm service spec | ✅ Implemented (2026-11-05) | Migration 130; `src/api/swarm_spec.rs`; `GET/PUT /api/apps/{id}/swarm-spec` |
+| Non-root servers with passwordless sudo | ✅ Implemented (2026-11-05) | `src/utils/privileged.rs`; sudo validation in the server health check; `docs/reference/remote-servers.md` |
+| Tailscale connectivity for servers | ✅ Implemented (2026-11-05) | Migration 131; `src/api/server_network.rs`; `POST /api/servers/{id}/network-check` |
+| +30 service templates (total ~365) | ✅ Implemented (2026-11-05) | `src/db/seeders/sprint27.rs`: Kestra, Superset, Grafana OTel LGTM, Coder, DocuSeal, Komga, Wallabag, Kutt, Planka, Gatus, Semaphore, Mailpit, Paperless-AI, Ghostfolio, Seerr, Tautulli, CyberChef, Redis Insight, pgweb, oCIS, RustDesk Server, LibreSpeed, Technitium DNS, ConvertX, Unleash, Snipe-IT, Centrifugo, Bugsink, Gotenberg, Whisper ASR |
+| SAML 2.0 | ⏸ Deferred (2026-11-05) | No mature pure-Rust SP stack; see `docs/research/saml-decision.md` |
 | MariaDB managed database | ✅ Implemented | `mariadb:11` image, MARIADB_* env vars, mariadb-dump backups, separate `Mariadb` enum variant |
 | Database SSL/TLS configuration | ✅ Implemented | Per-database `ssl_enabled`/`ssl_mode` fields; Postgres (allow/prefer/require/verify-ca/verify-full) and MySQL/MariaDB (preferred/required/verify-ca/verify-identity) modes; Settings tab UI |
 | Database dump import | ✅ Implemented | `POST /api/databases/:id/import` multipart endpoint; supports PostgreSQL (psql/pg_restore), MySQL, MariaDB, MongoDB; dedicated Import tab in dashboard |
@@ -180,7 +188,7 @@ Dokploy allows overriding the base Docker image for any database and running ini
 
 Both Coolify and Dokploy support routing all traffic through a Cloudflare Tunnel, meaning **zero open inbound ports** on the server. Benefits: hides server IP, built-in DDoS protection, works behind NAT/firewalls, enables wildcard subdomain routing without DNS propagation delays.
 
-Dokploy also documents a Tailscale integration for private WireGuard networking.
+Dokploy also documents a Tailscale integration for private WireGuard networking. Rivetr now reaches managed servers over Tailscale (per-server network mode, migration 131; see `docs/reference/remote-servers.md`).
 
 ### Alternative proxy engine (Caddy)
 🔴 **Missing in Rivetr**
@@ -299,6 +307,8 @@ Rivetr now injects the following into every container at runtime (without overri
 | Dokploy | 388+ |
 | **Rivetr** | **~250** *(sprint 16: +39 new templates: KeyDB, DragonflyDB, ClickHouse, CockroachDB, TimescaleDB, SurrealDB, Cassandra, Neo4j, QuestDB, Uptime Kuma, Prometheus, Jaeger, OpenTelemetry, Graylog, Concourse, Argo CD, Tekton, GitLab Runner, Woodpecker Server/Agent, Revolt, HumHub, Zulip, Chatwoot, Chroma, AnythingLLM, Langfuse, LocalAI, Wazuh, Passbolt, CrowdSec Dashboard, Dolibarr, Taiga, Twenty CRM, Plane, Monica, Listmonk, Cal.com, Restic)* |
 
+**Update 2026-11-05:** +30 templates in `src/db/seeders/sprint27.rs` (total ~365, see `docs/reference/service-templates.md`).
+
 Rivetr is now closing the gap (down from 3× to ~2×). Both competitors have a community contribution workflow that continuously adds new templates. Rivetr's templates are hard-coded Rust seeders with no community submission path active yet.
 
 ### Community template submissions
@@ -397,7 +407,7 @@ Rivetr uses Tokio MPSC channels for serialized deployment queuing. Each deployme
 Dokploy publishes **three official GitHub Actions** (`dokploy/github-action-deploy@v1`, supporting both `application` and `compose` types) for pipeline integration. Coolify has documented patterns for GitHub Actions → API deploy. Rivetr has no official GitHub Actions, requiring users to write raw `curl` calls.
 
 ### Advanced Docker Swarm deployment config
-🔴 **Missing in Rivetr** (for Swarm-deployed apps)
+✅ **Implemented in Rivetr** (2026-11-05): placement constraints and spread preferences, max replicas per node, update and rollback config (parallelism, delay, failure action, order, monitor, max failure ratio), resource reservations and restart policy per app. Migration 130, `src/api/swarm_spec.rs`, `GET/PUT /api/apps/{id}/swarm-spec`, Swarm section on the app Docker options page. Swarm health checks and job modes are not exposed yet.
 
 Dokploy exposes full Swarm service configuration per application:
 - Replica count + service mode (Replicated / Global / Job)
@@ -408,7 +418,7 @@ Dokploy exposes full Swarm service configuration per application:
 - Restart policy: condition, delay, max attempts, window
 - Resource limits AND reservations (separate from limits)
 
-Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't expose this granular service spec in the UI.
+Before 2026-11-05, Rivetr's Swarm integration initialized a cluster and scaled replicas but did not expose this granular service spec.
 
 ---
 
@@ -427,9 +437,9 @@ Rivetr's Swarm integration initializes a cluster and scales replicas but doesn't
 Rivetr now supports GitHub, Google, GitLab, Azure AD, and Bitbucket OAuth login.
 
 ### SAML 2.0
-🟡 **Planned in Rivetr**
+⏸ **Deferred in Rivetr** (decision 2026-11-05)
 
-Coolify and Dokploy (Enterprise) support SAML 2.0. Rivetr has OIDC (Auth0, Keycloak, Azure AD, Okta) but SAML 2.0 is still on the future roadmap.
+Coolify and Dokploy (Enterprise) support SAML 2.0. Rivetr has OIDC (Auth0, Keycloak, Azure AD, Okta). SAML is deferred: `samael` needs libxml2/xmlsec1 and OpenSSL (breaks the single binary), and the only pure-Rust stack (`saml-rs` + `bergshamra`) is months old and unaudited. Workaround: broker the SAML IdP through Keycloak or Authentik over OIDC. See `docs/research/saml-decision.md` for findings and revisit criteria.
 
 ### Fine-grained RBAC
 ✅ **Implemented in Rivetr** · ✅ **Live-tested 2026-03-14**
@@ -645,7 +655,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | MariaDB support | ✅ | ✅ | 🟡 Medium |
 | Database SSL/TLS | ✅ | ❌ | 🟡 Medium |
 | Database dump import | ✅ | ❌ | ✅ Done |
-| More service templates (~100 short, total ~223 vs ~320 needed) | ✅ | ✅ | 🟡 Medium |
+| More service templates (total ~365 after +30 in sprint27.rs; competitors 388-400+) | ✅ | ✅ | 🟡 Medium (gap narrowing) |
 | Community template submissions | ✅ | ✅ | ✅ Done (migration 091; submit/review/approve flow; My Submissions page) |
 | Discord + Slack as notification channels | ✅ | ✅ | ✅ Done |
 | Container crash/restart notifications | ✅ | ✅ | ✅ Done |
@@ -660,7 +670,7 @@ Dokploy Enterprise offers MSA (Master Service Agreement), SLA guarantees, priori
 | White labeling | ❌ | ✅ (Enterprise) | ✅ Done |
 | Multiple organizations | ❌ | ✅ | 🟡 Medium |
 | Patches (build-time file injection) | ❌ | ✅ | ✅ Done |
-| SAML 2.0 | ❌ | ✅ (Enterprise) | 🟡 Medium |
+| SAML 2.0 | ❌ | ✅ (Enterprise) | ⏸ Deferred (no mature pure-Rust SP; `docs/research/saml-decision.md`) |
 | GitLab / Azure OAuth login | ✅ | ❌ | ✅ Done |
 | Bitbucket OAuth login | ✅ | ❌ | ✅ Done |
 | Deployment queue cancellation | ❌ | ✅ | ✅ Done (migration 090; CancellationToken per deployment; Cancel button in UI) |
