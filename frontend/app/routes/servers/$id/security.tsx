@@ -91,6 +91,9 @@ export default function ServerSecurityPage() {
     queryKey: ["server-patching", serverId],
     queryFn: () => serverOpsApi.getPatching(serverId),
     refetchInterval: (q) => (q.state.data?.running_job ? 3000 : false),
+    // Keep polling through errors: during a reboot of Rivetr's own host the API
+    // is gone for a minute, and the last data (with the running job) stays shown.
+    refetchIntervalInBackground: true,
   });
 
   const settings = data?.settings;
@@ -149,7 +152,10 @@ export default function ServerSecurityPage() {
     onError,
   });
 
-  if (error) {
+  // Keep showing the last known state while Rivetr is unreachable during a reboot
+  // of its own host; polling continues and the page recovers when it is back.
+  const rebooting = data?.running_job?.kind === "reboot";
+  if (error && !data) {
     return <QueryError what="patching status" error={error} onRetry={() => refetch()} />;
   }
   if (isLoading || !data || !settings) {
@@ -187,6 +193,9 @@ export default function ServerSecurityPage() {
                 {state?.package_manager && state.package_manager !== "unknown" && (
                   <Badge variant="outline">{state.package_manager}</Badge>
                 )}
+                {state?.booted_at ? (
+                  <span>Up since {new Date(state.booted_at * 1000).toLocaleString()}</span>
+                ) : null}
                 {state?.reboot_required && <Badge variant="destructive">Reboot required</Badge>}
               </div>
             </div>
@@ -213,15 +222,28 @@ export default function ServerSecurityPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {data.running_job && (
-            <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
               <div className="flex items-center gap-2 font-medium">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {JOB_LABELS[data.running_job.kind]}
-                {data.running_job.package ? ` ${data.running_job.package}` : ""} in progress
+                {rebooting
+                  ? "Rebooting. Waiting for the server to come back..."
+                  : `${JOB_LABELS[data.running_job.kind]}${data.running_job.package ? ` ${data.running_job.package}` : ""} in progress`}
               </div>
               <p className="mt-1 text-muted-foreground">
-                This runs in the background. You can leave this page.
+                {rebooting
+                  ? isLocal
+                    ? "Rivetr runs on this server, so the dashboard is unreachable for a minute or two. This page reconnects by itself."
+                    : "This usually takes one to three minutes. The job finishes when the server reports a new boot time."
+                  : "This runs on the server itself, so it keeps going if you leave this page or Rivetr restarts."}
               </p>
+              {error && (
+                <p className="mt-1 text-muted-foreground">Rivetr is not reachable right now, retrying...</p>
+              )}
+              {!rebooting && data.running_job.log && (
+                <pre className="mt-2 max-h-48 overflow-auto rounded bg-muted/60 p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                  {data.running_job.log.split("\n").slice(-15).join("\n")}
+                </pre>
+              )}
             </div>
           )}
           {state?.error && (

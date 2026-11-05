@@ -31,6 +31,9 @@ pub struct PatchState {
     pub reboot_required: bool,
     pub checked_at: Option<String>,
     pub error: Option<String>,
+    /// When the host last booted (Unix seconds), from `/proc/stat` btime.
+    #[serde(default)]
+    pub booted_at: Option<i64>,
 }
 
 impl PatchState {
@@ -114,7 +117,9 @@ elif [ -d /lib/modules ] && [ ! -d "/lib/modules/$(uname -r)" ]; then
   echo "yes"
 else
   echo "no"
-fi"#;
+fi
+echo "---BOOT---"
+awk '/^btime/{print $2}' /proc/stat 2>/dev/null || true"#;
 
 /// Split check output into named sections.
 fn sections(output: &str) -> (String, Vec<(String, Vec<String>)>) {
@@ -353,13 +358,23 @@ pub fn parse_check_output(output: &str) -> PatchState {
     packages.sort_by(|a, b| a.name.cmp(&b.name));
     packages.dedup_by(|a, b| a.name == b.name);
     let reboot_required = parse_reboot_required(section(&secs, "REBOOT"));
+    let booted_at = parse_boot_time(section(&secs, "BOOT").join("\n").as_str());
     PatchState {
         package_manager: pm,
         packages,
         reboot_required,
         checked_at: Some(chrono::Utc::now().to_rfc3339()),
         error: None,
+        booted_at,
     }
+}
+
+/// First line that is a Unix timestamp (the `btime` value).
+pub fn parse_boot_time(output: &str) -> Option<i64> {
+    output
+        .lines()
+        .find_map(|l| l.trim().parse::<i64>().ok())
+        .filter(|v| *v > 0)
 }
 
 /// The REBOOT section is a single `yes` or `no`.
@@ -367,18 +382,25 @@ pub fn parse_reboot_required(lines: &[String]) -> bool {
     lines.iter().any(|l| l.trim().eq_ignore_ascii_case("yes"))
 }
 
+/// Finish any dpkg run that was interrupted (no-op when there is none).
+const APT_REPAIR: &str = "$SUDO env DEBIAN_FRONTEND=noninteractive dpkg --configure -a \
+     --force-confdef --force-confold";
+
 /// Shell command that upgrades one package (or every package when `package`
 /// is `None`) with the given package manager.
 pub fn update_command(pm: &str, package: Option<&str>) -> Option<String> {
     let cmd = match (pm, package) {
+        // `dpkg --configure -a` first: an earlier run that was cut off leaves dpkg
+        // half configured, and apt then refuses to do anything until it is repaired.
         ("apt", Some(p)) => format!(
-            "$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade -y \
+            "{APT_REPAIR} && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade -y \
              -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold {p}"
         ),
-        ("apt", None) => "$SUDO env DEBIAN_FRONTEND=noninteractive apt-get update && \
+        ("apt", None) => format!(
+            "{APT_REPAIR} && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update && \
              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
              -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
-            .to_string(),
+        ),
         ("dnf", Some(p)) => format!("$SUDO dnf upgrade -y {p}"),
         ("dnf", None) => "$SUDO dnf upgrade -y".to_string(),
         ("yum", Some(p)) => format!("$SUDO yum update -y {p}"),
@@ -501,6 +523,16 @@ pub enum PatchJobKind {
 }
 
 impl PatchJobKind {
+    /// Long-running jobs run detached on the host and survive a Rivetr restart.
+    fn is_detached(&self) -> bool {
+        matches!(
+            self,
+            PatchJobKind::UpdatePackage(_)
+                | PatchJobKind::UpdateAll
+                | PatchJobKind::ConfigureAutoUpdates { .. }
+        )
+    }
+
     fn as_str(&self) -> &'static str {
         match self {
             PatchJobKind::Check => "check",
@@ -559,26 +591,308 @@ pub async fn start_job(
 
     let job_id = id.clone();
     tokio::spawn(async move {
-        let (ok, log) = execute_job(&db, &server_id, &target, &kind).await;
-        let status = if ok { "success" } else { "failed" };
-        if let Err(e) = sqlx::query(
-            "UPDATE server_patch_jobs SET status = ?, finished_at = ?, log = ? WHERE id = ?",
-        )
-        .bind(status)
-        .bind(chrono::Utc::now().to_rfc3339())
-        .bind(&log)
-        .bind(&job_id)
-        .execute(&db)
-        .await
-        {
-            tracing::error!(job_id = %job_id, "Failed to store patch job result: {}", e);
-        }
+        let (ok, log) = execute_job(&db, &job_id, &server_id, &target, &kind).await;
+        finish_job(&db, &job_id, ok, &log).await;
     });
     Ok(id)
 }
 
+async fn finish_job(db: &DbPool, job_id: &str, ok: bool, log: &str) {
+    let status = if ok { "success" } else { "failed" };
+    if let Err(e) = sqlx::query(
+        "UPDATE server_patch_jobs SET status = ?, finished_at = ?, log = ? WHERE id = ?",
+    )
+    .bind(status)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(log)
+    .bind(job_id)
+    .execute(db)
+    .await
+    {
+        tracing::error!(job_id = %job_id, "Failed to store patch job result: {}", e);
+    }
+}
+
+async fn store_progress(db: &DbPool, job_id: &str, log: &str) {
+    let _ = sqlx::query("UPDATE server_patch_jobs SET log = ? WHERE id = ? AND status = 'running'")
+        .bind(log)
+        .bind(job_id)
+        .execute(db)
+        .await;
+}
+
+// ---------------------------------------------------------------------------
+// Detached jobs: run on the host, not as a child of Rivetr
+// ---------------------------------------------------------------------------
+
+/// Where detached jobs keep their script, pid, log and exit code on the host.
+const JOB_DIR: &str = "/var/lib/rivetr-jobs";
+/// Longest a detached package job may run.
+const DETACHED_MAX: Duration = Duration::from_secs(2 * 60 * 60);
+const POLL_EVERY: Duration = Duration::from_secs(3);
+/// Grace period before a job with no live process counts as gone.
+const START_GRACE: Duration = Duration::from_secs(30);
+
+/// Shell that launches `script` detached on the host (systemd-run, or nohup + setsid
+/// when systemd is missing), so a Rivetr restart or deploy cannot cut it off.
+pub(crate) fn detached_launch_script(job_id: &str, prelude: &str, script: &str) -> String {
+    use base64::Engine;
+    let body = format!("{prelude}\n{script}\n");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(body);
+    format!(
+        r#"set -e
+D={JOB_DIR}
+$SUDO mkdir -p $D
+$SUDO chmod 755 $D
+echo '{b64}' | base64 -d | $SUDO tee $D/{job_id}.sh >/dev/null
+RUN="echo \$\$ > $D/{job_id}.pid; sh $D/{job_id}.sh > $D/{job_id}.log 2>&1; echo \$? > $D/{job_id}.exit.tmp; mv $D/{job_id}.exit.tmp $D/{job_id}.exit"
+if command -v systemd-run >/dev/null 2>&1 && $SUDO systemd-run --unit=rivetr-job-{job_id} --collect --quiet sh -c "$RUN"; then
+  echo "Started on the host as systemd unit rivetr-job-{job_id}"
+else
+  $SUDO nohup setsid sh -c "$RUN" >/dev/null 2>&1 < /dev/null &
+  echo "Started on the host in the background"
+fi"#
+    )
+}
+
+/// Read-only probe of a detached job (works without root: files are world readable).
+pub(crate) fn detached_poll_script(job_id: &str) -> String {
+    format!(
+        r#"D={JOB_DIR}
+if [ -f $D/{job_id}.exit ]; then echo "STATE:done $(cat $D/{job_id}.exit)"
+elif [ -f $D/{job_id}.pid ] && [ -d /proc/$(cat $D/{job_id}.pid) ]; then echo "STATE:running"
+elif [ -f $D/{job_id}.sh ]; then echo "STATE:pending"
+else echo "STATE:missing"; fi
+echo "---LOG---"
+tail -c 60000 $D/{job_id}.log 2>/dev/null || true"#
+    )
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum DetachedState {
+    Running,
+    Pending,
+    Missing,
+    Done(i32),
+}
+
+/// Parse the first line of [`detached_poll_script`] output and the log after it.
+pub(crate) fn parse_detached_poll(output: &str) -> (DetachedState, String) {
+    let (head, log) = output.split_once("---LOG---").unwrap_or((output, ""));
+    let state_line = head
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("STATE:"))
+        .unwrap_or("missing")
+        .trim();
+    let state = match state_line.split_once(' ') {
+        Some(("done", code)) => DetachedState::Done(code.trim().parse().unwrap_or(1)),
+        _ => match state_line {
+            "running" => DetachedState::Running,
+            "pending" => DetachedState::Pending,
+            _ => DetachedState::Missing,
+        },
+    };
+    (state, log.trim_start_matches('\n').to_string())
+}
+
+/// Wait for a detached job, streaming its log into the job row. Returns (ok, host log).
+async fn wait_detached(
+    db: &DbPool,
+    job_id: &str,
+    target: &HostTarget,
+    prefix: &str,
+) -> (bool, String) {
+    let started = std::time::Instant::now();
+    let mut last_log = String::new();
+    loop {
+        tokio::time::sleep(POLL_EVERY).await;
+        match target
+            .exec(&detached_poll_script(job_id), Duration::from_secs(30))
+            .await
+        {
+            Ok(out) => {
+                let (state, log) = parse_detached_poll(&out.stdout);
+                if !log.is_empty() && log != last_log {
+                    store_progress(db, job_id, &format!("{prefix}\n{log}")).await;
+                    last_log = log;
+                }
+                match state {
+                    DetachedState::Done(code) => {
+                        let _ = target
+                            .exec_privileged(
+                                &format!(
+                                    "$SUDO rm -f {JOB_DIR}/{job_id}.sh {JOB_DIR}/{job_id}.pid"
+                                ),
+                                Duration::from_secs(30),
+                            )
+                            .await;
+                        let mut log = last_log;
+                        if code != 0 {
+                            log_line(&mut log, format!("Exited with code {code}"));
+                        }
+                        return (code == 0, log);
+                    }
+                    DetachedState::Missing => {
+                        let mut log = last_log;
+                        log_line(&mut log, "The job is no longer on the host (was the server rebooted or the files removed?)");
+                        return (false, log);
+                    }
+                    DetachedState::Pending if started.elapsed() > START_GRACE => {
+                        let mut log = last_log;
+                        log_line(&mut log, "The job process is gone without an exit code (the host may have rebooted)");
+                        return (false, log);
+                    }
+                    _ => {}
+                }
+            }
+            // The host can be briefly unreachable (e.g. Docker restarting during an
+            // upgrade); keep waiting until the overall limit.
+            Err(e) => tracing::debug!(job_id, "Polling detached job failed: {}", e),
+        }
+        if started.elapsed() > DETACHED_MAX {
+            let mut log = last_log;
+            log_line(
+                &mut log,
+                "Gave up waiting after 2 hours; the job may still be running on the host",
+            );
+            return (false, log);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reboot verification
+// ---------------------------------------------------------------------------
+
+const BOOT_SCRIPT: &str = "awk '/^btime/{print $2}' /proc/stat";
+const REBOOT_WAIT: Duration = Duration::from_secs(15 * 60);
+
+async fn read_boot_time(target: &HostTarget) -> Option<i64> {
+    target
+        .exec(BOOT_SCRIPT, Duration::from_secs(15))
+        .await
+        .ok()
+        .and_then(|o| parse_boot_time(&o.stdout))
+}
+
+/// Marker stored in the reboot job log so a restarted Rivetr can tell whether the
+/// host actually rebooted.
+const BOOT_MARKER: &str = "Boot time before reboot: ";
+
+fn boot_before_from_log(log: &str) -> Option<i64> {
+    log.lines()
+        .find_map(|l| l.strip_prefix(BOOT_MARKER))
+        .and_then(|v| v.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
+}
+
+fn format_boot(ts: i64) -> String {
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+        .unwrap_or_else(|| ts.to_string())
+}
+
+/// Wait until the host's boot time moves past `before`.
+async fn wait_for_reboot(target: &HostTarget, before: i64, mut log: String) -> (bool, String) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < REBOOT_WAIT {
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        if let Some(now) = read_boot_time(target).await {
+            if now > before {
+                log_line(
+                    &mut log,
+                    format!("Server is back, up since {}", format_boot(now)),
+                );
+                return (true, log);
+            }
+        }
+    }
+    log_line(
+        &mut log,
+        "The server did not come back with a new boot time within 15 minutes: it may not have rebooted, or it is still down",
+    );
+    (false, log)
+}
+
+/// Pick up jobs that were running when Rivetr stopped: detached package jobs keep
+/// running on the host and are re-attached; reboots are checked against the boot time.
+pub async fn resume_jobs(db: DbPool, config: std::sync::Arc<crate::config::Config>) {
+    let jobs = match sqlx::query_as::<_, PatchJob>(
+        "SELECT * FROM server_patch_jobs WHERE status = 'running' \
+         AND kind IN ('update_package', 'update_all', 'configure_auto_updates', 'reboot')",
+    )
+    .fetch_all(&db)
+    .await
+    {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!("Failed to load running patch jobs: {}", e);
+            return;
+        }
+    };
+    for job in jobs {
+        let target = match super::resolve_target(&db, &config, &job.server_id).await {
+            Ok(Some((t, _))) => t,
+            _ => {
+                let mut log = job.log.clone();
+                log_line(&mut log, "Server no longer exists");
+                finish_job(&db, &job.id, false, &log).await;
+                continue;
+            }
+        };
+        let db = db.clone();
+        tokio::spawn(async move {
+            let (ok, log) = if job.kind == "reboot" {
+                let mut log = job.log.clone();
+                log_line(
+                    &mut log,
+                    "Rivetr restarted; checking that the server rebooted",
+                );
+                match boot_before_from_log(&job.log) {
+                    Some(before) => wait_for_reboot(&target, before, log).await,
+                    None => {
+                        log_line(&mut log, "No boot time was recorded before the reboot, so it cannot be confirmed");
+                        (false, log)
+                    }
+                }
+            } else {
+                let prefix = format!(
+                    "{}\nRivetr restarted; re-attached to the job on the host",
+                    job.log.lines().next().unwrap_or("")
+                );
+                let (ok, host_log) = wait_detached(&db, &job.id, &target, &prefix).await;
+                let mut log = format!("{prefix}\n{host_log}");
+                if job.kind != "configure_auto_updates" {
+                    recheck_into(&db, &job.server_id, &target, &mut log).await;
+                }
+                (ok, log)
+            };
+            finish_job(&db, &job.id, ok, &log).await;
+        });
+    }
+}
+
+async fn recheck_into(db: &DbPool, server_id: &str, target: &HostTarget, log: &mut String) {
+    match run_check(db, server_id, target).await {
+        Ok(state) => log_line(
+            log,
+            format!(
+                "Re-checked: {} package update(s) left{}",
+                state.packages.len(),
+                if state.reboot_required {
+                    ", reboot required"
+                } else {
+                    ""
+                }
+            ),
+        ),
+        Err(e) => log_line(log, format!("Re-check failed: {e}")),
+    }
+}
+
 async fn execute_job(
     db: &DbPool,
+    job_id: &str,
     server_id: &str,
     target: &HostTarget,
     kind: &PatchJobKind,
@@ -634,6 +948,73 @@ async fn execute_job(
         &mut log,
         format!("$ {}", script.lines().next().unwrap_or("")),
     );
+
+    if kind.is_detached() {
+        let launch = target
+            .exec_privileged(
+                &detached_launch_script(job_id, target.prelude(), &format!("{script} 2>&1")),
+                Duration::from_secs(120),
+            )
+            .await;
+        match launch {
+            Ok(out) if out.success() => log_line(&mut log, out.combined()),
+            Ok(out) => {
+                log_line(
+                    &mut log,
+                    format!("Could not start the job on the host: {}", out.combined()),
+                );
+                return (false, log);
+            }
+            Err(e) => {
+                log_line(
+                    &mut log,
+                    format!("Could not start the job on the host: {e}"),
+                );
+                return (false, log);
+            }
+        }
+        store_progress(db, job_id, &log).await;
+        let (ok, host_log) = wait_detached(db, job_id, target, &log).await;
+        log_line(&mut log, host_log);
+        if !matches!(kind, PatchJobKind::ConfigureAutoUpdates { .. }) {
+            recheck_into(db, server_id, target, &mut log).await;
+        }
+        return (ok, log);
+    }
+
+    if matches!(kind, PatchJobKind::Reboot) {
+        let before = read_boot_time(target).await;
+        if let Some(b) = before {
+            log_line(&mut log, format!("{BOOT_MARKER}{b} ({})", format_boot(b)));
+            // Saved before the reboot so a restarted Rivetr (localhost) can verify it.
+            store_progress(db, job_id, &log).await;
+        }
+        let result = target
+            .exec_privileged(&format!("{script} 2>&1"), Duration::from_secs(60))
+            .await;
+        match result {
+            Ok(out) if out.success() => log_line(&mut log, out.combined()),
+            Ok(out) => {
+                log_line(&mut log, out.combined());
+                return (false, log);
+            }
+            // The connection can drop as the host goes down.
+            Err(e) => log_line(&mut log, format!("Connection closed: {e}")),
+        }
+        log_line(&mut log, "Waiting for the server to come back...");
+        store_progress(db, job_id, &log).await;
+        return match before {
+            Some(b) => wait_for_reboot(target, b, log).await,
+            None => {
+                log_line(
+                    &mut log,
+                    "Could not read the boot time, so the reboot cannot be confirmed",
+                );
+                (true, log)
+            }
+        };
+    }
+
     let result = target
         .exec_privileged(&format!("{script} 2>&1"), Duration::from_secs(1800))
         .await;
@@ -654,27 +1035,6 @@ async fn execute_job(
         }
     };
 
-    // Refresh the package list after changing packages.
-    if matches!(
-        kind,
-        PatchJobKind::UpdatePackage(_) | PatchJobKind::UpdateAll
-    ) {
-        match run_check(db, server_id, target).await {
-            Ok(state) => log_line(
-                &mut log,
-                format!(
-                    "Re-checked: {} package update(s) left{}",
-                    state.packages.len(),
-                    if state.reboot_required {
-                        ", reboot required"
-                    } else {
-                        ""
-                    }
-                ),
-            ),
-            Err(e) => log_line(&mut log, format!("Re-check failed: {e}")),
-        }
-    }
     (ok, log)
 }
 
@@ -684,6 +1044,61 @@ mod tests {
 
     fn lines(s: &str) -> Vec<String> {
         s.lines().map(|l| l.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_detached_job_states() {
+        assert_eq!(
+            parse_detached_poll("STATE:done 0\n---LOG---\nall good\n"),
+            (DetachedState::Done(0), "all good\n".to_string())
+        );
+        assert_eq!(
+            parse_detached_poll("STATE:done 100\n---LOG---\n").0,
+            DetachedState::Done(100)
+        );
+        assert_eq!(
+            parse_detached_poll("STATE:running\n---LOG---\nx").0,
+            DetachedState::Running
+        );
+        assert_eq!(
+            parse_detached_poll("STATE:pending\n---LOG---\n").0,
+            DetachedState::Pending
+        );
+        assert_eq!(parse_detached_poll("garbage").0, DetachedState::Missing);
+    }
+
+    #[test]
+    fn launch_script_detaches_and_records_exit_code() {
+        let s = detached_launch_script("job-1", "PRELUDE", "apt-get upgrade -y 2>&1");
+        assert!(s.contains("systemd-run --unit=rivetr-job-job-1 --collect"));
+        assert!(s.contains("nohup setsid"));
+        assert!(s.contains("D=/var/lib/rivetr-jobs"));
+        assert!(s.contains("$D/job-1.exit"));
+        // The script body travels base64 encoded, so quotes in it cannot break the launcher.
+        assert!(!s.contains("apt-get upgrade"));
+    }
+
+    #[test]
+    fn apt_updates_repair_interrupted_dpkg_first() {
+        let one = update_command("apt", Some("tmux")).unwrap();
+        let all = update_command("apt", None).unwrap();
+        for cmd in [one, all] {
+            let repair = cmd.find("dpkg --configure -a").unwrap();
+            let upgrade = cmd.find("apt-get").unwrap();
+            assert!(repair < upgrade);
+        }
+        assert!(!update_command("dnf", None).unwrap().contains("dpkg"));
+    }
+
+    #[test]
+    fn reads_boot_times() {
+        assert_eq!(parse_boot_time("1793900000\n"), Some(1793900000));
+        assert_eq!(parse_boot_time("awk: not found\n"), None);
+        let log = format!("$ echo\n{BOOT_MARKER}1793900000 (2026-11-05 19:17:33 UTC)\nRebooting");
+        assert_eq!(boot_before_from_log(&log), Some(1793900000));
+        assert_eq!(boot_before_from_log("no marker"), None);
+        let out = "PKG_MANAGER:apt\n---PACKAGES---\n---REBOOT---\nno\n---BOOT---\n1793900000\n";
+        assert_eq!(parse_check_output(out).booted_at, Some(1793900000));
     }
 
     #[test]

@@ -538,19 +538,13 @@ pub async fn fail_interrupted_jobs(db: &DbPool) -> Result<()> {
     sqlx::query(
         "UPDATE server_patch_jobs SET status = 'failed', finished_at = ?, \
          log = log || char(10) || 'Interrupted: Rivetr restarted while this ran.' \
-         WHERE status = 'running' AND kind != 'reboot'",
+         WHERE status = 'running' AND kind = 'check'",
     )
     .bind(&now)
     .execute(db)
     .await?;
-    // A reboot of localhost restarts Rivetr itself, so a running reboot job is a success.
-    sqlx::query(
-        "UPDATE server_patch_jobs SET status = 'success', finished_at = ? \
-         WHERE status = 'running' AND kind = 'reboot'",
-    )
-    .bind(&now)
-    .execute(db)
-    .await?;
+    // Package jobs run detached on the host and reboots are verified by boot time:
+    // `patching::resume_jobs` picks those up instead of failing them.
     Ok(())
 }
 

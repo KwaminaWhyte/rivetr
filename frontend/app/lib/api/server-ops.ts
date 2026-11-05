@@ -73,6 +73,8 @@ export interface PatchState {
   reboot_required: boolean;
   checked_at: string | null;
   error: string | null;
+  /** Unix seconds of the host's last boot, from the latest check. */
+  booted_at?: number | null;
 }
 
 export interface PatchJob {

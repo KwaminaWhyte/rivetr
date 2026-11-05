@@ -26,6 +26,7 @@ pub fn spawn_server_ops_scheduler(db: DbPool, config: Arc<Config>) {
         if let Err(e) = super::fail_interrupted_jobs(&db).await {
             tracing::warn!("Failed to mark interrupted server jobs: {}", e);
         }
+        super::patching::resume_jobs(db.clone(), config.clone()).await;
         let mut last = Utc::now();
         let mut ticker = tokio::time::interval(Duration::from_secs(60));
         ticker.tick().await;
