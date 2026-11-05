@@ -7,6 +7,8 @@ pub mod acme;
 pub mod analytics;
 mod handler;
 mod health_checker;
+#[cfg(test)]
+mod http2_tests;
 pub mod inflight;
 mod service;
 pub mod tls;

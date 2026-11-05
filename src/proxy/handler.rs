@@ -11,10 +11,10 @@ use dashmap::DashMap;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::header::{AUTHORIZATION, CONNECTION, UPGRADE, WWW_AUTHENTICATE};
-use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use regex::Regex;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +30,28 @@ use super::{Backend, ProxyService, RouteTable};
 
 /// ACME HTTP-01 challenge path prefix
 const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
+
+/// Max concurrent HTTP/2 streams per client connection.
+const H2_MAX_CONCURRENT_STREAMS: u32 = 250;
+
+/// Which HTTP versions a connection may speak.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HttpVersions {
+    /// Sniff the connection preface: HTTP/1.1 or HTTP/2 prior knowledge.
+    Auto,
+    Http1,
+    Http2,
+}
+
+impl HttpVersions {
+    /// Map the ALPN protocol a TLS client negotiated to the versions to serve.
+    pub(crate) fn from_alpn(alpn: Option<&[u8]>) -> Self {
+        match alpn {
+            Some(b"h2") => Self::Http2,
+            _ => Self::Http1,
+        }
+    }
+}
 
 /// Capacity of the access-log queue; entries are dropped (and counted) when full.
 const LOG_QUEUE_CAPACITY: usize = 10_000;
@@ -367,48 +389,57 @@ impl ProxyHandler {
         self
     }
 
-    /// Handle a single TCP connection
+    /// Handle a plain TCP connection: HTTP/1.1 (with upgrades, so WebSockets
+    /// work) plus HTTP/2 with prior knowledge (h2c), detected from the preface.
     pub async fn handle_connection(
         &self,
         stream: TcpStream,
         remote_addr: SocketAddr,
     ) -> anyhow::Result<()> {
-        let io = TokioIo::new(stream);
-        let handler = self.clone();
-
-        http1::Builder::new()
-            .serve_connection(
-                io,
-                service_fn(move |req| {
-                    let handler = handler.clone();
-                    async move { handler.handle_request(req, remote_addr).await }
-                }),
-            )
-            .with_upgrades()
-            .await?;
-
-        Ok(())
+        self.serve(TokioIo::new(stream), remote_addr, HttpVersions::Auto)
+            .await
     }
 
-    /// Handle a TLS connection
+    /// Handle a TLS connection. The protocol follows ALPN: `h2` serves HTTP/2,
+    /// anything else (including no ALPN) serves HTTP/1.1 with upgrades.
     pub async fn handle_tls_connection(
         &self,
         stream: TlsStream<TcpStream>,
         remote_addr: SocketAddr,
     ) -> anyhow::Result<()> {
-        let io = TokioIo::new(stream);
-        let handler = self.clone();
+        let versions = HttpVersions::from_alpn(stream.get_ref().1.alpn_protocol());
+        self.serve(TokioIo::new(stream), remote_addr, versions)
+            .await
+    }
 
-        http1::Builder::new()
-            .serve_connection(
-                io,
-                service_fn(move |req| {
-                    let handler = handler.clone();
-                    async move { handler.handle_request(req, remote_addr).await }
-                }),
-            )
-            .with_upgrades()
-            .await?;
+    async fn serve<I>(
+        &self,
+        io: I,
+        remote_addr: SocketAddr,
+        versions: HttpVersions,
+    ) -> anyhow::Result<()>
+    where
+        I: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
+    {
+        let handler = self.clone();
+        let service = service_fn(move |req| {
+            let handler = handler.clone();
+            async move { handler.handle_request(req, remote_addr).await }
+        });
+
+        let mut builder = auto::Builder::new(TokioExecutor::new());
+        builder
+            .http2()
+            .max_concurrent_streams(H2_MAX_CONCURRENT_STREAMS);
+        let builder = match versions {
+            HttpVersions::Auto => builder,
+            HttpVersions::Http1 => builder.http1_only(),
+            HttpVersions::Http2 => builder.http2_only(),
+        };
+        builder
+            .serve_connection_with_upgrades(io, service)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(())
     }
@@ -462,11 +493,9 @@ impl ProxyHandler {
                 .unwrap_or(false);
         if redirect_active {
             if let Some(https_port) = self.https_redirect_port {
-                let host_header = req
-                    .headers()
-                    .get(hyper::header::HOST)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
+                // HTTP/2 (h2c) requests carry the host in the URI authority.
+                let host_header = self.extract_host(&req).unwrap_or_default();
+                let host_header = host_header.as_str();
                 // Strip existing port from host header, add https port if non-standard
                 let host_without_port = host_header.split(':').next().unwrap_or(host_header);
                 let redirect_host = if https_port == 443 {

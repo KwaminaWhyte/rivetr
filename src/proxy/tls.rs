@@ -26,10 +26,7 @@ impl TlsConfig {
         let certs = load_certs(cert_path)?;
         let key = load_private_key(key_path)?;
 
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .context("Failed to create TLS server config")?;
+        let config = single_cert_config(certs, key)?;
 
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
@@ -47,15 +44,33 @@ impl TlsConfig {
         let certs = load_certs_from_pem(cert_pem)?;
         let key = load_private_key_from_pem(key_pem)?;
 
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .context("Failed to create TLS server config")?;
+        let config = single_cert_config(certs, key)?;
 
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
         Ok(Self { acceptor })
     }
+}
+
+/// ALPN protocols the HTTPS proxy offers, in preference order.
+pub fn alpn_protocols() -> Vec<Vec<u8>> {
+    vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+}
+
+/// Server config for one certificate, offering HTTP/2 and HTTP/1.1 via ALPN.
+fn single_cert_config(
+    certs: Vec<CertificateDer<'static>>,
+    key: PrivateKeyDer<'static>,
+) -> Result<ServerConfig> {
+    let mut config =
+        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .context("Failed to select TLS protocol versions")?
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .context("Failed to create TLS server config")?;
+    config.alpn_protocols = alpn_protocols();
+    Ok(config)
 }
 
 /// Load certificates from a PEM file
