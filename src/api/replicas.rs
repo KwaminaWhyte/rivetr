@@ -66,6 +66,13 @@ pub async fn set_replica_count(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
+    // Multi-server apps size each server in their placement instead.
+    if crate::engine::multi_server::is_enabled(&state.db, &id).await {
+        return Err(ApiError::bad_request(
+            "This app runs on several servers; set containers per server under Resources > Servers",
+        ));
+    }
+
     let current_count = app.replica_count;
 
     // Update replica_count in apps table
