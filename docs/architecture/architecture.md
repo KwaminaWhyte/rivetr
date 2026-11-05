@@ -1,324 +1,140 @@
-# Rivetr - Architecture
+# Rivetr Architecture
+
+Rivetr is one Rust binary that holds the REST API, the dashboard (embedded with `rust-embed`), the deployment engine, the reverse proxy and an embedded SQLite database. It talks to Docker (socket API) or Podman (CLI) on the host and, over SSH, on remote servers.
 
 ## High-Level Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         RIVETR BINARY                          │
-├─────────────────────────────────────────────────────────────────┤
+│                         RIVETR BINARY                           │
 │                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Axum API   │  │  React UI    │  │  Embedded Proxy      │  │
-│  │   (REST)     │  │  (Dashboard) │  │  (Hyper + rustls)    │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
-│         │                 │                      │              │
-│         └────────────┬────┴──────────────────────┘              │
-│                      │                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │   Axum API   │  │  React UI    │  │  Embedded Proxy      │   │
+│  │ (REST, WS)   │  │ (embedded)   │  │  (Hyper + rustls)    │   │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘   │
+│         └────────────┬────┴─────────────────────┘               │
 │              ┌───────▼───────┐                                  │
 │              │  Core Engine  │                                  │
 │              │  (Tokio)      │                                  │
 │              └───────┬───────┘                                  │
-│                      │                                          │
-│    ┌─────────────────┼─────────────────┐                       │
-│    │                 │                 │                        │
+│    ┌─────────────────┼─────────────────┐                        │
 │    ▼                 ▼                 ▼                        │
-│ ┌──────┐      ┌───────────┐     ┌───────────┐                  │
-│ │SQLite│      │  Bollard  │     │  Podman   │                  │
-│ │(State)│     │  (Docker) │     │  (CLI)    │                  │
-│ └──────┘      └───────────┘     └───────────┘                  │
-│                                                                 │
+│ ┌──────┐      ┌───────────┐     ┌───────────┐                   │
+│ │SQLite│      │  Bollard  │     │  Podman   │                   │
+│ │(WAL) │      │  (Docker) │     │  (CLI)    │                   │
+│ └──────┘      └───────────┘     └───────────┘                   │
 └─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────────┐
-              │      Container Runtime        │
-              │   (Docker / Podman / Both)    │
-              └───────────────────────────────┘
 ```
 
-## Component Breakdown
-
-### 1. Web Layer
-
-#### REST API (Axum)
-- Handles webhook endpoints (GitHub, GitLab, Gitea)
-- Provides management API for apps, deployments, logs
-- Authentication via API tokens
-- WebSocket support for real-time log streaming
-
-#### Dashboard UI (React + shadcn/ui)
-- Vite + React + TypeScript frontend
-- shadcn/ui components with Tailwind CSS v4
-- React Query for data fetching and caching
-- React Router for SPA navigation
-- Real-time updates via WebSocket
-- Static files served by tower-http
-
-### 2. Core Engine
-
-#### Deployment Pipeline
-```
-Webhook Received
-      │
-      ▼
-┌─────────────┐
-│  Validate   │ → Check config, auth
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│    Clone    │ → git2 crate (not CLI)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│    Build    │ → Docker/Podman build
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Deploy    │ → Start container on private port
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Health    │ → HTTP health check
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Switch    │ → Atomic proxy route update
-└─────────────┘
-```
-
-#### State Management
-- **SQLite** in WAL mode for all persistent state
-- Single file: `rivetr.db`
-- No external database required
-- Migrations handled at startup
-
-#### Task Queue
-- **Tokio MPSC channels** for job processing
-- No Redis required
-- In-memory with persistence checkpoints
-
-### 3. Container Runtime Abstraction
-
-```rust
-trait ContainerRuntime {
-    async fn build(&self, context: &BuildContext) -> Result<ImageId>;
-    async fn run(&self, image: ImageId, config: &RunConfig) -> Result<ContainerId>;
-    async fn stop(&self, container: ContainerId) -> Result<()>;
-    async fn logs(&self, container: ContainerId) -> impl Stream<Item = LogLine>;
-    async fn stats(&self, container: ContainerId) -> Result<Stats>;
-}
-```
-
-- **DockerRuntime**: Uses Bollard crate (socket API)
-- **PodmanRuntime**: Uses CLI wrapper (no daemon)
-- Runtime auto-detected or configured
-
-### 4. Embedded Reverse Proxy
-
-#### Routing Table (ArcSwap)
-```rust
-struct RouteTable {
-    routes: HashMap<Domain, Backend>,
-}
-
-struct Backend {
-    container_id: String,
-    internal_port: u16,
-    health_status: HealthStatus,
-}
-```
-
-#### Features
-- Dynamic route updates (no restarts) via ArcSwap
-- Automatic HTTPS via ACME (Let's Encrypt) with auto-renewal
-- Health-aware routing with background health checker
-- WebSocket proxying support
-- Route management API (GET/POST/DELETE /api/routes)
-
-### 5. Data Models
-
-#### App
-```rust
-struct App {
-    id: Uuid,
-    name: String,
-    git_url: String,
-    branch: String,
-    dockerfile: String,
-    domain: Option<String>,
-    port: u16,
-    healthcheck: Option<String>,
-    cpu_limit: Option<String>,      // e.g., "1", "0.5", "2"
-    memory_limit: Option<String>,   // e.g., "512m", "1g"
-    environment: AppEnvironment,    // development, staging, production
-    project_id: Option<Uuid>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-```
-
-#### EnvVar
-```rust
-struct EnvVar {
-    id: Uuid,
-    app_id: Uuid,
-    key: String,
-    value: String,          // Stored encrypted at rest
-    is_secret: bool,        // UI masking indicator
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-```
-
-#### Deployment
-```rust
-struct Deployment {
-    id: Uuid,
-    app_id: Uuid,
-    commit_sha: String,
-    status: DeploymentStatus,
-    container_id: Option<String>,
-    started_at: DateTime<Utc>,
-    finished_at: Option<DateTime<Utc>>,
-}
-
-enum DeploymentStatus {
-    Pending,
-    Cloning,
-    Building,
-    Deploying,
-    Running,
-    Failed(String),
-    Stopped,
-}
-```
-
-## Directory Structure
+### Data flow
 
 ```
-rivetr/
-├── Cargo.toml
-├── src/
-│   ├── main.rs              # Entry point, CLI parsing
-│   ├── lib.rs               # Library root
-│   ├── config/              # Configuration parsing
-│   │   ├── mod.rs
-│   │   └── schema.rs
-│   ├── api/                 # Axum routes
-│   │   ├── mod.rs
-│   │   ├── webhooks.rs      # Git webhook handlers
-│   │   ├── apps.rs          # App CRUD
-│   │   ├── deployments.rs   # Deployment management
-│   │   └── auth.rs          # Authentication
-│   ├── ui/                  # Reserved for email templates
-│   │   └── mod.rs
-│   ├── engine/              # Core deployment logic
-│   │   ├── mod.rs
-│   │   ├── pipeline.rs      # Deployment pipeline
-│   │   ├── builder.rs       # Build orchestration
-│   │   ├── health.rs        # Health checking
-│   │   └── service_deploy/  # Compose service deploys (build, hooks, rollback)
-│   ├── runtime/             # Container abstraction
-│   │   ├── mod.rs
-│   │   ├── docker.rs        # Bollard implementation
-│   │   └── podman.rs        # Podman CLI wrapper
-│   ├── proxy/               # Reverse proxy
-│   │   ├── mod.rs
-│   │   ├── router.rs        # Route management
-│   │   └── tls.rs           # ACME/TLS handling
-│   ├── db/                  # Database layer
-│   │   ├── mod.rs
-│   │   ├── models.rs
-│   │   └── migrations/
-│   └── utils/               # Shared utilities
-│       ├── mod.rs
-│       └── git.rs           # Git operations
-├── frontend/                # React + Vite + TypeScript dashboard
-│   ├── src/
-│   │   ├── components/      # React components (shadcn/ui)
-│   │   ├── pages/           # Page components
-│   │   ├── lib/             # API client, utilities
-│   │   └── types/           # TypeScript types
-│   └── vite.config.ts
-├── static/dist/             # Built frontend assets (served by tower-http)
-├── migrations/              # SQLx migrations
-└── tests/
-    ├── integration/
-    └── e2e/
+Webhook / dashboard / API -> API -> Engine (MPSC queue) -> Runtime (Docker/Podman) -> Proxy route update
+                                        |
+                                     SQLite (state)
 ```
 
-## Configuration File
+## Components
 
-### `rivetr.toml` (Global)
+### API layer (`src/api/`)
 
-```toml
-[server]
-host = "0.0.0.0"
-api_port = 8080
-proxy_port = 80
-proxy_https_port = 443
-data_dir = "/var/lib/rivetr"
+- Axum REST API for apps, databases, services, servers, teams and settings; WebSocket and SSE for logs and terminals.
+- Git webhooks for GitHub, GitLab, Gitea, Bitbucket and DockerHub, with signature verification.
+- Auth: session tokens, `rvt_` API tokens, the admin token from `rivetr.toml`, OAuth, OIDC SSO, TOTP 2FA and passkeys.
+- `resource_authz_middleware` (`src/api/authz.rs`) enforces team ownership on every `/:id` resource route.
+- The built dashboard is served from the binary with SPA fallback.
 
-[auth]
-admin_token = "your-secret-token"
+### Deployment engine (`src/engine/`)
 
-[runtime]
-# "docker", "podman", or "auto"
-type = "auto"
-docker_socket = "/var/run/docker.sock"
+- App pipeline (`engine/pipeline/`): clone (git CLI) -> build -> start on a private port -> health check -> atomic proxy switch, with health-based auto rollback.
+- Jobs arrive on a Tokio MPSC channel (no Redis). A semaphore caps concurrent builds; the limit is adjustable at runtime from instance settings.
+- Builders: Dockerfile, Nixpacks, Railpack, Cloud Native Buildpacks (Heroku/Paketo), static sites, Docker Compose, registry images. Builds can run on a remote build server over SSH.
+- Compose services deploy through `engine/service_deploy/` (build, pre/post hooks, image digests, rollback), tracked in `service_deployments`. See [service-deployments.md](../reference/service-deployments.md).
+- Background loops (container monitor, scheduler, backups, stats, cleanup, disk monitor, updater, server ops) are wrapped in `utils::supervise::guarded()` so a panic restarts the loop instead of the process.
+- Deployment state lives in the `deployments` table.
 
-[proxy]
-# ACME email for Let's Encrypt
-acme_email = "admin@example.com"
-acme_staging = false
+### Container runtime (`src/runtime/`)
 
-[logging]
-level = "info"
-```
+- The `ContainerRuntime` trait in `src/runtime/mod.rs` is the only way the engine touches containers. Implement it for a new runtime.
+- `DockerRuntime` (`runtime/docker/`) uses the Bollard crate over the Docker socket.
+- `PodmanRuntime` (`runtime/podman.rs`) wraps the Podman CLI.
+- `detect_runtime()` picks one at startup from `[runtime]` config (`auto`, `docker`, `podman`).
+- Every managed container joins the `rivetr` user-defined network so containers resolve each other by name.
 
-### `deploy.toml` (Per-App, in repo root)
+### Reverse proxy (`src/proxy/`)
 
-```toml
-app = "my-api"
-port = 3000
+- Hyper-based HTTP/HTTPS proxy. The `RouteTable` (`proxy/mod.rs`) sits behind `ArcSwap` for lock-free route swaps without restarts.
+- ACME (Let's Encrypt) via `instant-acme` with hot-reloaded certificates and auto renewal.
+- WebSocket tunnelling, basic auth, health-aware routing, access logs and traffic analytics.
 
-[build]
-dockerfile = "./Dockerfile"
-# Optional build args
-args = { NODE_ENV = "production" }
+### Database (`src/db/`)
 
-[deploy]
-strategy = "rolling"  # or "blue-green"
-healthcheck = "/health"
-healthcheck_timeout = 30
+- SQLite in WAL mode; one file at `<data_dir>/rivetr.db`.
+- Migrations are numbered SQL files in `migrations/`, registered at the end of `run_migrations` in `src/db/mod.rs`. They must be idempotent.
+- Models in `src/db/models/`, service template seeders in `src/db/seeders/`.
 
-[resources]
-memory = "256mb"
-cpu = "0.5"
+### Shared state
 
-[env]
-# Non-secret env vars (secrets via UI/API)
-LOG_LEVEL = "info"
-```
+- `AppState` in `src/lib.rs` holds the config, DB pool, deploy channel, runtime, route table, rate limiter, AI client and deploy semaphore.
+- Concurrent maps use `dashmap`; locks use `parking_lot` (no mutex poisoning).
+- Instance-level toggles live in the `instance_settings` table; a DB value overrides the matching `rivetr.toml` value.
 
-## Security Considerations
+### Frontend (`frontend/`)
 
-1. **Container Isolation**: All apps run in containers with resource limits
-2. **Network Isolation**: Apps only exposed through proxy
-3. **Secret Management**: Env vars encrypted at rest in SQLite
-4. **Auth**: Token-based authentication for API
-5. **TLS**: Automatic HTTPS for all domains
-6. **Build Isolation**: Builds run with CPU/memory limits
+- React 19, React Router 8 (framework mode with SSR loaders), TypeScript, Vite, Tailwind CSS 4, shadcn/ui, TanStack Query.
+- `frontend/app/routes/` pages, `components/` UI, `lib/api/` API client (re-exported from `lib/api/index.ts`), `types/` shared types.
+- Build output in `static/dist/`, embedded into the binary at compile time.
 
-## Future Extensibility
+## Source layout
 
-### Phase 2+ Considerations
-- **Multi-node**: Agent mode with controller-agent communication
-- **Plugins**: Lua or WASM-based plugin system
-- **Databases**: Managed database provisioning
-- **Backups**: Automated backup scheduling
+| Directory | Responsibility |
+|---|---|
+| `src/api/` | Axum route handlers, grouped by resource |
+| `src/engine/` | Deployment pipeline, service deploys, monitors, scheduler, builders, server ops |
+| `src/runtime/` | Container runtime abstraction (Docker, Podman) |
+| `src/proxy/` | Embedded reverse proxy, ACME/TLS, access logs |
+| `src/db/` | SQLite pool, migrations runner, models, template seeders |
+| `src/settings/` | Instance settings (advanced, DNS, email, network, updates) |
+| `src/backup/` | Instance backup and S3-compatible storage |
+| `src/logging/` | Log draining to external providers |
+| `src/monitoring/` | Uptime tracking, log cleanup |
+| `src/notifications/` | Alert channels (Slack, Discord, email, Telegram, Teams, ntfy and more) |
+| `src/mcp/` | MCP server for AI assistants |
+| `src/github/` | GitHub App API client and installation tokens |
+| `src/crypto/` | AES-256-GCM encryption and key file handling |
+| `src/cli/` | CLI subcommands (deploy, backup, database, server, secrets) |
+| `src/tui/` | Terminal UI (`--features tui`) |
+| `src/config/` | `rivetr.toml` parsing |
+| `src/startup/` | Startup self-checks |
+| `src/ui/` | Email templates |
+| `src/utils/` | SSH, privileged command helper, task supervision |
+| `migrations/` | Numbered SQL migrations |
+| `frontend/app/` | Dashboard source |
+
+## Tech stack
+
+Principles: battle-tested crates, few dependencies, async everywhere on Tokio, no runtime services outside the binary. `Cargo.toml` and `frontend/package.json` are the source of truth for versions.
+
+| Area | Choice | Why |
+|---|---|---|
+| Web | axum, tower-http | Tokio-native, extractors, built-in WebSocket |
+| Database | sqlx + SQLite (WAL) | No external database, single-file state |
+| Containers | bollard (Docker), Podman CLI | Async Docker API with streamed build output; Podman needs no daemon |
+| Proxy | hyper, rustls, instant-acme | Full control over proxying, already an axum dependency |
+| State | arc-swap, dashmap, parking_lot | Lock-free route swaps, concurrent maps |
+| Crypto and auth | aes-gcm, argon2, webauthn-rs | Secrets at rest, password hashing, passkeys |
+| CLI and TUI | clap, ratatui | |
+| Frontend assets | rust-embed | Dashboard ships inside the binary |
+
+The release profile uses thin LTO, one codegen unit and `panic = "unwind"` so a panic kills only the task that raised it.
+
+## Configuration
+
+Server config is `rivetr.toml`; every key is documented in [configuration.md](../reference/configuration.md), with a copyable starter in `rivetr.example.toml`. Per-app settings (build type, health check, resources, domains) are stored in the database and edited from the dashboard or API.
+
+## Security model
+
+- Apps run in containers with default memory, PID and OOM limits; builds run with CPU and memory limits.
+- Apps are reachable only through the proxy unless a port is published explicitly.
+- Env vars, SSH keys and provider secrets are encrypted at rest with AES-256-GCM.
+- Team-scoped authorization on every resource route; SSRF guard on outbound requests; SSH host keys pinned on first use.

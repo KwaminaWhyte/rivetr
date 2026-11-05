@@ -51,75 +51,24 @@ cargo clippy
 Requires `cargo-zigbuild` installed: `cargo install cargo-zigbuild` and Zig on PATH.
 Server: `root@187.124.50.183`, binary installed at `/opt/rivetr/rivetr`.
 
+## Verify
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings   # same flags as CI
+cargo test
+cd frontend && npm run typecheck && npm run build
+```
+
 ## Architecture
 
-### Core Components
+See `docs/architecture/architecture.md` (components, source layout, tech stack). Conventions that matter when editing:
 
-The application runs as a single binary with these main subsystems:
-
-1. **API Layer** (`src/api/`) - Axum-based REST API handling:
-   - App CRUD operations
-   - Deployment triggers
-   - Git webhooks (GitHub, GitLab, Gitea)
-   - Token-based auth middleware
-
-2. **Deployment Engine** (`src/engine/`) - Orchestrates the deployment pipeline:
-   - Clone → Build → Start → Health Check → Switch
-   - Jobs processed via Tokio MPSC channels (no Redis)
-   - Pipeline state tracked in `deployments` table
-   - Compose services deploy through `src/engine/service_deploy/` (build, pre/post hooks, digest rollback), tracked in `service_deployments`; see `docs/reference/service-deployments.md`
-
-3. **Container Runtime** (`src/runtime/`) - Abstraction over container engines:
-   - `DockerRuntime` uses Bollard crate (socket API)
-   - `PodmanRuntime` uses CLI wrapper
-   - Auto-detection via `detect_runtime()` function
-
-4. **Database** (`src/db/`) - SQLite with WAL mode:
-   - Single file: `data/rivetr.db`
-   - Migrations in `migrations/001_initial.sql`
-   - Models: `App`, `Deployment`, `DeploymentLog`, `EnvVar`
-
-5. **Proxy** (`src/proxy/`) - HTTP reverse proxy using ArcSwap for lock-free route updates
-
-6. **Frontend** (`frontend/`) - React + Vite + TypeScript + shadcn/ui dashboard:
-   - Located in `frontend/` directory
-   - Build output goes to `static/dist/`
-   - Uses React Router for navigation
-   - React Query for data fetching
-   - shadcn/ui components with Tailwind CSS
-   - URL structure follows `docs/planning/ui-information-architecture.md`; when moving a page add a redirect in `frontend/app/lib/redirects.ts` and update `lib/nav.ts` / `lib/resource-nav.ts` (breadcrumbs and sidebars read from them)
-   - Shared page blocks in `frontend/app/components/page/`; per-browser UI state via `usePersistedState` in `lib/persisted-state.ts`; theme engine in `lib/theme/`
-
-7. **Email Templates** (`src/ui/`) - Reserved for email notifications (Phase 2)
-
-### Data Flow
-
-```
-Webhook → API → Engine (MPSC) → Runtime (Docker/Podman) → Proxy Route Update
-                    ↓
-                 SQLite (state persistence)
-```
-
-### Key Traits
-
-```rust
-// Container runtime abstraction - implement for new runtimes
-trait ContainerRuntime: Send + Sync {
-    async fn build(&self, ctx: &BuildContext) -> Result<String>;
-    async fn run(&self, config: &RunConfig) -> Result<String>;
-    async fn stop(&self, container_id: &str) -> Result<()>;
-    async fn remove(&self, container_id: &str) -> Result<()>;
-    async fn logs(&self, container_id: &str) -> Result<Pin<Box<dyn Stream<Item = LogLine> + Send>>>;
-    async fn inspect(&self, container_id: &str) -> Result<ContainerInfo>;
-    async fn is_available(&self) -> bool;
-}
-```
-
-### State Management
-
-- `AppState` in `src/lib.rs` holds shared state (config, db pool, deploy channel)
-- Route table uses `ArcSwap` for lock-free atomic updates
-- Concurrent data structures from `dashmap` and `parking_lot`
+- Container operations go through the `ContainerRuntime` trait (`src/runtime/mod.rs`); implement new operations for both Docker and Podman.
+- Migrations are numbered files in `migrations/`, registered at the end of `run_migrations` in `src/db/mod.rs`, and must be idempotent.
+- Compose services deploy through `src/engine/service_deploy/`; see `docs/reference/service-deployments.md`.
+- Frontend URL structure follows `docs/planning/ui-information-architecture.md`; when moving a page add a redirect in `frontend/app/lib/redirects.ts` and update `lib/nav.ts` / `lib/resource-nav.ts` (breadcrumbs and sidebars read from them).
+- Shared page blocks in `frontend/app/components/page/`; per-browser UI state via `usePersistedState` in `lib/persisted-state.ts`; theme engine in `lib/theme/`.
 
 ## Sub-Agents
 
@@ -158,23 +107,6 @@ Skills in `.claude/skills/` provide domain-specific knowledge and workflows:
 
 Reference skills are auto-loaded by Claude when relevant. Workflow skills (prefixed with `/`) are invoked manually.
 
-## Development Status
-
-See `docs/planning/tasks.md` for detailed task tracking and `docs/archive/implementation-plan.md` for the archived parallel execution plan.
-
-- **Phase 0 (Foundation)**: Complete (93%)
-- **Phase 1 (MVP)**: Complete (100%)
-- **Phase 2 (Production Ready)**: Complete (100%)
-- **Phase 3 (Enhanced Features)**: Complete (100%)
-- **Phase 4 (Platform Services)**: Complete (100%)
-- **Phase 5 (Advanced CI/CD)**: Complete (100%)
-- **Phase 6 (Unique Features)**: Complete (100%)
-- **Phase 7 (Competitive Parity)**: Complete (100%)
-- **Phase 8 (Enterprise & Scale)**: Complete (100%)
-- **Overall Progress**: 599/599 tasks (100%) 🎉
-
 ## Configuration
 
-Two config files:
-- `rivetr.toml` - Global server config (ports, auth, runtime)
-- `deploy.toml` - Per-app config in repository root (dockerfile, healthcheck, resources)
+`rivetr.toml` is the only config file (server, auth, runtime, proxy). Reference: `docs/reference/configuration.md`. Per-app settings live in the database.

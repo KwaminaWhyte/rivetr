@@ -72,7 +72,7 @@ npm run build         # ensure production build compiles
 
 ## Code Organization
 
-The backend follows a **subdirectory module pattern** documented in [`docs/architecture/code-organization.md`](docs/architecture/code-organization.md). Any file that grows beyond ~1000 lines is split into a subdirectory:
+Any file that grows beyond ~1000 lines is split into a **subdirectory module**. `mod.rs` holds only module declarations, re-exports and route registration; logic lives in focused submodules:
 
 ```
 src/api/apps.rs   →   src/api/apps/
@@ -84,36 +84,16 @@ src/api/apps.rs   →   src/api/apps/
 
 Rust resolves `mod apps;` transparently to either `apps.rs` or `apps/mod.rs`, so callers never need to change.
 
-### Backend module map
+See [docs/architecture/architecture.md](docs/architecture/architecture.md#source-layout) for what each backend and frontend directory holds.
 
-| Directory | Responsibility |
-|---|---|
-| `src/api/` | All Axum route handlers, grouped by resource |
-| `src/engine/` | Deployment pipeline, container monitor, scheduler |
-| `src/runtime/` | Container runtime abstraction (Docker, Podman) |
-| `src/proxy/` | Embedded reverse proxy and ACME/TLS |
-| `src/db/` | SQLite models, queries, migrations, seeders |
-| `src/backup/` | S3-compatible backup and restore |
-| `src/logging/` | Log draining to external providers |
-| `src/monitoring/` | Uptime tracking, Prometheus metrics |
-| `src/notifications/` | Alert channels (Slack, Discord, email, Telegram, etc.) |
-| `src/mcp/` | MCP server for AI assistant integration |
-| `src/crypto/` | AES-256-GCM encryption utilities |
-| `src/cli/` | CLI subcommands (`rivetr backup`, `rivetr restore`) |
-| `src/config/` | Configuration parsing (TOML → typed structs) |
-| `src/startup/` | Startup self-checks and database initialization |
+### Rules for new files
 
-### Frontend structure
+1. **Backend**: a new handler file expected to pass ~500 lines starts as a subdirectory module.
+2. **Frontend**: a route file over ~600 lines extracts its tab or section panels into components.
+3. **No deep relative imports**: submodules import from `crate::`, never `super::super::`.
+4. **Re-export the public surface**: `mod.rs` re-exports every type and function used outside the module.
 
-```
-frontend/app/
-├── routes/       # Page-level route components (React Router v8 file-based routing)
-├── components/   # Reusable UI components built with shadcn/ui
-├── types/        # TypeScript type definitions (barrel-exported from types/index.ts)
-└── lib/          # API client, React Query hooks, and utilities
-```
-
-See [docs/architecture/code-organization.md](docs/architecture/code-organization.md) for the complete split log and rules for new files.
+To split an existing Rust file: create the directory, move the code into submodules, add `mod.rs`, delete the old file, then run `cargo check` and `cargo test`.
 
 ## Adding New Features
 
@@ -211,8 +191,7 @@ See [`SECURITY.md`](SECURITY.md) for the full vulnerability disclosure policy.
 ## Getting Help
 
 - Search [existing issues](https://github.com/KwaminaWhyte/rivetr/issues) before opening a new one.
-- For architecture questions, see [docs/architecture/architecture.md](docs/architecture/architecture.md).
-- For tech stack decisions, see [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md).
+- For architecture and tech stack questions, see [docs/architecture/architecture.md](docs/architecture/architecture.md).
 
 ## License
 

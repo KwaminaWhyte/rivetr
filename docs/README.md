@@ -2,45 +2,39 @@
 
 Reference documentation for developers and operators.
 
-## Start Here
-
-| File | Description |
-|---|---|
-| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup, code organization, and PR checklist |
-| [architecture/architecture.md](architecture/architecture.md) | System design, data flow, key abstractions, and data models |
-| [architecture/tech-stack.md](architecture/tech-stack.md) | Technology choices, Rust crate selection, and rationale |
-| [planning/tasks.md](planning/tasks.md) | Detailed task tracking across all development phases |
-
 ## Documentation Map
 
 | Area | File | Description |
 |---|---|---|
-| Architecture | [architecture/architecture.md](architecture/architecture.md) | High-level system design and directory structure |
-| Architecture | [architecture/tech-stack.md](architecture/tech-stack.md) | Runtime, frontend, crate, and build choices |
-| Architecture | [architecture/code-organization.md](architecture/code-organization.md) | Module splitting rules and split log |
+| Architecture | [architecture/architecture.md](architecture/architecture.md) | Components, data flow, source layout and tech stack |
+| Reference | [reference/configuration.md](reference/configuration.md) | Every `rivetr.toml` section and key |
+| Reference | [reference/api.md](reference/api.md) | REST API reference |
 | Reference | [reference/service-templates.md](reference/service-templates.md) | Service template registry, grouped by category |
 | Reference | [reference/service-deployments.md](reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
-| Reference | [reference/remote-servers.md](reference/remote-servers.md) | Remote servers: non-root SSH users with passwordless sudo, Tailscale |
-| Planning | [planning/tasks.md](planning/tasks.md) | Current and historical task tracker |
+| Reference | [reference/remote-servers.md](reference/remote-servers.md) | Remote servers: adding a server, non-root SSH users with passwordless sudo, Tailscale |
+| Planning | [planning/coolify-parity.md](planning/coolify-parity.md) | Coolify v4.6 parity batches |
+| Planning | [planning/ui-information-architecture.md](planning/ui-information-architecture.md) | Dashboard URL structure and naming |
 | Planning | [planning/ai-opportunities.md](planning/ai-opportunities.md) | AI feature opportunities and implementation notes |
+| Audit | [audit/improvement-plan-2026-10.html](audit/improvement-plan-2026-10.html) | Prioritized open findings (security, performance, UX, features) |
+| Audit | [audit/security-audit.md](audit/security-audit.md), [performance-audit.md](audit/performance-audit.md), [ui-ux-audit.md](audit/ui-ux-audit.md) | Finding details |
 | Research | [research/competitive-gap-analysis.md](research/competitive-gap-analysis.md) | Competitive analysis against Coolify and Dokploy |
-| Archive | [archive/implementation-plan.md](archive/implementation-plan.md) | Archived sprint plan retained for historical context |
+| Research | [research/saml-decision.md](research/saml-decision.md) | Why SAML 2.0 is deferred |
+| Branding | [branding/README.md](branding/README.md) | Logo and brand assets |
 
 ## Top-Level Docs
-
-These files live at the repo root and are the primary entry points:
 
 | File | Description |
 |---|---|
 | [README.md](../README.md) | Project overview, full feature list, quick start |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup, code organization, PR checklist |
-| [DEPLOYMENT.md](../DEPLOYMENT.md) | Production install, configuration reference, backup, troubleshooting |
+| [DEPLOYMENT.md](../DEPLOYMENT.md) | Production install, upgrades, backup, troubleshooting |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history and release notes |
-| [ROADMAP.md](../ROADMAP.md) | Planned features and future direction |
-| [rivetr.example.toml](../rivetr.example.toml) | Fully annotated configuration reference |
+| [ROADMAP.md](../ROADMAP.md) | Open work and where it is tracked |
+| [rivetr.example.toml](../rivetr.example.toml) | Copyable configuration starter |
 
 ## Testing
 
 | File | Description |
 |---|---|
 | [live-testing/TESTING-GUIDE.md](../live-testing/TESTING-GUIDE.md) | Manual end-to-end testing procedures |
+| [live-testing/TEST-STATUS.md](../live-testing/TEST-STATUS.md) | Which areas were tested, when, and open re-tests |
