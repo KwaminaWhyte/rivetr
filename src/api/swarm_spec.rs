@@ -207,11 +207,6 @@ impl SwarmSpecConfig {
         Ok(())
     }
 
-    /// Whether any field is set.
-    pub fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
-
     /// Write this config into a bollard `ServiceSpec`, keeping fields it does not
     /// manage (image, env, networks, resource limits, platforms, ...).
     pub fn apply_to(&self, spec: &mut ServiceSpec) {
@@ -635,7 +630,6 @@ mod tests {
         assert!(mode.global.is_some());
         assert!(mode.replicated.is_none());
         assert!(spec.update_config.is_none());
-        assert!(SwarmSpecConfig::default().is_empty());
     }
 
     #[test]
