@@ -88,6 +88,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
+import { isNumber, readPersisted } from "@/lib/persisted-state";
 
 export function meta() {
   return [
@@ -241,7 +242,7 @@ function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
           cursorBlink: true,
           cursorStyle: "block",
           fontFamily: '"Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
-          fontSize: 14,
+          fontSize: readPersisted("terminal:font-size", 14, { validate: isNumber }),
           lineHeight: 1.2,
           theme: {
             background: "#1a1a2e",
