@@ -32,16 +32,18 @@ Measured on Rivetr 1.0.0, Ubuntu 24.04 x86_64: the Rivetr process uses 52 MB RSS
 
 | | Rivetr | Coolify | Dokploy |
 |---|---|---|---|
-| **RAM idle** | ~30–80 MB | 400–800 MB | ~300 MB |
-| **External dependencies** | None | PostgreSQL, Redis, Traefik | PostgreSQL |
+| **Control plane memory** | 52 MB RSS, measured with 30 containers | No published figure; docs ask for 2 GB RAM | No published figure; docs ask for 2 GB RAM |
+| **Services it runs** | None besides the binary | PostgreSQL, Redis, Traefik or Caddy | PostgreSQL, Traefik (on Docker Swarm) |
 | **Single binary** | Yes | No | No |
-| **Container runtimes** | Docker + Podman | Docker | Docker |
-| **Git providers** | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Gitea, Bitbucket | GitHub, GitLab, Bitbucket |
-| **Preview deployments** | Yes | Yes | No |
-| **MCP server** | Yes | No | No |
-| **Terminal UI (TUI)** | Yes | No | No |
-| **Remote filesystem browser** | Yes | No | No |
-| **License** | MIT | Apache 2.0 | MIT |
+| **Container runtimes** | Docker, Podman | Docker | Docker |
+| **Git providers** | GitHub, GitLab, Gitea, Bitbucket, any Git URL | GitHub, GitLab, Gitea, Bitbucket, any Git URL | GitHub, GitLab, Gitea, Bitbucket, any Git URL |
+| **Preview deployments** | Yes (all four providers) | Yes (all four providers) | Yes (GitHub only) |
+| **MCP server** | Built in | Built in | Separate package (`@dokploy/mcp`) |
+| **Terminal UI (TUI)** | Yes | No (CLI only) | No (CLI only) |
+| **File browser** | Containers and remote servers | Containers (beta) | No |
+| **License** | MIT | Apache 2.0 | Apache 2.0, with source-available `/proprietary` features |
+
+Competitor details checked against their docs and releases on 2026-11-05 (Coolify v4.6.0, Dokploy v0.31.0).
 
 ## Features
 
