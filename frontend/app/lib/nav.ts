@@ -59,7 +59,9 @@ export const settingsGroups: NavGroup[] = [
       { title: "General", url: "/settings" },
       { title: "Preferences", url: "/settings/preferences" },
       { title: "White Label", url: "/settings/white-label", adminOnly: true },
-      { title: "Auto Updates", url: "/settings/auto-update" },
+      { title: "Updates", url: "/settings/auto-update", adminOnly: true },
+      { title: "Advanced", url: "/settings/advanced", adminOnly: true },
+      { title: "Email", url: "/settings/email", adminOnly: true },
     ],
   },
   {

@@ -36,6 +36,8 @@ interface DnsCheckResult {
   points_to_server: boolean;
   resolved_ips: string[];
   server_ip: string;
+  /** DNS validation is turned off in Settings > Advanced */
+  validation_disabled?: boolean;
 }
 
 async function checkDns(domain: string): Promise<DnsCheckResult> {
@@ -53,7 +55,7 @@ function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null; lo
       </Badge>
     );
   }
-  if (!result) return null;
+  if (!result || result.validation_disabled) return null;
 
   if (result.points_to_server) {
     return (

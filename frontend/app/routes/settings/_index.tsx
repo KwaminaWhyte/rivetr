@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
+import { PublicIpCard } from "@/components/public-ip-card";
 import {
   Select,
   SelectContent,
@@ -258,6 +259,9 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Public IPv4 / IPv6 (domain checks) */}
+      <PublicIpCard />
 
       {/* Server Information */}
       <Card>
