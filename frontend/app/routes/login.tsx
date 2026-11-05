@@ -9,12 +9,13 @@ import {
   FieldLabel,
   FieldSeparator,
 } from "@/components/ui/field";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { Github } from "@/components/github-icon";
 import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 import { oauthApi, type OAuthProviderPublic } from "@/lib/api/oauth";
 import { twoFactorApi } from "@/lib/api/two-factor";
 import { instanceSettingsApi } from "@/lib/api/instance-settings";
+import { passkeyErrorMessage, passkeysApi, passkeysSupported } from "@/lib/api/passkeys";
 
 // Only same-origin absolute paths are valid post-login destinations (SEC-M7).
 // Rejects "//host", backslash-prefixed paths, absolute URLs and control characters.
@@ -113,6 +114,8 @@ export default function LoginPage() {
   const [oauthProviders, setOauthProviders] = useState<OAuthProviderPublic[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
   const [canRegister, setCanRegister] = useState(false);
+  const [passkeysEnabled, setPasskeysEnabled] = useState(false);
+  const [passkeyPending, setPasskeyPending] = useState(false);
 
   // Track field values so the submit button can be disabled when empty (U2)
   const [emailValue, setEmailValue] = useState("");
@@ -165,6 +168,13 @@ export default function LoginPage() {
         setOauthProviders(providers);
       } catch {
         // OAuth providers are optional, don't fail the page
+      }
+
+      try {
+        const { enabled } = await passkeysApi.status();
+        setPasskeysEnabled(enabled && passkeysSupported());
+      } catch {
+        // Passkey sign in is optional
       }
 
       try {
@@ -267,6 +277,26 @@ export default function LoginPage() {
   }
 
   // Auto-submit when 6 digits entered (TOTP mode only)
+  // A passkey sign in satisfies 2FA, so it never goes through the TOTP step.
+  async function handlePasskeyLogin() {
+    setPasskeyPending(true);
+    setError(null);
+    try {
+      const data = await passkeysApi.login();
+      setAuthToken(data.token);
+      const returnUrl = localStorage.getItem("rivetr_return_url");
+      if (returnUrl) {
+        localStorage.removeItem("rivetr_return_url");
+        navigate(safeReturnUrl(returnUrl), { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
+    } catch (err) {
+      setError(passkeyErrorMessage(err));
+      setPasskeyPending(false);
+    }
+  }
+
   function handleTotpChange(value: string) {
     // Only allow digits in TOTP mode
     if (!useRecoveryCode) {
@@ -545,6 +575,25 @@ export default function LoginPage() {
                       {isSubmitting ? "Signing in..." : "Login"}
                     </Button>
                   </Field>
+                  {passkeysEnabled && (
+                    <>
+                      <FieldSeparator>Or</FieldSeparator>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2"
+                        onClick={handlePasskeyLogin}
+                        disabled={passkeyPending}
+                      >
+                        {passkeyPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <KeyRound className="size-4" />
+                        )}
+                        Sign in with a passkey
+                      </Button>
+                    </>
+                  )}
                   {canRegister && (
                     <p className="text-center text-sm text-muted-foreground">
                       No account yet?{" "}

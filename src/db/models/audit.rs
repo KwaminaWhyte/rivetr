@@ -124,6 +124,8 @@ pub mod actions {
     pub const AUTH_2FA_ENABLE: &str = "auth.2fa.enable";
     pub const AUTH_2FA_DISABLE: &str = "auth.2fa.disable";
     pub const AUTH_2FA_VALIDATE: &str = "auth.2fa.validate";
+    pub const PASSKEY_ADD: &str = "auth.passkey.add";
+    pub const PASSKEY_REMOVE: &str = "auth.passkey.remove";
     pub const AUTH_PASSWORD_RESET_REQUEST: &str = "auth.password.reset_request";
     pub const AUTH_PASSWORD_RESET: &str = "auth.password.reset";
     pub const AUTH_PASSWORD_CHANGE: &str = "auth.password.change";

@@ -39,6 +39,7 @@ interface FormState {
   dns_servers: string;
   outbound_allowed_targets: string;
   outbound_allow_localhost: boolean;
+  passkeys_enabled: boolean;
 }
 
 function toForm(s: AdvancedSettings): FormState {
@@ -271,6 +272,23 @@ export default function AdvancedSettingsPage() {
                 />
               </FormGrid>
             </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Passkeys"
+            description="Let users register passkeys under Account security and sign in with them. A passkey sign in also satisfies two-factor authentication."
+          >
+            <FormGrid>
+              <BoolSelect
+                id="passkeys"
+                label="Passkeys"
+                value={form.passkeys_enabled}
+                onChange={(v) => set("passkeys_enabled", v)}
+                on="Enabled"
+                off="Disabled"
+                hint="Passkeys are bound to the instance domain. Set it in Settings > General before users register one."
+              />
+            </FormGrid>
           </SettingsSection>
 
           <SettingsSection

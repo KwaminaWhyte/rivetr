@@ -15,6 +15,8 @@ export interface AdvancedSettings {
   dns_servers: string[];
   outbound_allowed_targets: string[];
   outbound_allow_localhost: boolean;
+  /** Users may register passkeys and sign in with them. */
+  passkeys_enabled: boolean;
 }
 
 export type UpdateAdvancedSettingsRequest = Partial<AdvancedSettings>;

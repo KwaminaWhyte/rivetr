@@ -1711,6 +1711,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Migration 126: resource tags (CREATE IF NOT EXISTS + orphan sweep, idempotent)
     execute_sql(pool, include_str!("../../migrations/126_resource_tags.sql")).await?;
 
+    // Migration 127: passkeys + WebAuthn challenge state (idempotent)
+    execute_sql(pool, include_str!("../../migrations/127_passkeys.sql")).await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

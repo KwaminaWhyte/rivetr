@@ -26,6 +26,7 @@ const KEY_DNS_VALIDATION: &str = "dns_validation_enabled";
 const KEY_DNS_SERVERS: &str = "dns_servers";
 const KEY_OUTBOUND_TARGETS: &str = "outbound_allowed_targets";
 const KEY_OUTBOUND_LOCALHOST: &str = "outbound_allow_localhost";
+const KEY_PASSKEYS: &str = "passkeys_enabled";
 
 /// How destructive actions are confirmed in the dashboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -71,6 +72,8 @@ pub struct AdvancedSettings {
     /// Internal CIDRs that outbound requests (webhooks, log drains) may reach.
     pub outbound_allowed_targets: Vec<String>,
     pub outbound_allow_localhost: bool,
+    /// Users may register passkeys and sign in with them.
+    pub passkeys_enabled: bool,
 }
 
 impl Default for AdvancedSettings {
@@ -87,6 +90,7 @@ impl Default for AdvancedSettings {
             dns_servers: Vec::new(),
             outbound_allowed_targets: Vec::new(),
             outbound_allow_localhost: false,
+            passkeys_enabled: true,
         }
     }
 }
@@ -104,6 +108,7 @@ pub struct UpdateAdvancedSettings {
     pub dns_servers: Option<Vec<String>>,
     pub outbound_allowed_targets: Option<Vec<String>>,
     pub outbound_allow_localhost: Option<bool>,
+    pub passkeys_enabled: Option<bool>,
 }
 
 /// Pre-parsed form kept in the cache so request paths do no string parsing.
@@ -174,6 +179,7 @@ impl AdvancedSettings {
             dns_servers: list(KEY_DNS_SERVERS),
             outbound_allowed_targets: list(KEY_OUTBOUND_TARGETS),
             outbound_allow_localhost: b(KEY_OUTBOUND_LOCALHOST, d.outbound_allow_localhost),
+            passkeys_enabled: b(KEY_PASSKEYS, d.passkeys_enabled),
         }
     }
 
@@ -206,6 +212,7 @@ pub fn validate_update(
     bool_field(KEY_MCP, req.mcp_enabled);
     bool_field(KEY_DNS_VALIDATION, req.dns_validation_enabled);
     bool_field(KEY_OUTBOUND_LOCALHOST, req.outbound_allow_localhost);
+    bool_field(KEY_PASSKEYS, req.passkeys_enabled);
 
     if let Some(mode) = &req.destructive_confirmation {
         let mode = ConfirmationMode::parse(mode).ok_or_else(|| {

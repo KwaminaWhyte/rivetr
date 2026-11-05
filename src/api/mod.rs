@@ -40,6 +40,7 @@ mod monitoring;
 mod notifications;
 pub mod oauth;
 mod optional_json;
+pub(crate) mod passkeys;
 mod patches;
 mod previews;
 mod projects;
@@ -144,6 +145,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // 2FA validation (semi-authenticated - uses temporary session token)
         .route("/2fa/validate", post(two_factor::validate_2fa))
+        // Passkey sign in (E2)
+        .route("/passkey/login/start", post(passkeys::login_start))
+        .route("/passkey/login/finish", post(passkeys::login_finish))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -158,6 +162,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/setup-status", get(auth::setup_status))
         .route("/registration", get(auth::registration_status))
         .route("/oauth/providers", get(oauth::list_enabled_providers))
+        .route("/passkeys/status", get(passkeys::passkey_status))
         // Team invitation validation (public - validate before login)
         .route("/invitations/{token}", get(teams::validate_invitation))
         // Apply API-tier rate limiting (more lenient, suitable for frequent polling)
@@ -1259,6 +1264,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // Passkeys of the signed-in user (E2)
+        .route("/passkeys", get(passkeys::list_passkeys))
+        .route("/passkeys/register/start", post(passkeys::register_start))
+        .route("/passkeys/register/finish", post(passkeys::register_finish))
+        .route(
+            "/passkeys/{id}",
+            put(passkeys::rename_passkey).delete(passkeys::delete_passkey),
+        )
         // Resource tags (E1). `GET /apps/{id}/tags` stays the git tag list.
         .route("/tags", get(tags::list_tags).post(tags::create_tag))
         .route("/tags/assignments", get(tags::list_assignments))
