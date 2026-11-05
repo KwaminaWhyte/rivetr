@@ -56,9 +56,9 @@ export function InstanceThemeDefault() {
         </p>
       </header>
       <div className="rounded-lg border bg-card p-(--density-card-p) shadow-xs sm:p-[calc(var(--density-card-p)*1.25)]">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
           <ThemeOptionsForm value={draft} onChange={(patch) => setDraft((d) => normalizeTheme({ ...d, ...patch }))} />
-          <div className="space-y-2">
+          <div className="max-w-xl space-y-2">
             <p className="text-xs font-medium text-muted-foreground">Preview</p>
             <ThemePreview settings={draft} />
           </div>

@@ -141,9 +141,9 @@ export function AppearanceSettings() {
       </header>
 
       <div className="rounded-lg border bg-card p-(--density-card-p) shadow-xs sm:p-[calc(var(--density-card-p)*1.25)]">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
           <ThemeOptionsForm value={settings} onChange={update} />
-          <div className="space-y-2 xl:sticky xl:top-4 xl:self-start">
+          <div className="space-y-2 2xl:sticky 2xl:top-4 2xl:self-start max-w-xl">
             <p className="text-xs font-medium text-muted-foreground">Preview</p>
             <ThemePreview settings={settings} />
           </div>

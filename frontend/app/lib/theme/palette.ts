@@ -199,7 +199,8 @@ export function buildThemeOutput(settings: ThemeSettings): ThemeOutput {
   const dark = { ...neutralTokens(settings.neutral, true, settings.highContrast), ...accentTokens(spec, true) };
   let css = block("html:root", light) + block("html.dark", dark);
   if (settings.sidebar === "accent") {
-    css += block('html [data-sidebar="sidebar"]', accentSidebarTokens(spec));
+    // color is inherited from an ancestor outside the sidebar, so reset it here.
+    css += block('html [data-sidebar="sidebar"]', { ...accentSidebarTokens(spec), color: "var(--sidebar-foreground)" });
   }
   return {
     css,
