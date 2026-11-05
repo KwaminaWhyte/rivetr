@@ -7,7 +7,7 @@ import { DetailField as Field } from "@/components/metrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ResourceLimitsCard } from "@/components/resource-limits-card";
+import { AppIdentitySettings } from "@/components/apps/app-general-settings";
 import { ResourceMonitor } from "@/components/resource-monitor";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
@@ -29,7 +29,7 @@ import {
 
 export function meta() {
   return [
-    { title: "App Overview - Rivetr" },
+    { title: "Application - Rivetr" },
     { name: "description", content: "Application overview, status, and resource usage" },
   ];
 }
@@ -153,7 +153,7 @@ export default function AppGeneralTab() {
         </CardContent>
       </Card>
 
-      <ResourceLimitsCard app={app} token={token} />
+      <AppIdentitySettings app={app} />
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Activity / Restart history */}

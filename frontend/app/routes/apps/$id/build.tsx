@@ -19,13 +19,22 @@ import { Sparkles, FileCode, Package, Zap, Cloud, Lock, Plus, Trash2, AlertTrian
 import { Github } from "@/components/github-icon";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DockerRegistryCard } from "@/components/docker-registry-card";
+import { GitHubSourceCard } from "@/components/github-source-card";
+import { AppSourceSettings, WebhookSetupCard } from "@/components/apps/app-general-settings";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { aiApi } from "@/lib/api/ai";
 import { buildServersApi, type BuildServer } from "@/lib/api/build-servers";
 import type { App, BuildType, BuildSecret, NixpacksConfig, UpdateAppRequest } from "@/types/api";
 
-export default function AppSettingsBuild() {
+export function meta() {
+  return [
+    { title: "Source and build - Rivetr" },
+    { name: "description", content: "Repository, build pack, build options, secrets and registry" },
+  ];
+}
+
+export default function AppSourceAndBuild() {
   const { app } = useOutletContext<{ app: App }>();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -268,7 +277,10 @@ export default function AppSettingsBuild() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
+      <GitHubSourceCard app={app} />
+      <AppSourceSettings app={app} />
+      <WebhookSetupCard app={app} />
       <Card>
         <CardHeader>
           <CardTitle>Build Configuration</CardTitle>

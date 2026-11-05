@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useOutletContext, useNavigate } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,16 +13,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RollbackSettingsCard } from "@/components/rollback-settings-card";
-import { BasicAuthCard } from "@/components/basic-auth-card";
-import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
 import { api } from "@/lib/api";
 import type { App } from "@/types/api";
 
-export default function AppSettingsSecurity() {
+export function meta() {
+  return [
+    { title: "Danger zone - Rivetr" },
+    { name: "description", content: "Delete this application" },
+  ];
+}
+
+export default function AppDangerSection() {
   const { app } = useOutletContext<{ app: App }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,12 +46,6 @@ export default function AppSettingsSecurity() {
 
   return (
     <div className="space-y-6">
-      <RollbackSettingsCard app={app} />
-      <BasicAuthCard appId={app.id} />
-      <DeploymentCommandsCard
-        app={app}
-        onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
-      />
       <Card className="border-destructive/50">
         <CardHeader>
           <CardTitle className="text-destructive">Danger Zone</CardTitle>

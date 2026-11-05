@@ -18,10 +18,19 @@ import {
 } from "@/components/ui/dialog";
 import { Camera, RotateCcw, Trash2 } from "lucide-react";
 import { bulkApi } from "@/lib/api/bulk";
+import { RollbackSettingsCard } from "@/components/rollback-settings-card";
+import { DeploymentControlSettings } from "@/components/apps/deployment-control";
 import type { ConfigSnapshot } from "@/types/api";
 import type { App } from "@/types/api";
 
-export default function AppSettingsSnapshots() {
+export function meta() {
+  return [
+    { title: "Rollback - Rivetr" },
+    { name: "description", content: "Rollback policy, retention and configuration snapshots" },
+  ];
+}
+
+export default function AppRollbackSection() {
   const { app } = useOutletContext<{ app: App }>();
   const queryClient = useQueryClient();
 
@@ -77,6 +86,8 @@ export default function AppSettingsSnapshots() {
 
   return (
     <div className="space-y-6">
+      <RollbackSettingsCard app={app} />
+      <DeploymentControlSettings app={app} show="rollback" />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>

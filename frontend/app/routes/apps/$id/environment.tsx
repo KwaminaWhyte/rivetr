@@ -4,7 +4,7 @@ import { LinkedDatabasesSection } from "@/components/linked-databases-section";
 
 export function meta() {
   return [
-    { title: "Environment Variables - Rivetr" },
+    { title: "Environment variables - Rivetr" },
     { name: "description", content: "Manage environment variables for your application" },
   ];
 }

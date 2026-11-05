@@ -488,7 +488,7 @@ function UptimeSection({ appId }: { appId: string }) {
                 monitoring. The checker pings it every 60 seconds.
               </p>
               <Button asChild variant="outline" size="sm">
-                <Link to={`/apps/${appId}/settings`}>Configure Healthcheck</Link>
+                <Link to={`/apps/${appId}/healthcheck`}>Configure healthcheck</Link>
               </Button>
             </div>
           )}

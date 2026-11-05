@@ -17,11 +17,14 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import type { App, UpdateAppRequest } from "@/types/api";
+import { DeploymentControlSettings } from "@/components/apps/deployment-control";
+import { AppPatchesSection } from "@/components/apps/patches-section";
+import { DeploymentCommandsCard } from "@/components/deployment-commands-card";
 
 export function meta() {
   return [
-    { title: "Docker Options - App Settings - Rivetr" },
-    { name: "description", content: "Configure custom Docker container run options" },
+    { title: "Advanced - Rivetr" },
+    { name: "description", content: "Deploy control, freeze windows, deploy commands, Docker options and patches" },
   ];
 }
 
@@ -35,14 +38,11 @@ function parseJsonArray(json: string | null | undefined): string[] {
   }
 }
 
-export default function AppSettingsDocker() {
+export default function AppAdvancedSection() {
   const { app } = useOutletContext<{ app: App }>();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isApplyingLimits, setIsApplyingLimits] = useState(false);
 
-  const [memoryLimit, setMemoryLimit] = useState(app.memory_limit || "");
-  const [cpuLimit, setCpuLimit] = useState(app.cpu_limit || "");
   const [restartPolicy, setRestartPolicy] = useState(app.restart_policy || "unless-stopped");
   const [privileged, setPrivileged] = useState(app.privileged || false);
   const [initProcess, setInitProcess] = useState(app.init_process || false);
@@ -89,8 +89,6 @@ export default function AppSettingsDocker() {
         .filter((s) => s.length > 0);
 
       const updates: UpdateAppRequest = {
-        memory_limit: memoryLimit.trim() || undefined,
-        cpu_limit: cpuLimit.trim() || undefined,
         restart_policy: restartPolicy,
         privileged,
         init_process: initProcess,
@@ -115,77 +113,14 @@ export default function AppSettingsDocker() {
     }
   };
 
-  const handleApplyLimits = async () => {
-    setIsApplyingLimits(true);
-    try {
-      // Save limits first, then apply live
-      await api.updateApp(app.id, {
-        memory_limit: memoryLimit.trim() || undefined,
-        cpu_limit: cpuLimit.trim() || undefined,
-      });
-      await api.applyResourceLimits(app.id);
-      toast.success("Resource limits applied to running container");
-      queryClient.invalidateQueries({ queryKey: ["app", app.id] });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to apply limits");
-    } finally {
-      setIsApplyingLimits(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {/* Resource Limits */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Resource Limits</CardTitle>
-          <CardDescription>
-            Set CPU and memory limits to prevent this container from starving other apps.
-            Use "Apply Now" to enforce limits on the running container immediately without a redeploy.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="memory_limit">Memory Limit</Label>
-              <Input
-                id="memory_limit"
-                placeholder="512m"
-                value={memoryLimit}
-                onChange={(e) => setMemoryLimit(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                e.g. <code className="font-mono">256m</code>, <code className="font-mono">1g</code>, <code className="font-mono">2gb</code>
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cpu_limit">CPU Limit</Label>
-              <Input
-                id="cpu_limit"
-                placeholder="1.0"
-                value={cpuLimit}
-                onChange={(e) => setCpuLimit(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Number of CPU cores (e.g. <code className="font-mono">0.5</code>, <code className="font-mono">1</code>, <code className="font-mono">2</code>)
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleApplyLimits}
-              disabled={isApplyingLimits}
-            >
-              {isApplyingLimits ? "Applying..." : "Apply Now (Live)"}
-            </Button>
-            <p className="text-xs text-muted-foreground self-center">
-              Saves limits and enforces them on the running container immediately via <code className="font-mono">docker update</code>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <DeploymentControlSettings app={app} show="deploy" />
+      <DeploymentCommandsCard
+        app={app}
+        onSave={() => queryClient.invalidateQueries({ queryKey: ["app", app.id] })}
+      />
+
 
       <Card>
         <CardHeader>
@@ -394,6 +329,7 @@ export default function AppSettingsDocker() {
           </form>
         </CardContent>
       </Card>
+      <AppPatchesSection app={app} />
     </div>
   );
 }

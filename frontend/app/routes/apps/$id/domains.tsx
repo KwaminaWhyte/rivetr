@@ -11,7 +11,8 @@ import {
 } from "@/components/container-labels-editor";
 import { api } from "@/lib/api";
 import { destinationsApi } from "@/lib/api/destinations";
-import type { App, UpdateAppRequest } from "@/types/api";
+import type { App, Deployment, UpdateAppRequest } from "@/types/api";
+import { AppNetworkInfo } from "@/components/apps/network-info";
 import {
   Card,
   CardContent,
@@ -48,8 +49,15 @@ function parseCustomLabels(json: string | null | undefined): LabelEntry[] {
   return [];
 }
 
-export default function AppSettingsNetwork() {
-  const { app } = useOutletContext<{ app: App }>();
+export function meta() {
+  return [
+    { title: "Domains and network - Rivetr" },
+    { name: "description", content: "Domains, ports, proxy routing, labels and Docker network" },
+  ];
+}
+
+export default function AppDomainsSection() {
+  const { app, deployments } = useOutletContext<{ app: App; deployments: Deployment[] }>();
   const queryClient = useQueryClient();
   const [isSavingNetwork, setIsSavingNetwork] = useState(false);
   const [isSavingDomains, setIsSavingDomains] = useState(false);
@@ -293,6 +301,7 @@ export default function AppSettingsNetwork() {
           </Button>
         </CardContent>
       </Card>
+      <AppNetworkInfo app={app} deployments={deployments} />
     </div>
   );
 }

@@ -25,11 +25,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { ResourceLimitsCard } from "@/components/resource-limits-card";
 import { replicasApi, type AppReplica } from "@/lib/api/replicas";
 import { autoscalingApi } from "@/lib/api/autoscaling";
 import type { App, AutoscalingRule, CreateAutoscalingRuleRequest } from "@/types/api";
 
-export default function AppSettingsReplicas() {
+export function meta() {
+  return [
+    { title: "Resources - Rivetr" },
+    { name: "description", content: "CPU and memory limits, replicas and autoscaling" },
+  ];
+}
+
+export default function AppResourcesSection() {
   const { app } = useOutletContext<{ app: App }>();
 
   // Replicas state
@@ -144,6 +152,7 @@ export default function AppSettingsReplicas() {
 
   return (
     <div className="space-y-6">
+      <ResourceLimitsCard app={app} />
       <Card>
         <CardHeader>
           <CardTitle>Container Replicas</CardTitle>

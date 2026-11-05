@@ -1,13 +1,5 @@
 import { useState, useMemo } from "react";
-import { useOutletContext } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-export function meta() {
-  return [
-    { title: "Network - Rivetr" },
-    { name: "description", content: "Domain, port, and network connection details" },
-  ];
-}
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,14 +8,11 @@ import { toast } from "sonner";
 import type { App, Deployment, PortMapping } from "@/types/api";
 import { Copy, Check, Server, Network, Container, Lock } from "lucide-react";
 
-interface OutletContext {
-  app: App;
-  deployments: Deployment[];
-  token: string;
-}
-
-export default function AppNetworkTab() {
-  const { app, deployments } = useOutletContext<OutletContext>();
+/**
+ * Read-only connection details for an app (ports, aliases, container name),
+ * shown under the editable settings on the Domains and network section.
+ */
+export function AppNetworkInfo({ app, deployments }: { app: App; deployments: Deployment[] }) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const runningDeployment = deployments.find((d) => d.status === "running");

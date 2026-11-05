@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useOutletContext } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,8 +19,12 @@ import { Shield, Snowflake, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, DeploymentFreezeWindow, CreateFreezeWindowRequest } from "@/types/api";
 
-export default function AppSettingsDeployment() {
-  const { app } = useOutletContext<{ app: App }>();
+/**
+ * Deployment policy cards. "deploy" (approval, maintenance mode, freeze
+ * windows) is shown on Advanced; "rollback" (retention, rollback with data)
+ * on Rollback.
+ */
+export function DeploymentControlSettings({ app, show }: { app: App; show: "deploy" | "rollback" }) {
   const queryClient = useQueryClient();
 
   // Approval & maintenance mode state
@@ -152,6 +155,8 @@ export default function AppSettingsDeployment() {
   return (
     <div className="space-y-6">
       {/* Approval & Maintenance */}
+      {show === "deploy" && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -265,7 +270,7 @@ export default function AppSettingsDeployment() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {fw.start_time} – {fw.end_time} UTC
+                      {fw.start_time} to {fw.end_time} UTC
                       {" "}·{" "}
                       Days: {fw.days_of_week}
                     </p>
@@ -284,8 +289,12 @@ export default function AppSettingsDeployment() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Rollback Retention */}
+      {show === "rollback" && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Rollback Retention</CardTitle>
@@ -310,7 +319,7 @@ export default function AppSettingsDeployment() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Number of deployments to retain for rollback (1–50, default 10).
+                Number of deployments to retain for rollback (1-50, default 10).
                 Older successful deployments will be automatically deleted.
               </p>
             </div>
@@ -352,6 +361,8 @@ export default function AppSettingsDeployment() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Freeze Window Create Dialog */}
       <Dialog

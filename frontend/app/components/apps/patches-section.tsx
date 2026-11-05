@@ -1,5 +1,4 @@
 import { QueryError } from "@/components/query-error";
-import { useOutletContext } from "react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -45,8 +44,8 @@ const OPERATION_LABELS: Record<string, string> = {
   delete: "Delete",
 };
 
-export default function AppSettingsPatches() {
-  const { app } = useOutletContext<{ app: App }>();
+/** File patches applied to the source before each build. Shown on Advanced. */
+export function AppPatchesSection({ app }: { app: App }) {
   const queryClient = useQueryClient();
   const [newFilePath, setNewFilePath] = useState("");
   const [newContent, setNewContent] = useState("");
