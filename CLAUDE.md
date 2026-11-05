@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Rivetr is a single-binary PaaS (Platform as a Service) built in Rust. It deploys applications from Git webhooks with minimal resource usage (~30MB RAM idle vs Coolify's ~800MB). The project uses an embedded SQLite database, supports both Docker and Podman runtimes, and includes an embedded reverse proxy.
+Rivetr is a single-binary PaaS (Platform as a Service) built in Rust. It deploys applications from Git webhooks with minimal resource usage (52 MB RSS managing 30 containers, measured on 1.0.0). The project uses an embedded SQLite database, supports both Docker and Podman runtimes, and includes an embedded reverse proxy.
 
 ## Build Commands
 
