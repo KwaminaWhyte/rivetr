@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Box, Database, Globe, Layers, Plus, Settings } from "lucide-react";
 import { ResourceStatus } from "@/components/page";
+import { ServerCountBadge } from "@/components/server-count-badge";
 import { cn } from "@/lib/utils";
 import type { CanvasKind, CanvasProject, CanvasResource } from "./use-canvas-data";
 
@@ -125,7 +126,10 @@ function ResourceNodeView({ data }: NodeProps<ResourceNode>) {
             <span className="opacity-70">{KIND_LABEL[resource.kind]}</span>
           )}
         </span>
-        <ResourceStatus status={resource.status} size="sm" />
+        <span className="flex shrink-0 items-center gap-2">
+          {resource.kind === "app" && <ServerCountBadge appId={resource.id} compact />}
+          <ResourceStatus status={resource.status} size="sm" />
+        </span>
       </div>
     </div>
   );

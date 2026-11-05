@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
 import { ResourceLimitsCard } from "@/components/resource-limits-card";
+import { ServerPlacementCard } from "@/components/server-placement-card";
 import { replicasApi, type AppReplica } from "@/lib/api/replicas";
 import { autoscalingApi } from "@/lib/api/autoscaling";
 import type { App, AutoscalingRule, CreateAutoscalingRuleRequest } from "@/types/api";
@@ -33,7 +34,7 @@ import type { App, AutoscalingRule, CreateAutoscalingRuleRequest } from "@/types
 export function meta() {
   return [
     { title: "Resources - Rivetr" },
-    { name: "description", content: "CPU and memory limits, replicas and autoscaling" },
+    { name: "description", content: "CPU and memory limits, servers, replicas and autoscaling" },
   ];
 }
 
@@ -153,6 +154,7 @@ export default function AppResourcesSection() {
   return (
     <div className="space-y-6">
       <ResourceLimitsCard app={app} />
+      <ServerPlacementCard app={app} />
       <Card>
         <CardHeader>
           <CardTitle>Container Replicas</CardTitle>

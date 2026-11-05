@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
+import { ServerCountBadge } from "@/components/server-count-badge";
 import { api } from "@/lib/api";
 import { getPrimaryDomain } from "@/lib/utils";
 import { ResourceSection } from "@/components/shell/resource-section";
@@ -443,6 +444,7 @@ export default function AppDetailLayout() {
               meta={
                 <>
                   <EnvironmentBadge environment={app.environment} />
+                  <ServerCountBadge appId={app.id} />
                   {maintenance && (
                     <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600">
                       <WrenchIcon className="h-3 w-3" />

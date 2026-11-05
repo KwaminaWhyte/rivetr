@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { DeploymentLogs } from "@/components/deployment-logs";
+import { DeploymentTargets } from "@/components/deployment-targets";
 import { api } from "@/lib/api";
 import { aiApi } from "@/lib/api/ai";
 import {
@@ -342,6 +343,8 @@ export default function DeploymentDetailPage() {
 
             <DeploymentLogs deploymentId={deployment.id} isActive={isActive} />
           </div>
+
+          <DeploymentTargets deploymentId={deployment.id} isActive={isActive} />
 
           {/* AI Diagnosis Result */}
           {diagnosisUnavailable && (
