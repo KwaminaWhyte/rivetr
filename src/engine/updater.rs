@@ -12,6 +12,7 @@ use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 
 use crate::config::AutoUpdateConfig;
+use crate::settings::updates::{cron_fired_between, UpdateChannel, UpdateSettings};
 
 /// Current version from Cargo.toml
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -61,6 +62,12 @@ pub struct UpdateStatus {
     pub auto_update_enabled: bool,
     /// Whether auto-apply is enabled
     pub auto_apply_enabled: bool,
+    /// Release channel: "stable" or "beta"
+    pub channel: String,
+    /// Cron (UTC) for update checks
+    pub check_cron: String,
+    /// Cron (UTC) for automatic updates
+    pub auto_update_cron: String,
 }
 
 /// Shared update state
@@ -75,6 +82,8 @@ pub struct UpdateState {
 /// Update checker service
 pub struct UpdateChecker {
     config: AutoUpdateConfig,
+    /// Live settings (toml defaults overridden by dashboard values).
+    settings: RwLock<UpdateSettings>,
     state: Arc<RwLock<UpdateState>>,
     http_client: reqwest::Client,
 }
@@ -89,10 +98,27 @@ impl UpdateChecker {
             .unwrap_or_default();
 
         Self {
+            settings: RwLock::new(UpdateSettings::from_toml(&config)),
             config,
             state: Arc::new(RwLock::new(UpdateState::default())),
             http_client,
         }
+    }
+
+    /// Current effective settings.
+    pub fn settings(&self) -> UpdateSettings {
+        self.settings.read().clone()
+    }
+
+    /// Replace the live settings. The background loop picks them up on its
+    /// next tick, no restart needed.
+    pub fn set_settings(&self, settings: UpdateSettings) {
+        *self.settings.write() = settings;
+    }
+
+    /// The toml `[auto_update]` section (defaults for the dashboard settings).
+    pub fn toml_config(&self) -> &AutoUpdateConfig {
+        &self.config
     }
 
     /// Get the shared state for API access
@@ -102,10 +128,20 @@ impl UpdateChecker {
 
     /// Check for updates once
     pub async fn check_for_updates(&self) -> Result<Option<GitHubRelease>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/releases/latest",
-            self.config.github_repo
-        );
+        let include_prereleases = self.settings.read().include_prereleases();
+        // `/releases/latest` never returns pre-releases, so the beta channel
+        // lists recent releases and picks the newest one.
+        let url = if include_prereleases {
+            format!(
+                "https://api.github.com/repos/{}/releases?per_page=30",
+                self.config.github_repo
+            )
+        } else {
+            format!(
+                "https://api.github.com/repos/{}/releases/latest",
+                self.config.github_repo
+            )
+        };
 
         debug!("Checking for updates from: {}", url);
 
@@ -123,22 +159,22 @@ impl UpdateChecker {
             return Err(anyhow!("GitHub API returned error {}: {}", status, body));
         }
 
-        let release: GitHubRelease = response
-            .json()
-            .await
-            .context("Failed to parse GitHub release response")?;
+        let releases: Vec<GitHubRelease> = if include_prereleases {
+            response
+                .json()
+                .await
+                .context("Failed to parse GitHub releases response")?
+        } else {
+            vec![response
+                .json()
+                .await
+                .context("Failed to parse GitHub release response")?]
+        };
 
-        // Skip if prerelease and we don't want those
-        if release.prerelease && !self.config.include_prereleases {
-            debug!("Skipping prerelease: {}", release.tag_name);
+        let Some(release) = pick_release(releases, include_prereleases) else {
+            debug!("No eligible release found");
             return Ok(None);
-        }
-
-        // Skip drafts
-        if release.draft {
-            debug!("Skipping draft release: {}", release.tag_name);
-            return Ok(None);
-        }
+        };
 
         // Compare versions
         let latest_version = release.tag_name.trim_start_matches('v');
@@ -179,6 +215,7 @@ impl UpdateChecker {
 
     /// Get current update status
     pub fn get_status(&self) -> UpdateStatus {
+        let settings = self.settings();
         let state = self.state.read();
         let update_available = state
             .latest_release
@@ -202,8 +239,14 @@ impl UpdateChecker {
                 .last_checked
                 .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
             last_error: state.last_error.clone(),
-            auto_update_enabled: self.config.enabled,
-            auto_apply_enabled: self.config.auto_apply,
+            auto_update_enabled: settings.check_enabled,
+            auto_apply_enabled: settings.auto_update_enabled,
+            channel: match settings.channel {
+                UpdateChannel::Stable => "stable".to_string(),
+                UpdateChannel::Beta => "beta".to_string(),
+            },
+            check_cron: settings.check_cron.clone(),
+            auto_update_cron: settings.auto_update_cron.clone(),
         }
     }
 
@@ -352,75 +395,123 @@ impl UpdateChecker {
     }
 }
 
-/// Start the background update checker task
+/// Start the background update checker task.
+///
+/// The loop wakes up every minute and runs a check or an automatic update when
+/// the configured cron fired since the previous tick. Settings are re-read on
+/// every tick, so changes saved from the dashboard apply without a restart.
 pub fn start_update_checker(config: AutoUpdateConfig) -> Arc<UpdateChecker> {
-    let checker = Arc::new(UpdateChecker::new(config.clone()));
-
-    if !config.enabled {
-        info!("Auto-update checking is disabled");
-        return checker;
-    }
-
+    let checker = Arc::new(UpdateChecker::new(config));
     let checker_clone = checker.clone();
-    let interval_hours = config.check_interval_hours;
 
     tokio::spawn(async move {
         // Initial check after a short delay
         tokio::time::sleep(Duration::from_secs(60)).await;
+        if checker_clone.settings().check_enabled {
+            info!("Starting update checker");
+            checker_clone.run_check().await;
+        }
 
-        info!(
-            "Starting update checker (interval: {} hours)",
-            interval_hours
-        );
-        checker_clone.run_check().await;
-
-        // Periodic checks
-        let mut check_interval = interval(Duration::from_secs(interval_hours * 3600));
+        let mut last_tick = chrono::Utc::now();
+        let mut ticker = interval(Duration::from_secs(60));
         loop {
-            check_interval.tick().await;
-            crate::utils::supervise::guarded("update_checker", checker_clone.run_check()).await;
+            ticker.tick().await;
+            let now = chrono::Utc::now();
+            let settings = checker_clone.settings();
 
-            // Auto-apply if enabled
-            if checker_clone.config.auto_apply {
-                let should_apply = {
-                    let state = checker_clone.state.read();
-                    state.latest_release.is_some() && !state.update_in_progress
-                };
-                if should_apply {
-                    info!("Auto-applying update...");
-                    match checker_clone.download_update().await {
-                        Ok(path) => {
-                            if let Err(e) = checker_clone.apply_update(&path).await {
-                                error!("Failed to apply update: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to download update: {}", e);
-                        }
-                    }
-                }
+            if settings.check_enabled && cron_fired_between(&settings.check_cron, last_tick, now) {
+                crate::utils::supervise::guarded("update_checker", checker_clone.run_check()).await;
             }
+
+            if settings.auto_update_enabled
+                && cron_fired_between(&settings.auto_update_cron, last_tick, now)
+            {
+                checker_clone.auto_apply().await;
+            }
+
+            last_tick = now;
         }
     });
 
     checker
 }
 
-/// Compare semantic versions, returns true if v1 > v2
-fn is_newer_version(v1: &str, v2: &str) -> bool {
-    let parse_version = |v: &str| -> (u32, u32, u32) {
-        let parts: Vec<u32> = v.split('.').filter_map(|s| s.parse().ok()).collect();
+impl UpdateChecker {
+    /// Check, then download and apply the latest release if one is available.
+    async fn auto_apply(&self) {
+        self.run_check().await;
+        let should_apply = {
+            let mut state = self.state.write();
+            let go = state.latest_release.is_some() && !state.update_in_progress;
+            if go {
+                state.update_in_progress = true;
+            }
+            go
+        };
+        if !should_apply {
+            return;
+        }
+        info!("Auto-applying update...");
+        match self.download_update().await {
+            Ok(path) => {
+                if let Err(e) = self.apply_update(&path).await {
+                    error!("Failed to apply update: {}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to download update: {}", e);
+            }
+        }
+        self.state.write().update_in_progress = false;
+    }
+}
+
+/// Newest non-draft release, skipping pre-releases unless asked for.
+fn pick_release(releases: Vec<GitHubRelease>, include_prereleases: bool) -> Option<GitHubRelease> {
+    releases
+        .into_iter()
+        .filter(|r| !r.draft && (include_prereleases || !r.prerelease))
+        .max_by(|a, b| {
+            compare_versions(
+                a.tag_name.trim_start_matches('v'),
+                b.tag_name.trim_start_matches('v'),
+            )
+        })
+}
+
+/// Order two versions. A pre-release (`1.2.0-beta.1`) sorts below the
+/// matching release (`1.2.0`); two pre-releases of the same version compare
+/// by their suffix.
+fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
+    type Parsed = ((u32, u32, u32), Option<String>);
+    let parse = |v: &str| -> Parsed {
+        let (core, pre) = match v.split_once('-') {
+            Some((c, p)) => (c, Some(p.to_string())),
+            None => (v, None),
+        };
+        let parts: Vec<u32> = core.split('.').filter_map(|s| s.parse().ok()).collect();
         (
-            parts.first().copied().unwrap_or(0),
-            parts.get(1).copied().unwrap_or(0),
-            parts.get(2).copied().unwrap_or(0),
+            (
+                parts.first().copied().unwrap_or(0),
+                parts.get(1).copied().unwrap_or(0),
+                parts.get(2).copied().unwrap_or(0),
+            ),
+            pre,
         )
     };
+    let (c1, p1) = parse(v1);
+    let (c2, p2) = parse(v2);
+    c1.cmp(&c2).then_with(|| match (p1, p2) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(a), Some(b)) => a.cmp(&b),
+    })
+}
 
-    let (major1, minor1, patch1) = parse_version(v1);
-    let (major2, minor2, patch2) = parse_version(v2);
-
-    (major1, minor1, patch1) > (major2, minor2, patch2)
+/// Compare semantic versions, returns true if v1 > v2
+fn is_newer_version(v1: &str, v2: &str) -> bool {
+    compare_versions(v1, v2) == std::cmp::Ordering::Greater
 }
 
 #[cfg(test)]
@@ -435,5 +526,13 @@ mod tests {
         assert!(!is_newer_version("0.2.9", "0.2.10"));
         assert!(!is_newer_version("0.2.10", "0.2.10"));
         assert!(is_newer_version("1.0.0", "0.99.99"));
+    }
+
+    #[test]
+    fn test_prerelease_ordering() {
+        assert!(is_newer_version("0.11.0-beta.1", "0.10.20"));
+        assert!(!is_newer_version("0.11.0-beta.1", "0.11.0"));
+        assert!(is_newer_version("0.11.0", "0.11.0-beta.2"));
+        assert!(is_newer_version("0.11.0-beta.2", "0.11.0-beta.1"));
     }
 }

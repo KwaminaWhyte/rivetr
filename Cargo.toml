@@ -99,6 +99,8 @@ aes-gcm = "0.11"
 
 # Email (SMTP)
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
+# DNS lookups against admin-chosen nameservers (domain checks)
+hickory-resolver = { version = "0.26", default-features = false, features = ["tokio"] }
 glob = "0.3"
 # AWS S3 SDK
 # No default features: the default "rustls" feature pulls in the legacy hyper 0.14
