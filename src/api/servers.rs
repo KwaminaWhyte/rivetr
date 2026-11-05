@@ -645,7 +645,7 @@ async fn run_ssh_health_check(
         echo "MEM:$(free -b 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "DISK:$(df -b / 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "OS:$(uname -a 2>/dev/null || echo 'N/A')";
-        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || (command -v docker >/dev/null 2>&1 && echo 'installed, no daemon access') || echo 'not installed')";
         echo "DOCKER_RUNNING:$(systemctl is-active docker 2>/dev/null || ($DOCKER info > /dev/null 2>&1 && echo 'active') || echo 'inactive')";
         echo "COMPOSE:$($DOCKER compose version --short 2>/dev/null || docker-compose --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'not installed')"
     "#,
@@ -2175,7 +2175,7 @@ async fn run_fetch_server_details(
     let remote_cmd = crate::utils::privileged::wrap_script(
         r#"
         echo "OS:$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -s)";
-        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || (command -v docker >/dev/null 2>&1 && echo 'installed, no daemon access') || echo 'not installed')";
         echo "DISK_FREE:$(df -h / 2>/dev/null | tail -1 | awk '{print $4}' || echo 'N/A')";
         echo "CPU_CORES:$(nproc 2>/dev/null || echo 'N/A')";
         echo "TOTAL_RAM:$(free -h 2>/dev/null | grep Mem | awk '{print $2}' || echo 'N/A')"

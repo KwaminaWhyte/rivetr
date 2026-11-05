@@ -103,10 +103,27 @@ fn parse_tailscale_ping(success: bool, stdout: &str, stderr: &str) -> NetworkChe
     }
 }
 
-async fn run(cmd: &str, args: &[&str], timeout: Duration) -> Option<std::process::Output> {
+/// Outcome of running a local helper command.
+enum RunOutcome {
+    Done(std::process::Output),
+    NotInstalled,
+    TimedOut,
+    Failed(String),
+}
+
+async fn run_cmd(cmd: &str, args: &[&str], timeout: Duration) -> RunOutcome {
     let fut = Command::new(cmd).args(args).kill_on_drop(true).output();
     match tokio::time::timeout(timeout, fut).await {
-        Ok(Ok(out)) => Some(out),
+        Ok(Ok(out)) => RunOutcome::Done(out),
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => RunOutcome::NotInstalled,
+        Ok(Err(e)) => RunOutcome::Failed(e.to_string()),
+        Err(_) => RunOutcome::TimedOut,
+    }
+}
+
+async fn run(cmd: &str, args: &[&str], timeout: Duration) -> Option<std::process::Output> {
+    match run_cmd(cmd, args, timeout).await {
+        RunOutcome::Done(out) => Some(out),
         _ => None,
     }
 }
@@ -123,22 +140,33 @@ pub async fn check_server_network(
     let mut checks = Vec::new();
 
     // 1. Local tailscaled
-    match run("tailscale", &["status", "--json"], Duration::from_secs(5)).await {
-        Some(out) if out.status.success() => checks.push(parse_tailscale_status(
+    let local_status = if tailscale_mode { "fail" } else { "skip" };
+    match run_cmd("tailscale", &["status", "--json"], Duration::from_secs(5)).await {
+        RunOutcome::Done(out) if out.status.success() => checks.push(parse_tailscale_status(
             &String::from_utf8_lossy(&out.stdout),
         )),
-        Some(out) => checks.push(item(
+        RunOutcome::Done(out) => checks.push(item(
             "Tailscale on the Rivetr host",
-            if tailscale_mode { "fail" } else { "skip" },
+            local_status,
             format!(
                 "tailscale status failed: {}",
                 String::from_utf8_lossy(&out.stderr).trim()
             ),
         )),
-        None => checks.push(item(
+        RunOutcome::NotInstalled => checks.push(item(
             "Tailscale on the Rivetr host",
-            if tailscale_mode { "fail" } else { "skip" },
+            local_status,
             "The tailscale CLI is not installed on the Rivetr host",
+        )),
+        RunOutcome::TimedOut => checks.push(item(
+            "Tailscale on the Rivetr host",
+            local_status,
+            "tailscale status did not answer within 5s; check that tailscaled is running and logged in",
+        )),
+        RunOutcome::Failed(e) => checks.push(item(
+            "Tailscale on the Rivetr host",
+            local_status,
+            format!("Could not run tailscale: {e}"),
         )),
     }
 
