@@ -232,6 +232,31 @@ export function useLocalPreference<V extends string>(
   return [value, setValue as (value: V) => void];
 }
 
+const EMPTY_LIST: string[] = [];
+const MAX_SET_SIZE = 200;
+
+/**
+ * A persisted Set<string> (expanded rows, open cards). The setter accepts a
+ * Set or an updater like useState, so it can replace `useState<Set<string>>`.
+ */
+export function usePersistedSet(
+  key: string,
+  options: Pick<PersistedStateOptions<string[]>, "storage" | "version"> = {}
+): [Set<string>, (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void] {
+  const [list, setList] = usePersistedState<string[]>(key, EMPTY_LIST, { ...options, validate: isStringArray });
+  const set = useMemo(() => new Set(list), [list]);
+  const update = useCallback(
+    (next: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      setList((prevList) => {
+        const resolved = typeof next === "function" ? next(new Set(prevList)) : next;
+        return [...resolved].slice(-MAX_SET_SIZE);
+      });
+    },
+    [setList]
+  );
+  return [set, update];
+}
+
 /** Type guards for common shapes, handy as `validate`. */
 export const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 export const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);

@@ -1,5 +1,5 @@
 import { QueryError } from "@/components/query-error";
-import { useLocalPreference } from "@/lib/persisted-state";
+import { useLocalPreference, usePersistedSet } from "@/lib/persisted-state";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -447,8 +447,8 @@ function ProjectCostRow({
 
 export default function CostsPage() {
   const [period, setPeriod] = useLocalPreference<Period>("costs:period", "30d", PERIODS);
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedTeams, setExpandedTeams] = usePersistedSet("costs:expanded-teams");
+  const [expandedProjects, setExpandedProjects] = usePersistedSet("costs:expanded-projects");
   const [viewMode, setViewMode] = useLocalPreference<"teams" | "projects">("costs:view", "teams", COST_VIEWS);
 
   // Fetch dashboard costs (system-wide summary)
