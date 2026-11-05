@@ -899,5 +899,8 @@ async fn restore_routes(
         }
     }
 
+    // Apps placed on several servers: pool every healthy upstream across servers.
+    rivetr::engine::multi_server::restore_routes(db, routes).await;
+
     Ok(())
 }

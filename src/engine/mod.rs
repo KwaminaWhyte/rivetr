@@ -7,6 +7,7 @@ pub mod database_backups;
 pub mod database_config;
 pub mod deployment_snapshots;
 mod disk_monitor;
+pub mod multi_server;
 pub mod nixpacks;
 pub mod pack_builder;
 mod pipeline;
@@ -209,6 +210,23 @@ impl DeploymentEngine {
                 );
                 if let Err(e) = notification_service.send(&started_payload).await {
                     tracing::warn!(error = %e, "Failed to send deployment_started notification");
+                }
+
+                // Apps placed on several servers take the multi-server rollout.
+                if multi_server::is_enabled(&db, &app.id).await {
+                    multi_server::run_and_finalize(
+                        &db,
+                        runtime.clone(),
+                        routes.clone(),
+                        &deployment_id,
+                        &app,
+                        &build_limits,
+                        encryption_key.as_ref(),
+                        snapshot_ctx.as_deref(),
+                        deploy_start,
+                    )
+                    .await;
+                    return;
                 }
 
                 match run_deployment(

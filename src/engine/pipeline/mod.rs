@@ -5,7 +5,9 @@ mod rollback;
 mod start;
 
 pub use clone::{authenticated_git_url, is_ssh_url, AuthenticatedGitUrl};
+pub(crate) use healthcheck::http_attempt;
 pub use rollback::run_rollback;
+pub(crate) use start::collect_env_vars;
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -441,7 +443,7 @@ async fn run_git_deployment(
 /// explicitly by a user or implicitly by a newer deployment that superseded it.
 /// Called at pipeline checkpoints so a stale build stops before it wastes work
 /// or, worse, swaps a stale container/route in over a newer deployment.
-async fn bail_if_cancelled(db: &DbPool, deployment_id: &str) -> Result<()> {
+pub(crate) async fn bail_if_cancelled(db: &DbPool, deployment_id: &str) -> Result<()> {
     let status: Option<String> = sqlx::query_scalar("SELECT status FROM deployments WHERE id = ?")
         .bind(deployment_id)
         .fetch_optional(db)
@@ -452,32 +454,18 @@ async fn bail_if_cancelled(db: &DbPool, deployment_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn run_deployment(
+/// Produce the image for a deployment: pull a registry image, reuse an existing
+/// tag, or build from upload, inline Dockerfile or git (pushing to the app's
+/// registry when enabled). Returns the local tag and, when pushed, the registry
+/// reference. Shared by the single-host and multi-server pipelines.
+pub(crate) async fn produce_image(
     db: &DbPool,
     runtime: Arc<dyn ContainerRuntime>,
     deployment_id: &str,
     app: &App,
     build_limits: &BuildLimits,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
-    snapshots: Option<&super::deployment_snapshots::SnapshotContext>,
-) -> Result<DeploymentResult> {
-    // Check if the deployment was cancelled while it was queued (before the pipeline picked it up)
-    bail_if_cancelled(db, deployment_id).await?;
-
-    // Log remote deployment intent if a server is assigned to this app
-    if let Some(ref server_id) = app.server_id {
-        add_deployment_log(
-            db,
-            deployment_id,
-            "info",
-            &format!(
-                "Remote deployment to server {} requested. Falling back to local deployment for MVP.",
-                server_id
-            ),
-        )
-        .await?;
-    }
-
+) -> Result<(String, Option<String>)> {
     // Check if this is an upload-based deployment by looking at the deployment record
     // Upload deployments store the source path in commit_sha, or existing image_tag for restart
     let deployment: Option<(Option<String>, Option<String>)> =
@@ -497,7 +485,7 @@ pub async fn run_deployment(
     // `remote_image_tag` is Some(...) when the image was pushed to a registry —
     // after start_container stores the local image tag we overwrite it with the
     // remote reference so rollbacks can pull from registry.
-    let (image_tag, remote_image_tag): (String, Option<String>) = if app.uses_registry_image() {
+    let image: (String, Option<String>) = if app.uses_registry_image() {
         // Registry-based deployment: pull pre-built image (no push needed)
         let tag = run_registry_deployment(db, runtime.clone(), deployment_id, app).await?;
         (tag, None)
@@ -607,6 +595,44 @@ pub async fn run_deployment(
             };
         (tag, remote)
     };
+    Ok(image)
+}
+
+pub async fn run_deployment(
+    db: &DbPool,
+    runtime: Arc<dyn ContainerRuntime>,
+    deployment_id: &str,
+    app: &App,
+    build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+    snapshots: Option<&super::deployment_snapshots::SnapshotContext>,
+) -> Result<DeploymentResult> {
+    // Check if the deployment was cancelled while it was queued (before the pipeline picked it up)
+    bail_if_cancelled(db, deployment_id).await?;
+
+    // Log remote deployment intent if a server is assigned to this app
+    if let Some(ref server_id) = app.server_id {
+        add_deployment_log(
+            db,
+            deployment_id,
+            "info",
+            &format!(
+                "Remote deployment to server {} requested. Falling back to local deployment for MVP.",
+                server_id
+            ),
+        )
+        .await?;
+    }
+
+    let (image_tag, remote_image_tag) = produce_image(
+        db,
+        runtime.clone(),
+        deployment_id,
+        app,
+        build_limits,
+        encryption_key,
+    )
+    .await?;
 
     // Abort if a newer deployment superseded this one while it was building,
     // before we start a container or touch proxy routes — otherwise a stale

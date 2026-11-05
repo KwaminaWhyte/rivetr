@@ -103,7 +103,7 @@ pub(super) async fn run_health_check(
     Ok(false)
 }
 
-async fn http_attempt(
+pub(crate) async fn http_attempt(
     client: &reqwest::Client,
     url: &str,
     hc: &HealthcheckConfig,
