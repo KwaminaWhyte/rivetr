@@ -11,7 +11,7 @@ use super::DeploymentResult;
 
 /// Collect and decrypt all env vars for an app (app + environment + project + team layers).
 /// `deployment_id` is used to look up the deployment's commit SHA for the SOURCE_COMMIT variable.
-pub(super) async fn collect_env_vars(
+pub(crate) async fn collect_env_vars(
     db: &DbPool,
     app: &App,
     encryption_key: Option<&[u8; KEY_LENGTH]>,

@@ -928,6 +928,10 @@ pub async fn delete_app(
     // SEC-C3: caller must have access to this app before deleting it.
     let app = authz::authorize_app(&state, &user, &id).await?;
 
+    // Containers of a multi-server app on every server
+    let key = super::super::placement::encryption_key(&state);
+    crate::engine::multi_server::remove_all(&state.db, &id, key.as_ref()).await;
+
     // Stop any running containers for this app
     let deployments: Vec<(String,)> = sqlx::query_as(
         "SELECT container_id FROM deployments WHERE app_id = ? AND container_id IS NOT NULL AND container_id != ''"

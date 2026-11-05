@@ -256,6 +256,12 @@ pub async fn start_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
+    // Apps placed on several servers start on every server.
+    if let Some(res) = super::super::placement::start_stop_if_multi_server(&state, &app, true).await
+    {
+        return res;
+    }
+
     // Get the latest running or stopped deployment with a container
     let deployment: Option<(String,)> = sqlx::query_as(
         "SELECT container_id FROM deployments WHERE app_id = ? AND status IN ('running', 'stopped') AND container_id IS NOT NULL ORDER BY started_at DESC LIMIT 1"
@@ -362,6 +368,13 @@ pub async fn stop_app(
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Apps placed on several servers stop on every server.
+    if let Some(res) =
+        super::super::placement::start_stop_if_multi_server(&state, &app, false).await
+    {
+        return res;
+    }
 
     // Get the latest running deployment with a container
     let deployment: Option<(String,)> = sqlx::query_as(
@@ -546,6 +559,19 @@ pub async fn restart_app(
         .fetch_optional(&state.db)
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
+
+    // Apps placed on several servers restart every container in place
+    // (stop, then start, re-reading the published ports).
+    if let Some(res) =
+        super::super::placement::start_stop_if_multi_server(&state, &app, false).await
+    {
+        let _stopped = res?;
+        if let Some(res) =
+            super::super::placement::start_stop_if_multi_server(&state, &app, true).await
+        {
+            return res;
+        }
+    }
 
     // 1. Get the latest running deployment (we need its image tag)
     let deployment: Option<Deployment> = sqlx::query_as::<_, Deployment>(

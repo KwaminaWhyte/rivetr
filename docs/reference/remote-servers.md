@@ -12,10 +12,105 @@ over Tailscale.
    key or a password. Keys and passwords are stored encrypted (AES-256-GCM).
 3. Rivetr tests the connection and checks that Docker is available.
 
-Once registered, apps can be assigned to the server. A deploy builds on the
-local host or a build server, pushes the image to the configured registry,
-pulls it on the target server, starts the container and updates the proxy
-route. **Servers > [server] > Terminal** opens a browser SSH session.
+Once registered, servers can be added to an app's placement (see
+[One app on several servers](#one-app-on-several-servers)). A deploy builds
+on the local host or a build server, sends the image to each server, starts
+the containers and adds them to the proxy route. **Servers > [server] > Terminal** opens a browser SSH session.
+
+## One app on several servers
+
+An app can run on several servers at once, with the Rivetr proxy balancing
+traffic across all of them. Open the app's **Resources** section and use the
+**Servers** card: add the Rivetr host and/or registered servers, each with a
+number of containers (1 to 10, up to 20 servers). Leave the list empty to keep
+the single-host behaviour. `apps.server_id` stays the primary server (the
+first placement entry) for older API clients.
+
+### What a deploy does
+
+1. **Build once.** The image is built on the Rivetr host or the app's build
+   server (or pulled, for registry image apps).
+2. **Distribute.** Each remote server gets the image in one of two ways
+   (Servers card, **Image distribution**):
+
+   | Mode | How | Tradeoff |
+   |------|-----|----------|
+   | Registry | Push once (Build > registry push), every server runs `docker pull` after a `docker login` fed on stdin | Fast for many servers, layer caching; needs a registry reachable from every server |
+   | SSH streaming | `docker save \| gzip` on the Rivetr host piped into `gunzip \| docker load` over SSH | No registry; the whole image crosses the network once per server per deploy |
+   | Automatic (default) | Registry when this build was pushed, SSH streaming otherwise | |
+
+3. **Rolling start.** Containers are started in batches of **Batch size (max
+   unavailable)**. Slots alternate between servers (A0, B0, A1, B1, ...) so a
+   batch does not hit one server only. Each new container starts next to the
+   old one (`rivetr-<app>-ms-<server>-<n>-<deployment>`), env vars are passed in
+   a private temp env file on the server, and pre-deploy commands run once in
+   the first container.
+4. **Health check per container**, from the Rivetr host, against the address
+   the proxy will use (`server address:published port`): the app's structured
+   healthcheck (HTTP or command), or a TCP readiness wait when none is set.
+5. **Shift traffic.** After each batch, healthy new containers join the
+   proxy pool and the old containers on the same slots leave it.
+6. **Roll back or finish.** If at least **Roll back when failed (%)** of the
+   containers fail (0 means any failure), every new container is removed and the
+   pool goes back to the previous containers, which never stopped. Otherwise the
+   old containers are drained and removed; a slot whose new container failed
+   keeps its previous container. Post-deploy commands run once.
+
+The deployment page lists every target with its batch, status, upstream
+address, error and log (`GET /api/deployments/{id}/targets`). Start, stop,
+restart and delete act on every server.
+
+### Load balancing
+
+The proxy routes the app's domains to every healthy container across servers:
+
+- **Round robin** (default) or **least connections** (fewest in-flight requests).
+- **Passive health:** a container that refuses or drops a connection is
+  skipped for 10 seconds. The periodic proxy health check still watches the
+  first upstream.
+- **Sticky sessions** (optional): a `rivetr_upstream` cookie (an opaque hash,
+  not the address) pins a browser to one container; it is reassigned when that
+  container is down.
+
+### Network and security
+
+The proxy runs on the Rivetr host, so each remote container publishes the app
+port and the Rivetr host must reach it. That port is reachable by anything
+that can reach the address it is bound to:
+
+- With **Bind to private address** on (default) and a Tailscale address set
+  on the server (see below), the port is published on the Tailscale interface
+  only (`-p 100.x.y.z::<port>`; a MagicDNS name is resolved on the server with
+  `tailscale ip -4`) and the proxy connects over the tailnet. This is the
+  recommended setup.
+- Without a private address, the port is published on every interface and
+  the proxy uses the server's public host. The deployment log and the Servers
+  card warn about this. Restrict the port in the server firewall to the Rivetr
+  host, or move the servers onto Tailscale or a private network.
+- On the Rivetr host, containers bind to `127.0.0.1`.
+
+### Data and configuration
+
+- **Env vars** (app, environment, project, team and linked databases) are
+  applied on every server. Values with line breaks cannot go through an env
+  file and are skipped with a warning.
+- **Volumes are per server.** Each container mounts the app's volume paths on
+  its own server; nothing is shared or copied. Use a managed database, object
+  storage or another shared store for state.
+- Per-domain internal ports are not published on remote servers; domains
+  route to the app port.
+
+### API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/apps/{id}/placement` | Placement, settings, server count, live upstreams |
+| PUT | `/api/apps/{id}/placement` | `{ "placements": [{ "server_id": "localhost", "replicas": 2 }, { "server_id": "<id>", "replicas": 1 }], "settings": { "max_unavailable": 1, "failure_threshold_pct": 50, "distribution": "auto", "lb_policy": "round_robin", "sticky_sessions": false, "bind_private": true } }`; an empty list turns it off |
+| GET | `/api/apps/placement-counts` | `{ app_id: server_count }` |
+| GET | `/api/deployments/{id}/targets` | Per-target status and logs |
+
+Load balancing changes apply to the live pool when saved; placement changes
+apply on the next deploy.
 
 ## Connecting as a non-root user (passwordless sudo)
 

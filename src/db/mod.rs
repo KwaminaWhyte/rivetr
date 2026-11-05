@@ -1748,6 +1748,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 136: multi-server placements, rollout settings, per-target records
+    execute_sql(
+        pool,
+        include_str!("../../migrations/136_app_server_placements.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

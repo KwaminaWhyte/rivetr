@@ -500,10 +500,19 @@ impl ProxyHandler {
         // Get the route table
         let routes = self.routes.load();
 
-        // Look up the backend
-        let backend = match &host {
-            Some(h) => routes.get_backend(h),
-            None => None,
+        // Look up the backend (pooled domains apply their balancing policy and
+        // the sticky session cookie here)
+        let sticky_cookie = req
+            .headers()
+            .get(hyper::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|c| super::balancer::cookie_value(c, super::balancer::STICKY_COOKIE));
+        let (backend, sticky_addr) = match host
+            .as_deref()
+            .and_then(|h| routes.select_backend(h, sticky_cookie))
+        {
+            Some(r) => (Some(r.backend), r.sticky_addr),
+            None => (None, None),
         };
 
         // Capture logging metadata from request headers before they are consumed
@@ -657,10 +666,21 @@ impl ProxyHandler {
                     {
                         Ok(mut response) => {
                             apply_robots_header(&mut response, backend.noindex);
+                            if let Some(addr) = sticky_addr.as_deref() {
+                                super::balancer::append_sticky_cookie(
+                                    &mut response,
+                                    addr,
+                                    self.forwarded_proto == "https",
+                                );
+                            }
                             response
                         }
                         Err(e) => {
                             error!(error = %e, backend = %backend.addr(), "Backend request failed");
+                            // Passive health: a pooled upstream that fails is skipped for a while.
+                            if let Some(h) = host.as_deref() {
+                                routes.mark_upstream_failed(h, &backend.addr());
+                            }
                             self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable")
                         }
                     }

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **One app across several servers behind the proxy** (migration 136). Resources > Servers sets a placement: the Rivetr host and/or remote servers, with a container count per server. A deploy builds the image once (locally or on a build server), sends it to every server by registry pull or `docker save | ssh docker load`, starts containers in rolling batches (configurable batch size), health checks each one from the Rivetr host over the address the proxy uses, and rolls the whole deployment back when a configurable share of containers fail; the previous containers keep serving until then. The proxy pools every healthy container across servers with round robin or least connections, skips a container for 10 seconds after a connection error, and can pin clients with a sticky cookie. Remote ports bind to the server's Tailscale address when it has one. Per-server status and logs on the deployment page, "N servers" in the app header and on the canvas. Start, stop, restart and delete act on every server. API: `GET/PUT /api/apps/{id}/placement`, `GET /api/apps/placement-counts`, `GET /api/deployments/{id}/targets`. See `docs/reference/remote-servers.md`.
+
 ## [1.0.0] - 2026-11-05
 
 First stable release. Everything below the highlights was previously listed as unreleased.

@@ -43,6 +43,7 @@ pub mod oauth;
 mod optional_json;
 pub(crate) mod passkeys;
 mod patches;
+mod placement;
 mod previews;
 mod projects;
 mod proxy_logs;
@@ -1186,6 +1187,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/github-apps/{id}/sync-webhook",
             post(github_apps::sync_webhook_url),
+        )
+        // Multi-server placement (one app across several servers)
+        .route(
+            "/apps/{id}/placement",
+            get(placement::get_placement).put(placement::update_placement),
+        )
+        .route("/apps/placement-counts", get(placement::placement_counts))
+        .route(
+            "/deployments/{id}/targets",
+            get(placement::deployment_targets),
         )
         // Container Replicas
         .route("/apps/{id}/replicas", get(replicas::list_replicas))
