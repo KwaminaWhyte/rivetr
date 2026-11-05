@@ -68,6 +68,7 @@ const tabs = [
   { id: "environment", label: "Environment", path: "/environment" },
   { id: "network", label: "Network", path: "/network" },
   { id: "logs", label: "Logs", path: "/logs" },
+  { id: "files", label: "Files", path: "/files" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 

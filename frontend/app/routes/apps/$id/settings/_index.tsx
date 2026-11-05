@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useOutletContext } from "react-router";
+import { useMemo, useState } from "react";
+import { Link, useOutletContext } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,9 @@ import {
 import { GitHubSourceCard } from "@/components/github-source-card";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { AppSharingCard } from "@/components/app-sharing-card";
+import { CloneResourceCard } from "@/components/clone-resource-card";
+import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
+import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { Zap, Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import type { App, AppEnvironment, UpdateAppRequest } from "@/types/api";
@@ -129,17 +132,20 @@ export default function AppSettingsGeneral() {
   const { app } = useOutletContext<{ app: App }>();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [generalForm, setGeneralForm] = useState({
-    name: app.name,
-    git_url: app.git_url,
-    branch: app.branch,
-    port: app.port,
-    environment: app.environment || "development",
-    healthcheck: app.healthcheck || "",
-  });
+  const initialForm = useMemo(
+    () => ({
+      name: app.name,
+      git_url: app.git_url,
+      branch: app.branch,
+      port: app.port,
+      environment: (app.environment || "development") as AppEnvironment,
+    }),
+    [app.name, app.git_url, app.branch, app.port, app.environment]
+  );
+  const form = useDirtyForm(initialForm);
+  const generalForm = form.values;
 
-  const handleGeneralSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveGeneral = async () => {
     setIsSubmitting(true);
     try {
       const updates: UpdateAppRequest = {
@@ -147,8 +153,7 @@ export default function AppSettingsGeneral() {
         git_url: generalForm.git_url,
         branch: generalForm.branch,
         port: generalForm.port,
-        environment: generalForm.environment as AppEnvironment,
-        healthcheck: generalForm.healthcheck,
+        environment: generalForm.environment,
       };
       // Setting a git URL on a non-registry app implies git-based deploys.
       // This converts an upload-created app into a git app so pushes deploy it.
@@ -156,6 +161,7 @@ export default function AppSettingsGeneral() {
         updates.deployment_source = "git";
       }
       await api.updateApp(app.id, updates);
+      form.markSaved();
       toast.success("Settings saved");
       queryClient.invalidateQueries({ queryKey: ["app", app.id] });
     } catch (error) {
@@ -165,14 +171,27 @@ export default function AppSettingsGeneral() {
     }
   };
 
+  const handleGeneralSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (form.isDirty) void saveGeneral();
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <GitHubSourceCard app={app} />
       <WebhookSetupCard app={app} />
       <MoveToProjectCard
         resourceKind="app"
         resourceId={app.id}
         currentProjectId={app.project_id ?? null}
+      />
+      <CloneResourceCard
+        resourceKind="app"
+        resourceId={app.id}
+        resourceName={app.name}
+        currentProjectId={app.project_id ?? null}
+        currentEnvironmentId={app.environment_id ?? null}
+        currentServerId={app.server_id ?? null}
       />
       <Card>
         <CardHeader>
@@ -189,7 +208,7 @@ export default function AppSettingsGeneral() {
                 <Input
                   id="name"
                   value={generalForm.name}
-                  onChange={(e) => setGeneralForm({ ...generalForm, name: e.target.value })}
+                  onChange={(e) => form.setField("name", e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -197,7 +216,7 @@ export default function AppSettingsGeneral() {
                 <Input
                   id="git_url"
                   value={generalForm.git_url}
-                  onChange={(e) => setGeneralForm({ ...generalForm, git_url: e.target.value })}
+                  onChange={(e) => form.setField("git_url", e.target.value)}
                 />
               </div>
             </div>
@@ -208,7 +227,7 @@ export default function AppSettingsGeneral() {
                 <Input
                   id="branch"
                   value={generalForm.branch}
-                  onChange={(e) => setGeneralForm({ ...generalForm, branch: e.target.value })}
+                  onChange={(e) => form.setField("branch", e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -217,7 +236,7 @@ export default function AppSettingsGeneral() {
                   id="port"
                   type="number"
                   value={generalForm.port}
-                  onChange={(e) => setGeneralForm({ ...generalForm, port: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => form.setField("port", parseInt(e.target.value) || 0)}
                 />
               </div>
             </div>
@@ -227,7 +246,7 @@ export default function AppSettingsGeneral() {
                 <Label htmlFor="environment">Environment</Label>
                 <Select
                   value={generalForm.environment}
-                  onValueChange={(value) => setGeneralForm({ ...generalForm, environment: value as AppEnvironment })}
+                  onValueChange={(value) => form.setField("environment", value as AppEnvironment)}
                 >
                   <SelectTrigger aria-label="Environment">
                     <SelectValue placeholder="Select environment" />
@@ -242,26 +261,26 @@ export default function AppSettingsGeneral() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="healthcheck">Healthcheck Path</Label>
-                <Input
-                  id="healthcheck"
-                  placeholder="/health"
-                  value={generalForm.healthcheck}
-                  onChange={(e) => setGeneralForm({ ...generalForm, healthcheck: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Endpoint to check if the app is running
+                <Label>Healthcheck</Label>
+                <p className="text-sm text-muted-foreground">
+                  Configure the healthcheck on the{" "}
+                  <Link to={`/apps/${app.id}/settings/healthcheck`} className="underline underline-offset-2">
+                    Health
+                  </Link>{" "}
+                  tab.
                 </p>
               </div>
             </div>
-
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Changes"}
-            </Button>
           </form>
         </CardContent>
       </Card>
       <AppSharingCard app={app} />
+      <UnsavedChangesBar
+        show={form.isDirty}
+        onSave={() => void saveGeneral()}
+        onReset={form.reset}
+        saving={isSubmitting}
+      />
     </div>
   );
 }

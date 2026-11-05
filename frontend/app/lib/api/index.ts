@@ -61,6 +61,8 @@ export type {
 export { filesystemApi } from "./filesystem";
 export type { FileEntry } from "./filesystem";
 export { aiApi } from "./ai";
+export { appConfigApi } from "./app-config";
+export type { FileBrowserResource, FileTarget } from "./app-config";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";

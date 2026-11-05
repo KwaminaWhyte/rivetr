@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,9 @@ export function meta() {
 }
 import { Button } from "@/components/ui/button";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
+import { CloneResourceCard } from "@/components/clone-resource-card";
+import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
+import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -83,12 +86,24 @@ export default function ServiceSettingsTab() {
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [composeContent, setComposeContent] = useState(service.compose_content);
-  const [domain, setDomain] = useState(service.domain ?? "");
-  const [port, setPort] = useState(service.port ?? 80);
+  // Domain, port and limits share one form with the unsaved-changes bar.
+  const routingInitial = useMemo(
+    () => ({
+      domain: service.domain ?? "",
+      port: service.port ?? 80,
+      cpuLimit: service.cpu_limit ?? "",
+      memoryLimit: service.memory_limit ?? "",
+    }),
+    [service.domain, service.port, service.cpu_limit, service.memory_limit]
+  );
+  const routingForm = useDirtyForm(routingInitial);
+  const { domain, port, cpuLimit, memoryLimit } = routingForm.values;
+  const setDomain = (v: string) => routingForm.setField("domain", v);
+  const setPort = (v: number) => routingForm.setField("port", v);
+  const setCpuLimit = (v: string) => routingForm.setField("cpuLimit", v);
+  const setMemoryLimit = (v: string) => routingForm.setField("memoryLimit", v);
   const [isolatedNetwork, setIsolatedNetwork] = useState(service.isolated_network ?? true);
   const [rawComposeMode, setRawComposeMode] = useState(service.raw_compose_mode ?? false);
-  const [cpuLimit, setCpuLimit] = useState(service.cpu_limit ?? "");
-  const [memoryLimit, setMemoryLimit] = useState(service.memory_limit ?? "");
 
   // Preview compose dialog state
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -117,14 +132,15 @@ export default function ServiceSettingsTab() {
   });
 
   const updateDomainMutation = useMutation({
-    mutationFn: (data: { domain: string; port: number }) =>
-      api.updateService(service.id, { domain: data.domain, port: data.port }),
+    mutationFn: (data: { domain: string; port: number; cpu_limit: string; memory_limit: string }) =>
+      api.updateService(service.id, data),
     onSuccess: () => {
-      toast.success("Domain configuration saved. Restart the service to apply changes.");
+      routingForm.markSaved();
+      toast.success("Settings saved. Restart the service to apply changes.");
       queryClient.invalidateQueries({ queryKey: ["service", service.id] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update domain configuration");
+      toast.error(error instanceof Error ? error.message : "Failed to save settings");
     },
   });
 
@@ -149,21 +165,6 @@ export default function ServiceSettingsTab() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to update Raw Compose Mode");
-    },
-  });
-
-  const updateLimitsMutation = useMutation({
-    mutationFn: (data: { cpu_limit: string; memory_limit: string }) =>
-      api.updateService(service.id, {
-        cpu_limit: data.cpu_limit,
-        memory_limit: data.memory_limit,
-      }),
-    onSuccess: () => {
-      toast.success("Resource limits saved. Restart the service to apply.");
-      queryClient.invalidateQueries({ queryKey: ["service", service.id] });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update resource limits");
     },
   });
 
@@ -229,11 +230,9 @@ export default function ServiceSettingsTab() {
 
   // Sync domain/port state when service data changes
   useEffect(() => {
-    setDomain(service.domain ?? "");
-    setPort(service.port ?? 80);
     setIsolatedNetwork(service.isolated_network ?? true);
     setRawComposeMode(service.raw_compose_mode ?? false);
-  }, [service.domain, service.port, service.isolated_network, service.raw_compose_mode]);
+  }, [service.isolated_network, service.raw_compose_mode]);
 
   const handleCancelEdit = () => {
     setComposeContent(service.compose_content);
@@ -245,9 +244,17 @@ export default function ServiceSettingsTab() {
     updateComposeMutation.mutate(composeContent);
   };
 
+  const saveRouting = () =>
+    updateDomainMutation.mutate({
+      domain,
+      port,
+      cpu_limit: cpuLimit,
+      memory_limit: memoryLimit,
+    });
+
   const handleSaveDomain = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    updateDomainMutation.mutate({ domain, port });
+    if (routingForm.isDirty) saveRouting();
   };
 
   const handleDelete = () => {
@@ -255,10 +262,16 @@ export default function ServiceSettingsTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <MoveToProjectCard
         resourceKind="service"
         resourceId={service.id}
+        currentProjectId={service.project_id ?? null}
+      />
+      <CloneResourceCard
+        resourceKind="service"
+        resourceId={service.id}
+        resourceName={service.name}
         currentProjectId={service.project_id ?? null}
       />
       {/* Domain Configuration */}
@@ -303,16 +316,6 @@ export default function ServiceSettingsTab() {
                   The host port the proxy forwards traffic to (the left side of <code className="font-mono">HOST:CONTAINER</code> in your compose ports mapping). If you see a 502 error, check this matches the port in your compose file.
                 </p>
               </div>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {updateDomainMutation.isPending ? "Saving..." : "Save Domain"}
-              </Button>
             </div>
           </form>
         </CardContent>
@@ -385,17 +388,6 @@ export default function ServiceSettingsTab() {
               />
             </div>
           </div>
-          <Button
-            onClick={() =>
-              updateLimitsMutation.mutate({
-                cpu_limit: cpuLimit,
-                memory_limit: memoryLimit,
-              })
-            }
-            disabled={updateLimitsMutation.isPending}
-          >
-            {updateLimitsMutation.isPending ? "Saving..." : "Save limits"}
-          </Button>
         </CardContent>
       </Card>
 
@@ -784,6 +776,12 @@ export default function ServiceSettingsTab() {
           </div>
         </DialogContent>
       </Dialog>
+      <UnsavedChangesBar
+        show={routingForm.isDirty}
+        onSave={saveRouting}
+        onReset={routingForm.reset}
+        saving={updateDomainMutation.isPending}
+      />
     </div>
   );
 }

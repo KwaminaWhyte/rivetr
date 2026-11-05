@@ -167,7 +167,7 @@ export default function AppSettingsNetwork() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <DomainManagementCard app={app} onSave={handleSaveDomainConfig} isSaving={isSavingDomains} />
       <NetworkConfigCard app={app} onSave={handleSaveNetworkConfig} isSaving={isSavingNetwork} />
 

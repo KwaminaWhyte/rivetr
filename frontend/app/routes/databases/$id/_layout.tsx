@@ -90,6 +90,7 @@ const tabs = [
   { id: "backups", label: "Backups", path: "/backups" },
   { id: "import", label: "Import", path: "/import" },
   { id: "logs", label: "Logs", path: "/logs" },
+  { id: "files", label: "Files", path: "/files" },
   { id: "settings", label: "Settings", path: "/settings" },
 ];
 

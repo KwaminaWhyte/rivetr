@@ -12,6 +12,7 @@ import {
   Camera,
   Container,
   FileDiff,
+  HeartPulse,
 } from "lucide-react";
 import type { App } from "@/types/api";
 
@@ -28,6 +29,7 @@ interface ParentContext {
 
 const SETTINGS_TABS = [
   { id: "general", label: "General", path: "", icon: Settings },
+  { id: "healthcheck", label: "Health", path: "/healthcheck", icon: HeartPulse },
   { id: "build", label: "Build", path: "/build", icon: Hammer },
   { id: "network", label: "Network", path: "/network", icon: Network },
   { id: "storage", label: "Storage", path: "/storage", icon: HardDrive },
@@ -57,7 +59,7 @@ export default function AppSettingsLayout() {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-11">
+        <TabsList className="grid w-full grid-cols-12">
           {SETTINGS_TABS.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
               <Link to={`${basePath}${tab.path}`} className="gap-1">

@@ -46,6 +46,7 @@ export default [
         route("sharing", "routes/apps/$id/settings/sharing.tsx"),
         route("docker", "routes/apps/$id/settings/docker.tsx"),
         route("patches", "routes/apps/$id/settings/patches.tsx"),
+        route("healthcheck", "routes/apps/$id/settings/healthcheck.tsx"),
       ]),
       route("deployments", "routes/apps/$id/deployments.tsx"),
       route("deployments/:deploymentId", "routes/apps/$id/deployment-detail.tsx"),
@@ -55,6 +56,7 @@ export default [
       route("log-drains", "routes/apps/$id/log-drains.tsx"),
       route("monitoring", "routes/apps/$id/monitoring.tsx"),
       route("terminal", "routes/apps/$id/terminal.tsx"),
+      route("files", "routes/apps/$id/files.tsx"),
       route("security", "routes/apps/$id/security.tsx"),
     ]),
 
@@ -67,6 +69,7 @@ export default [
       route("backups", "routes/databases/$id/backups.tsx"),
       route("import", "routes/databases/$id/import.tsx"),
       route("logs", "routes/databases/$id/logs.tsx"),
+      route("files", "routes/databases/$id/files.tsx"),
       route("settings", "routes/databases/$id/settings.tsx"),
     ]),
 
@@ -79,6 +82,7 @@ export default [
       route("environment", "routes/services/$id/environment.tsx"),
       route("network", "routes/services/$id/network.tsx"),
       route("logs", "routes/services/$id/logs.tsx"),
+      route("files", "routes/services/$id/files.tsx"),
       route("settings", "routes/services/$id/settings.tsx"),
     ]),
 

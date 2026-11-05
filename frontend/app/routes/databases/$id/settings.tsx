@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useOutletContext, useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ManagedDatabase, UpdateManagedDatabaseRequest } from "@/types/api";
@@ -29,6 +29,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
+import { CloneResourceCard } from "@/components/clone-resource-card";
+import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
+import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { api } from "@/lib/api";
 import {
   AlertTriangle,
@@ -75,14 +78,6 @@ export default function DatabaseSettingsTab() {
   );
   const [useCustomPort, setUseCustomPort] = useState(database.external_port > 0);
 
-  // SSL/TLS state
-  const [sslEnabled, setSslEnabled] = useState(database.ssl_enabled ?? false);
-  const [sslMode, setSslMode] = useState(database.ssl_mode ?? "");
-
-  // Custom image & init commands state
-  const [customImage, setCustomImage] = useState(database.custom_image ?? "");
-  const [memoryLimit, setMemoryLimit] = useState(database.memory_limit ?? "");
-  const [cpuLimit, setCpuLimit] = useState(database.cpu_limit ?? "");
   // init_commands is stored as a JSON array; display one command per line for editing
   const parseInitCommands = (json: string | null): string => {
     if (!json) return "";
@@ -94,9 +89,35 @@ export default function DatabaseSettingsTab() {
     }
     return json;
   };
-  const [initCommandsText, setInitCommandsText] = useState(
-    parseInitCommands(database.init_commands)
+
+  // SSL, image, init commands and limits share one form with the unsaved-changes bar.
+  const configInitial = useMemo(
+    () => ({
+      sslEnabled: database.ssl_enabled ?? false,
+      sslMode: database.ssl_mode ?? "",
+      customImage: database.custom_image ?? "",
+      initCommandsText: parseInitCommands(database.init_commands),
+      memoryLimit: database.memory_limit ?? "",
+      cpuLimit: database.cpu_limit ?? "",
+    }),
+    [
+      database.ssl_enabled,
+      database.ssl_mode,
+      database.custom_image,
+      database.init_commands,
+      database.memory_limit,
+      database.cpu_limit,
+    ]
   );
+  const configForm = useDirtyForm(configInitial);
+  const { sslEnabled, sslMode, customImage, initCommandsText, memoryLimit, cpuLimit } =
+    configForm.values;
+  const setSslEnabled = (v: boolean) => configForm.setField("sslEnabled", v);
+  const setSslMode = (v: string) => configForm.setField("sslMode", v);
+  const setCustomImage = (v: string) => configForm.setField("customImage", v);
+  const setInitCommandsText = (v: string) => configForm.setField("initCommandsText", v);
+  const setMemoryLimit = (v: string) => configForm.setField("memoryLimit", v);
+  const setCpuLimit = (v: string) => configForm.setField("cpuLimit", v);
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteDatabase(database.id),
@@ -122,31 +143,20 @@ export default function DatabaseSettingsTab() {
     },
   });
 
-  const sslMutation = useMutation({
+  const configMutation = useMutation({
     mutationFn: (data: UpdateManagedDatabaseRequest) =>
       api.updateDatabase(database.id, data),
     onSuccess: () => {
-      toast.success("SSL/TLS settings updated");
+      configForm.markSaved();
+      toast.success("Database settings saved");
       queryClient.invalidateQueries({ queryKey: ["database", database.id] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update SSL settings");
+      toast.error(error instanceof Error ? error.message : "Failed to save database settings");
     },
   });
 
-  const imageMutation = useMutation({
-    mutationFn: (data: UpdateManagedDatabaseRequest) =>
-      api.updateDatabase(database.id, data),
-    onSuccess: () => {
-      toast.success("Image settings saved");
-      queryClient.invalidateQueries({ queryKey: ["database", database.id] });
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to save image settings");
-    },
-  });
-
-  const isSubmitting = deleteMutation.isPending || updateMutation.isPending || sslMutation.isPending || imageMutation.isPending;
+  const isSubmitting = deleteMutation.isPending || updateMutation.isPending || configMutation.isPending;
   const canDelete = deleteConfirmName === database.name;
   const hasNetworkChanges =
     publicAccess !== database.public_access ||
@@ -175,11 +185,6 @@ export default function DatabaseSettingsTab() {
   // SSL helpers
   const supportsSSL = database.db_type === "postgres" || database.db_type === "mysql" || database.db_type === "mariadb";
   const sslModes = database.db_type === "postgres" ? SSL_MODES_POSTGRES : SSL_MODES_MYSQL;
-  const hasSslChanges = sslEnabled !== (database.ssl_enabled ?? false) || sslMode !== (database.ssl_mode ?? "");
-
-  const handleSslUpdate = () => {
-    sslMutation.mutate({ ssl_enabled: sslEnabled, ssl_mode: sslMode || undefined });
-  };
 
   // Helpers for image/init-commands card
   const serializeInitCommands = (text: string): string | undefined => {
@@ -191,22 +196,27 @@ export default function DatabaseSettingsTab() {
     return JSON.stringify(lines);
   };
 
-  const hasImageChanges =
-    customImage !== (database.custom_image ?? "") ||
-    initCommandsText !== parseInitCommands(database.init_commands);
-
-  const handleImageUpdate = () => {
-    imageMutation.mutate({
+  const handleConfigSave = () => {
+    configMutation.mutate({
+      ...(supportsSSL ? { ssl_enabled: sslEnabled, ssl_mode: sslMode || undefined } : {}),
       custom_image: customImage.trim() || undefined,
       init_commands: serializeInitCommands(initCommandsText),
+      memory_limit: memoryLimit,
+      cpu_limit: cpuLimit,
     });
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <MoveToProjectCard
         resourceKind="database"
         resourceId={database.id}
+        currentProjectId={database.project_id ?? null}
+      />
+      <CloneResourceCard
+        resourceKind="database"
+        resourceId={database.id}
+        resourceName={database.name}
         currentProjectId={database.project_id ?? null}
       />
       {/* Network Settings Card */}
@@ -501,36 +511,10 @@ export default function DatabaseSettingsTab() {
               </div>
             )}
 
-            {hasSslChanges && (
-              <div className="flex items-center justify-between pt-4 border-t">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Info className="h-4 w-4" />
-                  <span>Restart the database for changes to take effect</span>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSslEnabled(database.ssl_enabled ?? false);
-                      setSslMode(database.ssl_mode ?? "");
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSslUpdate} disabled={isSubmitting}>
-                    {sslMutation.isPending ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save SSL Settings"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Info className="h-4 w-4" />
+              Restart the database for SSL changes to take effect
+            </p>
           </CardContent>
         </Card>
       )}
@@ -583,40 +567,12 @@ export default function DatabaseSettingsTab() {
             </p>
           </div>
 
-          {hasImageChanges && (
-            <div className="flex items-center justify-between pt-4 border-t">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Info className="h-4 w-4" />
-                <span>
-                  {database.status === "running"
-                    ? "Recreate the container for the new image to take effect"
-                    : "Changes will apply on next start"}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setCustomImage(database.custom_image ?? "");
-                    setInitCommandsText(parseInitCommands(database.init_commands));
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleImageUpdate} disabled={isSubmitting}>
-                  {imageMutation.isPending ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save Image Settings"
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Info className="h-4 w-4" />
+            {database.status === "running"
+              ? "Recreate the container for a new image to take effect"
+              : "Image changes apply on next start"}
+          </p>
         </CardContent>
       </Card>
 
@@ -661,17 +617,6 @@ export default function DatabaseSettingsTab() {
               </p>
             </div>
           </div>
-          <Button
-            onClick={() =>
-              updateMutation.mutate({
-                memory_limit: memoryLimit,
-                cpu_limit: cpuLimit,
-              })
-            }
-            disabled={updateMutation.isPending}
-          >
-            {updateMutation.isPending ? "Saving..." : "Save limits"}
-          </Button>
         </CardContent>
       </Card>
 
@@ -768,6 +713,12 @@ export default function DatabaseSettingsTab() {
           )}
         </CardContent>
       </Card>
+      <UnsavedChangesBar
+        show={configForm.isDirty}
+        onSave={handleConfigSave}
+        onReset={configForm.reset}
+        saving={configMutation.isPending}
+      />
     </div>
   );
 }

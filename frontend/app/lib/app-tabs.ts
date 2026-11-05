@@ -44,6 +44,7 @@ export const APP_TAB_GROUPS: AppTabGroup[] = [
       { id: "monitoring", label: "Monitoring", path: "/monitoring" },
       { id: "log-drains", label: "Log Drains", path: "/log-drains" },
       { id: "terminal", label: "Terminal", path: "/terminal" },
+      { id: "files", label: "Files", path: "/files" },
     ],
   },
   {
