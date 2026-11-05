@@ -519,7 +519,7 @@ pub struct CloneAppResponse {
 /// Insert the cloned app row. Domain, auto-subdomain, basic auth, registry password,
 /// approval and maintenance settings are reset; everything else (including
 /// `snapshot_before_deploy` and `access_logging`) is copied.
-async fn insert_cloned_app(
+pub(crate) async fn insert_cloned_app(
     db: &crate::DbPool,
     original: &App,
     new_id: &str,

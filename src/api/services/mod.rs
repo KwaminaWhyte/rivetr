@@ -11,6 +11,7 @@ mod export_db;
 mod import_db;
 
 // Re-export everything callers need
+pub(crate) use containers::resolve_running_container;
 pub use containers::{
     get_service_container_logs, list_service_containers, restart_service_container,
     service_container_terminal_ws,

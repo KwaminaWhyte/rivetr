@@ -178,6 +178,38 @@ impl ContainerRuntime for PodmanRuntime {
             }
         }
 
+        // Extra container ports routed to by individual domains
+        for port in &config.extra_ports {
+            if *port == config.port
+                || config
+                    .port_mappings
+                    .iter()
+                    .any(|m| m.container_port == *port && m.protocol == "tcp")
+            {
+                continue;
+            }
+            args.push("-p".to_string());
+            args.push(format!(":{}", port));
+        }
+
+        // Record the primary port so inspect can pick its binding
+        args.push("--label".to_string());
+        args.push(format!("{}={}", super::PRIMARY_PORT_LABEL, config.port));
+
+        // Container HEALTHCHECK
+        if let Some(hc) = &config.healthcheck {
+            args.push("--health-cmd".to_string());
+            args.push(serde_json::to_string(&hc.test).unwrap_or_default());
+            args.push("--health-interval".to_string());
+            args.push(format!("{}s", hc.interval_secs));
+            args.push("--health-timeout".to_string());
+            args.push(format!("{}s", hc.timeout_secs));
+            args.push("--health-retries".to_string());
+            args.push(hc.retries.to_string());
+            args.push("--health-start-period".to_string());
+            args.push(format!("{}s", hc.start_period_secs));
+        }
+
         // Add extra hosts (--add-host flag)
         for extra_host in &config.extra_hosts {
             args.push("--add-host".to_string());
@@ -429,7 +461,7 @@ impl ContainerRuntime for PodmanRuntime {
             .run_command(&[
                 "inspect".to_string(),
                 "--format".to_string(),
-                "{{.Id}}|{{.Name}}|{{.State.Status}}|{{.State.Running}}|{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}}{{end}}{{end}}".to_string(),
+                "{{.Id}}|{{.Name}}|{{.State.Status}}|{{.State.Running}}|{{range $p, $conf := .NetworkSettings.Ports}}{{$p}}={{range $conf}}{{.HostPort}}{{end}},{{end}}|{{index .Config.Labels \"rivetr.port\"}}".to_string(),
                 container_id.to_string(),
             ])
             .await?;
@@ -437,7 +469,9 @@ impl ContainerRuntime for PodmanRuntime {
         let parts: Vec<&str> = output.split('|').collect();
         if parts.len() >= 4 {
             let is_running = parts.get(3).map(|s| *s == "true").unwrap_or(false);
-            let host_port = parts.get(4).and_then(|s| s.parse::<u16>().ok());
+            let port_map = parse_podman_port_map(parts.get(4).copied().unwrap_or(""));
+            let primary = parts.get(5).and_then(|s| s.trim().parse::<u16>().ok());
+            let host_port = super::primary_host_port(&port_map, primary);
 
             Ok(ContainerInfo {
                 id: parts[0].to_string(),
@@ -447,6 +481,7 @@ impl ContainerRuntime for PodmanRuntime {
                 running: is_running,
                 host_port,
                 restart_count: 0,
+                port_map,
             })
         } else {
             anyhow::bail!("Invalid inspect output")
@@ -497,6 +532,7 @@ impl ContainerRuntime for PodmanRuntime {
                     running: is_running,
                     host_port: port,
                     restart_count: 0,
+                    port_map: Vec::new(),
                 });
             }
         }
@@ -538,6 +574,7 @@ impl ContainerRuntime for PodmanRuntime {
                     running: is_running,
                     host_port: port,
                     restart_count: 0,
+                    port_map: Vec::new(),
                 });
             }
         }
@@ -891,6 +928,96 @@ impl ContainerRuntime for PodmanRuntime {
 
         Ok(())
     }
+
+    async fn copy_from_container(
+        &self,
+        container_id: &str,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>> {
+        // `podman cp <ctr>:<path> -` writes a tar archive to stdout.
+        let mut child = Command::new("podman")
+            .args(["cp", &format!("{}:{}", container_id, path), "-"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .context("Failed to execute podman cp")?;
+        let mut stdout = child.stdout.take().context("podman cp has no stdout")?;
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 64 * 1024];
+        loop {
+            let n = stdout.read(&mut chunk).await?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.len() as u64 > max_bytes {
+                let _ = child.kill().await;
+                anyhow::bail!("File is larger than the {} byte limit", max_bytes);
+            }
+        }
+        let output = child.wait_with_output().await?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "podman cp failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(buf)
+    }
+
+    async fn copy_to_container(
+        &self,
+        container_id: &str,
+        dest_dir: &str,
+        tar: Vec<u8>,
+    ) -> Result<()> {
+        // `podman cp - <ctr>:<dir>` extracts a tar archive read from stdin.
+        let mut child = Command::new("podman")
+            .args(["cp", "-", &format!("{}:{}", container_id, dest_dir)])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .context("Failed to execute podman cp")?;
+        {
+            let mut stdin = child.stdin.take().context("podman cp has no stdin")?;
+            stdin.write_all(&tar).await?;
+            stdin.shutdown().await?;
+        }
+        let output = child.wait_with_output().await?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "podman cp failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
+    }
+
+    async fn copy_volume_data(&self, source: &str, target: &str) -> Result<()> {
+        super::copy_volume_via_container("podman", source, target).await
+    }
+}
+
+/// Parse the inspect port list `3000/tcp=32768,8080/tcp=,` into
+/// `(container_port, host_port)` pairs, skipping unpublished and non-TCP ports.
+fn parse_podman_port_map(s: &str) -> Vec<(u16, u16)> {
+    let mut out: Vec<(u16, u16)> = s
+        .split(',')
+        .filter_map(|entry| {
+            let (key, host) = entry.trim().split_once('=')?;
+            let (port, proto) = key.split_once('/').unwrap_or((key, "tcp"));
+            if proto != "tcp" {
+                return None;
+            }
+            Some((port.parse().ok()?, host.trim().parse().ok()?))
+        })
+        .collect();
+    out.sort_unstable();
+    out
 }
 
 /// Parse size strings like "128.5MiB", "512MB", "1.2GiB", "648kB"
@@ -949,5 +1076,19 @@ fn parse_podman_custom_options(options: &str, args: &mut Vec<String>) {
         } else if part.starts_with("--build-arg=") {
             args.push(part.to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_podman_port_map;
+
+    #[test]
+    fn podman_port_map_skips_unpublished_and_udp() {
+        assert_eq!(
+            parse_podman_port_map("3000/tcp=32768,8080/tcp=,53/udp=5353,9000/tcp=40000,"),
+            vec![(3000, 32768), (9000, 40000)]
+        );
+        assert!(parse_podman_port_map("").is_empty());
     }
 }

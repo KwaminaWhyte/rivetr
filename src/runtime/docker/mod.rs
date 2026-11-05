@@ -168,6 +168,28 @@ impl ContainerRuntime for DockerRuntime {
         container::rename_container(self, container_id, new_name).await
     }
 
+    async fn copy_from_container(
+        &self,
+        container_id: &str,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>> {
+        container::copy_from_container(self, container_id, path, max_bytes).await
+    }
+
+    async fn copy_to_container(
+        &self,
+        container_id: &str,
+        dest_dir: &str,
+        tar: Vec<u8>,
+    ) -> Result<()> {
+        container::copy_to_container(self, container_id, dest_dir, tar).await
+    }
+
+    async fn copy_volume_data(&self, source: &str, target: &str) -> Result<()> {
+        crate::runtime::copy_volume_via_container("docker", source, target).await
+    }
+
     async fn apply_resource_limits(
         &self,
         container_id: &str,

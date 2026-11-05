@@ -1,5 +1,6 @@
 mod build;
 mod clone;
+mod healthcheck;
 mod rollback;
 mod start;
 

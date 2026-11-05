@@ -185,6 +185,39 @@ pub struct RunConfig {
     pub network: Option<String>,
     /// Custom Docker labels to apply to the container (in addition to `labels`)
     pub custom_labels: Vec<(String, String)>,
+    /// Container HEALTHCHECK. `None` keeps the image's own healthcheck, if any.
+    pub healthcheck: Option<ContainerHealthcheck>,
+    /// Extra container ports published on random host ports (per-domain internal ports).
+    pub extra_ports: Vec<u16>,
+}
+
+/// Label recording the primary container port, so inspect can find its host binding
+/// when a container publishes several ports.
+pub const PRIMARY_PORT_LABEL: &str = "rivetr.port";
+
+/// A container HEALTHCHECK in runtime-neutral form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerHealthcheck {
+    /// Docker-style test, e.g. `["CMD-SHELL", "curl -f http://localhost/"]`.
+    pub test: Vec<String>,
+    pub interval_secs: u32,
+    pub timeout_secs: u32,
+    pub retries: u32,
+    pub start_period_secs: u32,
+}
+
+/// Pick the host port for the primary container port from `(container_port, host_port)`
+/// pairs. Prefers the port recorded in [`PRIMARY_PORT_LABEL`]; otherwise the first pair
+/// in container-port order (the previous behaviour).
+pub fn primary_host_port(port_map: &[(u16, u16)], primary: Option<u16>) -> Option<u16> {
+    if let Some(p) = primary {
+        if let Some((_, h)) = port_map.iter().find(|(c, _)| *c == p) {
+            return Some(*h);
+        }
+    }
+    let mut sorted: Vec<&(u16, u16)> = port_map.iter().collect();
+    sorted.sort_by_key(|a| a.0.to_string());
+    sorted.first().map(|(_, h)| *h)
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +232,18 @@ pub struct ContainerInfo {
     pub host_port: Option<u16>,
     /// Number of times Docker/Podman has restarted this container
     pub restart_count: u32,
+    /// Published TCP ports as `(container_port, host_port)` pairs.
+    pub port_map: Vec<(u16, u16)>,
+}
+
+impl ContainerInfo {
+    /// Host port a container port is published on, if any.
+    pub fn host_port_for(&self, container_port: u16) -> Option<u16> {
+        self.port_map
+            .iter()
+            .find(|(c, _)| *c == container_port)
+            .map(|(_, h)| *h)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -456,6 +501,33 @@ pub trait ContainerRuntime: Send + Sync {
         Ok(())
     }
 
+    /// Read `path` from a container as a tar archive. Fails once the archive grows past
+    /// `max_bytes`.
+    async fn copy_from_container(
+        &self,
+        _container_id: &str,
+        _path: &str,
+        _max_bytes: u64,
+    ) -> Result<Vec<u8>> {
+        anyhow::bail!("Copying files from containers is not supported by this runtime")
+    }
+
+    /// Extract a tar archive into directory `dest_dir` inside a container.
+    async fn copy_to_container(
+        &self,
+        _container_id: &str,
+        _dest_dir: &str,
+        _tar: Vec<u8>,
+    ) -> Result<()> {
+        anyhow::bail!("Copying files into containers is not supported by this runtime")
+    }
+
+    /// Copy everything in `source` (a named volume or an absolute host path) into
+    /// `target` with a short-lived helper container. Ownership and modes are kept.
+    async fn copy_volume_data(&self, _source: &str, _target: &str) -> Result<()> {
+        anyhow::bail!("Copying volume data is not supported by this runtime")
+    }
+
     /// Update CPU/memory limits on a running container without restarting it.
     /// Default implementation returns an error (not all runtimes support live updates).
     async fn apply_resource_limits(
@@ -506,6 +578,49 @@ pub(crate) async fn remove_dir_via_container(cli: &str, path: &std::path::Path) 
     if !output.status.success() {
         anyhow::bail!(
             "Deleting data directory in a container failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+/// Shared by the Docker and Podman runtimes: copy the contents of one volume or host
+/// directory into another with a throwaway `alpine` container (`cp -a` keeps owners,
+/// modes and timestamps). Absolute host paths are created first so the bind works.
+pub(crate) async fn copy_volume_via_container(cli: &str, source: &str, target: &str) -> Result<()> {
+    if source.is_empty() || target.is_empty() {
+        anyhow::bail!("Volume source and target must be set");
+    }
+    if source == target {
+        anyhow::bail!("Volume source and target are the same");
+    }
+    if target.starts_with('/') {
+        tokio::fs::create_dir_all(target)
+            .await
+            .with_context(|| format!("Failed to create {}", target))?;
+    }
+    let output = tokio::process::Command::new(cli)
+        .args([
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            &format!("{}:/from:ro", source),
+            "-v",
+            &format!("{}:/to", target),
+            "alpine",
+            "cp",
+            "-a",
+            "/from/.",
+            "/to/",
+        ])
+        .output()
+        .await
+        .with_context(|| format!("Failed to run {} to copy volume data", cli))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "Copying volume data failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
@@ -635,6 +750,16 @@ pub async fn detect_runtime(
 mod tests {
     use super::*;
     use crate::config::RuntimeConfig;
+
+    #[test]
+    fn primary_port_label_wins_over_extra_published_ports() {
+        // App on 8080 with a domain routed to 3000: 3000 sorts first.
+        let map = [(3000, 40001), (8080, 40002)];
+        assert_eq!(primary_host_port(&map, Some(8080)), Some(40002));
+        // Containers without the label keep the old first-port behaviour.
+        assert_eq!(primary_host_port(&map, None), Some(40001));
+        assert_eq!(primary_host_port(&[], Some(8080)), None);
+    }
 
     #[test]
     fn defaults_from_config_applies_protection() {

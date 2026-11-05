@@ -110,13 +110,17 @@ impl SystemEmailService {
         text_body: &str,
     ) -> Result<()> {
         if self.config.is_configured() {
-            return self.send_smtp(to_email, subject, html_body, text_body).await;
+            return self
+                .send_smtp(to_email, subject, html_body, text_body)
+                .await;
         }
 
         if let Some(sendry) = self.find_sendry_channel().await {
             let client = reqwest::Client::new();
-            super::sendry::send_sendry_raw(&client, &sendry, to_email, subject, html_body, text_body)
-                .await?;
+            super::sendry::send_sendry_raw(
+                &client, &sendry, to_email, subject, html_body, text_body,
+            )
+            .await?;
             tracing::info!(to = %to_email, subject = %subject, "System email sent via Sendry channel");
             return Ok(());
         }

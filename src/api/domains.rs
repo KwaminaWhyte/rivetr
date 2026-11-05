@@ -63,7 +63,7 @@ pub async fn check_domain_dns(
 
     // Resolve the domain using the OS resolver (same resolver as the container runtime).
     let lookup_host = format!("{}:80", domain);
-    match tokio::net::lookup_host(&lookup_host).await {
+    match tokio::net::lookup_host(lookup_host).await {
         Ok(addrs) => {
             let resolved_ips: Vec<String> = addrs
                 .map(|addr| addr.ip().to_string())
@@ -71,8 +71,8 @@ pub async fn check_domain_dns(
                 .into_iter()
                 .collect();
 
-            let points_to_server = !server_ip.is_empty()
-                && resolved_ips.iter().any(|ip| ip == &server_ip);
+            let points_to_server =
+                !server_ip.is_empty() && resolved_ips.iter().any(|ip| ip == &server_ip);
 
             Json(DnsCheckResponse {
                 domain,
@@ -106,7 +106,7 @@ async fn get_server_ip(state: &Arc<AppState>) -> String {
             if !instance_domain.is_empty() {
                 // Resolve the instance domain to find this server's IP.
                 let lookup = format!("{}:80", instance_domain);
-                if let Ok(mut addrs) = tokio::net::lookup_host(&lookup).await {
+                if let Ok(mut addrs) = tokio::net::lookup_host(lookup).await {
                     if let Some(addr) = addrs.next() {
                         return addr.ip().to_string();
                     }

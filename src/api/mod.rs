@@ -1,6 +1,7 @@
 mod ai_features;
 mod alerts;
 mod api_tokens;
+pub(crate) mod app_healthcheck;
 mod apps;
 mod audit;
 pub mod auth;
@@ -12,6 +13,7 @@ mod bulk;
 mod ca_certificates;
 mod clone;
 mod cloudflare_tunnels;
+mod container_files;
 mod cost_rates;
 mod costs;
 pub mod csp;
@@ -21,6 +23,7 @@ pub mod database_links;
 mod databases;
 mod deployments;
 mod destinations;
+mod domains;
 mod env_vars;
 pub mod environments;
 pub mod error;
@@ -43,6 +46,7 @@ mod proxy_logs;
 pub mod rate_limit;
 mod redirect_rules;
 mod replicas;
+mod resource_clone;
 mod routes;
 mod s3;
 mod sdk;
@@ -52,9 +56,9 @@ pub(crate) mod services;
 mod shared_env_vars;
 mod ssh_keys;
 mod sso;
-pub(crate) mod state_cookie;
 pub mod ssrf;
 pub mod start_logs;
+pub(crate) mod state_cookie;
 mod swarm;
 pub mod system;
 mod teams;
@@ -203,7 +207,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/with-sharing", get(apps::list_apps_with_sharing))
         .route("/apps/{id}/shares", get(apps::list_app_shares))
         .route("/apps/{id}/shares", post(apps::create_app_share))
-        .route("/apps/{id}/shares/{team_id}", delete(apps::delete_app_share))
+        .route(
+            "/apps/{id}/shares/{team_id}",
+            delete(apps::delete_app_share),
+        )
         // Database ↔ App env-var injection links
         .route("/apps/{app_id}/links", get(database_links::list_links))
         .route("/apps/{app_id}/links", post(database_links::create_link))
@@ -299,7 +306,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/servers/{id}/host-key",
             delete(servers::reset_server_host_key),
         )
-        .route("/servers/{id}/install-docker", post(servers::install_docker))
+        .route(
+            "/servers/{id}/install-docker",
+            post(servers::install_docker),
+        )
         .route("/servers/{id}/fetch-details", post(servers::fetch_details))
         .route("/servers/{id}/patches", get(servers::check_server_patches))
         .route(
@@ -315,6 +325,88 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/servers/{id}/files/content",
             get(filesystem::read_file).put(filesystem::write_file),
         )
+        // Container file browser (beta) for apps, databases and services
+        .route(
+            "/apps/{id}/files",
+            get(container_files::app_list).delete(container_files::app_delete),
+        )
+        .route(
+            "/apps/{id}/files/content",
+            get(container_files::app_read).put(container_files::app_write),
+        )
+        .route(
+            "/apps/{id}/files/download",
+            get(container_files::app_download),
+        )
+        .route(
+            "/apps/{id}/files/upload",
+            post(container_files::app_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route("/apps/{id}/files/mkdir", post(container_files::app_mkdir))
+        .route(
+            "/databases/{id}/files",
+            get(container_files::database_list).delete(container_files::database_delete),
+        )
+        .route(
+            "/databases/{id}/files/content",
+            get(container_files::database_read).put(container_files::database_write),
+        )
+        .route(
+            "/databases/{id}/files/download",
+            get(container_files::database_download),
+        )
+        .route(
+            "/databases/{id}/files/upload",
+            post(container_files::database_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/databases/{id}/files/mkdir",
+            post(container_files::database_mkdir),
+        )
+        .route(
+            "/services/{id}/files",
+            get(container_files::service_list).delete(container_files::service_delete),
+        )
+        .route(
+            "/services/{id}/files/content",
+            get(container_files::service_read).put(container_files::service_write),
+        )
+        .route(
+            "/services/{id}/files/download",
+            get(container_files::service_download),
+        )
+        .route(
+            "/services/{id}/files/upload",
+            post(container_files::service_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/services/{id}/files/mkdir",
+            post(container_files::service_mkdir),
+        )
+        // DNS status check for custom domains
+        .route("/domains/check", get(domains::check_domain_dns))
+        // Structured app healthcheck
+        .route(
+            "/apps/{id}/healthcheck",
+            get(app_healthcheck::get_healthcheck).put(app_healthcheck::update_healthcheck),
+        )
+        // Clone resource across server / project / environment
+        .route(
+            "/apps/{id}/clone-resource",
+            post(resource_clone::clone_app_resource),
+        )
+        .route(
+            "/databases/{id}/clone-resource",
+            post(resource_clone::clone_database_resource),
+        )
+        .route(
+            "/services/{id}/clone-resource",
+            post(resource_clone::clone_service_resource),
+        )
+        .route("/clone-jobs/{id}", get(resource_clone::get_clone_job))
         // Server app assignments
         .route("/servers/{id}/apps", get(servers::list_server_apps))
         .route(
@@ -327,7 +419,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(cloudflare_tunnels::list_tunnels).post(cloudflare_tunnels::create_tunnel),
         )
         .route("/tunnels/{id}", delete(cloudflare_tunnels::delete_tunnel))
-        .route("/tunnels/{id}/start", post(cloudflare_tunnels::start_tunnel))
+        .route(
+            "/tunnels/{id}/start",
+            post(cloudflare_tunnels::start_tunnel),
+        )
         .route("/tunnels/{id}/stop", post(cloudflare_tunnels::stop_tunnel))
         .route(
             "/tunnels/{id}/routes",
@@ -367,12 +462,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/apps/{id}/env-vars/{key}", get(env_vars::get_env_var))
         .route("/apps/{id}/env-vars/{key}", put(env_vars::update_env_var))
-        .route("/apps/{id}/env-vars/{key}", delete(env_vars::delete_env_var))
+        .route(
+            "/apps/{id}/env-vars/{key}",
+            delete(env_vars::delete_env_var),
+        )
         // Deployment Patches (file injection before build)
         .route("/apps/{id}/patches", get(patches::list_patches))
         .route("/apps/{id}/patches", post(patches::create_patch))
         .route("/apps/{id}/patches/{patch_id}", put(patches::update_patch))
-        .route("/apps/{id}/patches/{patch_id}", delete(patches::delete_patch))
+        .route(
+            "/apps/{id}/patches/{patch_id}",
+            delete(patches::delete_patch),
+        )
         // Alert Configurations
         .route("/apps/{id}/alerts", get(alerts::list_alerts))
         .route("/apps/{id}/alerts", post(alerts::create_alert))
@@ -471,7 +572,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/git-providers", get(git_providers::list_providers))
         .route("/git-providers", post(git_providers::add_token_provider))
         .route("/git-providers/{id}", get(git_providers::get_provider))
-        .route("/git-providers/{id}", delete(git_providers::delete_provider))
+        .route(
+            "/git-providers/{id}",
+            delete(git_providers::delete_provider),
+        )
         .route("/git-providers/{id}/repos", get(git_providers::list_repos))
         // Projects
         .route("/projects", get(projects::list_projects))
@@ -563,7 +667,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/teams/{id}/members/{user_id}",
             put(teams::update_member_role),
         )
-        .route("/teams/{id}/members/{user_id}", delete(teams::remove_member))
+        .route(
+            "/teams/{id}/members/{user_id}",
+            delete(teams::remove_member),
+        )
         // Team member resource permissions (fine-grained RBAC)
         .route(
             "/teams/{id}/members/{user_id}/permissions",
@@ -585,7 +692,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(teams::resend_invitation),
         )
         // Invitation accept (requires auth)
-        .route("/invitations/{token}/accept", post(teams::accept_invitation))
+        .route(
+            "/invitations/{token}/accept",
+            post(teams::accept_invitation),
+        )
         // Team Shared Env Vars
         .route(
             "/teams/{id}/env-vars",
@@ -822,7 +932,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/services/{id}/generated-vars",
             get(services::get_service_generated_vars),
         )
-        .route("/services/{id}/import-db", post(services::import_service_db))
+        .route(
+            "/services/{id}/import-db",
+            post(services::import_service_db),
+        )
         .route("/services/{id}/export-db", get(services::export_service_db))
         // Service Templates
         .route("/templates", get(service_templates::list_templates))
@@ -999,7 +1112,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Container Replicas
         .route("/apps/{id}/replicas", get(replicas::list_replicas))
-        .route("/apps/{id}/replicas/count", put(replicas::set_replica_count))
+        .route(
+            "/apps/{id}/replicas/count",
+            put(replicas::set_replica_count),
+        )
         .route(
             "/apps/{id}/replicas/{index}/restart",
             post(replicas::restart_replica),
@@ -1115,7 +1231,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
 
     // SSO/OIDC auth flow routes (public - no auth required, browser redirects)
     let sso_routes = Router::new()
-        .route("/auth/sso/{provider_id}/login", get(sso::initiate_sso_login))
+        .route(
+            "/auth/sso/{provider_id}/login",
+            get(sso::initiate_sso_login),
+        )
         .route(
             "/auth/sso/{provider_id}/callback",
             get(sso::handle_sso_callback),
