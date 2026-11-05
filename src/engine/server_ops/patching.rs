@@ -440,14 +440,19 @@ fi"#
 }
 
 /// Reboot in the background so the command returns before the connection drops.
+// systemd-run hands the delayed reboot to the host's systemd, so it survives the end
+// of this shell (and of the helper container on a hardened local install).
 pub(crate) const REBOOT_SCRIPT: &str = r#"echo "Rebooting in 2 seconds"
+if command -v systemd-run >/dev/null 2>&1 && $SUDO systemd-run --on-active=2 --unit=rivetr-reboot systemctl reboot >/dev/null 2>&1; then
+  exit 0
+fi
 nohup sh -c "sleep 2; $SUDO shutdown -r now 'Reboot requested from Rivetr' || $SUDO reboot" >/dev/null 2>&1 &
 exit 0"#;
 
 /// Run a package check and cache the result.
 pub async fn run_check(db: &DbPool, server_id: &str, target: &HostTarget) -> Result<PatchState> {
     let out = target
-        .exec(CHECK_SCRIPT, Duration::from_secs(300))
+        .exec_privileged(CHECK_SCRIPT, Duration::from_secs(300))
         .await
         .map_err(|e| anyhow::anyhow!("{e}"));
     let state = match out {
@@ -630,7 +635,7 @@ async fn execute_job(
         format!("$ {}", script.lines().next().unwrap_or("")),
     );
     let result = target
-        .exec(&format!("{script} 2>&1"), Duration::from_secs(1800))
+        .exec_privileged(&format!("{script} 2>&1"), Duration::from_secs(1800))
         .await;
     let ok = match result {
         Ok(out) => {

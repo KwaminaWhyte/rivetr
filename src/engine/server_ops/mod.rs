@@ -83,6 +83,41 @@ impl HostTarget {
         }
     }
 
+    /// Like [`Self::exec`], for host-level commands that need root (package updates,
+    /// reboot). On the local host Rivetr usually runs as an unprivileged user under a
+    /// hardened systemd unit, where `sudo` cannot gain root and `/usr` is read only.
+    /// In that case the script runs in the host namespaces through a short-lived
+    /// privileged helper container: the user can already do this through its
+    /// container-runtime group, so no new privilege is granted.
+    pub async fn exec_privileged(&self, script: &str, timeout: Duration) -> Result<ExecOutput> {
+        if let HostTarget::Local { prefer_podman } = self {
+            if !local_has_root().await {
+                let cli = if *prefer_podman { "podman" } else { "docker" };
+                let full = format!("{}\n{}", self.prelude(), script);
+                let wrapped = format!(
+                    "{cli} run --rm --privileged --pid=host --network=host --ipc=host --uts=host \
+                     {HOST_HELPER_IMAGE} nsenter -t 1 -m -u -i -n -p -- sh -c {}",
+                    shell_quote(&full)
+                );
+                let fut = async {
+                    let output = tokio::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&wrapped)
+                        .kill_on_drop(true)
+                        .output()
+                        .await
+                        .context("failed to spawn the host helper container")?;
+                    Ok::<_, anyhow::Error>(to_exec_output(output))
+                };
+                return match tokio::time::timeout(timeout, fut).await {
+                    Ok(res) => res,
+                    Err(_) => anyhow::bail!("command timed out after {}s", timeout.as_secs()),
+                };
+            }
+        }
+        self.exec(script, timeout).await
+    }
+
     /// Run `script` (prefixed with [`Self::prelude`]) and wait at most `timeout`.
     pub async fn exec(&self, script: &str, timeout: Duration) -> Result<ExecOutput> {
         let full = format!("{}\n{}", self.prelude(), script);
@@ -142,6 +177,21 @@ static PRELUDE_PODMAN: std::sync::LazyLock<String> = std::sync::LazyLock::new(||
         container_cli_line("D", &["podman", "docker"])
     )
 });
+
+/// Image for the host helper container. BusyBox in Alpine ships `nsenter`.
+const HOST_HELPER_IMAGE: &str = "alpine:3.20";
+
+/// Whether this process can run root commands directly: it is root, or `sudo -n`
+/// works (it does not under `NoNewPrivileges` or a reduced capability bounding set).
+async fn local_has_root() -> bool {
+    tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(r#"[ "$(id -u)" -eq 0 ] || sudo -n true >/dev/null 2>&1"#)
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
 
 fn to_exec_output(output: std::process::Output) -> ExecOutput {
     ExecOutput {
