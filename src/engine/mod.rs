@@ -148,6 +148,10 @@ impl DeploymentEngine {
                     Ok(p) => p,
                     Err(_) => return, // semaphore closed — engine shutting down
                 };
+                // Secret manager values fetched for this deployment (cache + log masks)
+                // live until this task ends.
+                let _secrets_session =
+                    crate::secret_managers::session::SessionGuard::new(&deployment_id);
 
                 // The deployment record's started_at was set when it was queued.
                 // Now that a build slot is free and work actually begins, reset it
@@ -716,6 +720,8 @@ async fn update_deployment_status(
     error: Option<&str>,
 ) -> anyhow::Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
+    let redacted = error.map(|e| crate::secret_managers::session::redact(deployment_id, e));
+    let error = redacted.as_deref();
 
     if status == "running" {
         // Going live: stamp built_at (once, never overwritten) so the UI can
@@ -759,6 +765,8 @@ async fn add_deployment_log(
     level: &str,
     message: &str,
 ) -> anyhow::Result<()> {
+    // Values resolved from secret managers never reach the log or log drains.
+    let message = &crate::secret_managers::session::redact(deployment_id, message);
     sqlx::query("INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)")
         .bind(deployment_id)
         .bind(level)

@@ -806,7 +806,7 @@ async fn run(
 
     let total = slots.len();
     let threshold = settings.failure_threshold_pct.clamp(0, 100) as u8;
-    let env = pipeline::collect_env_vars(db, app, encryption_key, Some(deployment_id)).await;
+    let env = pipeline::collect_env_vars(db, app, encryption_key, Some(deployment_id)).await?;
     let (env_content, skipped) = distribute::env_file(&env);
     if !skipped.is_empty() {
         add_deployment_log(

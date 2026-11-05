@@ -261,6 +261,11 @@ pub async fn run_preview_deployment(
         env_vars.push(("PORT".to_string(), app.port.to_string()));
     }
 
+    // Resolve secret manager references and imports (same policy as the app).
+    let env_vars = crate::secret_managers::resolve_app_env(db, encryption_key, app, None, env_vars)
+        .await?
+        .vars;
+
     // Use preview-specific resource limits (lower than production)
     let memory_limit = preview
         .memory_limit

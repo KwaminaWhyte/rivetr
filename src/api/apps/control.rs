@@ -481,6 +481,7 @@ async fn create_restart_deployment(
 
 /// Add a log line to a deployment record (fire-and-forget — errors are only logged).
 async fn log_restart_step(state: &AppState, deployment_id: &str, level: &str, message: &str) {
+    let message = &crate::secret_managers::session::redact(deployment_id, message);
     if let Err(e) =
         sqlx::query("INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, ?, ?)")
             .bind(deployment_id)
@@ -758,6 +759,39 @@ pub async fn restart_app(
     );
 
     let env_vars = collect_env_vars_for_restart(&state, &app).await;
+    // Resolve secret manager references for the new container. Values are masked in
+    // this restart's log for as long as the guard lives (the rest of this handler).
+    let _secrets_session = crate::secret_managers::session::SessionGuard::new(&restart_dep_id);
+    let env_vars = match crate::secret_managers::resolve_app_env(
+        &state.db,
+        get_encryption_key(&state).as_ref(),
+        &app,
+        Some(&restart_dep_id),
+        env_vars,
+    )
+    .await
+    {
+        Ok(outcome) => {
+            for w in &outcome.warnings {
+                log_restart_step(&state, &restart_dep_id, "warn", w).await;
+            }
+            outcome.vars
+        }
+        Err(e) => {
+            let msg = format!("{:#}", e);
+            log_restart_step(&state, &restart_dep_id, "error", &msg).await;
+            finish_restart_deployment(
+                &state,
+                &restart_dep_id,
+                "failed",
+                None,
+                Some(&image_tag),
+                Some(&msg),
+            )
+            .await;
+            return Err(ApiError::bad_request(msg));
+        }
+    };
 
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
         "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",

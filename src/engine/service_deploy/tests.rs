@@ -731,3 +731,82 @@ fn rollback_pins_only_services_that_changed() {
     // Never pushed: pinned by local image ID.
     assert_eq!(pins.get("local").map(String::as_str), Some("sha256:5"));
 }
+
+/// A Doppler-compatible mock and a connection named `dp` pointing at it.
+async fn add_doppler_connection(h: &Harness) {
+    use axum::{routing::get, Json, Router};
+    let api = crate::secret_managers::providers::test_server::serve(Router::new().route(
+        "/v3/configs/config/secrets/download",
+        get(|| async { Json(serde_json::json!({"DB_PASS": "pw-from-doppler-9z", "OTHER": "o"})) }),
+    ))
+    .await;
+    // No encryption key in the harness: credentials stored as plain JSON still load.
+    sqlx::query(
+        "INSERT INTO secret_connections (id, name, provider, config, credentials) VALUES ('c1', 'dp', 'doppler', ?, ?)",
+    )
+    .bind(serde_json::json!({ "api_url": api }).to_string())
+    .bind(r#"{"token":"dp.st.x"}"#)
+    .execute(&h.env.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn secret_references_resolve_into_the_env_file_only() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    add_doppler_connection(&h).await;
+    sqlx::query("UPDATE services SET compose_content = ? WHERE id = ?")
+        .bind("services:\n  web:\n    image: localhost:5000/app:latest\n    environment:\n      PASS: ${DB_PASS:?set it}\n  db:\n    image: postgres:18\n")
+        .bind(&h.service_id)
+        .execute(&h.env.db)
+        .await
+        .unwrap();
+    add_env(&h, "DB_PASS", "secret://dp/#DB_PASS").await;
+    sqlx::query(
+        "INSERT INTO secret_imports (id, owner_type, owner_id, connection_id, path, prefix) VALUES ('i1', 'service', ?, 'c1', '', 'DP_')",
+    )
+    .bind(&h.service_id)
+    .execute(&h.env.db)
+    .await
+    .unwrap();
+
+    let dep = deploy(&h, manual()).await;
+    assert_eq!(dep.status, "succeeded", "{:?}", dep.error_message);
+    let dir = h.env.data_dir.join("services/shop");
+    let env = std::fs::read_to_string(dir.join(".env")).unwrap();
+    assert!(env.contains("DB_PASS='pw-from-doppler-9z'"), "{env}");
+    assert!(env.contains("DP_OTHER='o'"), "{env}");
+    let compose = std::fs::read_to_string(dir.join("docker-compose.yml")).unwrap();
+    assert!(compose.contains("${DB_PASS}"), "{compose}");
+    assert!(!compose.contains("pw-from-doppler-9z"));
+    assert!(!compose.contains("secret://"));
+    // Nothing resolved is kept in the database under the default policy.
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM secret_resolution_state")
+        .fetch_one(&h.env.db)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+}
+
+#[tokio::test]
+async fn unresolvable_reference_fails_the_deploy_before_up() {
+    let h = harness().await;
+    fake_stack(&h.runner);
+    add_env(&h, "DB_PASS", "secret://missing/#DB_PASS").await;
+    let (dep, _guard) = create_deployment(&h.env, &h.service_id, manual())
+        .await
+        .unwrap();
+    let _ = run_deployment(&h.env, &dep.id).await;
+    let dep: ServiceDeployment = sqlx::query_as("SELECT * FROM service_deployments WHERE id = ?")
+        .bind(&dep.id)
+        .fetch_one(&h.env.db)
+        .await
+        .unwrap();
+    assert_eq!(dep.status, "failed");
+    assert!(dep
+        .error_message
+        .unwrap_or_default()
+        .contains("no secret manager connection named 'missing'"));
+    assert!(!h.runner.ran(" up -d"));
+}

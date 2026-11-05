@@ -127,6 +127,7 @@ async fn run_upload_deployment(
     app: &App,
     source_path: &str,
     build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<String> {
     use std::path::PathBuf;
 
@@ -146,9 +147,16 @@ async fn run_upload_deployment(
         work_dir.clone()
     };
 
-    let image_tag =
-        build::build_upload_image(db, runtime, deployment_id, app, &build_path, build_limits)
-            .await?;
+    let image_tag = build::build_upload_image(
+        db,
+        runtime,
+        deployment_id,
+        app,
+        &build_path,
+        build_limits,
+        encryption_key,
+    )
+    .await?;
 
     // Cleanup work directory after build
     let _ = tokio::fs::remove_dir_all(&work_dir).await;
@@ -516,6 +524,7 @@ pub(crate) async fn produce_image(
             app,
             &source_path,
             build_limits,
+            encryption_key,
         )
         .await?;
         // Optionally push to registry; capture remote tag for image_tag update

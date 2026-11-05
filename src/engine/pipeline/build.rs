@@ -645,6 +645,9 @@ pub(super) async fn build_git_image(
                 .into_iter()
                 .map(|s| (s.key, s.value))
                 .collect();
+            let build_secrets =
+                resolve_build_secrets(db, encryption_key, app, deployment_id, build_secrets)
+                    .await?;
 
             if !build_secrets.is_empty() {
                 add_deployment_log(
@@ -1164,6 +1167,7 @@ pub(super) async fn build_upload_image(
     app: &App,
     build_path: &Path,
     build_limits: &BuildLimits,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
 ) -> Result<String> {
     let image_tag = format!("rivetr-{}:{}", app.name, deployment_id);
     let build_type = app.get_build_type();
@@ -1457,6 +1461,9 @@ pub(super) async fn build_upload_image(
                 .into_iter()
                 .map(|s| (s.key, s.value))
                 .collect();
+            let build_secrets2 =
+                resolve_build_secrets(db, encryption_key, app, deployment_id, build_secrets2)
+                    .await?;
 
             if !build_secrets2.is_empty() {
                 add_deployment_log(
@@ -1496,4 +1503,27 @@ pub(super) async fn build_upload_image(
     }
 
     Ok(image_tag)
+}
+
+/// Resolve `secret://` references in BuildKit build secrets (values masked in the log).
+async fn resolve_build_secrets(
+    db: &DbPool,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+    app: &App,
+    deployment_id: &str,
+    secrets: Vec<(String, String)>,
+) -> Result<Vec<(String, String)>> {
+    let outcome = crate::secret_managers::resolve_app_build_secrets(
+        db,
+        encryption_key,
+        app,
+        deployment_id,
+        secrets,
+    )
+    .await
+    .context("Build secrets")?;
+    for w in &outcome.warnings {
+        let _ = add_deployment_log(db, deployment_id, "warn", w).await;
+    }
+    Ok(outcome.vars)
 }
