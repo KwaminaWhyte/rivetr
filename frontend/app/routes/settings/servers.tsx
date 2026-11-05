@@ -679,6 +679,8 @@ export default function ServersPage() {
   const [formSshKey, setFormSshKey] = useState("");
   const [authMethod, setAuthMethod] = useState<"key" | "password">("key");
   const [sshPassword, setSshPassword] = useState("");
+  const [formNetworkMode, setFormNetworkMode] = useState<"public" | "tailscale">("public");
+  const [formTailscaleHost, setFormTailscaleHost] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: servers = [], isLoading, error: listError, refetch: refetchList } = useQuery<Server[]>({
@@ -740,11 +742,17 @@ export default function ServersPage() {
     setFormSshKey("");
     setAuthMethod("key");
     setSshPassword("");
+    setFormNetworkMode("public");
+    setFormTailscaleHost("");
   };
 
   const handleAddServer = async () => {
     if (!formName.trim() || !formHost.trim()) {
       toast.error("Name and host are required");
+      return;
+    }
+    if (formNetworkMode === "tailscale" && !formTailscaleHost.trim()) {
+      toast.error("Enter the server's Tailscale IP or MagicDNS name");
       return;
     }
     setIsSubmitting(true);
@@ -757,6 +765,9 @@ export default function ServersPage() {
         username: formUsername.trim() || "root",
         ssh_private_key: authMethod === "key" ? formSshKey.trim() || undefined : undefined,
         ssh_password: authMethod === "password" ? sshPassword : undefined,
+        network_mode: formNetworkMode,
+        tailscale_host:
+          formNetworkMode === "tailscale" ? formTailscaleHost.trim() || undefined : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -1182,6 +1193,31 @@ export default function ServersPage() {
                   placeholder="22"
                   value={formPort}
                   onChange={(e) => setFormPort(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Connect via</Label>
+                <Select
+                  value={formNetworkMode}
+                  onValueChange={(v) => setFormNetworkMode(v as "public" | "tailscale")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public IP / hostname</SelectItem>
+                    <SelectItem value="tailscale">Tailscale</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="server-tailscale-host">Tailscale address</Label>
+                <Input
+                  id="server-tailscale-host"
+                  placeholder="web-1.tail1234.ts.net"
+                  disabled={formNetworkMode !== "tailscale"}
+                  value={formTailscaleHost}
+                  onChange={(e) => setFormTailscaleHost(e.target.value)}
                 />
               </div>
               <div className="col-span-2 space-y-2">

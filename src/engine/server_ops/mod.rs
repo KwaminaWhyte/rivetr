@@ -265,7 +265,7 @@ pub async fn resolve_target(
         .and_then(|p| crypto::decrypt_if_encrypted(p, key.as_ref()).ok());
     Ok(Some((
         HostTarget::Remote {
-            host: server.host.clone(),
+            host: server.ssh_host().to_string(),
             port: server.port as u16,
             username: server.username.clone(),
             private_key,

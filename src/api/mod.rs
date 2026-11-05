@@ -52,6 +52,7 @@ mod resource_clone;
 mod routes;
 mod s3;
 mod sdk;
+mod server_network;
 mod server_ops;
 mod servers;
 mod service_templates;
@@ -309,6 +310,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/{id}/check", post(servers::check_server_health))
+        .route(
+            "/servers/{id}/network-check",
+            post(server_network::check_server_network),
+        )
         .route(
             "/servers/{id}/host-key",
             delete(servers::reset_server_host_key),

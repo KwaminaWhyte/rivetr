@@ -156,7 +156,7 @@ async fn get_remote_context(
     };
 
     let ctx = RemoteContext {
-        host: server.host.clone(),
+        host: server.ssh_host().to_string(),
         port: server.port,
         username: server.username.clone(),
         key_path: key_path.clone(),

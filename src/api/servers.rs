@@ -150,10 +150,26 @@ pub async fn create_server(
 
     let hourly_rate = req.hourly_rate.unwrap_or(0.036);
 
+    let network_mode = req
+        .network_mode
+        .clone()
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "public".to_string());
+    let tailscale_host = req
+        .tailscale_host
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    if let Err(e) = crate::db::validate_server_network(&network_mode, tailscale_host.as_deref()) {
+        tracing::warn!("Invalid server network settings: {}", e);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     sqlx::query(
         r#"
-        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, hourly_rate, status, team_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?)
+        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, hourly_rate, status, team_id, created_at, updated_at, network_mode, tailscale_host)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -167,6 +183,8 @@ pub async fn create_server(
     .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
+    .bind(&network_mode)
+    .bind(&tailscale_host)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -249,6 +267,22 @@ pub async fn update_server(
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| existing.timezone.clone());
 
+    let network_mode = req
+        .network_mode
+        .clone()
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| existing.network_mode.clone());
+    // An empty string clears the Tailscale address; None keeps it.
+    let tailscale_host = match req.tailscale_host.as_deref().map(str::trim) {
+        Some("") => None,
+        Some(t) => Some(t.to_string()),
+        None => existing.tailscale_host.clone(),
+    };
+    if let Err(e) = crate::db::validate_server_network(&network_mode, tailscale_host.as_deref()) {
+        tracing::warn!("Invalid server network settings: {}", e);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     sqlx::query(
         r#"
         UPDATE servers SET
@@ -260,6 +294,8 @@ pub async fn update_server(
             ssh_password = COALESCE(?, ssh_password),
             hourly_rate = COALESCE(?, hourly_rate),
             timezone = ?,
+            network_mode = ?,
+            tailscale_host = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -272,6 +308,8 @@ pub async fn update_server(
     .bind(&encrypted_password)
     .bind(req.hourly_rate)
     .bind(&timezone)
+    .bind(&network_mode)
+    .bind(&tailscale_host)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
@@ -317,12 +355,20 @@ pub async fn reset_server_host_key(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let removed = crate::utils::ssh::forget_host(&server.host, server.port as u16)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to forget host key for server {}: {}", id, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    // Forget the key under every address the server is reached by (public and Tailscale).
+    let mut hosts = vec![server.host.as_str()];
+    if server.ssh_host() != server.host {
+        hosts.push(server.ssh_host());
+    }
+    let mut removed = false;
+    for host in hosts {
+        removed |= crate::utils::ssh::forget_host(host, server.port as u16)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to forget host key for server {}: {}", id, e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
     Ok(Json(serde_json::json!({ "removed": removed })))
 }
 
@@ -401,7 +447,7 @@ pub async fn check_server_health(
 
     // Run the health check
     let health_result = run_ssh_health_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -827,7 +873,7 @@ pub async fn install_docker(
     };
 
     let result = run_ssh_install_docker(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -1169,7 +1215,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
 
     // Build SSH args; key_path_str must outlive ssh_args
     let port_str = server.port.to_string();
-    let target = format!("{}@{}", server.username, server.host);
+    let target = format!("{}@{}", server.username, server.ssh_host());
     let key_path_str = key_file
         .as_ref()
         .map(|kf| kf.path().to_string_lossy().to_string())
@@ -1392,7 +1438,7 @@ pub async fn check_server_patches(
     };
 
     let result = run_ssh_patch_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -1620,7 +1666,7 @@ pub async fn check_server_security(
     };
 
     let result = run_ssh_security_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -2055,7 +2101,7 @@ pub async fn fetch_details(
     };
 
     let details = run_fetch_server_details(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
