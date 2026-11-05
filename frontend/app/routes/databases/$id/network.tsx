@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 import type { ManagedDatabase } from "@/types/api";
+import { DatabaseSettingsSections } from "@/components/databases/database-settings-sections";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -63,6 +64,7 @@ export default function DatabaseNetworkTab() {
 
   return (
     <div className="space-y-6">
+      <DatabaseSettingsSections database={database} sections={["network"]} />
       {/* Port Configuration Card */}
       <Card>
         <CardHeader>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useOutletContext, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ManagedDatabase, UpdateManagedDatabaseRequest } from "@/types/api";
 import { Button } from "@/components/ui/button";
@@ -51,19 +51,21 @@ import {
 const SSL_MODES_POSTGRES = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
 const SSL_MODES_MYSQL = ["disabled", "preferred", "required", "verify-ca", "verify-identity"];
 
-export function meta() {
-  return [
-    { title: "Database Settings - Rivetr" },
-    { name: "description", content: "Configure database settings and resource limits" },
-  ];
-}
 
-interface OutletContext {
+export type DatabaseSettingsSection = "operations" | "network" | "configuration" | "resources" | "danger";
+
+/**
+ * Editable database settings, split across the database's sections: each
+ * section page renders only the cards it lists in `sections`.
+ */
+export function DatabaseSettingsSections({
+  database,
+  sections,
+}: {
   database: ManagedDatabase;
-}
-
-export default function DatabaseSettingsTab() {
-  const { database } = useOutletContext<OutletContext>();
+  sections: DatabaseSettingsSection[];
+}) {
+  const has = (section: DatabaseSettingsSection) => sections.includes(section);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -208,6 +210,8 @@ export default function DatabaseSettingsTab() {
 
   return (
     <div className="space-y-6 pb-24">
+      {has("operations") && (
+      <>
       <MoveToProjectCard
         resourceKind="database"
         resourceId={database.id}
@@ -219,7 +223,11 @@ export default function DatabaseSettingsTab() {
         resourceName={database.name}
         currentProjectId={database.project_id ?? null}
       />
+      </>
+      )}
       {/* Network Settings Card */}
+      {has("network") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -456,8 +464,12 @@ export default function DatabaseSettingsTab() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* SSL/TLS Card */}
+      {has("configuration") && (
+      <>
       {supportsSSL && (
         <Card>
           <CardHeader>
@@ -518,8 +530,12 @@ export default function DatabaseSettingsTab() {
           </CardContent>
         </Card>
       )}
+      </>
+      )}
 
       {/* Custom Image & Init Commands Card */}
+      {has("configuration") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -575,8 +591,12 @@ export default function DatabaseSettingsTab() {
           </p>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Resource Limits Card */}
+      {has("resources") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -619,8 +639,12 @@ export default function DatabaseSettingsTab() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Danger Zone Card */}
+      {has("danger") && (
+      <>
       <Card className="border-destructive">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
@@ -713,6 +737,8 @@ export default function DatabaseSettingsTab() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
       <UnsavedChangesBar
         show={configForm.isDirty}
         onSave={handleConfigSave}

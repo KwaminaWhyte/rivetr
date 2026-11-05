@@ -1,10 +1,10 @@
 import { QueryError } from "@/components/query-error";
 import { useEffect } from "react";
-import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
+import { Outlet, useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ResourceSection } from "@/components/shell/resource-section";
 import { Badge } from "@/components/ui/badge";
 import { HeaderSkeleton, PageHeader, ResourceStatus, SectionSkeleton } from "@/components/page";
 import { TopBarPortal } from "@/components/shell/top-bar-slot";
@@ -41,21 +41,9 @@ function DatabaseTypeBadge({ dbType }: { dbType: string }) {
   );
 }
 
-const tabs = [
-  { id: "general", label: "General", path: "" },
-  { id: "extensions", label: "Extensions", path: "/extensions" },
-  { id: "network", label: "Network", path: "/network" },
-  { id: "storage", label: "Storage", path: "/storage" },
-  { id: "backups", label: "Backups", path: "/backups" },
-  { id: "import", label: "Import", path: "/import" },
-  { id: "logs", label: "Logs", path: "/logs" },
-  { id: "files", label: "Files", path: "/files" },
-  { id: "settings", label: "Settings", path: "/settings" },
-];
 
 export default function DatabaseDetailLayout() {
   const { id } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setItems } = useBreadcrumb();
@@ -142,13 +130,6 @@ export default function DatabaseDetailLayout() {
 
   // Determine active tab from path
   const basePath = `/databases/${databaseId}`;
-  const currentPath = location.pathname;
-  const activeTab = tabs.find((tab) => {
-    if (tab.path === "") {
-      return currentPath === basePath || currentPath === basePath + "/";
-    }
-    return currentPath.startsWith(basePath + tab.path);
-  })?.id || "general";
 
   // Loading state
   if (isLoading) {
@@ -222,18 +203,12 @@ export default function DatabaseDetailLayout() {
         ) : null}
       </TopBarPortal>
 
-      {/* Tabs Navigation: the contextual sidebar replaces it from md up */}
-      <Tabs value={activeTab} className="w-full overflow-x-auto md:hidden">
-        <TabsList className="w-max justify-start">
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} asChild>
-              <Link to={`${basePath}${tab.path}`}>{tab.label}</Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <ResourceSection
+        match={{ kind: "database", id: databaseId, base: basePath }}
+        options={{ dbType: database.db_type }}
+      />
 
-      {/* Tab Content via Outlet */}
+      {/* Section content */}
       <Outlet context={{ database }} />
     </div>
   );
