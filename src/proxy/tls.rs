@@ -26,10 +26,7 @@ impl TlsConfig {
         let certs = load_certs(cert_path)?;
         let key = load_private_key(key_path)?;
 
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .context("Failed to create TLS server config")?;
+        let config = single_cert_config(certs, key)?;
 
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
@@ -47,15 +44,33 @@ impl TlsConfig {
         let certs = load_certs_from_pem(cert_pem)?;
         let key = load_private_key_from_pem(key_pem)?;
 
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .context("Failed to create TLS server config")?;
+        let config = single_cert_config(certs, key)?;
 
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
         Ok(Self { acceptor })
     }
+}
+
+/// ALPN protocols the HTTPS proxy offers, in preference order.
+pub fn alpn_protocols() -> Vec<Vec<u8>> {
+    vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+}
+
+/// Server config for one certificate, offering HTTP/2 and HTTP/1.1 via ALPN.
+fn single_cert_config(
+    certs: Vec<CertificateDer<'static>>,
+    key: PrivateKeyDer<'static>,
+) -> Result<ServerConfig> {
+    let mut config =
+        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .context("Failed to select TLS protocol versions")?
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .context("Failed to create TLS server config")?;
+    config.alpn_protocols = alpn_protocols();
+    Ok(config)
 }
 
 /// Load certificates from a PEM file
@@ -75,7 +90,7 @@ fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
 }
 
 /// Load certificates from a PEM string
-fn load_certs_from_pem(pem: &str) -> Result<Vec<CertificateDer<'static>>> {
+pub fn load_certs_from_pem(pem: &str) -> Result<Vec<CertificateDer<'static>>> {
     let mut reader = BufReader::new(pem.as_bytes());
 
     let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut reader)
@@ -115,7 +130,7 @@ fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
 }
 
 /// Load a private key from a PEM string
-fn load_private_key_from_pem(pem: &str) -> Result<PrivateKeyDer<'static>> {
+pub fn load_private_key_from_pem(pem: &str) -> Result<PrivateKeyDer<'static>> {
     let mut reader = BufReader::new(pem.as_bytes());
 
     loop {
@@ -135,84 +150,4 @@ fn load_private_key_from_pem(pem: &str) -> Result<PrivateKeyDer<'static>> {
     }
 
     anyhow::bail!("No private key found in PEM data")
-}
-
-/// Certificate storage for multiple domains
-#[derive(Default)]
-pub struct CertStore {
-    /// Default certificate for unknown domains
-    default_cert: Option<TlsConfig>,
-    /// Per-domain certificates
-    domain_certs: dashmap::DashMap<String, TlsConfig>,
-}
-
-impl CertStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Set the default certificate for unknown domains
-    pub fn set_default(&mut self, config: TlsConfig) {
-        self.default_cert = Some(config);
-    }
-
-    /// Add a certificate for a specific domain
-    pub fn add_domain(&self, domain: String, config: TlsConfig) {
-        self.domain_certs.insert(domain, config);
-    }
-
-    /// Remove a certificate for a domain
-    pub fn remove_domain(&self, domain: &str) {
-        self.domain_certs.remove(domain);
-    }
-
-    /// Get the TLS config for a domain (returns default if not found)
-    pub fn get(&self, domain: &str) -> Option<TlsConfig> {
-        self.domain_certs
-            .get(domain)
-            .map(|c| c.clone())
-            .or_else(|| self.default_cert.clone())
-    }
-
-    /// Check if there's any certificate configured
-    pub fn has_any_cert(&self) -> bool {
-        self.default_cert.is_some() || !self.domain_certs.is_empty()
-    }
-}
-
-/// Hot-reloadable TLS acceptor — swaps atomically when a new certificate is issued.
-///
-/// The HTTPS proxy reads the current acceptor on each new connection, so a certificate
-/// renewal takes effect immediately for the next connection without restarting the server.
-#[derive(Clone)]
-pub struct TlsReloadHandle(Arc<parking_lot::RwLock<TlsAcceptor>>);
-
-impl TlsReloadHandle {
-    pub fn new(acceptor: TlsAcceptor) -> Self {
-        Self(Arc::new(parking_lot::RwLock::new(acceptor)))
-    }
-
-    /// Get a clone of the current TLS acceptor (cheap — TlsAcceptor wraps Arc<ServerConfig>).
-    pub fn current(&self) -> TlsAcceptor {
-        self.0.read().clone()
-    }
-
-    /// Replace the TLS acceptor; takes effect on the next incoming connection.
-    pub fn update(&self, new_acceptor: TlsAcceptor) {
-        *self.0.write() = new_acceptor;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cert_store_default() {
-        let store = CertStore::new();
-        assert!(!store.has_any_cert());
-        assert!(store.get("example.com").is_none());
-    }
-
-    // Note: More tests would require actual certificate files
 }

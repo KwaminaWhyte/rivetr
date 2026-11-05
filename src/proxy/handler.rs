@@ -11,10 +11,10 @@ use dashmap::DashMap;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::header::{AUTHORIZATION, CONNECTION, UPGRADE, WWW_AUTHENTICATE};
-use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto;
 use regex::Regex;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +30,28 @@ use super::{Backend, ProxyService, RouteTable};
 
 /// ACME HTTP-01 challenge path prefix
 const ACME_CHALLENGE_PREFIX: &str = "/.well-known/acme-challenge/";
+
+/// Max concurrent HTTP/2 streams per client connection.
+const H2_MAX_CONCURRENT_STREAMS: u32 = 250;
+
+/// Which HTTP versions a connection may speak.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HttpVersions {
+    /// Sniff the connection preface: HTTP/1.1 or HTTP/2 prior knowledge.
+    Auto,
+    Http1,
+    Http2,
+}
+
+impl HttpVersions {
+    /// Map the ALPN protocol a TLS client negotiated to the versions to serve.
+    pub(crate) fn from_alpn(alpn: Option<&[u8]>) -> Self {
+        match alpn {
+            Some(b"h2") => Self::Http2,
+            _ => Self::Http1,
+        }
+    }
+}
 
 /// Capacity of the access-log queue; entries are dropped (and counted) when full.
 const LOG_QUEUE_CAPACITY: usize = 10_000;
@@ -318,6 +340,8 @@ pub struct ProxyHandler {
     https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Queue to the access-log writer task (None when logging is disabled)
     log_tx: Option<ProxyLogSender>,
+    /// When set, HTTP is redirected to HTTPS only for hosts with a certificate.
+    cert_store: Option<Arc<super::CertStore>>,
     /// Scheme reported to backends via X-Forwarded-Proto ("http" or "https").
     /// The HTTPS listener sets this to "https" so upstream apps (Laravel, Rails,
     /// etc.) generate correct absolute URLs instead of insecure http:// ones.
@@ -333,6 +357,7 @@ impl ProxyHandler {
             https_redirect_port: None,
             https_redirect_enabled: None,
             log_tx: None,
+            cert_store: None,
             forwarded_proto: "http",
         }
     }
@@ -356,6 +381,13 @@ impl ProxyHandler {
         self
     }
 
+    /// Limit the HTTPS redirect to hosts `store` has a real certificate for, so
+    /// a domain whose certificate is still pending stays reachable over HTTP.
+    pub fn with_cert_store(mut self, store: Arc<super::CertStore>) -> Self {
+        self.cert_store = Some(store);
+        self
+    }
+
     /// Redirect all HTTP traffic to HTTPS (only when the flag is set to true)
     pub fn with_https_redirect(
         mut self,
@@ -367,48 +399,57 @@ impl ProxyHandler {
         self
     }
 
-    /// Handle a single TCP connection
+    /// Handle a plain TCP connection: HTTP/1.1 (with upgrades, so WebSockets
+    /// work) plus HTTP/2 with prior knowledge (h2c), detected from the preface.
     pub async fn handle_connection(
         &self,
         stream: TcpStream,
         remote_addr: SocketAddr,
     ) -> anyhow::Result<()> {
-        let io = TokioIo::new(stream);
-        let handler = self.clone();
-
-        http1::Builder::new()
-            .serve_connection(
-                io,
-                service_fn(move |req| {
-                    let handler = handler.clone();
-                    async move { handler.handle_request(req, remote_addr).await }
-                }),
-            )
-            .with_upgrades()
-            .await?;
-
-        Ok(())
+        self.serve(TokioIo::new(stream), remote_addr, HttpVersions::Auto)
+            .await
     }
 
-    /// Handle a TLS connection
+    /// Handle a TLS connection. The protocol follows ALPN: `h2` serves HTTP/2,
+    /// anything else (including no ALPN) serves HTTP/1.1 with upgrades.
     pub async fn handle_tls_connection(
         &self,
         stream: TlsStream<TcpStream>,
         remote_addr: SocketAddr,
     ) -> anyhow::Result<()> {
-        let io = TokioIo::new(stream);
-        let handler = self.clone();
+        let versions = HttpVersions::from_alpn(stream.get_ref().1.alpn_protocol());
+        self.serve(TokioIo::new(stream), remote_addr, versions)
+            .await
+    }
 
-        http1::Builder::new()
-            .serve_connection(
-                io,
-                service_fn(move |req| {
-                    let handler = handler.clone();
-                    async move { handler.handle_request(req, remote_addr).await }
-                }),
-            )
-            .with_upgrades()
-            .await?;
+    async fn serve<I>(
+        &self,
+        io: I,
+        remote_addr: SocketAddr,
+        versions: HttpVersions,
+    ) -> anyhow::Result<()>
+    where
+        I: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
+    {
+        let handler = self.clone();
+        let service = service_fn(move |req| {
+            let handler = handler.clone();
+            async move { handler.handle_request(req, remote_addr).await }
+        });
+
+        let mut builder = auto::Builder::new(TokioExecutor::new());
+        builder
+            .http2()
+            .max_concurrent_streams(H2_MAX_CONCURRENT_STREAMS);
+        let builder = match versions {
+            HttpVersions::Auto => builder,
+            HttpVersions::Http1 => builder.http1_only(),
+            HttpVersions::Http2 => builder.http2_only(),
+        };
+        builder
+            .serve_connection_with_upgrades(io, service)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(())
     }
@@ -460,13 +501,16 @@ impl ProxyHandler {
                 .as_ref()
                 .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
                 .unwrap_or(false);
+        // HTTP/2 (h2c) requests carry the host in the URI authority.
+        let request_host = self.extract_host(&req).unwrap_or_default();
+        let redirect_active = redirect_active
+            && self
+                .cert_store
+                .as_ref()
+                .is_none_or(|store| store.covers(&request_host));
         if redirect_active {
             if let Some(https_port) = self.https_redirect_port {
-                let host_header = req
-                    .headers()
-                    .get(hyper::header::HOST)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
+                let host_header = request_host.as_str();
                 // Strip existing port from host header, add https port if non-standard
                 let host_without_port = host_header.split(':').next().unwrap_or(host_header);
                 let redirect_host = if https_port == 443 {

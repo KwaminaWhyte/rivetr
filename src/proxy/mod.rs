@@ -6,8 +6,11 @@
 pub mod acme;
 pub mod analytics;
 pub mod balancer;
+pub mod certs;
 mod handler;
 mod health_checker;
+#[cfg(test)]
+mod http2_tests;
 pub mod inflight;
 mod service;
 pub mod tls;
@@ -20,14 +23,13 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
-pub use acme::{
-    AcmeChallenges, AcmeClient, AcmeConfig, CertificateRenewalManager, CertificateResult,
-};
+pub use acme::{AcmeChallenges, AcmeClient, AcmeConfig, CertificateResult};
+pub use certs::CertStore;
 pub use balancer::{LbPolicy, Selection, UpstreamPool, STICKY_COOKIE};
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
-pub use tls::{CertStore, TlsConfig, TlsReloadHandle};
+pub use tls::TlsConfig;
 
 pub use crate::db::RedirectRule;
 
@@ -463,6 +465,8 @@ pub struct ProxyServer {
     bind_addr: SocketAddr,
     /// Optional database pool for proxy access logging
     db: Option<sqlx::SqlitePool>,
+    /// Certificates served on HTTPS; HTTP is redirected only for hosts it covers.
+    cert_store: Option<Arc<CertStore>>,
 }
 
 impl ProxyServer {
@@ -471,6 +475,7 @@ impl ProxyServer {
             routes: Arc::new(ArcSwap::new(Arc::new(RouteTable::new()))),
             bind_addr,
             db: None,
+            cert_store: None,
         }
     }
 
@@ -480,13 +485,20 @@ impl ProxyServer {
         self
     }
 
+    /// Only redirect HTTP to HTTPS for hosts this store has a certificate for.
+    pub fn with_cert_store(mut self, store: Arc<CertStore>) -> Self {
+        self.cert_store = Some(store);
+        self
+    }
+
     /// Get a reference to the route table for updates
     pub fn routes(&self) -> Arc<ArcSwap<RouteTable>> {
         self.routes.clone()
     }
 
     /// Start the proxy server (HTTP), with optional HTTPS redirect.
-    /// `redirect_enabled` is an Arc<AtomicBool> — set it to true once TLS cert is confirmed.
+    /// `redirect_enabled` turns the redirect on; with a cert store it applies only to
+    /// hosts that have a certificate.
     /// `listener` is an already-bound TcpListener; if None a fresh bind is performed.
     pub async fn run_with_options(
         self,
@@ -510,6 +522,9 @@ impl ProxyServer {
         }
         if let Some(flag) = redirect_enabled {
             handler = handler.with_https_redirect(https_port, flag);
+        }
+        if let Some(store) = self.cert_store {
+            handler = handler.with_cert_store(store);
         }
 
         loop {
@@ -539,7 +554,8 @@ impl ProxyServer {
 pub struct HttpsProxyServer {
     routes: Arc<ArcSwap<RouteTable>>,
     bind_addr: SocketAddr,
-    tls_reload: Arc<tls::TlsReloadHandle>,
+    /// Certificates, resolved per connection from the SNI name.
+    cert_store: Arc<CertStore>,
     /// Optional database pool for proxy access logging
     db: Option<sqlx::SqlitePool>,
 }
@@ -548,12 +564,12 @@ impl HttpsProxyServer {
     pub fn new(
         bind_addr: SocketAddr,
         routes: Arc<ArcSwap<RouteTable>>,
-        tls_reload: Arc<tls::TlsReloadHandle>,
+        cert_store: Arc<CertStore>,
     ) -> Self {
         Self {
             routes,
             bind_addr,
-            tls_reload,
+            cert_store,
             db: None,
         }
     }
@@ -577,14 +593,15 @@ impl HttpsProxyServer {
         if let Some(db) = self.db {
             handler = handler.with_db(db);
         }
-        let tls_reload = self.tls_reload;
+        // The resolver reads the store on every handshake, so new and renewed
+        // certificates apply to the next connection without a restart.
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(self.cert_store.server_config()?));
 
         loop {
             match listener.accept().await {
                 Ok((stream, remote_addr)) => {
                     let handler = handler.clone();
-                    // Read current acceptor per-connection so cert renewals take effect immediately
-                    let acceptor = tls_reload.current();
+                    let acceptor = acceptor.clone();
 
                     tokio::spawn(async move {
                         // Perform TLS handshake
@@ -597,7 +614,7 @@ impl HttpsProxyServer {
                                 }
                             }
                             Err(e) => {
-                                error!(error = %e, remote = %remote_addr, "TLS handshake failed");
+                                tracing::debug!(error = %e, remote = %remote_addr, "TLS handshake failed");
                             }
                         }
                     });

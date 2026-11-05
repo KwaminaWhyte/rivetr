@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { Service } from "@/types/api";
 import { ServiceSettingsSections } from "@/components/services/service-settings-sections";
+import { CertificatesCard } from "@/components/certificates-card";
 import { api } from "@/lib/api";
 import { Copy, Check, Network, Server, ExternalLink, Globe, Container, Save } from "lucide-react";
 
@@ -233,6 +234,13 @@ export default function ServiceNetworkTab() {
   return (
     <div className="space-y-6">
       <ServiceSettingsSections service={service} sections={["network"]} />
+      {service.domain && (
+        <CertificatesCard
+          resource="services"
+          resourceId={service.id}
+          version={`${service.domain}-${service.updated_at}`}
+        />
+      )}
       {/* Exposed Ports Card */}
       <Card>
         <CardHeader>

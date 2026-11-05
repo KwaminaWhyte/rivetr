@@ -48,6 +48,7 @@ and links in emails/notifications do not break.
 | `/integrations/s3` | S3 storage |
 | `/integrations/destinations` | Docker destinations |
 | `/integrations/tunnels` | Cloudflare tunnels |
+| `/integrations/dns` | DNS providers for wildcard certificates, wildcard instance domain |
 | `/integrations/webhooks` | Outgoing webhooks |
 | `/integrations/webhook-events` | Incoming webhook deliveries |
 

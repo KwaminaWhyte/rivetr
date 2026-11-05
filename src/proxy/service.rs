@@ -6,13 +6,49 @@
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt};
 use hyper::body::Incoming;
-use hyper::{Request, Response};
+use hyper::header::{HeaderValue, COOKIE, HOST, TE};
+use hyper::{Request, Response, Version};
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::time::Duration;
 use tracing::{debug, info};
 
 use super::Backend;
+
+/// Prepare a request that may have arrived over HTTP/2 for an HTTP/1.1 backend:
+/// set the version, restore the `Host` header from the `:authority`
+/// pseudo-header (HTTP/2 clients usually omit `Host`), and join split `Cookie`
+/// fields, since HTTP/1.1 allows only one `Cookie` header.
+pub(crate) fn downgrade_to_http1<B>(req: &mut Request<B>) {
+    if req.version() == Version::HTTP_11 {
+        return;
+    }
+    if req.version() == Version::HTTP_2 {
+        if !req.headers().contains_key(HOST) {
+            if let Some(value) = req
+                .uri()
+                .authority()
+                .and_then(|a| HeaderValue::from_str(a.as_str()).ok())
+            {
+                req.headers_mut().insert(HOST, value);
+            }
+        }
+        let cookies: Vec<String> = req
+            .headers()
+            .get_all(COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok().map(str::to_string))
+            .collect();
+        if cookies.len() > 1 {
+            if let Ok(joined) = HeaderValue::from_str(&cookies.join("; ")) {
+                req.headers_mut().insert(COOKIE, joined);
+            }
+        }
+        // `TE` is only meaningful hop-by-hop; HTTP/2 allows just "trailers".
+        req.headers_mut().remove(TE);
+    }
+    *req.version_mut() = Version::HTTP_11;
+}
 
 /// Service for forwarding HTTP requests to backends
 #[derive(Clone)]
@@ -76,6 +112,9 @@ impl ProxyService {
         let backend_uri = format!("http://{}{}", backend.addr(), forwarded_pq);
 
         debug!(backend_uri = %backend_uri, "Forwarding to backend");
+
+        // Backends speak HTTP/1.1, whatever the client used.
+        downgrade_to_http1(&mut req);
 
         // Update the request URI
         *req.uri_mut() = backend_uri.parse()?;
@@ -157,6 +196,7 @@ impl ProxyService {
         let client_upgrade = hyper::upgrade::on(&mut req);
 
         // Rewrite the request URI and headers for the backend
+        downgrade_to_http1(&mut req);
         *req.uri_mut() = format!("http://{}{}", backend_addr, path_and_query).parse()?;
         {
             let headers = req.headers_mut();

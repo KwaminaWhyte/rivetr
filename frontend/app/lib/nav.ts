@@ -82,6 +82,7 @@ export const navAreas: NavArea[] = [
       { title: "Secret managers", url: "/integrations/secrets" },
       { title: "Destinations", url: "/integrations/destinations" },
       { title: "Tunnels", url: "/integrations/tunnels" },
+      { title: "DNS providers", url: "/integrations/dns" },
       { title: "Webhooks", url: "/integrations/webhooks" },
       { title: "Webhook events", url: "/integrations/webhook-events" },
     ]),

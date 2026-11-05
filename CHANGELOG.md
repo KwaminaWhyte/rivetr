@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Existing roles keep their access, with these fixes: a viewer can no longer open a server terminal or run bulk or tag deploys, reading through a deny override is refused, and team routes check abilities instead of role levels (a custom role with `team.manage` can manage members).
 - Existing API tokens keep full access. Tokens restricted to a team or resources cannot call admin routes or the MCP server. `GET /api/tokens` returns the extra fields.
 - **External secret managers at deploy time**: connect HashiCorp Vault or OpenBao (KV v2, token or AppRole, namespaces), Infisical (universal auth), Doppler (service token) and AWS Secrets Manager (access key or EC2 instance role, SigV4 signed without the AWS SDK) under Integrations > Secret managers, with a test action. Env var values can be `secret://<connection>/<path>#<key>` references, or a whole path can be imported with a key prefix. References resolve for app variables (all layers), compose service variables and build secrets at deploy, rollback, restart and service start; values are masked in deployment logs and never stored in the database. Per app or service, a provider outage fails the deploy (default) or uses the last resolved values, kept encrypted. The variable editors get a "From secret manager" picker that browses key names only. Credentials are encrypted and write-only (migration 135). See `docs/reference/secret-managers.md`.
+- **HTTP/2 on the proxy**: the HTTPS listener negotiates `h2` or `http/1.1` through ALPN and the plain listener accepts HTTP/2 with prior knowledge. WebSocket upgrades stay on HTTP/1.1; backends are still reached over HTTP/1.1.
+- **Per-domain certificates**: every hostname gets its own certificate, served through an SNI resolver, replacing the single shared certificate and its 100-name limit. Renewal 30 days before expiry with per-domain jitter, per-domain backoff after failures, Let's Encrypt rate-limit budgets, and status, expiry and last error per domain (migration 132). Existing installs keep serving the old shared certificate until per-domain certificates are issued.
+- **Custom certificate upload** per domain for apps and services: validated (key matches, not expired, covers the domain), private key encrypted at rest, used ahead of Let's Encrypt.
+- **Wildcard certificates via DNS-01** with Cloudflare, AWS Route 53, Hetzner and DigitalOcean credentials under Integrations > DNS providers (`/integrations/dns`), a per-domain "wildcard via DNS provider" option and a wildcard instance domain for auto-generated and preview domains.
+
+### Changed
+- HTTP to HTTPS redirects apply only to hosts that already have a certificate.
+- The HTTPS listener also starts without ACME when custom certificates exist.
 
 ## [1.0.0] - 2026-11-05
 

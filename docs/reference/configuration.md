@@ -103,6 +103,17 @@ Embedded reverse proxy: TLS/ACME, health checks, and automatic domain generation
 | `preview_domain` | string? | _none_ | Base domain for PR preview deployments (e.g. `pr-123.my-app.preview.example.com`). |
 | `instance_domain` | string? | _none_ | Domain for the Rivetr dashboard/API itself; proxy forwards this domain to the API server. |
 
+### HTTPS and certificates
+
+- The HTTPS listener (`server.proxy_https_port`) starts when `acme_enabled` is true and `acme_email` is set, or when at least one custom certificate has been uploaded. It offers HTTP/2 and HTTP/1.1 through ALPN; WebSocket upgrades use HTTP/1.1. The plain listener also accepts HTTP/2 with prior knowledge (h2c). Backends are always reached over HTTP/1.1.
+- Every hostname gets its own certificate, chosen per connection from the TLS SNI name (exact name, then a one-label wildcard, then the instance domain, then a self-signed fallback). There is no limit on the number of domains.
+- Per domain, under the app's Domains page or the service's Network page, choose: **Automatic (HTTP-01)**, **Wildcard via a DNS provider** (issues `name` and `*.name` through DNS-01), or **Custom upload** (PEM chain and key; the key is encrypted with the instance encryption key; it wins over ACME).
+- DNS providers (Cloudflare, AWS Route 53, Hetzner Cloud DNS, DigitalOcean) are managed at **Integrations > DNS providers** (`/integrations/dns`), which also holds the **wildcard instance domain** (for example `*.apps.example.com`, usually `*.<base_domain>`) that covers auto-generated and preview domains with one certificate. DNS-01 propagation is checked against the resolvers in **Settings > Advanced > DNS servers**, or 1.1.1.1 and 8.8.8.8 when none are set.
+- Issued certificates live in `<acme_cache_dir>/domains/<domain>/` (`_wildcard.` replaces `*.` in directory names); state per domain (status, expiry, last error, next attempt) is in the `domain_certificates` table.
+- Renewal starts 30 days before expiry plus a stable per-domain jitter of up to 72 hours. A failed order backs off per domain (15 minutes doubling to 24 hours) without blocking other domains. New orders are capped at 250 per 3 hours, and at 45 new certificates per registered domain per week (Let's Encrypt allows 50); use a wildcard for setups with many subdomains under one domain.
+- HTTP is redirected to HTTPS only for hosts that already have a certificate, so a domain whose certificate is pending stays reachable over HTTP.
+- Upgrading from the single shared certificate: the old certificate in `<acme_cache_dir>/certs/<instance_domain>/` keeps serving its names until each domain has its own certificate. It is no longer renewed and can be deleted once every domain shows "Issued".
+
 ## `[logging]`
 
 | Field | Type | Default | Description |

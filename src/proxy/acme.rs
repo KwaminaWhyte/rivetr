@@ -1,7 +1,8 @@
 // ACME client for Let's Encrypt certificate automation
 //
-// This module implements the ACME protocol (RFC 8555) with HTTP-01 challenges
-// for automatic TLS certificate provisioning.
+// This module implements the ACME protocol (RFC 8555) with HTTP-01 and DNS-01
+// challenges for automatic TLS certificate provisioning. Scheduling (which
+// names to order, renewals, backoff) lives in `proxy::certs`.
 
 use anyhow::{Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -12,15 +13,13 @@ use ring::signature::{EcdsaKeyPair, KeyPair as RingKeyPair, ECDSA_P256_SHA256_FI
 use serde::{Deserialize, Serialize};
 use serde_json;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, error, info, warn};
-
-use super::tls::{TlsConfig, TlsReloadHandle};
+use tracing::{debug, info, warn};
 
 /// Let's Encrypt ACME directory URLs
 pub const LETS_ENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
@@ -35,6 +34,8 @@ pub struct AcmeConfig {
     pub cache_dir: PathBuf,
     /// Use staging environment (for testing)
     pub staging: bool,
+    /// Override the ACME directory URL (tests, or another ACME CA).
+    pub directory_url: Option<String>,
 }
 
 impl Default for AcmeConfig {
@@ -43,6 +44,7 @@ impl Default for AcmeConfig {
             email: String::new(),
             cache_dir: PathBuf::from("./data/acme"),
             staging: true,
+            directory_url: None,
         }
     }
 }
@@ -159,11 +161,19 @@ pub struct AcmeClient {
     account_kid: RwLock<Option<String>>,
     key_pair: RwLock<Option<Vec<u8>>>,
     challenges: AcmeChallenges,
+    /// Delay between authorization/order status polls.
+    poll_interval: Duration,
 }
 
 impl AcmeClient {
     /// Create a new ACME client
     pub async fn new(config: AcmeConfig) -> Result<Self> {
+        Self::with_challenges(config, AcmeChallenges::new()).await
+    }
+
+    /// Create a client that publishes HTTP-01 tokens into `challenges`, which
+    /// the port-80 proxy already serves.
+    pub async fn with_challenges(config: AcmeConfig, challenges: AcmeChallenges) -> Result<Self> {
         // Ensure cache directory exists
         fs::create_dir_all(&config.cache_dir)
             .await
@@ -180,7 +190,8 @@ impl AcmeClient {
             directory: RwLock::new(None),
             account_kid: RwLock::new(None),
             key_pair: RwLock::new(None),
-            challenges: AcmeChallenges::new(),
+            challenges,
+            poll_interval: Duration::from_secs(2),
         };
 
         // Initialize directory and account
@@ -190,6 +201,12 @@ impl AcmeClient {
         Ok(client)
     }
 
+    /// Change the delay between status polls (tests use a short one).
+    pub fn with_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
     /// Get the challenges store for HTTP-01 challenge serving
     pub fn challenges(&self) -> AcmeChallenges {
         self.challenges.clone()
@@ -197,10 +214,10 @@ impl AcmeClient {
 
     /// Fetch the ACME directory
     async fn fetch_directory(&self) -> Result<()> {
-        let url = if self.config.staging {
-            LETS_ENCRYPT_STAGING
-        } else {
-            LETS_ENCRYPT_PRODUCTION
+        let url = match self.config.directory_url.as_deref() {
+            Some(url) => url,
+            None if self.config.staging => LETS_ENCRYPT_STAGING,
+            None => LETS_ENCRYPT_PRODUCTION,
         };
 
         debug!(url = %url, "Fetching ACME directory");
@@ -430,9 +447,20 @@ impl AcmeClient {
         Ok(URL_SAFE_NO_PAD.encode(hash))
     }
 
-    /// Request a certificate for the given domains
+    /// Request a certificate for `domains` using HTTP-01 challenges.
     pub async fn request_certificate(&self, domains: &[String]) -> Result<CertificateResult> {
-        info!(domains = ?domains, "Requesting certificate");
+        self.request_certificate_with(domains, &ChallengeSolver::Http01)
+            .await
+    }
+
+    /// Request a certificate for `domains`, proving control with `solver`.
+    /// Wildcard names (`*.example.com`) need DNS-01.
+    pub async fn request_certificate_with(
+        &self,
+        domains: &[String],
+        solver: &ChallengeSolver<'_>,
+    ) -> Result<CertificateResult> {
+        info!(domains = ?domains, challenge = solver.kind(), "Requesting certificate");
 
         let new_order_url = {
             let directory = self.directory.read().await;
@@ -440,24 +468,19 @@ impl AcmeClient {
             directory.new_order.clone()
         };
 
-        // Create order
         let identifiers: Vec<_> = domains
             .iter()
-            .map(|d| {
-                serde_json::json!({
-                    "type": "dns",
-                    "value": d
-                })
-            })
+            .map(|d| serde_json::json!({ "type": "dns", "value": d }))
             .collect();
-
-        let payload = serde_json::json!({
-            "identifiers": identifiers
-        });
+        let payload = serde_json::json!({ "identifiers": identifiers });
 
         let (response, _) = self
             .signed_request(&new_order_url, Some(payload), false)
             .await?;
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to create order: {}", acme_error_detail(&error_text));
+        }
 
         let order_url = response
             .headers()
@@ -467,51 +490,46 @@ impl AcmeClient {
             .context("No order URL in response")?;
 
         let order: Order = response.json().await.context("Failed to parse order")?;
-
         debug!(order_url = %order_url, status = ?order.status, "Order created");
 
-        // Process authorizations
+        // Prove control of every name. Cleanup runs whether or not this worked.
+        let mut cleanup = Vec::new();
+        let mut result = Ok(());
         for auth_url in &order.authorizations {
-            self.process_authorization(auth_url).await?;
+            if let Err(e) = self
+                .process_authorization(auth_url, solver, &mut cleanup)
+                .await
+            {
+                result = Err(e);
+                break;
+            }
         }
+        self.cleanup_challenges(solver, cleanup).await;
+        result?;
 
-        // Wait for order to be ready
         let order = self.poll_order(&order_url, OrderStatus::Ready).await?;
 
-        // Generate CSR
         let (private_key_pem, csr_der) = self.generate_csr(domains)?;
-
-        // Finalize order
-        let csr_b64 = URL_SAFE_NO_PAD.encode(&csr_der);
-        let payload = serde_json::json!({
-            "csr": csr_b64
-        });
-
+        let payload = serde_json::json!({ "csr": URL_SAFE_NO_PAD.encode(&csr_der) });
         let (response, _) = self
             .signed_request(&order.finalize, Some(payload), false)
             .await?;
-
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Failed to finalize order: {}", error_text);
+            anyhow::bail!(
+                "Failed to finalize order: {}",
+                acme_error_detail(&error_text)
+            );
         }
 
-        // Wait for certificate
         let order = self.poll_order(&order_url, OrderStatus::Valid).await?;
 
-        // Download certificate
         let cert_url = order.certificate.context("No certificate URL")?;
         let (response, _) = self.signed_request(&cert_url, None, false).await?;
-
         let certificate_chain_pem = response
             .text()
             .await
             .context("Failed to download certificate")?;
-
-        // Clean up challenges
-        for domain in domains {
-            self.challenges.remove(domain);
-        }
 
         info!(domains = ?domains, "Certificate obtained successfully");
 
@@ -522,60 +540,95 @@ impl AcmeClient {
         })
     }
 
-    /// Process a single authorization
-    async fn process_authorization(&self, auth_url: &str) -> Result<()> {
+    async fn cleanup_challenges(&self, solver: &ChallengeSolver<'_>, cleanup: Vec<PendingCleanup>) {
+        for item in cleanup {
+            match item {
+                PendingCleanup::Http01 { token } => self.challenges.remove(&token),
+                PendingCleanup::Dns01 { fqdn, record_id } => {
+                    if let ChallengeSolver::Dns01(dns) = solver {
+                        if let Err(e) = dns.cleanup(&fqdn, &record_id).await {
+                            warn!(fqdn = %fqdn, error = %e, "Failed to remove DNS-01 TXT record");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Process a single authorization with the given solver.
+    async fn process_authorization(
+        &self,
+        auth_url: &str,
+        solver: &ChallengeSolver<'_>,
+        cleanup: &mut Vec<PendingCleanup>,
+    ) -> Result<()> {
         let (response, _) = self.signed_request(auth_url, None, false).await?;
         let auth: Authorization = response
             .json()
             .await
             .context("Failed to parse authorization")?;
 
-        let domain = &auth.identifier.value;
+        let domain = auth.identifier.value.clone();
         debug!(domain = %domain, status = %auth.status, "Processing authorization");
 
         if auth.status == "valid" {
             return Ok(());
         }
 
-        // Find HTTP-01 challenge
+        let challenge_type = solver.kind();
         let challenge = auth
             .challenges
             .iter()
-            .find(|c| c.challenge_type == "http-01")
-            .context("No HTTP-01 challenge available")?;
+            .find(|c| c.challenge_type == challenge_type)
+            .with_context(|| format!("No {challenge_type} challenge offered for {domain}"))?;
 
-        // Calculate key authorization
         let key_bytes = self.key_pair.read().await;
         let key_bytes = key_bytes.as_ref().context("No key pair")?;
         let thumbprint = self.jwk_thumbprint(key_bytes)?;
         let key_auth = format!("{}.{}", challenge.token, thumbprint);
 
-        info!(
-            domain = %domain,
-            token = %challenge.token,
-            "Setting up HTTP-01 challenge"
-        );
+        match solver {
+            ChallengeSolver::Http01 => {
+                info!(domain = %domain, token = %challenge.token, "Setting up HTTP-01 challenge");
+                self.challenges.add(&challenge.token, &key_auth);
+                cleanup.push(PendingCleanup::Http01 {
+                    token: challenge.token.clone(),
+                });
+            }
+            ChallengeSolver::Dns01(dns) => {
+                let fqdn = dns01_record_name(&domain);
+                let value = dns01_txt_value(&key_auth);
+                info!(domain = %domain, record = %fqdn, "Setting up DNS-01 challenge");
+                let record_id = dns
+                    .present(&fqdn, &value)
+                    .await
+                    .with_context(|| format!("Could not create TXT record {fqdn}"))?;
+                cleanup.push(PendingCleanup::Dns01 {
+                    fqdn: fqdn.clone(),
+                    record_id,
+                });
+                dns.wait_for_propagation(&fqdn, &value)
+                    .await
+                    .with_context(|| format!("TXT record {fqdn} did not propagate"))?;
+            }
+        }
 
-        // Store challenge for HTTP serving
-        self.challenges.add(&challenge.token, &key_auth);
-
-        // Notify ACME server that challenge is ready
-        let payload = serde_json::json!({});
+        // Tell the CA the challenge is ready.
         let (response, _) = self
-            .signed_request(&challenge.url, Some(payload), false)
+            .signed_request(&challenge.url, Some(serde_json::json!({})), false)
             .await?;
-
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             warn!(domain = %domain, error = %error_text, "Challenge notification failed");
         }
 
-        // Wait for challenge to be validated
         for _ in 0..30 {
-            sleep(Duration::from_secs(2)).await;
+            sleep(self.poll_interval).await;
 
             let (response, _) = self.signed_request(auth_url, None, false).await?;
-            let auth: Authorization = response.json().await?;
+            let body = response.text().await.unwrap_or_default();
+            let auth: Authorization =
+                serde_json::from_str(&body).context("Failed to parse authorization")?;
 
             match auth.status.as_str() {
                 "valid" => {
@@ -583,7 +636,11 @@ impl AcmeClient {
                     return Ok(());
                 }
                 "invalid" => {
-                    anyhow::bail!("Authorization for {} failed", domain);
+                    anyhow::bail!(
+                        "Authorization for {} failed: {}",
+                        domain,
+                        challenge_error(&body).unwrap_or_else(|| "no detail".to_string())
+                    );
                 }
                 _ => {
                     debug!(domain = %domain, status = %auth.status, "Waiting for authorization");
@@ -609,7 +666,7 @@ impl AcmeClient {
             }
 
             debug!(status = ?order.status, expected = ?expected, "Waiting for order");
-            sleep(Duration::from_secs(2)).await;
+            sleep(self.poll_interval).await;
         }
 
         anyhow::bail!("Order polling timeout")
@@ -620,8 +677,6 @@ impl AcmeClient {
         use rcgen::{CertificateParams, DistinguishedName, KeyPair};
 
         let key_pair = KeyPair::generate().context("Failed to generate key pair")?;
-
-        // Serialize private key to PEM format
         let key_der = key_pair.serialize_der();
         let private_key_pem = pem::encode(&pem::Pem::new("PRIVATE KEY", key_der));
 
@@ -629,8 +684,13 @@ impl AcmeClient {
         params.distinguished_name = DistinguishedName::new();
         params.subject_alt_names = domains
             .iter()
-            .map(|d| rcgen::SanType::DnsName(d.clone().try_into().unwrap()))
-            .collect();
+            .map(|d| {
+                d.clone()
+                    .try_into()
+                    .map(rcgen::SanType::DnsName)
+                    .map_err(|e| anyhow::anyhow!("Invalid domain name {d}: {e}"))
+            })
+            .collect::<Result<_>>()?;
 
         let csr = params
             .serialize_request(&key_pair)
@@ -638,132 +698,67 @@ impl AcmeClient {
 
         Ok((private_key_pem, csr.der().to_vec()))
     }
+}
 
-    /// Save certificate to cache and return path.
-    /// `save_domain` is the directory key used to store the cert — always pass the
-    /// instance domain so the startup loader (which keys on instance domain) finds it.
-    pub async fn save_certificate(
-        &self,
-        result: &CertificateResult,
-        save_domain: &str,
-    ) -> Result<PathBuf> {
-        let cert_dir = self.config.cache_dir.join("certs").join(save_domain);
+/// How the client proves control of the names in an order.
+pub enum ChallengeSolver<'a> {
+    /// Serve the key authorization on port 80 (`AcmeChallenges`).
+    Http01,
+    /// Publish a TXT record through a DNS provider. Needed for wildcards.
+    Dns01(&'a dyn Dns01Solver),
+}
 
-        fs::create_dir_all(&cert_dir)
-            .await
-            .context("Failed to create certificate directory")?;
-
-        let cert_path = cert_dir.join("fullchain.pem");
-        let key_path = cert_dir.join("privkey.pem");
-
-        fs::write(&cert_path, &result.certificate_chain_pem)
-            .await
-            .context("Failed to write certificate")?;
-
-        fs::write(&key_path, &result.private_key_pem)
-            .await
-            .context("Failed to write private key")?;
-
-        // Save the domain list alongside the cert so the renewal manager knows
-        // exactly which SANs the cert covers (avoids re-parsing the cert DER).
-        let domains_path = cert_dir.join("domains.json");
-        if let Ok(json) = serde_json::to_string(&result.domains) {
-            let _ = fs::write(&domains_path, json).await;
-        }
-
-        info!(
-            domain = %save_domain,
-            cert_path = %cert_path.display(),
-            "Certificate saved"
-        );
-
-        Ok(cert_dir)
-    }
-
-    /// Load the list of domains that were included in the cached certificate.
-    /// Reads `domains.json` if it exists; otherwise falls back to parsing the SANs
-    /// directly from `fullchain.pem` so the renewal manager always has an accurate
-    /// baseline (prevents incorrectly skipping reissue for new subdomains).
-    pub async fn load_cert_domains(cert_dir: &Path) -> Option<Vec<String>> {
-        let domains_path = cert_dir.join("domains.json");
-        if let Ok(json) = fs::read_to_string(&domains_path).await {
-            if let Ok(domains) = serde_json::from_str::<Vec<String>>(&json) {
-                return Some(domains);
-            }
-        }
-
-        // Fallback: parse SANs from the PEM directly so we never confuse the DB
-        // domain list (which includes new, not-yet-covered apps) with the cert's
-        // actual SANs.
-        let pem_str = fs::read_to_string(&cert_dir.join("fullchain.pem"))
-            .await
-            .ok()?;
-        let sans = extract_sans_from_pem(&pem_str);
-        if !sans.is_empty() {
-            // Persist so we don't re-parse on the next startup
-            if let Ok(json) = serde_json::to_string(&sans) {
-                let _ = fs::write(&domains_path, json).await;
-            }
-            Some(sans)
-        } else {
-            None
+impl ChallengeSolver<'_> {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Http01 => "http-01",
+            Self::Dns01(_) => "dns-01",
         }
     }
+}
 
-    /// Load a saved certificate and create TLS config
-    pub async fn load_certificate(cert_dir: &Path) -> Result<TlsConfig> {
-        let cert_path = cert_dir.join("fullchain.pem");
-        let key_path = cert_dir.join("privkey.pem");
+/// Publishes and removes `_acme-challenge` TXT records.
+#[async_trait::async_trait]
+pub trait Dns01Solver: Send + Sync {
+    /// Create the TXT record; returns an id used for cleanup.
+    async fn present(&self, fqdn: &str, value: &str) -> Result<String>;
+    /// Wait until the record is visible to public resolvers.
+    async fn wait_for_propagation(&self, fqdn: &str, value: &str) -> Result<()>;
+    /// Delete the record created by `present`.
+    async fn cleanup(&self, fqdn: &str, record_id: &str) -> Result<()>;
+}
 
-        let cert_pem = fs::read_to_string(&cert_path)
-            .await
-            .context("Failed to read certificate")?;
+enum PendingCleanup {
+    Http01 { token: String },
+    Dns01 { fqdn: String, record_id: String },
+}
 
-        let key_pem = fs::read_to_string(&key_path)
-            .await
-            .context("Failed to read private key")?;
+/// `_acme-challenge.<domain>` for an authorization identifier. Wildcard
+/// authorizations carry the base domain, so the `*.` is stripped either way.
+pub fn dns01_record_name(domain: &str) -> String {
+    format!("_acme-challenge.{}", domain.trim_start_matches("*."))
+}
 
-        TlsConfig::from_pem(&cert_pem, &key_pem)
-    }
+/// TXT value for a key authorization: base64url(SHA-256(key_authorization)).
+pub fn dns01_txt_value(key_authorization: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(key_authorization.as_bytes()))
+}
 
-    /// Check if a certificate exists for the given domain
-    pub async fn has_certificate(&self, domain: &str) -> bool {
-        let cert_path = self
-            .config
-            .cache_dir
-            .join("certs")
-            .join(domain)
-            .join("fullchain.pem");
+/// The `detail` of an ACME problem document, or the raw body.
+fn acme_error_detail(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string))
+        .unwrap_or_else(|| body.chars().take(300).collect())
+}
 
-        cert_path.exists()
-    }
-
-    /// Get certificate directory for a domain
-    pub fn cert_dir(&self, domain: &str) -> PathBuf {
-        self.config.cache_dir.join("certs").join(domain)
-    }
-
-    /// Get all cached certificate domains
-    pub async fn cached_domains(&self) -> Result<Vec<String>> {
-        let certs_dir = self.config.cache_dir.join("certs");
-
-        if !certs_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let mut domains = Vec::new();
-        let mut entries = fs::read_dir(&certs_dir).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            if entry.file_type().await?.is_dir() {
-                if let Some(name) = entry.file_name().to_str() {
-                    domains.push(name.to_string());
-                }
-            }
-        }
-
-        Ok(domains)
-    }
+/// The error detail of the first failed challenge in an authorization body.
+fn challenge_error(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    v.get("challenges")?
+        .as_array()?
+        .iter()
+        .find_map(|c| c.get("error")?.get("detail")?.as_str().map(str::to_string))
 }
 
 /// Result of a successful certificate request
@@ -840,273 +835,6 @@ fn add_json_domains(json: &str, add: &mut impl FnMut(String)) {
             }
         }
     }
-}
-
-/// Certificate renewal manager
-pub struct CertificateRenewalManager {
-    client: Arc<AcmeClient>,
-    /// The primary domain used as the on-disk directory key (always the instance domain)
-    instance_domain: String,
-    /// Full domain list (including all SANs) — updated dynamically as apps are added
-    domains: Vec<String>,
-    /// Database pool for discovering new app subdomains at runtime
-    db: Option<crate::DbPool>,
-    /// Hot-reload handle to update the running HTTPS server's TLS cert without restart
-    tls_reload: Option<Arc<TlsReloadHandle>>,
-    renewal_check_interval: Duration,
-    renewal_before_expiry: Duration,
-}
-
-impl CertificateRenewalManager {
-    /// Create a new renewal manager.
-    /// `instance_domain` is the primary domain (used as the on-disk cert directory key).
-    pub fn new(client: Arc<AcmeClient>, instance_domain: String, domains: Vec<String>) -> Self {
-        Self {
-            client,
-            instance_domain,
-            domains,
-            db: None,
-            tls_reload: None,
-            renewal_check_interval: Duration::from_secs(12 * 60 * 60), // 12 hours
-            renewal_before_expiry: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
-        }
-    }
-
-    /// Enable dynamic domain discovery: check the DB on each cycle for new app subdomains
-    /// and reissue the cert immediately when new ones are found.
-    /// `tls_reload` is `None` when HTTPS is not yet running (no cert available at startup).
-    pub fn with_db_and_reload(
-        mut self,
-        db: crate::DbPool,
-        tls_reload: Option<Arc<TlsReloadHandle>>,
-    ) -> Self {
-        self.db = Some(db);
-        self.tls_reload = tls_reload;
-        self
-    }
-
-    /// With custom renewal interval
-    pub fn with_interval(mut self, interval: Duration) -> Self {
-        self.renewal_check_interval = interval;
-        self
-    }
-
-    /// Start the renewal background task
-    pub async fn run(mut self) {
-        info!("Certificate renewal manager started");
-
-        // New app/tenant domains should obtain HTTPS within ~a minute of being
-        // added, not at the next (12h) renewal tick — critical for multi-tenant
-        // apps that register a subdomain per tenant. So poll for new domains on
-        // a short interval and only run the expiry-based renewal check on the
-        // longer `renewal_check_interval`.
-        let new_domain_poll = Duration::from_secs(60);
-        let mut since_renewal = Duration::ZERO;
-
-        loop {
-            // Check for new app subdomains and reissue cert if any are missing coverage
-            self.check_and_add_new_domains().await;
-
-            if since_renewal >= self.renewal_check_interval {
-                if let Err(e) = self.check_renewals().await {
-                    error!(error = %e, "Error checking certificate renewals");
-                }
-                since_renewal = Duration::ZERO;
-            }
-
-            sleep(new_domain_poll).await;
-            since_renewal += new_domain_poll;
-        }
-    }
-
-    /// Query the DB for all current app domains. If any are not in the current SAN list,
-    /// reissue the cert immediately and hot-reload the TLS acceptor.
-    async fn check_and_add_new_domains(&mut self) {
-        let db = match &self.db {
-            Some(db) => db.clone(),
-            None => return,
-        };
-
-        // Collect every configured app and service domain from the DB
-        let configured = match collect_cert_domains(&db).await {
-            Ok(d) => d,
-            Err(e) => {
-                warn!(error = %e, "Could not query domains for cert check");
-                return;
-            }
-        };
-        let new_domains: Vec<String> = configured
-            .into_iter()
-            .filter(|d| {
-                !self
-                    .domains
-                    .iter()
-                    .any(|known| known.eq_ignore_ascii_case(d))
-            })
-            .collect();
-
-        if new_domains.is_empty() {
-            return;
-        }
-
-        info!(
-            new_domains = ?new_domains,
-            "New app subdomains found — reissuing TLS certificate to add coverage"
-        );
-
-        let mut all_domains = self.domains.clone();
-        for d in &new_domains {
-            if !all_domains.contains(d) && all_domains.len() < 100 {
-                all_domains.push(d.clone());
-            }
-        }
-
-        match self.client.request_certificate(&all_domains).await {
-            Ok(result) => {
-                let _ = self
-                    .client
-                    .save_certificate(&result, &self.instance_domain)
-                    .await;
-                if let Some(ref reload) = self.tls_reload {
-                    match TlsConfig::from_pem(
-                        &result.certificate_chain_pem,
-                        &result.private_key_pem,
-                    ) {
-                        Ok(tls) => {
-                            reload.update(tls.acceptor);
-                            self.domains = all_domains;
-                            info!("TLS certificate reissued and hot-reloaded for new subdomains");
-                        }
-                        Err(e) => {
-                            warn!(error = %e, "New cert issued but could not parse PEM for reload");
-                        }
-                    }
-                } else {
-                    self.domains = all_domains;
-                }
-            }
-            Err(e) => {
-                warn!(error = %e, new_domains = ?new_domains, "Failed to reissue cert for new subdomains");
-            }
-        }
-    }
-
-    /// Check all certificates for expiry-based renewal
-    async fn check_renewals(&self) -> Result<()> {
-        let domains = self.client.cached_domains().await?;
-
-        for domain in domains {
-            if let Err(e) = self.check_domain_renewal(&domain).await {
-                warn!(domain = %domain, error = %e, "Failed to check/renew certificate");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Check if a specific domain's certificate needs renewal
-    async fn check_domain_renewal(&self, domain: &str) -> Result<()> {
-        let cert_dir = self.client.cert_dir(domain);
-        let cert_path = cert_dir.join("fullchain.pem");
-
-        if !cert_path.exists() {
-            return Ok(());
-        }
-
-        let cert_pem = fs::read_to_string(&cert_path).await?;
-
-        // Parse certificate to check expiry
-        if let Some(expiry) = parse_cert_expiry(&cert_pem) {
-            let now = chrono::Utc::now();
-            let renewal_threshold =
-                chrono::Duration::seconds(self.renewal_before_expiry.as_secs() as i64);
-
-            if expiry - now < renewal_threshold {
-                info!(
-                    domain = %domain,
-                    expiry = %expiry,
-                    "Certificate expires soon, renewing"
-                );
-
-                let renewal_domains = if self.domains.is_empty() {
-                    vec![domain.to_string()]
-                } else {
-                    self.domains.clone()
-                };
-                let result = self.client.request_certificate(&renewal_domains).await?;
-                self.client
-                    .save_certificate(&result, &self.instance_domain)
-                    .await?;
-
-                // Hot-reload the new cert into the running HTTPS server
-                if let Some(ref reload) = self.tls_reload {
-                    if let Ok(tls) =
-                        TlsConfig::from_pem(&result.certificate_chain_pem, &result.private_key_pem)
-                    {
-                        reload.update(tls.acceptor);
-                        info!(domain = %domain, "Certificate renewed and hot-reloaded");
-                    }
-                } else {
-                    info!(domain = %domain, "Certificate renewed successfully");
-                }
-            } else {
-                debug!(
-                    domain = %domain,
-                    expiry = %expiry,
-                    "Certificate still valid"
-                );
-            }
-        } else {
-            // Can't parse expiry — skip to avoid overwriting valid multi-domain certs
-            debug!(domain = %domain, "Could not parse certificate expiry, skipping renewal check");
-        }
-
-        Ok(())
-    }
-}
-
-/// Parse certificate PEM to get expiry date
-/// Extract DNS SANs from the first certificate in a PEM chain.
-/// Returns an empty vec if parsing fails rather than propagating an error.
-fn extract_sans_from_pem(pem_str: &str) -> Vec<String> {
-    use x509_parser::prelude::*;
-
-    let pem_block: ::pem::Pem = match ::pem::parse(pem_str) {
-        Ok(b) => b,
-        Err(_) => return vec![],
-    };
-
-    let (_, cert) = match X509Certificate::from_der(pem_block.contents()) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
-
-    let mut sans = Vec::new();
-    for ext in cert.extensions() {
-        if let ParsedExtension::SubjectAlternativeName(san) = ext.parsed_extension() {
-            for name in &san.general_names {
-                if let GeneralName::DNSName(dns) = name {
-                    sans.push(dns.to_string());
-                }
-            }
-        }
-    }
-    sans
-}
-
-fn parse_cert_expiry(pem_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    // Extract the first certificate from the chain
-    let pem_block: ::pem::Pem = ::pem::parse(pem_str).ok()?;
-
-    if pem_block.tag() != "CERTIFICATE" {
-        return None;
-    }
-
-    // Parse X.509 certificate to get not_after
-    // This is a simplified check - for production use x509-parser
-    // For now, we'll return None to trigger a renewal check
-
-    None
 }
 
 #[cfg(test)]

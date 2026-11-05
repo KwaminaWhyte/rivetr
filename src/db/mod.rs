@@ -1825,6 +1825,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 132: per-domain certificates, custom uploads, DNS providers (idempotent)
+    execute_sql(pool, include_str!("../../migrations/132_certificates.sql")).await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

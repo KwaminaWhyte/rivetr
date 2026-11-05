@@ -140,6 +140,7 @@ export default [
       route("secrets", "routes/integrations/secrets.tsx"),
       route("destinations", "routes/integrations/destinations.tsx"),
       route("tunnels", "routes/integrations/tunnels.tsx"),
+      route("dns", "routes/integrations/dns.tsx"),
       route("webhooks", "routes/integrations/webhooks.tsx"),
       route("webhook-events", "routes/integrations/webhook-events.tsx"),
     ]),
