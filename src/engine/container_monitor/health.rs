@@ -54,6 +54,10 @@ pub(super) async fn check_and_restart(
             Some(id) if !id.is_empty() => id,
             _ => continue,
         };
+        // Stopped on purpose by a volume backup or restore; it restarts them itself.
+        if crate::engine::backup_jobs::maintenance::is_container_paused(container_id) {
+            continue;
+        }
 
         // Get app name for logging and metrics
         let app_name: Option<(String,)> = sqlx::query_as("SELECT name FROM apps WHERE id = ?")
@@ -468,6 +472,9 @@ pub(super) async fn check_databases(
             Some(id) if !id.is_empty() => id,
             _ => continue,
         };
+        if crate::engine::backup_jobs::maintenance::is_container_paused(container_id) {
+            continue;
+        }
 
         let container_name = database.container_name();
 

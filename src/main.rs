@@ -374,6 +374,7 @@ async fn main() -> Result<()> {
         runtime.clone(),
         config.database_backup.clone(),
         config.server.data_dir.clone(),
+        config.auth.encryption_key.clone(),
     );
 
     // Start stats retention and aggregation task
@@ -401,7 +402,14 @@ async fn main() -> Result<()> {
     );
 
     // Start backup scheduler (runs backup_schedules entries on their cron expressions)
-    rivetr::engine::scheduler::spawn_backup_scheduler(db.clone());
+    rivetr::engine::scheduler::spawn_backup_scheduler(
+        rivetr::engine::backup_jobs::JobContext::from_state(&state),
+    );
+
+    // Scheduled volume backups and the missed-backup checker
+    rivetr::engine::backup_jobs::spawn_backup_jobs(
+        rivetr::engine::backup_jobs::JobContext::from_state(&state),
+    );
 
     // Start autoscaling checker (evaluates autoscaling rules every 60s)
     rivetr::engine::scheduler::spawn_autoscaling_checker(db.clone());

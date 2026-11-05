@@ -4,6 +4,8 @@
 //! then executes them in the app's running container using the container runtime.
 
 use crate::db::{App, ScheduledJob};
+use crate::engine::backup_jobs::notify::{self, BackupEvent, BackupOutcome, BackupResourceKind};
+use crate::engine::backup_jobs::{s3_store, JobContext};
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 use chrono::Utc;
@@ -33,83 +35,31 @@ struct BackupScheduleRow {
     next_run_at: Option<String>,
 }
 
-/// Compute the next run time from a cron expression
+/// Compute the next run time from a cron expression (5-field standard cron or the
+/// crate's 6/7-field form).
 fn next_run_from_cron_expr(cron_expression: &str) -> Option<String> {
-    Schedule::from_str(cron_expression)
+    crate::engine::backup_jobs::schedule::next_run_after(cron_expression, Utc::now())
         .ok()
-        .and_then(|s| s.upcoming(Utc).next())
         .map(|t| t.to_rfc3339())
 }
 
 /// Execute a single backup schedule entry
-async fn execute_backup_schedule(db: &DbPool, schedule: &BackupScheduleRow) {
+async fn execute_backup_schedule(ctx: &JobContext, schedule: &BackupScheduleRow) {
     tracing::info!(
         schedule_id = %schedule.id,
         backup_type = %schedule.backup_type,
         "Running scheduled backup"
     );
 
-    let result: Result<(), anyhow::Error> = match schedule.backup_type.as_str() {
-        "instance" => {
-            // Replicate the same logic as the API backup endpoint
-            let data_dir_row: Option<(String,)> =
-                sqlx::query_as("SELECT value FROM settings WHERE key = 'data_dir'")
-                    .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
-
-            // Use a sensible default — the backup module resolves the real path
-            let data_dir = data_dir_row
-                .map(|(v,)| std::path::PathBuf::from(v))
-                .unwrap_or_else(|| std::path::PathBuf::from("data"));
-            let config_path = std::path::PathBuf::from("rivetr.toml");
-            let acme_cache_dir = std::path::PathBuf::from("data/acme");
-
-            crate::backup::create_backup(db, &data_dir, &config_path, &acme_cache_dir, None)
-                .await
-                .map(|_| ())
-        }
-        "s3_database" | "s3_volume" => {
-            // S3-based backups require a config and target
-            match (&schedule.s3_config_id, &schedule.target_id) {
-                (Some(config_id), Some(target_id)) => {
-                    tracing::info!(
-                        config_id = %config_id,
-                        target_id = %target_id,
-                        backup_type = %schedule.backup_type,
-                        "S3 backup triggered by schedule"
-                    );
-                    // The actual S3 backup logic lives in the s3 API module.
-                    // For the scheduler we record the intent — the s3 backup
-                    // tables track status independently.
-                    Ok(())
-                }
-                _ => Err(anyhow::anyhow!(
-                    "s3 backup schedule missing s3_config_id or target_id"
-                )),
-            }
-        }
-        other => Err(anyhow::anyhow!("Unknown backup_type: {}", other)),
-    };
-
+    // Record the run first so a slow backup is not started again on the next tick.
     let now = Utc::now().to_rfc3339();
     let next_run = next_run_from_cron_expr(&schedule.cron_expression);
-
-    if let Err(e) = &result {
-        tracing::error!(
-            schedule_id = %schedule.id,
-            error = %e,
-            "Scheduled backup failed"
-        );
-    }
-
-    // Update last_run_at and next_run_at regardless of success/failure
     if let Err(e) =
         sqlx::query("UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?")
             .bind(&now)
             .bind(&next_run)
             .bind(&schedule.id)
-            .execute(db)
+            .execute(&ctx.db)
             .await
     {
         tracing::warn!(
@@ -118,10 +68,324 @@ async fn execute_backup_schedule(db: &DbPool, schedule: &BackupScheduleRow) {
             "Failed to update backup schedule run times"
         );
     }
+
+    let result = match schedule.backup_type.as_str() {
+        "instance" => {
+            let result = run_instance_backup(ctx, schedule.s3_config_id.as_deref(), "scheduled")
+                .await
+                .map(|_| ());
+            prune_instance_backups(
+                ctx,
+                schedule.s3_config_id.as_deref(),
+                schedule.retention_days,
+            )
+            .await;
+            result
+        }
+        "s3_database" => run_s3_database_schedule(ctx, schedule).await,
+        "s3_volume" => run_s3_volume_schedule(ctx, schedule).await,
+        other => Err(anyhow::anyhow!("Unknown backup_type: {}", other)),
+    };
+
+    if let Err(e) = &result {
+        tracing::error!(
+            schedule_id = %schedule.id,
+            error = %e,
+            "Scheduled backup failed"
+        );
+    }
+}
+
+/// Run one `backup_schedules` entry now (manual "Run now" from the API). The S3
+/// database/volume types go through the same code as the scheduler; run times are
+/// updated by the caller.
+pub async fn run_backup_schedule_now(ctx: &JobContext, schedule_id: &str) {
+    let row: Option<BackupScheduleRow> = sqlx::query_as(
+        r#"SELECT id, backup_type, cron_expression, target_id, s3_config_id,
+                  retention_days, last_run_at, next_run_at
+           FROM backup_schedules WHERE id = ?"#,
+    )
+    .bind(schedule_id)
+    .fetch_optional(&ctx.db)
+    .await
+    .ok()
+    .flatten();
+    let Some(schedule) = row else {
+        return;
+    };
+    let result = match schedule.backup_type.as_str() {
+        "s3_database" => run_s3_database_schedule(ctx, &schedule).await,
+        "s3_volume" => run_s3_volume_schedule(ctx, &schedule).await,
+        "instance" => {
+            let result = run_instance_backup(ctx, schedule.s3_config_id.as_deref(), "manual")
+                .await
+                .map(|_| ());
+            prune_instance_backups(
+                ctx,
+                schedule.s3_config_id.as_deref(),
+                schedule.retention_days,
+            )
+            .await;
+            result
+        }
+        other => Err(anyhow::anyhow!("Unknown backup_type: {}", other)),
+    };
+    if let Err(e) = result {
+        tracing::error!(schedule_id, error = %e, "Manual backup schedule run failed");
+    }
+}
+
+/// Create an instance backup (database, config, certificates), optionally copy it to
+/// S3, and notify. Shared by the scheduler and the API.
+pub async fn run_instance_backup(
+    ctx: &JobContext,
+    s3_config_id: Option<&str>,
+    trigger: &str,
+) -> anyhow::Result<crate::backup::BackupResult> {
+    let started = std::time::Instant::now();
+    let result = async {
+        let backup = crate::backup::create_backup(
+            &ctx.db,
+            &ctx.data_dir,
+            &ctx.config_path,
+            &ctx.acme_cache_dir,
+            None,
+        )
+        .await?;
+        let mut destination = "local".to_string();
+        if let Some(config_id) = s3_config_id.filter(|s| !s.is_empty()) {
+            let config = s3_store::load_config(&ctx.db, config_id).await?;
+            s3_store::upload_and_record(
+                &ctx.db,
+                ctx.secret(),
+                &config,
+                "instance",
+                None,
+                &backup.path,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Backup saved locally but the S3 upload failed: {e:#}"))?;
+            destination = format!("local + {}", notify::s3_destination(&config.name));
+        }
+        Ok::<_, anyhow::Error>((backup, destination))
+    }
+    .await;
+
+    let event = |outcome| {
+        BackupEvent::new(outcome, BackupResourceKind::Instance, "Rivetr instance").trigger(trigger)
+    };
+    match result {
+        Ok((backup, destination)) => {
+            notify::notify_backup(
+                &ctx.db,
+                event(BackupOutcome::Succeeded)
+                    .size(Some(backup.size as i64))
+                    .duration(Some(started.elapsed()))
+                    .destination(destination),
+            );
+            Ok(backup)
+        }
+        Err(e) => {
+            notify::notify_backup(
+                &ctx.db,
+                event(BackupOutcome::Failed).error(format!("{e:#}")),
+            );
+            Err(e)
+        }
+    }
+}
+
+/// `s3_database` schedule: dump the database and copy the dump to S3.
+async fn run_s3_database_schedule(
+    ctx: &JobContext,
+    schedule: &BackupScheduleRow,
+) -> anyhow::Result<()> {
+    let (Some(config_id), Some(database_id)) = (&schedule.s3_config_id, &schedule.target_id) else {
+        anyhow::bail!("s3 backup schedule missing s3_config_id or target_id");
+    };
+    let database: crate::db::ManagedDatabase =
+        sqlx::query_as("SELECT * FROM databases WHERE id = ?")
+            .bind(database_id)
+            .fetch_optional(&ctx.db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Database {database_id} not found"))?;
+    let result = async {
+        let config = s3_store::load_config(&ctx.db, config_id).await?;
+        let task = crate::engine::database_backups::DatabaseBackupTask::new(
+            ctx.db.clone(),
+            ctx.runtime.clone(),
+            ctx.db_backup.clone(),
+            ctx.data_dir.clone(),
+        );
+        let backup = task
+            .backup_database(&database, crate::db::BackupType::Scheduled)
+            .await?;
+        crate::engine::backup_jobs::database::upload_database_backup(
+            ctx, &database, &backup, &config,
+        )
+        .await?;
+        prune_s3_older_than(
+            ctx,
+            &config,
+            "database",
+            Some(database_id),
+            schedule.retention_days,
+            None,
+        )
+        .await;
+        Ok::<_, anyhow::Error>((backup, config))
+    }
+    .await;
+    match result {
+        Ok((backup, config)) => {
+            crate::engine::backup_jobs::database::notify_database_backup(
+                &ctx.db,
+                &database,
+                "scheduled",
+                Ok(&backup),
+                crate::engine::backup_jobs::database::destination_label(Some(&config)),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            crate::engine::backup_jobs::database::notify_database_backup(
+                &ctx.db,
+                &database,
+                "scheduled",
+                Err(format!("{e:#}")),
+                "S3".to_string(),
+            );
+            Err(e)
+        }
+    }
+}
+
+/// `s3_volume` schedule: back a volume up straight to S3.
+async fn run_s3_volume_schedule(
+    ctx: &JobContext,
+    schedule: &BackupScheduleRow,
+) -> anyhow::Result<()> {
+    use crate::engine::backup_jobs::volume;
+    let (Some(config_id), Some(volume_id)) = (&schedule.s3_config_id, &schedule.target_id) else {
+        anyhow::bail!("s3 backup schedule missing s3_config_id or target_id");
+    };
+    let vol = volume::get_volume(&ctx.db, volume_id).await?;
+    let destination = volume::resolve_destination(&ctx.db, "s3", Some(config_id)).await?;
+    let config = match &destination {
+        volume::Destination::S3(c) => (**c).clone(),
+        volume::Destination::Local => unreachable!("resolve_destination(\"s3\") is S3"),
+    };
+    let record = volume::create_pending(
+        &ctx.db,
+        &vol.id,
+        "scheduled",
+        &destination,
+        volume::SnapshotMode::Live,
+    )
+    .await?;
+    volume::run_backup_job(ctx, &vol, record, destination, volume::SnapshotMode::Live).await?;
+    prune_s3_older_than(
+        ctx,
+        &config,
+        "volume",
+        Some(volume_id),
+        schedule.retention_days,
+        None,
+    )
+    .await;
+    Ok(())
+}
+
+/// Local instance backup names to delete: older than `cutoff`, never the newest one
+/// (a schedule that has been failing must not leave the instance with no backup).
+pub fn instance_backups_to_prune(
+    backups: &[crate::backup::BackupInfo],
+    cutoff: chrono::DateTime<Utc>,
+) -> Vec<String> {
+    let mut sorted: Vec<&crate::backup::BackupInfo> = backups.iter().collect();
+    sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    sorted
+        .into_iter()
+        .skip(1)
+        .filter(|b| {
+            crate::engine::backup_jobs::missed::parse_timestamp(&b.created_at)
+                .is_some_and(|t| t < cutoff)
+        })
+        .map(|b| b.name.clone())
+        .collect()
+}
+
+/// Apply an instance schedule's `retention_days` to local instance backups and, when
+/// the schedule uploads to S3, to that config's instance backups.
+async fn prune_instance_backups(ctx: &JobContext, s3_config_id: Option<&str>, days: i64) {
+    if days <= 0 {
+        return;
+    }
+    let cutoff = Utc::now() - chrono::Duration::days(days);
+    match crate::backup::list_backups(&ctx.data_dir) {
+        Ok(backups) => {
+            for name in instance_backups_to_prune(&backups, cutoff) {
+                if let Err(e) = crate::backup::delete_backup(&ctx.data_dir, &name) {
+                    tracing::warn!(backup = %name, error = %e, "Instance retention: delete failed");
+                } else {
+                    tracing::info!(backup = %name, days, "Pruned instance backup past retention");
+                }
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "Instance retention: cannot list backups"),
+    }
+    if let Some(config_id) = s3_config_id.filter(|s| !s.is_empty()) {
+        if let Ok(config) = s3_store::load_config(&ctx.db, config_id).await {
+            // Keep the newest S3 copy whatever its age.
+            let newest: Option<String> = sqlx::query_scalar(
+                "SELECT id FROM s3_backups WHERE storage_config_id = ? AND backup_type = 'instance' \
+                 AND status = 'completed' ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(&config.id)
+            .fetch_optional(&ctx.db)
+            .await
+            .ok()
+            .flatten();
+            prune_s3_older_than(ctx, &config, "instance", None, days, newest.as_deref()).await;
+        }
+    }
+}
+
+/// Delete S3 backups of one resource older than `days` (the retention of the generic
+/// backup schedules).
+async fn prune_s3_older_than(
+    ctx: &JobContext,
+    config: &crate::db::S3StorageConfig,
+    kind: &str,
+    source_id: Option<&str>,
+    days: i64,
+    keep_id: Option<&str>,
+) {
+    if days <= 0 {
+        return;
+    }
+    let cutoff = (Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+    let old: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM s3_backups WHERE storage_config_id = ? AND backup_type = ?          AND source_id IS ? AND status = 'completed' AND created_at < ?",
+    )
+    .bind(&config.id)
+    .bind(kind)
+    .bind(source_id)
+    .bind(&cutoff)
+    .fetch_all(&ctx.db)
+    .await
+    .unwrap_or_default();
+    for id in old.into_iter().filter(|id| Some(id.as_str()) != keep_id) {
+        crate::engine::backup_jobs::volume::delete_s3_backup(ctx, &id).await;
+        let _ = sqlx::query("DELETE FROM volume_backups WHERE s3_backup_id = ?")
+            .bind(&id)
+            .execute(&ctx.db)
+            .await;
+    }
 }
 
 /// One cycle of the backup scheduler: find due schedules and run them
-async fn backup_scheduler_cycle(db: &DbPool) {
+async fn backup_scheduler_cycle(ctx: &JobContext) {
     let now = Utc::now().to_rfc3339();
 
     let due: Vec<BackupScheduleRow> = match sqlx::query_as(
@@ -131,7 +395,7 @@ async fn backup_scheduler_cycle(db: &DbPool) {
            WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?"#,
     )
     .bind(&now)
-    .fetch_all(db)
+    .fetch_all(&ctx.db)
     .await
     {
         Ok(rows) => rows,
@@ -143,15 +407,15 @@ async fn backup_scheduler_cycle(db: &DbPool) {
     };
 
     for schedule in due {
-        let db_clone = db.clone();
+        let ctx = ctx.clone();
         tokio::spawn(async move {
-            execute_backup_schedule(&db_clone, &schedule).await;
+            execute_backup_schedule(&ctx, &schedule).await;
         });
     }
 }
 
 /// Spawn the background backup scheduler (checks every 60 seconds)
-pub fn spawn_backup_scheduler(db: DbPool) {
+pub fn spawn_backup_scheduler(ctx: JobContext) {
     tracing::info!("Starting backup scheduler (60s interval)");
 
     tokio::spawn(async move {
@@ -163,7 +427,8 @@ pub fn spawn_backup_scheduler(db: DbPool) {
 
         loop {
             tick.tick().await;
-            crate::utils::supervise::guarded("backup_scheduler", backup_scheduler_cycle(&db)).await;
+            crate::utils::supervise::guarded("backup_scheduler", backup_scheduler_cycle(&ctx))
+                .await;
         }
     });
 }
@@ -768,4 +1033,39 @@ pub fn spawn_autoscaling_checker(db: DbPool) {
             crate::utils::supervise::guarded("autoscaling", autoscaling_cycle(&db)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod backup_retention_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn info(name: &str, created_at: &str) -> crate::backup::BackupInfo {
+        crate::backup::BackupInfo {
+            name: name.into(),
+            size: 1,
+            created_at: created_at.into(),
+        }
+    }
+
+    #[test]
+    fn instance_retention_prunes_old_but_keeps_newest() {
+        let cutoff = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap();
+        let backups = vec![
+            info("a", "2026-10-01T00:00:00Z"),
+            info("b", "2026-10-20T00:00:00Z"),
+            info("c", "2026-11-03T00:00:00Z"),
+        ];
+        let mut pruned = instance_backups_to_prune(&backups, cutoff);
+        pruned.sort();
+        assert_eq!(pruned, vec!["a", "b"]);
+
+        // All old: the newest survives anyway.
+        let old = vec![
+            info("x", "2026-01-01T00:00:00Z"),
+            info("y", "2026-02-01T00:00:00Z"),
+        ];
+        assert_eq!(instance_backups_to_prune(&old, cutoff), vec!["x"]);
+        assert!(instance_backups_to_prune(&[], cutoff).is_empty());
+    }
 }
