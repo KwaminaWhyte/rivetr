@@ -9,10 +9,10 @@ import { TopBarTarget } from "@/components/shell/top-bar-slot";
 import { useBreadcrumb, type BreadcrumbItem } from "@/lib/breadcrumb-context";
 import { getDefaultBreadcrumbs } from "@/lib/default-breadcrumbs";
 import {
-  isResourceLinkActive,
+  activeResourceSection,
   matchResource,
-  resourceSections,
   type ResourceMatch,
+  type ResourceNavOptions,
 } from "@/lib/resource-nav";
 import {
   useProjectDetail,
@@ -111,31 +111,19 @@ function ProjectCrumb({ projectId, current }: { projectId: string; current?: boo
   );
 }
 
-/** Title of the active section link inside a resource, e.g. "Deployments". */
-function resourceSubPage(match: ResourceMatch, pathname: string): string | null {
+/** Crumbs after the resource itself: the section, then any detail page. */
+function resourceSubCrumbs(
+  match: ResourceMatch,
+  pathname: string,
+  options: ResourceNavOptions
+): BreadcrumbItem[] {
   const path = pathname.replace(/\/+$/, "");
-  if (path === match.base) return null;
-  let best: { title: string; len: number } | null = null;
-  for (const section of resourceSections(match)) {
-    for (const item of section.items) {
-      const candidates = [
-        { title: item.title, url: item.url, exact: item.exact },
-        ...(item.children ?? []).map((c) => ({
-          title: c.exact ? item.title : `${item.title} · ${c.title}`,
-          url: c.url,
-          exact: c.exact,
-        })),
-      ];
-      for (const c of candidates) {
-        if (c.url === match.base) continue;
-        if (isResourceLinkActive(path, c.url, c.exact) && (!best || c.url.length > best.len)) {
-          best = { title: c.title, len: c.url.length };
-        }
-      }
-    }
-  }
-  if (/\/deployments\/[^/]+$/.test(path)) return "Deployment";
-  return best?.title ?? null;
+  if (path === match.base) return [];
+  const section = activeResourceSection(match, pathname, options);
+  if (!section || section.id === "general") return [{ label: "Page not found" }];
+  if (path === section.url) return [{ label: section.title }];
+  const detail = section.id === "deployments" ? "Deployment" : "Details";
+  return [{ label: section.title, href: section.url }, { label: detail }];
 }
 
 function ResourceCrumbs({ match }: { match: ResourceMatch }) {
@@ -143,10 +131,11 @@ function ResourceCrumbs({ match }: { match: ResourceMatch }) {
   const info = useResourceInfo(match);
   const { data: project } = useProjectDetail(info.projectId);
   const { data: environments = [] } = useProjectEnvironments(
-    match.kind === "app" ? info.projectId : null
+    info.environmentId ? info.projectId : null
   );
   const { data: servers = [] } = useServers(match.kind === "server");
-  const sub = resourceSubPage(match, pathname);
+  const subCrumbs = resourceSubCrumbs(match, pathname, { dbType: info.variant });
+  const sub = subCrumbs.length > 0;
   const env = environments.find((e) => e.id === info.environmentId);
 
   const crumbs: ReactNode[] = [];
@@ -156,14 +145,14 @@ function ResourceCrumbs({ match }: { match: ResourceMatch }) {
       <CrumbSwitcher
         key="server"
         label={info.name ?? "Server"}
-        href={`${match.base}/files`}
+        href={match.base}
         current={!sub}
         heading="Servers"
         activeId={match.id}
         options={servers.map((s) => ({
           id: s.id,
           label: s.name,
-          href: `/servers/${s.id}/files`,
+          href: `/servers/${s.id}`,
           hint: s.host,
         }))}
       />
@@ -203,9 +192,16 @@ function ResourceCrumbs({ match }: { match: ResourceMatch }) {
       />
     );
   }
-  if (sub) {
-    crumbs.push(<CrumbSwitcher key="sub" label={sub} current />);
-  }
+  subCrumbs.forEach((c, i) => {
+    crumbs.push(
+      <CrumbSwitcher
+        key={`sub-${i}`}
+        label={c.label}
+        href={c.href}
+        current={i === subCrumbs.length - 1}
+      />
+    );
+  });
 
   return (
     <>
@@ -265,15 +261,15 @@ function PageCrumbs({ items }: { items: BreadcrumbItem[] }) {
 }
 
 /**
- * Shell top bar: team / project / environment / resource breadcrumbs, each
- * with a switcher, then the page's status pill, and the page's primary
+ * Shell top bar: team / project / environment / resource / section
+ * breadcrumbs (switchers where the crumb has siblings), then the page's status pill, and the page's primary
  * actions on the right (both filled through TopBarPortal).
  */
-export function TopBar() {
+export function TopBar({ crumbs: override }: { crumbs?: BreadcrumbItem[] } = {}) {
   const { pathname } = useLocation();
   const { items } = useBreadcrumb();
-  const match = matchResource(pathname);
-  const crumbs = items.length > 0 ? items : getDefaultBreadcrumbs(pathname);
+  const match = override ? null : matchResource(pathname);
+  const crumbs = override ?? (items.length > 0 ? items : getDefaultBreadcrumbs(pathname));
 
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-4">
