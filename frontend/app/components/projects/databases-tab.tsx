@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { EmptyState } from "@/components/page";
 import { Link } from "react-router";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -422,14 +423,12 @@ export function DatabasesTab({ project, projectId }: DatabasesTabProps) {
         </CardHeader>
         <CardContent>
           {!project.databases || project.databases.length === 0 ? (
-            <div className="py-8 text-center">
-              <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                No databases in this project yet. Use the
-                {" "}<span className="font-medium">Create Database</span>{" "}
-                button above to add one.
-              </p>
-            </div>
+            <EmptyState
+              compact
+              icon={<Database />}
+              title="No databases yet"
+              description="Create a managed PostgreSQL, MySQL, Redis or other database."
+            />
           ) : (
             <div className="rounded-md border">
               <Table>

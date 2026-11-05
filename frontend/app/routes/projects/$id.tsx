@@ -4,7 +4,8 @@ import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Edit2, MoreVertical, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit2, FolderKanban, MoreVertical, Trash2, Variable } from "lucide-react";
+import { HeaderSkeleton, PageHeader, SectionSkeleton } from "@/components/page";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -114,27 +115,9 @@ export default function ProjectDetailPage() {
   if (projectLoading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button aria-label="Back" variant="ghost" size="icon" asChild>
-            <Link to="/projects">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="flex-1">
-            <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-            <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
-          </div>
-        </div>
-        <Card>
-          <CardContent className="py-8">
-            <div className="h-6 w-32 bg-muted animate-pulse rounded mb-4" />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-32 bg-muted animate-pulse rounded" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <HeaderSkeleton />
+        <SectionSkeleton rows={3} />
+        <SectionSkeleton rows={2} />
       </div>
     );
   }
@@ -163,45 +146,46 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button aria-label="Back" variant="ghost" size="icon" asChild>
-          <Link to="/projects">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold">{project.name}</h1>
-          {project.description && (
-            <p className="text-muted-foreground">{project.description}</p>
-          )}
-        </div>
-        <Button variant="outline" onClick={openEditDialog}>
-          <Edit2 className="mr-2 h-4 w-4" />
-          Edit
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button aria-label="More actions" variant="ghost" size="icon">
-              <MoreVertical className="h-4 w-4" />
+      <PageHeader
+        icon={<FolderKanban />}
+        title={project.name}
+        description={project.description || "No description"}
+        actions={
+          <>
+            <Button variant="outline" onClick={openEditDialog}>
+              <Edit2 className="h-4 w-4" />
+              Edit
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={openEditDialog}>
-              <Edit2 className="mr-2 h-4 w-4" />
-              Edit Project
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => setIsDeleteDialogOpen(true)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button aria-label="More actions" variant="ghost" size="icon">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={openEditDialog}>
+                  <Edit2 className="mr-2 h-4 w-4" />
+                  Edit Project
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to={`/projects/${project.id}/env-vars`}>
+                    <Variable className="mr-2 h-4 w-4" />
+                    Shared variables
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Project
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
       {/* Applications */}
       <AppsTab project={project} projectId={id!} />

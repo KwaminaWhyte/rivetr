@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router";
+import { useState, useMemo, useEffect } from "react";
+import { EmptyState } from "@/components/page";
+import { Link, useSearchParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { bulkApi } from "@/lib/api/bulk";
@@ -12,6 +13,7 @@ import {
   Settings2,
   Square,
   X,
+  Box,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getPrimaryDomain } from "@/lib/utils";
@@ -71,7 +73,15 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
   const queryClient = useQueryClient();
   const { currentTeamId } = useTeamContext();
   const [isAddAppDialogOpen, setIsAddAppDialogOpen] = useState(false);
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>("all");
+  // Breadcrumb environment switcher links here with ?env=<id>
+  const [searchParams] = useSearchParams();
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string>(
+    () => searchParams.get("env") ?? "all"
+  );
+  useEffect(() => {
+    const env = searchParams.get("env");
+    if (env) setSelectedEnvironmentId(env);
+  }, [searchParams]);
   const [selectedAppIds, setSelectedAppIds] = useState<Set<string>>(new Set());
   const [isBulkLoading, setIsBulkLoading] = useState(false);
 
@@ -298,13 +308,12 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
             </div>
           )}
           {filteredApps.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-muted-foreground">
-                No applications in this project yet. Use the{" "}
-                <span className="font-medium">Create New App</span> button
-                above to add one.
-              </p>
-            </div>
+            <EmptyState
+              compact
+              icon={<Box />}
+              title={selectedEnvironmentId === "all" ? "No applications yet" : "No applications in this environment"}
+              description="Use Create New App to deploy from Git, an image or a ZIP upload."
+            />
           ) : (
             <>
               <div className="rounded-md border">
