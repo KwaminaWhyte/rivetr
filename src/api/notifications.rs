@@ -87,7 +87,7 @@ pub async fn create_channel(
         if super::authz::is_privileged_user(&user) {
             super::authz::authorize_team_assignment(&state, &user, Some(tid)).await?;
         } else {
-            require_team_role(&state.db, tid, &user.id, TeamRole::Admin).await?;
+            require_team_ability(&state.db, tid, &user.id, Some(Ability::SettingsManage)).await?;
         }
     }
 
@@ -760,54 +760,9 @@ fn validate_channel_config(channel_type: &str, config: &serde_json::Value) -> Re
 // Team Notification Channels
 // -------------------------------------------------------------------------
 
-use crate::db::{TeamRole, User};
-
-/// Get the current user's membership in a team
-async fn get_user_team_membership(
-    pool: &sqlx::SqlitePool,
-    team_id: &str,
-    user_id: &str,
-) -> Result<Option<crate::db::TeamMember>, sqlx::Error> {
-    sqlx::query_as("SELECT * FROM team_members WHERE team_id = ? AND user_id = ?")
-        .bind(team_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
-}
-
-/// Require that the current user has at least the specified role in the team.
-/// The synthetic "system" user (admin API token) is treated as an owner of every team.
-async fn require_team_role(
-    pool: &sqlx::SqlitePool,
-    team_id: &str,
-    user_id: &str,
-    required_role: TeamRole,
-) -> Result<crate::db::TeamMember, ApiError> {
-    // Admin API token ("system") has owner-level access to every team
-    if user_id == "system" {
-        return Ok(crate::db::TeamMember {
-            id: "system".to_string(),
-            team_id: team_id.to_string(),
-            user_id: "system".to_string(),
-            role: "owner".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        });
-    }
-
-    let membership = get_user_team_membership(pool, team_id, user_id)
-        .await?
-        .ok_or_else(|| ApiError::forbidden("You are not a member of this team"))?;
-
-    let user_role = membership.role_enum();
-    if !user_role.has_at_least(required_role) {
-        return Err(ApiError::forbidden(format!(
-            "This action requires {} role or higher",
-            required_role
-        )));
-    }
-
-    Ok(membership)
-}
+use super::authz::require_team_ability;
+use crate::db::rbac::Ability;
+use crate::db::User;
 
 /// List notification channels for a team
 ///
@@ -822,7 +777,7 @@ pub async fn list_team_channels(
     }
 
     // Check user is a member of the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Viewer).await?;
+    require_team_ability(&state.db, &team_id, &user.id, None).await?;
 
     let channels = sqlx::query_as::<_, NotificationChannel>(
         "SELECT * FROM notification_channels WHERE team_id = ? ORDER BY created_at DESC",
@@ -853,7 +808,7 @@ pub async fn get_team_channel(
     }
 
     // Check user is a member of the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Viewer).await?;
+    require_team_ability(&state.db, &team_id, &user.id, None).await?;
 
     let channel = sqlx::query_as::<_, NotificationChannel>(
         "SELECT * FROM notification_channels WHERE id = ? AND team_id = ?",
@@ -881,7 +836,7 @@ pub async fn create_team_channel(
     }
 
     // Check user has admin+ role in the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::SettingsManage)).await?;
 
     // Verify team exists
     let team_exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM teams WHERE id = ?")
@@ -973,7 +928,7 @@ pub async fn update_team_channel(
     }
 
     // Check user has admin+ role in the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::SettingsManage)).await?;
 
     // Check if channel exists and belongs to the team
     let existing = sqlx::query_as::<_, NotificationChannel>(
@@ -1068,7 +1023,7 @@ pub async fn delete_team_channel(
     }
 
     // Check user has admin+ role in the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::SettingsManage)).await?;
 
     let result = sqlx::query("DELETE FROM notification_channels WHERE id = ? AND team_id = ?")
         .bind(&channel_id)
@@ -1106,7 +1061,7 @@ pub async fn test_team_channel(
     }
 
     // Check user has admin+ role in the team
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::SettingsManage)).await?;
 
     let channel = sqlx::query_as::<_, NotificationChannel>(
         "SELECT * FROM notification_channels WHERE id = ? AND team_id = ?",

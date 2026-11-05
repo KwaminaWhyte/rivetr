@@ -724,6 +724,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/teams/{id}/members/{user_id}",
             delete(teams::remove_member),
         )
+        // Team roles: built-in presets and custom roles (granular RBAC)
+        .route(
+            "/teams/{id}/roles",
+            get(teams::list_roles).post(teams::create_role),
+        )
+        .route(
+            "/teams/{id}/roles/{role_id}",
+            put(teams::update_role).delete(teams::delete_role),
+        )
         // Team member resource permissions (fine-grained RBAC)
         .route(
             "/teams/{id}/members/{user_id}/permissions",

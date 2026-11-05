@@ -18,17 +18,19 @@ use std::sync::Arc;
 
 use axum::{
     body::Body,
-    extract::{OriginalUri, State},
+    extract::{MatchedPath, OriginalUri, State},
     http::{Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 
-use crate::db::{App, ManagedDatabase, Project, Server, Service, TeamRole, User};
+use crate::db::rbac::{self, Ability, AbilityArea, AbilitySet, ResourceOverride};
+use crate::db::{App, ManagedDatabase, Project, Server, Service, TeamMember, User};
 use crate::AppState;
 use sqlx::SqlitePool;
 
 use super::error::ApiError;
+use super::scopes::ActionKind;
 
 /// Instance admins and the admin-token "system" user bypass team scoping.
 fn is_privileged(user: &User) -> bool {
@@ -378,27 +380,427 @@ pub async fn authorize_service_write(
     Ok(service)
 }
 
-/// Does the user hold at least the developer role in `team_id`? Privileged users
-/// always do; `None` (global / legacy) is writable by any authenticated user.
+/// Can the user change resources in `team_id` (the `apps.write` ability)?
+/// Privileged users always can; `None` (global / legacy) is writable by any
+/// authenticated user.
 pub async fn can_write_team(
     state: &Arc<AppState>,
     user: &User,
     team_id: Option<&str>,
 ) -> Result<bool, ApiError> {
+    Ok(require(&state.db, user, team_id, Ability::AppsWrite)
+        .await
+        .is_ok())
+}
+
+/// Authorize an app and require the `apps.deploy` ability on it, for handlers
+/// outside the `/api/apps/:id` path that deploy an app (tag deploys, ...).
+pub async fn authorize_app_deploy(
+    state: &Arc<AppState>,
+    user: &User,
+    app_id: &str,
+) -> Result<App, ApiError> {
+    let app = authorize_app(state, user, app_id).await?;
+    authorize_action(
+        &state.db,
+        user,
+        ResourceKind::App,
+        app_id,
+        ActionKind::Deploy,
+    )
+    .await?;
+    Ok(app)
+}
+
+/// Authorize a service and require the `services.deploy` ability on it.
+pub async fn authorize_service_deploy(
+    state: &Arc<AppState>,
+    user: &User,
+    service_id: &str,
+) -> Result<Service, ApiError> {
+    let service = authorize_service(state, user, service_id).await?;
+    authorize_action(
+        &state.db,
+        user,
+        ResourceKind::Service,
+        service_id,
+        ActionKind::Deploy,
+    )
+    .await?;
+    Ok(service)
+}
+
+// ── Team RBAC (abilities) ────────────────────────────────────────────────────
+
+/// The ability needed to perform `action` on a resource in `area`. `None` means
+/// membership (or share) is enough.
+pub fn ability_for(area: AbilityArea, action: ActionKind) -> Option<Ability> {
+    use AbilityArea as A;
+    use ActionKind as K;
+    Some(match (area, action) {
+        (A::Apps, K::Read) => Ability::AppsRead,
+        (A::Apps, K::Deploy) => Ability::AppsDeploy,
+        (A::Apps, K::Write | K::Admin) => Ability::AppsWrite,
+        (A::Apps, K::Delete) => Ability::AppsDelete,
+        (A::Services, K::Read) => Ability::ServicesRead,
+        (A::Services, K::Deploy) => Ability::ServicesDeploy,
+        (A::Services, K::Write | K::Admin) => Ability::ServicesWrite,
+        (A::Services, K::Delete) => Ability::ServicesDelete,
+        (A::Databases, K::Read) => Ability::DatabasesRead,
+        (A::Databases, K::Deploy) => Ability::DatabasesDeploy,
+        (A::Databases, K::Write | K::Admin) => Ability::DatabasesWrite,
+        (A::Databases, K::Delete) => Ability::DatabasesDelete,
+        (A::Projects, K::Read) => Ability::ProjectsRead,
+        (A::Projects, K::Deploy | K::Write | K::Admin) => Ability::ProjectsWrite,
+        (A::Projects, K::Delete) => Ability::ProjectsDelete,
+        (A::Apps | A::Services | A::Databases | A::Projects, K::Secrets) => Ability::EnvReadSecrets,
+        (A::Servers, K::Read) => Ability::ServersRead,
+        (A::Servers, _) => Ability::ServersManage,
+        (A::Integrations, K::Read) => return None,
+        (A::Integrations, _) => Ability::IntegrationsManage,
+    })
+}
+
+/// The ability area a resource kind belongs to.
+fn area_of(kind: ResourceKind) -> AbilityArea {
+    match kind {
+        ResourceKind::App
+        | ResourceKind::Deployment
+        | ResourceKind::Volume
+        | ResourceKind::Preview => AbilityArea::Apps,
+        ResourceKind::Database => AbilityArea::Databases,
+        ResourceKind::Service => AbilityArea::Services,
+        ResourceKind::Project | ResourceKind::Environment => AbilityArea::Projects,
+        ResourceKind::Server => AbilityArea::Servers,
+        ResourceKind::SshKey
+        | ResourceKind::NotificationSubscription
+        | ResourceKind::S3Backup
+        | ResourceKind::BuildServer
+        | ResourceKind::NotificationChannel
+        | ResourceKind::Destination
+        | ResourceKind::CaCertificate
+        | ResourceKind::S3Config
+        | ResourceKind::Tunnel
+        | ResourceKind::GitHubApp
+        | ResourceKind::GitHubInstallation => AbilityArea::Integrations,
+    }
+}
+
+/// Abilities a stored role value grants in a team: a preset, or a custom role
+/// of that team. A custom role that no longer exists grants nothing; an unknown
+/// value falls back to the viewer preset (what the old role parser did).
+pub async fn role_abilities(
+    db: &SqlitePool,
+    team_id: &str,
+    role: &str,
+) -> Result<AbilitySet, ApiError> {
+    if let Some(id) = rbac::custom_role_id(role) {
+        let json: Option<String> =
+            sqlx::query_scalar("SELECT abilities FROM team_roles WHERE id = ? AND team_id = ?")
+                .bind(id)
+                .bind(team_id)
+                .fetch_optional(db)
+                .await
+                .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+        return Ok(json
+            .map(|j| rbac::parse_abilities_json(&j))
+            .unwrap_or_default());
+    }
+    Ok(rbac::preset_abilities(rbac::legacy_role_to_preset(role)).unwrap_or_default())
+}
+
+/// The caller's role value in a team, if a member.
+pub async fn member_role(
+    db: &SqlitePool,
+    team_id: &str,
+    user_id: &str,
+) -> Result<Option<String>, ApiError> {
+    sqlx::query_scalar("SELECT role FROM team_members WHERE team_id = ? AND user_id = ?")
+        .bind(team_id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))
+}
+
+/// THE central team ability check. Instance admins and the admin token bypass;
+/// team-less (legacy/global) resources are open to any authenticated user;
+/// otherwise the caller must be a member whose role grants `ability`.
+pub async fn require(
+    db: &SqlitePool,
+    user: &User,
+    team_id: Option<&str>,
+    ability: Ability,
+) -> Result<(), ApiError> {
     if is_privileged(user) {
-        return Ok(true);
+        return Ok(());
     }
     let Some(team_id) = team_id else {
-        return Ok(true);
+        return Ok(());
     };
-    let role: Option<String> =
-        sqlx::query_scalar("SELECT role FROM team_members WHERE team_id = ? AND user_id = ?")
+    let role = member_role(db, team_id, &user.id)
+        .await?
+        .ok_or_else(|| ApiError::forbidden("You are not a member of this team"))?;
+    enforce_two_factor(db, team_id, &user.id).await?;
+    if role_abilities(db, team_id, &role).await?.contains(&ability) {
+        Ok(())
+    } else {
+        Err(missing_ability(ability))
+    }
+}
+
+/// Does `team_id` require 2FA while `user_id` has neither TOTP nor a passkey?
+/// Such a member is blocked from the team's resources (and team management)
+/// until they set one up, whether they use a session or an API token.
+pub async fn two_factor_blocked(
+    db: &SqlitePool,
+    team_id: &str,
+    user_id: &str,
+) -> Result<bool, ApiError> {
+    let required: Option<i64> = sqlx::query_scalar("SELECT require_2fa FROM teams WHERE id = ?")
+        .bind(team_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| ApiError::internal(format!("2FA policy lookup failed: {e}")))?;
+    if required != Some(1) {
+        return Ok(false);
+    }
+    let totp: Option<bool> = sqlx::query_scalar("SELECT totp_enabled FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| ApiError::internal(format!("2FA status lookup failed: {e}")))?;
+    if totp == Some(true) {
+        return Ok(false);
+    }
+    let has_passkey = crate::api::passkeys::user_has_passkey(db, user_id)
+        .await
+        .unwrap_or(false);
+    Ok(!has_passkey)
+}
+
+fn two_factor_error() -> ApiError {
+    ApiError::new(
+        super::error::ErrorCode::TwoFactorRequired,
+        "This team requires two-factor authentication. Set up an authenticator app or a passkey under Account > Security.",
+    )
+}
+
+/// Reject a member blocked by the team's 2FA requirement.
+async fn enforce_two_factor(db: &SqlitePool, team_id: &str, user_id: &str) -> Result<(), ApiError> {
+    if two_factor_blocked(db, team_id, user_id).await? {
+        Err(two_factor_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn missing_ability(ability: Ability) -> ApiError {
+    ApiError::forbidden(format!(
+        "Your team role does not allow this action (needs `{}`)",
+        ability.as_str()
+    ))
+}
+
+/// Team-route check that also returns the caller's membership. `None` ability
+/// means membership is enough. The admin token user ("system") acts as an owner
+/// of every team; instance admins need a membership like everyone else (team
+/// routes have always behaved this way).
+pub async fn require_team_ability(
+    db: &SqlitePool,
+    team_id: &str,
+    user_id: &str,
+    ability: Option<Ability>,
+) -> Result<TeamMember, ApiError> {
+    if user_id == "system" {
+        return Ok(TeamMember {
+            id: "system".to_string(),
+            team_id: team_id.to_string(),
+            user_id: "system".to_string(),
+            role: "owner".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        });
+    }
+    let membership: TeamMember =
+        sqlx::query_as("SELECT * FROM team_members WHERE team_id = ? AND user_id = ?")
             .bind(team_id)
-            .bind(&user.id)
-            .fetch_optional(&state.db)
+            .bind(user_id)
+            .fetch_optional(db)
             .await
-            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
-    Ok(role.is_some_and(|r| TeamRole::from(r).has_at_least(TeamRole::Developer)))
+            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?
+            .ok_or_else(|| ApiError::forbidden("You are not a member of this team"))?;
+    if let Some(ability) = ability {
+        // Reading the team itself stays possible so the dashboard can explain
+        // the block; managing it needs 2FA like its resources do.
+        enforce_two_factor(db, team_id, user_id).await?;
+        if !role_abilities(db, team_id, &membership.role)
+            .await?
+            .contains(&ability)
+        {
+            return Err(missing_ability(ability));
+        }
+    }
+    Ok(membership)
+}
+
+/// Validate a role value for assignment in a team: a preset key, or
+/// `custom:<id>` naming a custom role of that team. Returns the normalized value.
+pub async fn validate_role_value(
+    db: &SqlitePool,
+    team_id: &str,
+    role: &str,
+) -> Result<String, ApiError> {
+    let lower = role.trim().to_ascii_lowercase();
+    if rbac::is_preset(&lower) {
+        return Ok(lower);
+    }
+    if let Some(id) = rbac::custom_role_id(role.trim()) {
+        let exists: Option<String> =
+            sqlx::query_scalar("SELECT id FROM team_roles WHERE id = ? AND team_id = ?")
+                .bind(id)
+                .bind(team_id)
+                .fetch_optional(db)
+                .await
+                .map_err(|e| ApiError::internal(format!("role lookup failed: {e}")))?;
+        if exists.is_some() {
+            return Ok(format!("{}{id}", rbac::CUSTOM_ROLE_PREFIX));
+        }
+        return Err(ApiError::validation_field(
+            "role",
+            "Custom role not found in this team",
+        ));
+    }
+    Err(ApiError::validation_field(
+        "role",
+        "Invalid role. Use owner, admin, developer, deployer, viewer or custom:<role id>",
+    ))
+}
+
+/// May a member holding `actor_role` manage a member holding (or hand out)
+/// `target_role`? Owners may do anything. Nobody else may touch the owner role,
+/// or a role with abilities the actor does not have (no privilege escalation
+/// through custom roles).
+pub async fn can_manage_role(
+    db: &SqlitePool,
+    team_id: &str,
+    actor_role: &str,
+    target_role: &str,
+) -> Result<bool, ApiError> {
+    if rbac::role_is_owner(actor_role) {
+        return Ok(true);
+    }
+    if rbac::role_is_owner(target_role) {
+        return Ok(false);
+    }
+    let actor = role_abilities(db, team_id, actor_role).await?;
+    let target = role_abilities(db, team_id, target_role).await?;
+    Ok(target.is_subset(&actor))
+}
+
+/// The per-resource override that applies to a member: overrides on the
+/// resource itself, its app (for deployments, volumes, previews) and its
+/// project are combined, and a deny anywhere wins over an allow.
+async fn resource_override(
+    db: &SqlitePool,
+    team_id: &str,
+    user_id: &str,
+    kind: ResourceKind,
+    id: &str,
+    owner: &ResourceOwner,
+) -> Result<Option<ResourceOverride>, ApiError> {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT resource_type, resource_id, permission FROM team_resource_permissions \
+         WHERE team_id = ? AND user_id = ?",
+    )
+    .bind(team_id)
+    .bind(user_id)
+    .fetch_all(db)
+    .await
+    .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    Ok(pick_override(&rows, kind, id, owner))
+}
+
+/// Pure part of [`resource_override`].
+fn pick_override(
+    rows: &[(String, String, String)],
+    kind: ResourceKind,
+    id: &str,
+    owner: &ResourceOwner,
+) -> Option<ResourceOverride> {
+    let own_type = match kind {
+        ResourceKind::App => Some("app"),
+        ResourceKind::Database => Some("database"),
+        ResourceKind::Service => Some("service"),
+        ResourceKind::Project => Some("project"),
+        _ => None,
+    };
+    let find = |t: &str, rid: &str| {
+        rows.iter()
+            .find(|(rt, ri, _)| rt == t && ri == rid)
+            .and_then(|(_, _, p)| ResourceOverride::parse(p))
+    };
+    let found = [
+        own_type.and_then(|t| find(t, id)),
+        owner.app_id.as_deref().and_then(|a| find("app", a)),
+        owner.project_id.as_deref().and_then(|p| find("project", p)),
+    ];
+    // Deny wins over allow, wherever it is set (resource, app or project).
+    if found.contains(&Some(ResourceOverride::Deny)) {
+        Some(ResourceOverride::Deny)
+    } else if found.contains(&Some(ResourceOverride::Allow)) {
+        Some(ResourceOverride::Allow)
+    } else {
+        None
+    }
+}
+
+/// Authorize `action` on one team resource: the caller's role abilities in the
+/// owning team, with per-resource allow/deny overrides on top. Visibility
+/// (membership or an app share) is checked separately by `authorize_*`.
+pub(crate) async fn authorize_action(
+    db: &SqlitePool,
+    user: &User,
+    kind: ResourceKind,
+    id: &str,
+    action: ActionKind,
+) -> Result<(), ApiError> {
+    if is_privileged(user) {
+        return Ok(());
+    }
+    let Some(needed) = ability_for(area_of(kind), action) else {
+        return Ok(());
+    };
+    let Some(owner) = resource_owner(db, kind, id).await? else {
+        return Ok(());
+    };
+    let Some(team_id) = owner.team_id.clone() else {
+        return Ok(());
+    };
+    let Some(role) = member_role(db, &team_id, &user.id).await? else {
+        // Reached through an app share: view only.
+        return if action == ActionKind::Read {
+            Ok(())
+        } else {
+            Err(ApiError::forbidden(
+                "Shared resources are read-only for the receiving team",
+            ))
+        };
+    };
+    enforce_two_factor(db, &team_id, &user.id).await?;
+    let abilities = role_abilities(db, &team_id, &role).await?;
+    let over = resource_override(db, &team_id, &user.id, kind, id, &owner).await?;
+    if rbac::effective_allows(&abilities, over, needed) {
+        Ok(())
+    } else if over == Some(ResourceOverride::Deny) {
+        Err(ApiError::forbidden(
+            "Your access to this resource has been denied by a team administrator",
+        ))
+    } else {
+        Err(missing_ability(needed))
+    }
 }
 
 /// Authorize access to an app and return it. Honors `app_shares` so an app shared
@@ -560,6 +962,19 @@ pub async fn resource_authz_middleware(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
     );
+    // What the request does, from the same route table that maps API token
+    // scopes (api/scopes.rs). Unmapped routes fall back to read/write by method.
+    let action = request
+        .extensions()
+        .get::<MatchedPath>()
+        .and_then(|m| {
+            super::scopes::classify_request(request.method(), m.as_str(), request.uri().query())
+        })
+        .unwrap_or(if mutating {
+            ActionKind::Write
+        } else {
+            ActionKind::Read
+        });
 
     if let Some((kind, id)) = target {
         // Resolve the caller. Auth middleware already validated the token, so this
@@ -610,10 +1025,9 @@ pub async fn resource_authz_middleware(
         if let Err(e) = result {
             return Err(e.into_response());
         }
-        if mutating {
-            if let Err(e) = authorize_write(&state.db, &user, kind, id).await {
-                return Err(e.into_response());
-            }
+        // Team RBAC: the role's abilities plus per-resource overrides.
+        if let Err(e) = authorize_action(&state.db, &user, kind, id, action).await {
+            return Err(e.into_response());
         }
     }
 
@@ -651,45 +1065,16 @@ fn team_sql(kind: ResourceKind) -> Option<&'static str> {
     })
 }
 
-/// Mutating requests need at least the `developer` team role. Viewers are read-only, and
-/// a team that only holds an `app_shares` grant (view-only) cannot write at all.
-/// Instance admins, legacy team-less resources and kinds without a team lookup pass.
+/// Mutating requests need the matching write ability (`apps.write`, ...) in the
+/// owning team; a team that only holds an `app_shares` grant cannot write.
+/// Instance admins, legacy team-less resources and kinds without a team pass.
 async fn authorize_write(
     db: &SqlitePool,
     user: &User,
     kind: ResourceKind,
     id: &str,
 ) -> Result<(), ApiError> {
-    if is_privileged(user) {
-        return Ok(());
-    }
-    let Some(sql) = team_sql(kind) else {
-        return Ok(());
-    };
-    let team: Option<Option<String>> = sqlx::query_scalar(sql)
-        .bind(id)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
-    let Some(Some(team_id)) = team else {
-        return Ok(());
-    };
-    let role: Option<String> =
-        sqlx::query_scalar("SELECT role FROM team_members WHERE team_id = ? AND user_id = ?")
-            .bind(&team_id)
-            .bind(&user.id)
-            .fetch_optional(db)
-            .await
-            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
-    match role {
-        Some(r) if TeamRole::from(r.clone()).has_at_least(TeamRole::Developer) => Ok(()),
-        Some(_) => Err(ApiError::forbidden(
-            "Your team role is read-only; this action requires the developer role or higher",
-        )),
-        None => Err(ApiError::forbidden(
-            "Shared resources are read-only for the receiving team",
-        )),
-    }
+    authorize_action(db, user, kind, id, ActionKind::Write).await
 }
 
 const VOLUME_APP_SQL: &str = "SELECT app_id FROM volumes WHERE id = ?";
@@ -860,7 +1245,7 @@ pub(crate) fn request_token(request: &Request<Body>) -> Option<String> {
 }
 
 /// May `user` restrict an API token to `team_id`? Instance admins may pick any
-/// team; everyone else must be a member.
+/// team; everyone else must be a member whose role has `tokens.manage`.
 pub async fn authorize_token_team(
     state: &Arc<AppState>,
     user: &User,
@@ -874,7 +1259,7 @@ pub async fn authorize_token_team(
             "You can only restrict a token to a team you belong to",
         ));
     }
-    Ok(())
+    require(&state.db, user, Some(team_id), Ability::TokensManage).await
 }
 
 /// Owning team, project and app of a resource addressed by a request path.
@@ -985,10 +1370,9 @@ pub(crate) fn resource_listed(
 pub(crate) async fn check_token_restrictions(
     state: &Arc<AppState>,
     ctx: &super::api_tokens::TokenContext,
-    action: super::scopes::ActionKind,
+    action: ActionKind,
     request: Request<Body>,
 ) -> Result<Request<Body>, Response> {
-    use super::scopes::ActionKind;
     let deny = |m: &str| ApiError::forbidden(m.to_string()).into_response();
 
     if action == ActionKind::Admin {
@@ -1397,13 +1781,17 @@ mod tests {
             .await
             .unwrap();
         for sql in [
-            "CREATE TABLE apps (id TEXT, team_id TEXT)",
+            "CREATE TABLE apps (id TEXT, team_id TEXT, project_id TEXT)",
+            "CREATE TABLE team_resource_permissions (team_id TEXT, user_id TEXT, resource_type TEXT, resource_id TEXT, permission TEXT)",
+            "CREATE TABLE teams (id TEXT, require_2fa INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE users (id TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE user_passkeys (id TEXT, user_id TEXT)",
             "CREATE TABLE ssh_keys (id TEXT, app_id TEXT)",
             "CREATE TABLE cloudflare_tunnels (id TEXT, team_id TEXT)",
             "CREATE TABLE team_members (team_id TEXT, user_id TEXT, role TEXT)",
             "INSERT INTO team_members VALUES ('t1', 'dev', 'developer')",
             "INSERT INTO team_members VALUES ('t1', 'view', 'viewer')",
-            "INSERT INTO apps VALUES ('a1', 't1')",
+            "INSERT INTO apps VALUES ('a1', 't1', NULL)",
             "INSERT INTO ssh_keys VALUES ('k-app', 'a1')",
             "INSERT INTO ssh_keys VALUES ('k-global', NULL)",
             "INSERT INTO cloudflare_tunnels VALUES ('tn1', 't1')",
@@ -1655,13 +2043,17 @@ mod tests {
             .await
             .unwrap();
         for sql in [
-            "CREATE TABLE apps (id TEXT, team_id TEXT)",
+            "CREATE TABLE apps (id TEXT, team_id TEXT, project_id TEXT)",
+            "CREATE TABLE team_resource_permissions (team_id TEXT, user_id TEXT, resource_type TEXT, resource_id TEXT, permission TEXT)",
+            "CREATE TABLE teams (id TEXT, require_2fa INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE users (id TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE user_passkeys (id TEXT, user_id TEXT)",
             "CREATE TABLE team_members (team_id TEXT, user_id TEXT, role TEXT)",
             "INSERT INTO team_members VALUES ('t1', 'dev', 'developer')",
             "INSERT INTO team_members VALUES ('t1', 'view', 'viewer')",
             "INSERT INTO team_members VALUES ('t1', 'adm', 'admin')",
-            "INSERT INTO apps VALUES ('a1', 't1')",
-            "INSERT INTO apps VALUES ('legacy', NULL)",
+            "INSERT INTO apps VALUES ('a1', 't1', NULL)",
+            "INSERT INTO apps VALUES ('legacy', NULL, NULL)",
         ] {
             sqlx::query(sql).execute(&db).await.unwrap();
         }
@@ -1689,9 +2081,253 @@ mod tests {
         );
         // Kinds without a team lookup are not role-gated here.
         assert!(
-            authorize_write(&db, &user("view", "member"), ResourceKind::Environment, "x")
+            authorize_write(&db, &user("view", "member"), ResourceKind::S3Backup, "x")
                 .await
                 .is_ok()
+        );
+    }
+
+    /// Presets, custom roles and per-resource overrides through the same check
+    /// the resource middleware runs.
+    #[tokio::test]
+    async fn abilities_presets_custom_roles_and_overrides() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for sql in [
+            "CREATE TABLE apps (id TEXT, team_id TEXT, project_id TEXT)",
+            "CREATE TABLE teams (id TEXT, require_2fa INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE users (id TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE user_passkeys (id TEXT, user_id TEXT)",
+            "CREATE TABLE deployments (id TEXT, app_id TEXT)",
+            "CREATE TABLE databases (id TEXT, team_id TEXT, project_id TEXT)",
+            "CREATE TABLE team_members (id TEXT, team_id TEXT, user_id TEXT, role TEXT, created_at TEXT)",
+            "CREATE TABLE team_roles (id TEXT, team_id TEXT, name TEXT, description TEXT, abilities TEXT, created_at TEXT, updated_at TEXT)",
+            "CREATE TABLE team_resource_permissions (team_id TEXT, user_id TEXT, resource_type TEXT, resource_id TEXT, permission TEXT)",
+            "INSERT INTO apps VALUES ('a1', 't1', 'p1'), ('a2', 't1', 'p2')",
+            "INSERT INTO deployments VALUES ('d1', 'a1')",
+            "INSERT INTO databases VALUES ('db1', 't1', 'p1')",
+            "INSERT INTO team_members VALUES ('m1', 't1', 'view', 'viewer', ''), \
+             ('m2', 't1', 'dep', 'deployer', ''), ('m3', 't1', 'dev', 'developer', ''), \
+             ('m4', 't1', 'ops', 'custom:r1', ''), ('m5', 't1', 'gone', 'custom:deleted', ''), \
+             ('m6', 't1', 'adm', 'admin', ''), ('m7', 't1', 'own', 'owner', '')",
+            "INSERT INTO team_roles VALUES ('r1', 't1', 'Ops', NULL, '[\"apps.read\",\"apps.deploy\",\"databases.read\"]', '', '')",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        let can = |u: &'static str, kind: ResourceKind, id: &'static str, action: ActionKind| {
+            let db = db.clone();
+            async move {
+                authorize_action(&db, &user(u, "member"), kind, id, action)
+                    .await
+                    .is_ok()
+            }
+        };
+        use ActionKind::*;
+        use ResourceKind::{App, Database, Deployment};
+
+        // Viewer reads but cannot deploy.
+        assert!(can("view", App, "a1", Read).await);
+        assert!(!can("view", App, "a1", Deploy).await);
+        assert!(!can("view", Deployment, "d1", Deploy).await);
+        // Deployer deploys but cannot edit or delete.
+        assert!(can("dep", App, "a1", Deploy).await);
+        assert!(can("dep", Deployment, "d1", Deploy).await);
+        assert!(!can("dep", App, "a1", Write).await);
+        assert!(!can("dep", App, "a1", Delete).await);
+        assert!(!can("dep", Database, "db1", Delete).await);
+        assert!(!can("dep", App, "a1", Secrets).await);
+        // Developer keeps the old developer powers, including delete and secrets.
+        assert!(can("dev", App, "a1", Delete).await);
+        assert!(can("dev", App, "a1", Secrets).await);
+        // Custom role: exactly its abilities.
+        assert!(can("ops", App, "a1", Deploy).await);
+        assert!(!can("ops", App, "a1", Write).await);
+        assert!(can("ops", Database, "db1", Read).await);
+        assert!(!can("ops", Database, "db1", Deploy).await);
+        // A deleted custom role grants nothing.
+        assert!(!can("gone", App, "a1", Read).await);
+
+        // Overrides on top of the role.
+        for sql in [
+            // Viewer may change a1 (allow) but nothing in project p2 (deny).
+            "INSERT INTO team_resource_permissions VALUES ('t1', 'view', 'app', 'a1', 'allow')",
+            "INSERT INTO team_resource_permissions VALUES ('t1', 'view', 'project', 'p2', 'deny')",
+            // Developer is denied a1 but allowed the rest of project p1.
+            "INSERT INTO team_resource_permissions VALUES ('t1', 'dev', 'app', 'a1', 'deny')",
+            "INSERT INTO team_resource_permissions VALUES ('t1', 'dev', 'project', 'p1', 'allow')",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        assert!(can("view", App, "a1", Write).await);
+        assert!(can("view", Deployment, "d1", Deploy).await);
+        // Allow never grants delete or secrets.
+        assert!(!can("view", App, "a1", Delete).await);
+        assert!(!can("view", App, "a1", Secrets).await);
+        // Project deny covers its apps, even reads.
+        assert!(!can("view", App, "a2", Read).await);
+        // Deny on the app wins over allow on its project.
+        assert!(!can("dev", App, "a1", Read).await);
+        assert!(!can("dev", Deployment, "d1", Deploy).await);
+        assert!(can("dev", Database, "db1", Delete).await);
+        // Instance admins bypass everything.
+        assert!(
+            authorize_action(&db, &user("root", "admin"), App, "a1", Delete)
+                .await
+                .is_ok()
+        );
+
+        // Team route checks and the "no escalation" rule.
+        assert!(
+            require_team_ability(&db, "t1", "adm", Some(Ability::TeamManage))
+                .await
+                .is_ok()
+        );
+        assert!(
+            require_team_ability(&db, "t1", "adm", Some(Ability::TeamDelete))
+                .await
+                .is_err()
+        );
+        assert!(
+            require_team_ability(&db, "t1", "dev", Some(Ability::TeamManage))
+                .await
+                .is_err()
+        );
+        assert!(require_team_ability(&db, "t1", "nobody", None)
+            .await
+            .is_err());
+        assert!(
+            require_team_ability(&db, "t1", "system", Some(Ability::TeamDelete))
+                .await
+                .is_ok()
+        );
+        assert!(can_manage_role(&db, "t1", "owner", "owner").await.unwrap());
+        assert!(!can_manage_role(&db, "t1", "admin", "owner").await.unwrap());
+        assert!(can_manage_role(&db, "t1", "admin", "custom:r1")
+            .await
+            .unwrap());
+        // A developer cannot hand out admin (it lacks team.manage).
+        assert!(!can_manage_role(&db, "t1", "developer", "admin")
+            .await
+            .unwrap());
+    }
+
+    /// A team that requires 2FA blocks members without TOTP or a passkey from
+    /// its resources and team management, with the `two_factor_required` code.
+    #[tokio::test]
+    async fn team_2fa_requirement_blocks_members_without_2fa() {
+        let db = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for sql in [
+            "CREATE TABLE teams (id TEXT, require_2fa INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE users (id TEXT, totp_enabled INTEGER NOT NULL DEFAULT 0)",
+            "CREATE TABLE user_passkeys (id TEXT, user_id TEXT)",
+            "CREATE TABLE apps (id TEXT, team_id TEXT, project_id TEXT)",
+            "CREATE TABLE team_members (id TEXT, team_id TEXT, user_id TEXT, role TEXT, created_at TEXT)",
+            "CREATE TABLE team_roles (id TEXT, team_id TEXT, name TEXT, description TEXT, abilities TEXT, created_at TEXT, updated_at TEXT)",
+            "CREATE TABLE team_resource_permissions (team_id TEXT, user_id TEXT, resource_type TEXT, resource_id TEXT, permission TEXT)",
+            "INSERT INTO teams VALUES ('t1', 1), ('t2', 0)",
+            "INSERT INTO users VALUES ('plain', 0), ('totp', 1), ('pk', 0)",
+            "INSERT INTO user_passkeys VALUES ('k1', 'pk')",
+            "INSERT INTO apps VALUES ('a1', 't1', NULL), ('a2', 't2', NULL)",
+            "INSERT INTO team_members VALUES ('m1', 't1', 'plain', 'admin', ''), \
+             ('m2', 't1', 'totp', 'admin', ''), ('m3', 't1', 'pk', 'admin', ''), \
+             ('m4', 't2', 'plain', 'admin', '')",
+        ] {
+            sqlx::query(sql).execute(&db).await.unwrap();
+        }
+        let act = |u: &'static str, id: &'static str| {
+            let db = db.clone();
+            async move {
+                authorize_action(
+                    &db,
+                    &user(u, "member"),
+                    ResourceKind::App,
+                    id,
+                    ActionKind::Read,
+                )
+                .await
+            }
+        };
+        let err = act("plain", "a1").await.unwrap_err();
+        assert_eq!(err.status(), StatusCode::FORBIDDEN);
+        assert!(format!("{err}").contains("two_factor_required"));
+        // TOTP or a passkey satisfies the requirement.
+        assert!(act("totp", "a1").await.is_ok());
+        assert!(act("pk", "a1").await.is_ok());
+        // Teams without the requirement are unaffected.
+        assert!(act("plain", "a2").await.is_ok());
+        // Team management is blocked too; reading the team is not.
+        assert!(
+            require_team_ability(&db, "t1", "plain", Some(Ability::TeamManage))
+                .await
+                .is_err()
+        );
+        assert!(require_team_ability(&db, "t1", "plain", None).await.is_ok());
+        assert!(
+            require(&db, &user("plain", "member"), Some("t1"), Ability::AppsRead)
+                .await
+                .is_err()
+        );
+        // Instance admins and the admin token are not team members and bypass.
+        assert!(authorize_action(
+            &db,
+            &user("root", "admin"),
+            ResourceKind::App,
+            "a1",
+            ActionKind::Write
+        )
+        .await
+        .is_ok());
+        assert!(two_factor_blocked(&db, "t1", "plain").await.unwrap());
+        assert!(!two_factor_blocked(&db, "t2", "plain").await.unwrap());
+    }
+
+    #[test]
+    fn override_specificity() {
+        let rows = vec![
+            ("project".to_string(), "p1".to_string(), "deny".to_string()),
+            ("app".to_string(), "a1".to_string(), "allow".to_string()),
+        ];
+        let owner = ResourceOwner {
+            team_id: Some("t".into()),
+            project_id: Some("p1".into()),
+            app_id: Some("a1".into()),
+        };
+        // Deny on the project wins over allow on the app.
+        assert_eq!(
+            pick_override(&rows, ResourceKind::App, "a1", &owner),
+            Some(ResourceOverride::Deny)
+        );
+        assert_eq!(
+            pick_override(&rows, ResourceKind::Deployment, "d1", &owner),
+            Some(ResourceOverride::Deny)
+        );
+        // Allow alone applies.
+        let in_p9 = ResourceOwner {
+            project_id: Some("p9".into()),
+            ..owner.clone()
+        };
+        assert_eq!(
+            pick_override(&rows, ResourceKind::App, "a1", &in_p9),
+            Some(ResourceOverride::Allow)
+        );
+        let other = ResourceOwner {
+            app_id: Some("a5".into()),
+            ..owner.clone()
+        };
+        assert_eq!(
+            pick_override(&rows, ResourceKind::App, "a5", &other),
+            Some(ResourceOverride::Deny)
+        );
+        assert_eq!(
+            pick_override(&rows, ResourceKind::App, "z", &ResourceOwner::default()),
+            None
         );
     }
 

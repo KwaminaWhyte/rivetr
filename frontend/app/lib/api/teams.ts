@@ -19,9 +19,34 @@ import type {
   TeamAuditLogQuery,
   ResourcePermission,
   SetResourcePermissionsRequest,
+  TeamRolesResponse,
+  CustomRole,
+  CustomRoleRequest,
 } from "@/types/api";
 
 export const teamsApi = {
+  // -------------------------------------------------------------------------
+  // Roles (presets + custom roles)
+  // -------------------------------------------------------------------------
+
+  /** Presets, the team's custom roles and the ability catalogue */
+  getRoles: (teamId: string) => apiRequest<TeamRolesResponse>(`/teams/${teamId}/roles`),
+
+  createRole: (teamId: string, data: CustomRoleRequest) =>
+    apiRequest<CustomRole>(`/teams/${teamId}/roles`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateRole: (teamId: string, roleId: string, data: CustomRoleRequest) =>
+    apiRequest<CustomRole>(`/teams/${teamId}/roles/${roleId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteRole: (teamId: string, roleId: string) =>
+    apiRequest<void>(`/teams/${teamId}/roles/${roleId}`, { method: "DELETE" }),
+
   // -------------------------------------------------------------------------
   // Team CRUD
   // -------------------------------------------------------------------------

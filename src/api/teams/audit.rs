@@ -6,13 +6,14 @@ use std::sync::Arc;
 
 use crate::db::{
     TeamAuditAction, TeamAuditLog, TeamAuditLogPage, TeamAuditLogResponse, TeamAuditResourceType,
-    TeamRole, User,
+    User,
 };
 use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
-use super::{require_team_role, ListAuditLogsQuery};
+use super::{require_team_ability, ListAuditLogsQuery};
+use crate::db::rbac::Ability;
 
 /// Helper function to log audit events
 pub async fn log_team_audit(
@@ -61,7 +62,7 @@ pub async fn list_audit_logs(
     }
 
     // Check user has admin+ role to view audit logs
-    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamAudit)).await?;
 
     // Pagination defaults
     let page = query.page.unwrap_or(1).max(1);

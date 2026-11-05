@@ -1760,6 +1760,11 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         )
         .await?;
     }
+    execute_sql(
+        pool,
+        include_str!("../../migrations/134_scoped_tokens_rbac.sql"),
+    )
+    .await?;
 
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;

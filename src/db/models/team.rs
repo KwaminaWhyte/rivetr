@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-/// Team roles with hierarchical permissions
+/// The built-in team role presets. Authorization is decided from the ability set
+/// a role resolves to (`super::rbac`); this enum remains for the preset names and
+/// the "only owners manage owners" rule. Members can also hold a custom role
+/// (`custom:<id>`), which this enum does not represent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TeamRole {
@@ -13,6 +16,8 @@ pub enum TeamRole {
     Admin,
     /// Create/edit apps, deploy, view logs
     Developer,
+    /// Read everything and deploy; no edits or deletes
+    Deployer,
     /// Read-only access to apps, deployments, logs
     Viewer,
 }
@@ -26,9 +31,10 @@ impl TeamRole {
     /// Get the permission level (higher = more permissions)
     pub fn level(&self) -> u8 {
         match self {
-            TeamRole::Owner => 4,
-            TeamRole::Admin => 3,
-            TeamRole::Developer => 2,
+            TeamRole::Owner => 5,
+            TeamRole::Admin => 4,
+            TeamRole::Developer => 3,
+            TeamRole::Deployer => 2,
             TeamRole::Viewer => 1,
         }
     }
@@ -51,7 +57,7 @@ impl TeamRole {
     pub fn can_deploy(&self) -> bool {
         matches!(
             self,
-            TeamRole::Owner | TeamRole::Admin | TeamRole::Developer
+            TeamRole::Owner | TeamRole::Admin | TeamRole::Developer | TeamRole::Deployer
         )
     }
 
@@ -98,6 +104,7 @@ impl std::fmt::Display for TeamRole {
             TeamRole::Owner => write!(f, "owner"),
             TeamRole::Admin => write!(f, "admin"),
             TeamRole::Developer => write!(f, "developer"),
+            TeamRole::Deployer => write!(f, "deployer"),
             TeamRole::Viewer => write!(f, "viewer"),
         }
     }
@@ -111,6 +118,7 @@ impl std::str::FromStr for TeamRole {
             "owner" => Ok(TeamRole::Owner),
             "admin" => Ok(TeamRole::Admin),
             "developer" => Ok(TeamRole::Developer),
+            "deployer" => Ok(TeamRole::Deployer),
             "viewer" => Ok(TeamRole::Viewer),
             _ => Err(format!("Unknown team role: {}", s)),
         }
@@ -164,6 +172,10 @@ pub struct TeamWithMemberCount {
     pub member_count: i64,
     /// Current user's role in this team (if applicable)
     pub user_role: Option<String>,
+    /// The team requires 2FA and the current user has neither TOTP nor a
+    /// passkey, so the team's resources are blocked for them.
+    #[serde(default)]
+    pub two_factor_blocked: bool,
 }
 
 /// Team member with user details
@@ -191,6 +203,12 @@ pub struct TeamDetail {
     pub members: Vec<TeamMemberWithUser>,
     /// Current user's role in this team
     pub user_role: Option<String>,
+    /// Abilities the current user's role grants in this team
+    #[serde(default)]
+    pub user_abilities: Vec<String>,
+    /// See `TeamWithMemberCount::two_factor_blocked`.
+    #[serde(default)]
+    pub two_factor_blocked: bool,
 }
 
 /// Request to create a new team

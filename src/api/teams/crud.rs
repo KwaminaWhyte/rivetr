@@ -8,9 +8,10 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::db::rbac::Ability;
 use crate::db::{
     CreateTeamRequest, Team, TeamAuditAction, TeamAuditResourceType, TeamDetail,
-    TeamMemberWithUser, TeamRole, TeamWithMemberCount, UpdateTeamRequest, User,
+    TeamMemberWithUser, TeamWithMemberCount, UpdateTeamRequest, User,
 };
 use crate::AppState;
 
@@ -18,7 +19,7 @@ use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
 use super::audit::log_team_audit;
 use super::{
-    generate_slug, get_user_team_membership, require_team_role, validate_create_request,
+    generate_slug, get_user_team_membership, require_team_ability, validate_create_request,
     validate_team_slug, validate_update_request,
 };
 
@@ -121,6 +122,9 @@ pub async fn list_teams(
                 .map(|m| m.role)
         };
 
+        let two_factor_blocked = user.id != "system"
+            && user_role.is_some()
+            && super::super::authz::two_factor_blocked(&state.db, &team.id, &user.id).await?;
         results.push(TeamWithMemberCount {
             id: team.id,
             name: team.name,
@@ -128,6 +132,7 @@ pub async fn list_teams(
             created_at: team.created_at,
             updated_at: team.updated_at,
             member_count: count.0,
+            two_factor_blocked,
             user_role,
         });
     }
@@ -147,7 +152,7 @@ pub async fn get_team(
     }
 
     // Check user is a member of the team and get their role
-    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
+    let membership = require_team_ability(&state.db, &id, &user.id, None).await?;
 
     let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
         .bind(&id)
@@ -168,7 +173,9 @@ pub async fn get_team(
                 WHEN 'owner' THEN 1
                 WHEN 'admin' THEN 2
                 WHEN 'developer' THEN 3
-                WHEN 'viewer' THEN 4
+                WHEN 'deployer' THEN 4
+                WHEN 'viewer' THEN 6
+                ELSE 5
             END,
             tm.created_at ASC
         "#,
@@ -176,6 +183,13 @@ pub async fn get_team(
     .bind(&id)
     .fetch_all(&state.db)
     .await?;
+
+    // What the caller may do here, so the dashboard can show the right controls.
+    let user_abilities = super::super::authz::role_abilities(&state.db, &id, &membership.role)
+        .await?
+        .iter()
+        .map(|a| a.as_str().to_string())
+        .collect();
 
     Ok(Json(TeamDetail {
         id: team.id,
@@ -185,6 +199,9 @@ pub async fn get_team(
         updated_at: team.updated_at,
         members,
         user_role: Some(membership.role),
+        user_abilities,
+        two_factor_blocked: user.id != "system"
+            && super::super::authz::two_factor_blocked(&state.db, &id, &user.id).await?,
     }))
 }
 
@@ -293,7 +310,7 @@ pub async fn update_team(
     validate_update_request(&req)?;
 
     // Check user has admin+ role
-    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &id, &user.id, Some(Ability::SettingsManage)).await?;
 
     // Check if team exists
     let _existing = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
@@ -336,57 +353,6 @@ pub async fn update_team(
     Ok(Json(team))
 }
 
-/// Check whether the given user satisfies the team's 2FA requirement.
-///
-/// Returns `Err(ApiError::forbidden(...))` when:
-/// - the team has `require_2fa = 1`, AND
-/// - the user does not have `totp_enabled = true` and has no passkey.
-#[allow(dead_code)]
-pub async fn check_2fa_enforcement(
-    db: &sqlx::SqlitePool,
-    user_id: &str,
-    team_id: &str,
-) -> Result<(), ApiError> {
-    // Fetch the team's require_2fa flag
-    let row: Option<(i64,)> = sqlx::query_as("SELECT require_2fa FROM teams WHERE id = ?")
-        .bind(team_id)
-        .fetch_optional(db)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to query team 2fa setting");
-            ApiError::database("Failed to check 2FA enforcement")
-        })?;
-
-    if let Some((require_2fa,)) = row {
-        if require_2fa == 1 {
-            // Check whether the user has 2FA enabled
-            let user_row: Option<(bool,)> =
-                sqlx::query_as("SELECT totp_enabled FROM users WHERE id = ?")
-                    .bind(user_id)
-                    .fetch_optional(db)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!(error = %e, "Failed to query user totp_enabled");
-                        ApiError::database("Failed to check user 2FA status")
-                    })?;
-
-            if let Some((totp_enabled,)) = user_row {
-                // A passkey (user verification required) satisfies 2FA too.
-                let has_passkey = crate::api::passkeys::user_has_passkey(db, user_id)
-                    .await
-                    .unwrap_or(false);
-                if !totp_enabled && !has_passkey {
-                    return Err(ApiError::forbidden(
-                        "This team requires 2FA. Please enable two-factor authentication.",
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Toggle the `require_2fa` setting for a team (owner only)
 /// PUT /api/teams/:id/2fa-enforcement
 pub async fn toggle_2fa_enforcement(
@@ -400,7 +366,7 @@ pub async fn toggle_2fa_enforcement(
     }
 
     // Only the team owner can change this setting
-    require_team_role(&state.db, &id, &user.id, TeamRole::Owner).await?;
+    require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamDelete)).await?;
 
     // Check the team exists and read current flag
     let team = sqlx::query_as::<_, Team>("SELECT * FROM teams WHERE id = ?")
@@ -449,7 +415,7 @@ pub async fn delete_team(
     }
 
     // Check user is owner
-    require_team_role(&state.db, &id, &user.id, TeamRole::Owner).await?;
+    require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamDelete)).await?;
 
     // Delete the team (members will be cascade deleted)
     let result = sqlx::query("DELETE FROM teams WHERE id = ?")

@@ -8,12 +8,13 @@ use axum::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::{ResourcePermission, SetResourcePermissionsRequest, TeamRole, User};
+use crate::db::rbac::Ability;
+use crate::db::{ResourcePermission, SetResourcePermissionsRequest, User};
 use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
-use super::require_team_role;
+use super::require_team_ability;
 
 /// GET /teams/:id/members/:user_id/permissions
 /// List all resource permission overrides for a specific team member.
@@ -32,9 +33,9 @@ pub async fn list_member_permissions(
     // Require at least admin to view another member's permissions;
     // the member themselves can view their own.
     if caller.id != user_id {
-        require_team_role(&state.db, &team_id, &caller.id, TeamRole::Admin).await?;
+        require_team_ability(&state.db, &team_id, &caller.id, Some(Ability::TeamManage)).await?;
     } else {
-        require_team_role(&state.db, &team_id, &caller.id, TeamRole::Viewer).await?;
+        require_team_ability(&state.db, &team_id, &caller.id, None).await?;
     }
 
     let perms = sqlx::query_as::<_, ResourcePermission>(
@@ -63,8 +64,22 @@ pub async fn set_member_permissions(
         return Err(ApiError::validation_field("user_id", e));
     }
 
-    // Only admins and owners can set permissions
-    require_team_role(&state.db, &team_id, &caller.id, TeamRole::Admin).await?;
+    // Only members with team.manage can set permissions, never on themselves
+    // (an allow override would widen their own access) and never on a member
+    // they could not manage (owners, or roles with abilities they lack).
+    let membership =
+        require_team_ability(&state.db, &team_id, &caller.id, Some(Ability::TeamManage)).await?;
+    let target_role = super::super::authz::member_role(&state.db, &team_id, &user_id)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Team member not found"))?;
+    if !crate::db::rbac::role_is_owner(&membership.role)
+        && (caller.id == user_id
+            || !super::can_manage_role(&state.db, &team_id, &membership.role, &target_role).await?)
+    {
+        return Err(ApiError::forbidden(
+            "You cannot change resource overrides for this member",
+        ));
+    }
 
     // Validate permission values
     for p in &req.permissions {
@@ -149,7 +164,7 @@ pub async fn delete_member_permission(
     }
 
     // Only admins and owners can delete permissions
-    require_team_role(&state.db, &team_id, &caller.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &caller.id, Some(Ability::TeamManage)).await?;
 
     let result = sqlx::query(
         "DELETE FROM team_resource_permissions WHERE id = ? AND team_id = ? AND user_id = ?",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Crown, Shield, Code, Eye, Loader2, Mail, MailPlus, Clock, RefreshCw, Trash2, Copy, Check } from "lucide-react";
+import { Loader2, Mail, MailPlus, Clock, RefreshCw, Trash2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,15 +22,16 @@ import {
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { TeamInvitation, TeamRole } from "@/types/api";
+import type { TeamInvitation, TeamRole, TeamRolesResponse } from "@/types/api";
+import { RoleIcon, RoleSelectItems, roleBadgeVariant, roleName } from "@/components/teams/role-utils";
 
 interface InvitationsTabProps {
   pendingInvitations: TeamInvitation[];
   currentUserRole: TeamRole | null;
+  roles?: TeamRolesResponse;
   isLoadingInvitations: boolean;
   isResending: boolean;
   isRevoking: boolean;
@@ -56,44 +57,10 @@ function formatRelativeTime(dateStr: string): string {
   return `Expires in ${diffDays} days`;
 }
 
-function getRoleBadgeVariant(role: TeamRole): "default" | "secondary" | "outline" {
-  switch (role) {
-    case "owner":
-      return "default";
-    case "admin":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
-
-function formatRole(role: TeamRole): string {
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
-function getRoleIcon(role: TeamRole) {
-  switch (role) {
-    case "owner":
-      return <Crown className="h-4 w-4" />;
-    case "admin":
-      return <Shield className="h-4 w-4" />;
-    case "developer":
-      return <Code className="h-4 w-4" />;
-    case "viewer":
-      return <Eye className="h-4 w-4" />;
-  }
-}
-
-const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] = [
-  { value: "owner", label: "Owner", description: "Full access, can delete team" },
-  { value: "admin", label: "Admin", description: "Manage apps, projects, and members" },
-  { value: "developer", label: "Developer", description: "Create/edit apps, deploy, view logs" },
-  { value: "viewer", label: "Viewer", description: "Read-only access" },
-];
-
 export function InvitationsTab({
   pendingInvitations,
   currentUserRole,
+  roles,
   isLoadingInvitations,
   isResending,
   isRevoking,
@@ -158,16 +125,10 @@ export function InvitationsTab({
                 onValueChange={(value) => setInviteRole(value as TeamRole)}
               >
                 <SelectTrigger id="inviteRoleSelect">
-                  <SelectValue />
+                  <SelectValue>{roleName(inviteRole, roles)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {ROLE_OPTIONS.filter((r) =>
-                    currentUserRole === "owner" ? true : r.value !== "owner"
-                  ).map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
-                    </SelectItem>
-                  ))}
+                  <RoleSelectItems roles={roles} currentUserRole={currentUserRole} />
                 </SelectContent>
               </Select>
             </div>
@@ -226,9 +187,9 @@ export function InvitationsTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {getRoleIcon(invitation.role)}
-                        <Badge variant={getRoleBadgeVariant(invitation.role)}>
-                          {formatRole(invitation.role)}
+                        <RoleIcon role={invitation.role} />
+                        <Badge variant={roleBadgeVariant(invitation.role)}>
+                          {roleName(invitation.role, roles)}
                         </Badge>
                       </div>
                     </TableCell>

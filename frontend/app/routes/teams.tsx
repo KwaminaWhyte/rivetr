@@ -53,6 +53,7 @@ function getRoleBadgeVariant(role: TeamRole | null): "default" | "secondary" | "
 
 function formatRole(role: TeamRole | null): string {
   if (!role) return "";
+  if (role.startsWith("custom:")) return "Custom role";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 

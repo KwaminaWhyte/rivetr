@@ -147,6 +147,7 @@ export default [
     ...prefix("team", [
       index("routes/team/_index.tsx"),
       route("members", "routes/team/members.tsx"),
+      route("roles", "routes/team/roles.tsx"),
       route("variables", "routes/team/variables.tsx"),
       route("audit", "routes/team/audit.tsx"),
     ]),

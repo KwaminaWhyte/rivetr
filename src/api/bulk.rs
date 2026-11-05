@@ -292,7 +292,7 @@ pub async fn bulk_start(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match super::authz::authorize_app(&state, &user, app_id).await {
+        let app = match super::authz::authorize_app_deploy(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -349,7 +349,7 @@ pub async fn bulk_stop(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match super::authz::authorize_app(&state, &user, app_id).await {
+        let app = match super::authz::authorize_app_deploy(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -406,7 +406,7 @@ pub async fn bulk_restart(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match super::authz::authorize_app(&state, &user, app_id).await {
+        let app = match super::authz::authorize_app_deploy(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {
@@ -463,7 +463,7 @@ pub async fn bulk_deploy(
     let mut results = Vec::new();
 
     for app_id in &req.app_ids {
-        let app = match super::authz::authorize_app(&state, &user, app_id).await {
+        let app = match super::authz::authorize_app_deploy(&state, &user, app_id).await {
             Ok(a) => a,
             Err(_) => {
                 results.push(BulkAppResult {

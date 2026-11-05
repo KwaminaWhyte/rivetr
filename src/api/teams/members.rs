@@ -9,15 +9,15 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{
-    TeamAuditAction, TeamAuditResourceType, TeamMemberWithUser, TeamRole, UpdateMemberRoleRequest,
-    User,
+    TeamAuditAction, TeamAuditResourceType, TeamMemberWithUser, UpdateMemberRoleRequest, User,
 };
 use crate::AppState;
 
 use super::super::error::ApiError;
 use super::super::validation::validate_uuid;
 use super::audit::log_team_audit;
-use super::{get_user_team_membership, require_team_role, validate_team_role};
+use super::{can_manage_role, get_user_team_membership, require_team_ability, validate_role_value};
+use crate::db::rbac::{role_is_owner, Ability};
 
 /// List team members
 pub async fn list_members(
@@ -31,7 +31,7 @@ pub async fn list_members(
     }
 
     // Check user is a member of the team
-    require_team_role(&state.db, &id, &user.id, TeamRole::Viewer).await?;
+    require_team_ability(&state.db, &id, &user.id, None).await?;
 
     let members = sqlx::query_as::<_, TeamMemberWithUser>(
         r#"
@@ -45,7 +45,9 @@ pub async fn list_members(
                 WHEN 'owner' THEN 1
                 WHEN 'admin' THEN 2
                 WHEN 'developer' THEN 3
-                WHEN 'viewer' THEN 4
+                WHEN 'deployer' THEN 4
+                WHEN 'viewer' THEN 6
+                ELSE 5
             END,
             tm.created_at ASC
         "#,
@@ -69,16 +71,15 @@ pub async fn invite_member(
         return Err(ApiError::validation_field("team_id", e));
     }
 
-    // Validate role
-    let target_role =
-        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
+    // Validate role (preset or custom role of this team)
+    let target_role = validate_role_value(&state.db, &id, &req.role).await?;
 
     // Check user has permission to manage members
-    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
-    let user_role = membership.role_enum();
+    let membership =
+        require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Check user can assign the target role
-    if !user_role.can_manage_member_role(target_role) {
+    if !can_manage_role(&state.db, &id, &membership.role, &target_role).await? {
         return Err(ApiError::forbidden(
             "You don't have permission to assign this role",
         ));
@@ -118,7 +119,7 @@ pub async fn invite_member(
     .bind(&member_id)
     .bind(&id)
     .bind(&target_user.id)
-    .bind(&req.role)
+    .bind(&target_role)
     .bind(&now)
     .execute(&state.db)
     .await
@@ -131,7 +132,7 @@ pub async fn invite_member(
         id: member_id.clone(),
         team_id: id.clone(),
         user_id: target_user.id.clone(),
-        role: req.role.clone(),
+        role: target_role.clone(),
         created_at: now,
         user_name: target_user.name.clone(),
         user_email: target_user.email.clone(),
@@ -177,36 +178,35 @@ pub async fn update_member_role(
         return Err(ApiError::validation_field("user_id", e));
     }
 
-    // Validate role
-    let new_role =
-        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
+    // Validate role (preset or custom role of this team)
+    let new_role = validate_role_value(&state.db, &team_id, &req.role).await?;
 
     // Check user has permission to manage members
-    let membership = require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
-    let user_role = membership.role_enum();
+    let membership =
+        require_team_ability(&state.db, &team_id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Get the target member
     let target_membership = get_user_team_membership(&state.db, &team_id, &user_id)
         .await?
         .ok_or_else(|| ApiError::not_found("Team member not found"))?;
-    let target_current_role = target_membership.role_enum();
+    let target_current_role = target_membership.role.clone();
 
     // Check user can manage the target's current role
-    if !user_role.can_manage_member_role(target_current_role) {
+    if !can_manage_role(&state.db, &team_id, &membership.role, &target_current_role).await? {
         return Err(ApiError::forbidden(
             "You don't have permission to modify this member",
         ));
     }
 
     // Check user can assign the new role
-    if !user_role.can_manage_member_role(new_role) {
+    if !can_manage_role(&state.db, &team_id, &membership.role, &new_role).await? {
         return Err(ApiError::forbidden(
             "You don't have permission to assign this role",
         ));
     }
 
     // Cannot change the last owner's role
-    if target_current_role == TeamRole::Owner {
+    if role_is_owner(&target_current_role) {
         let owner_count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM team_members WHERE team_id = ? AND role = 'owner'",
         )
@@ -214,7 +214,7 @@ pub async fn update_member_role(
         .fetch_one(&state.db)
         .await?;
 
-        if owner_count.0 <= 1 && new_role != TeamRole::Owner {
+        if owner_count.0 <= 1 && !role_is_owner(&new_role) {
             return Err(ApiError::bad_request(
                 "Cannot change the role of the last owner. Assign another owner first.",
             ));
@@ -223,7 +223,7 @@ pub async fn update_member_role(
 
     // Update the role
     sqlx::query("UPDATE team_members SET role = ? WHERE team_id = ? AND user_id = ?")
-        .bind(&req.role)
+        .bind(&new_role)
         .bind(&team_id)
         .bind(&user_id)
         .execute(&state.db)
@@ -259,7 +259,7 @@ pub async fn update_member_role(
         Some(serde_json::json!({
             "email": &member.user_email,
             "old_role": target_membership.role,
-            "new_role": &req.role,
+            "new_role": &new_role,
             "changed_by": &user.email
         })),
     )
@@ -296,16 +296,16 @@ pub async fn remove_member(
     let target_membership = get_user_team_membership(&state.db, &team_id, &user_id)
         .await?
         .ok_or_else(|| ApiError::not_found("Team member not found"))?;
-    let target_role = target_membership.role_enum();
+    let target_role = target_membership.role.clone();
 
     // Allow self-removal (leaving the team)
     if user_id != user.id {
         // Check user has permission to manage members
-        let membership = require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
-        let user_role = membership.role_enum();
+        let membership =
+            require_team_ability(&state.db, &team_id, &user.id, Some(Ability::TeamManage)).await?;
 
         // Check user can manage the target's role
-        if !user_role.can_manage_member_role(target_role) {
+        if !can_manage_role(&state.db, &team_id, &membership.role, &target_role).await? {
             return Err(ApiError::forbidden(
                 "You don't have permission to remove this member",
             ));
@@ -313,7 +313,7 @@ pub async fn remove_member(
     }
 
     // Cannot remove the last owner
-    if target_role == TeamRole::Owner {
+    if role_is_owner(&target_role) {
         let owner_count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM team_members WHERE team_id = ? AND role = 'owner'",
         )
