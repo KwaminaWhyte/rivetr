@@ -65,6 +65,7 @@ mod swarm;
 pub mod system;
 mod teams;
 mod two_factor;
+mod user_preferences;
 mod validation;
 mod volumes;
 mod webhook_events;
@@ -1236,6 +1237,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/projects/{id}/import", post(bulk::import_project))
         // White Label (update — admin only, protected by auth)
         .route("/white-label", put(white_label::update_white_label))
+        // Per-user UI theme, plus the instance default theme (admin)
+        .route(
+            "/preferences/theme",
+            get(user_preferences::get_theme).put(user_preferences::update_theme),
+        )
+        .route(
+            "/settings/default-theme",
+            put(user_preferences::update_default_theme),
+        )
         // AI Features
         .route(
             "/apps/{app_id}/deployments/{deployment_id}/diagnose",
