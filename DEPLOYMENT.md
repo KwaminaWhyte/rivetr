@@ -233,13 +233,16 @@ Rivetr deploys to remote servers over SSH. Adding a server, non-root users with 
 
 ## Backup and Restore
 
-### Automated S3 Backups
+### Scheduled and S3 Backups
 
-Configure S3-compatible backup in the dashboard under **Settings → Backups**:
+Add S3-compatible storage (AWS S3, MinIO, Cloudflare R2, or any custom endpoint) under
+**Integrations > S3**, then:
 
-- Supports AWS S3, MinIO, Cloudflare R2, and any S3-compatible endpoint
-- Choose what to back up: SQLite database, volumes, SSL certificates
-- Set a schedule (cron expression) and retention count
+- Instance: **Settings > Backup** schedules (cron) with an optional S3 copy and `retention_days`
+- Databases: **Database > Backups** schedule with local only or local plus S3, keep last N
+- Volumes: **App > Storage > Volume Backups** schedule (cron) to local disk or S3, keep last N
+
+Restores from local disk or S3 run from the same pages. Details: [docs/reference/backups.md](docs/reference/backups.md).
 
 ### Manual Backup
 

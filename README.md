@@ -130,10 +130,13 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 
 ### Backup and Storage
 
-- Full instance backup: SQLite database + config + SSL certificates as a single archive, manual or on a cron schedule
-- Instance backups can be uploaded to and restored from S3-compatible storage (AWS S3, MinIO, Cloudflare R2, or any custom endpoint)
-- Managed database backups: manual or scheduled (hourly, daily, weekly) with a retention count, stored on the Rivetr host
-- Volume backup: download a volume as a tar.gz archive
+- Managed database backups: manual or scheduled (hourly, daily, weekly) with a retention count, kept on the Rivetr host and optionally copied to S3-compatible storage (AWS S3, MinIO, Cloudflare R2, or any custom endpoint) with the same retention in the bucket
+- Volume backups: manual or on a cron schedule, to local disk or S3, live (read-only helper container) or with the app stopped for a consistent copy, with a retention count and run history
+- Full instance backup: SQLite database + config + SSL certificates as a single archive, manual or on a cron schedule, local and optionally S3, pruned by `retention_days`
+- One-click restore of database, volume and instance backups from local disk or S3; S3 downloads are checked against the stored size and SHA-256, and a safety backup of the current data is taken first
+- Backup notifications on every channel: succeeded, failed, and missed scheduled runs
+
+See [docs/reference/backups.md](docs/reference/backups.md).
 
 ### Multi-Server and Scale
 

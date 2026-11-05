@@ -6,13 +6,13 @@ Impact H/M/L. Effort S (days), M (1 to 2 weeks), L (weeks).
 
 | # | Gap | Impact | Effort | Who has it | Rivetr evidence |
 |---|-----|--------|--------|-----------|-----------------|
-| 1 | Backup success/failure/missed-run notifications | H | S | Coolify 4.3/4.4 | `NotificationEventType` has no backup events (`src/db/models/notification.rs`) |
+| 1 | ~~Backup success/failure/missed-run notifications~~ Done | H | S | Coolify 4.3/4.4 | Done: `backup_succeeded`, `backup_failed`, `backup_missed` in `NotificationEventType`, rendered by every channel in `src/notifications/`; resource-scoped subscriptions (migration 133); missed-run check in `src/engine/backup_jobs/missed.rs` |
 | 2 | HTTP/2 on proxy listeners | H | S | Traefik, Caddy, nginx, kamal-proxy | `http1::Builder` only, `src/proxy/handler.rs:318,341` |
 | 3 | Scoped API tokens (read/deploy/write/delete), pause and roll | H | M | Coolify 4.6 | no scope column, `migrations/070` |
 | 4 | Per-domain certs via SNI resolver, remove 100-SAN cap | H | M | Coolify, Dokploy, Kamal | one SAN cert, `src/proxy/acme.rs:434,959`; `with_single_cert` in `src/proxy/tls.rs:31` |
 | 5 | Custom certificate upload per domain | H | S | Dokploy, kamal-proxy | missing |
-| 6 | One-click restore of DB and volume backups from S3 | H | M | Coolify, Dokploy, Easypanel | returns 501, `src/api/s3.rs:654` |
-| 7 | Scheduled volume backups to S3 with restore | H | M | Dokploy 0.24, Coolify 4.3 | manual only, `src/api/volumes.rs:249` |
+| 6 | ~~One-click restore of DB and volume backups from S3~~ Done | H | M | Coolify, Dokploy, Easypanel | Done: verified streaming download (size + SHA-256) and safety backup, then the rollback-with-data restore helpers, `src/engine/backup_jobs/restore.rs`; local and S3 backups listed together with Restore on the database Backups page |
+| 7 | ~~Scheduled volume backups to S3 with restore~~ Done | H | M | Dokploy 0.24, Coolify 4.3 | Done: per-volume cron schedule, retention, local or S3, live or stop snapshot, history and restore in `src/engine/backup_jobs/volume.rs` (migration 133); App > Storage > Volume Backups |
 | 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | HTTP-01 only, `src/proxy/acme.rs:3` |
 | 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | missing |
 | 10 | Granular RBAC ability presets | H | M | Coolify 4.6, Dokploy Enterprise | 4 fixed roles (`src/db/models/team.rs:9`) plus overrides (migration 089) |
