@@ -275,7 +275,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | [docs/reference/remote-servers.md](docs/reference/remote-servers.md) | Remote servers: adding, non-root sudo, Tailscale |
 | [docs/reference/service-templates.md](docs/reference/service-templates.md) | Catalogue of all 273 service templates by category |
 | [docs/reference/service-deployments.md](docs/reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
-| [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Feature comparison with Coolify and Dokploy |
+| [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Open gaps against Coolify, Dokploy and others (Nov 2026) |
 | [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
 | [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |
 
