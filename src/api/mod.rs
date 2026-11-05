@@ -46,6 +46,7 @@ mod replicas;
 mod routes;
 mod s3;
 mod sdk;
+mod server_ops;
 mod servers;
 mod service_templates;
 mod services;
@@ -298,6 +299,32 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/servers/{id}/security-check",
             get(servers::check_server_security),
         )
+        // Server operations (images, Docker cleanup, patching); `localhost` = local runtime
+        .route("/server-ops/summary", get(server_ops::servers_summary))
+        .route("/servers/{id}/images", get(server_ops::list_images))
+        .route(
+            "/servers/{id}/images/{image_id}",
+            delete(server_ops::delete_image),
+        )
+        .route(
+            "/servers/{id}/maintenance",
+            get(server_ops::get_settings).put(server_ops::update_settings),
+        )
+        .route("/servers/{id}/cleanup", post(server_ops::run_cleanup))
+        .route(
+            "/servers/{id}/cleanup/runs",
+            get(server_ops::list_cleanup_runs),
+        )
+        .route("/servers/{id}/patching", get(server_ops::get_patching))
+        .route(
+            "/servers/{id}/patching/check",
+            post(server_ops::check_updates),
+        )
+        .route(
+            "/servers/{id}/patching/update",
+            post(server_ops::update_packages),
+        )
+        .route("/servers/{id}/reboot", post(server_ops::reboot_server))
         // Remote filesystem browser
         .route(
             "/servers/{id}/files",

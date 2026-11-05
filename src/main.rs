@@ -386,6 +386,12 @@ async fn main() -> Result<()> {
     // Start autoscaling checker (evaluates autoscaling rules every 60s)
     rivetr::engine::scheduler::spawn_autoscaling_checker(db.clone());
 
+    // Start server maintenance scheduler (Docker cleanup schedules, package checks)
+    rivetr::engine::server_ops::scheduler::spawn_server_ops_scheduler(
+        db.clone(),
+        Arc::new(state.config.clone()),
+    );
+
     // Start advanced monitoring tasks (uptime checker + log cleaner)
     rivetr::monitoring::spawn_uptime_checker_task(db.clone());
     rivetr::monitoring::spawn_log_cleaner_task(db.clone(), config.data_retention.clone());

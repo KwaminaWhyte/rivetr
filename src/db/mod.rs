@@ -1654,6 +1654,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         execute_sql(pool, include_str!("../../migrations/119_ssh_key_owner.sql")).await?;
     }
 
+    // Migration 124: server operations (maintenance settings, cleanup runs, patch jobs)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/124_server_operations.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
