@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 import type { ServiceLogEntry } from "@/types/api";
+import { LogViewToggles, logLineWrapClass, useLogViewPrefs } from "@/components/logs/log-view-options";
 
 interface ServiceLogsProps {
   serviceId: string;
@@ -20,7 +21,7 @@ export function ServiceLogs({ serviceId, serviceName, serviceStatus, token: prop
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStopped, setIsStopped] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const { follow: autoScroll, setFollow: setAutoScroll, wrap, setWrap, timestamps, setTimestamps } = useLogViewPrefs();
   const [isLoading, setIsLoading] = useState(true);
   const eventSourceRef = useRef<EventSource | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -147,7 +148,8 @@ export function ServiceLogs({ serviceId, serviceName, serviceStatus, token: prop
             {connected ? "Live" : isLoading ? "Loading..." : "Disconnected"}
           </Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <LogViewToggles wrap={wrap} onWrapChange={setWrap} timestamps={timestamps} onTimestampsChange={setTimestamps} />
           <Button
             variant="outline"
             size="sm"
@@ -201,10 +203,14 @@ export function ServiceLogs({ serviceId, serviceName, serviceStatus, token: prop
               <div className="text-gray-500">No logs available</div>
             ) : (
               logs.map((log, i) => (
-                <div key={i} className="hover:bg-gray-800 px-1 -mx-1 rounded">
-                  <span className="text-gray-500">
-                    [{new Date(log.timestamp).toLocaleTimeString()}]
-                  </span>{" "}
+                <div key={i} className={`hover:bg-gray-800 px-1 -mx-1 rounded ${logLineWrapClass(wrap)}`}>
+                  {timestamps && (
+                    <>
+                      <span className="text-gray-500">
+                        [{new Date(log.timestamp).toLocaleTimeString()}]
+                      </span>{" "}
+                    </>
+                  )}
                   <span className="text-blue-400">[{log.service}]</span>{" "}
                   <span className="text-gray-100">{log.message}</span>
                 </div>

@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { PageHeader, EmptyState, CardGridSkeleton, DataTable, ResourceStatus, ViewToggle, useStoredPreference, type DataColumn, type ViewOption } from "@/components/page";
 import { ProjectsCanvas } from "@/components/canvas/projects-canvas";
+import { useLocalPreference } from "@/lib/persisted-state";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,8 @@ function ProjectTile({
     </div>
   );
 }
-type SortKey = "attention" | "name" | "newest";
+const SORT_KEYS = ["attention", "name", "newest"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 
 const HEALTH_RANK: Record<ProjectHealth, number> = { issues: 0, building: 1, healthy: 2 };
 
@@ -152,7 +154,7 @@ export default function ProjectsPage() {
   const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortKey>("attention");
+  const [sort, setSort] = useLocalPreference<SortKey>("projects:sort", "attention", SORT_KEYS);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation } from "react-router";
 import { ChevronRight } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsInstanceAdmin } from "@/lib/auth";
+import { isBoolean, usePersistedState } from "@/lib/persisted-state";
 import {
   activeSidebarUrl,
   isSidebarItemActive,
@@ -49,7 +50,10 @@ function NavEntry({ item, activeUrl }: { item: SidebarItem; activeUrl: string | 
   const isAdmin = useIsInstanceAdmin();
   const active = isSidebarItemActive(item, activeUrl);
   const children = item.children?.filter((c) => isAdmin || !c.adminOnly);
-  const [open, setOpen] = useState(active);
+  // Remember which groups the user opened or closed (per browser).
+  const [open, setOpen] = usePersistedState<boolean>(`sidebar:group:${item.title}`, active, {
+    validate: isBoolean,
+  });
 
   // Expand the submenu when navigation lands inside it.
   useEffect(() => {

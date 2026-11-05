@@ -313,7 +313,7 @@ function TimelineItem({
                   {isRestart && (
                     <Badge
                       variant="outline"
-                      className="gap-1 text-xs border-violet-400 text-violet-700 dark:text-violet-300"
+                      className="gap-1 text-xs border-primary/40 text-primary"
                     >
                       <RefreshCw className="w-3 h-3" />
                       Restart
@@ -542,7 +542,7 @@ function TimelineItem({
                     <div>
                       <span className="text-muted-foreground">Trigger</span>
                       <p className="text-xs mt-1 capitalize flex items-center gap-1">
-                        {isRestart && <RefreshCw className="w-3 h-3 text-violet-500" />}
+                        {isRestart && <RefreshCw className="w-3 h-3 text-primary" />}
                         {deployment.trigger}
                       </p>
                     </div>

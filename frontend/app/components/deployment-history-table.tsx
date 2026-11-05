@@ -38,6 +38,7 @@ import {
   type DataColumn,
 } from "@/components/page";
 import type { Deployment, DeploymentStatus } from "@/types/api";
+import { isString, useLocalPreference, usePersistedState } from "@/lib/persisted-state";
 
 const ACTIVE: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
@@ -111,14 +112,23 @@ export function DeploymentHistoryTable({
 }: DeploymentHistoryTableProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [source, setSource] = useState<string>("all");
+  // Filters and page size are remembered per browser (rivetr:ui:table:deployments:*).
+  const [status, setStatus] = useLocalPreference<StatusFilter>(
+    "table:deployments:status",
+    "all",
+    STATUS_FILTERS.map((f) => f.value)
+  );
+  const [storedSource, setSource] = usePersistedState<string>("table:deployments:source", "all", {
+    validate: isString,
+  });
 
   const sources = useMemo(() => {
     const set = new Set<string>(["manual", "webhook", "rollback"]);
     for (const d of deployments) set.add(sourceOf(d));
     return [...set];
   }, [deployments]);
+
+  const source = storedSource === "all" || sources.includes(storedSource) ? storedSource : "all";
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -133,7 +143,7 @@ export function DeploymentHistoryTable({
     );
   }, [deployments, search, status, source]);
 
-  const { pageRows, page, pageSize, setPage, setPageSize } = usePagedRows(filtered, 10);
+  const { pageRows, page, pageSize, setPage, setPageSize } = usePagedRows(filtered, 10, "deployments");
 
   const columns: DataColumn<Deployment>[] = [
     {

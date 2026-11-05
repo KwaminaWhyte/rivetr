@@ -213,7 +213,7 @@ export default function ServiceDetailLayout() {
         title={service.name}
         description={service.domain ? service.domain : `Port ${service.port}`}
         meta={
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
+          <Badge variant="outline" className="bg-primary/10 text-primary border-0">
             Docker Compose
           </Badge>
         }

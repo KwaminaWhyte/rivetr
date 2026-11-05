@@ -47,6 +47,7 @@ import type {
   Project,
   CloneEnvironmentResponse,
 } from "@/types/api";
+import { isString, usePersistedState } from "@/lib/persisted-state";
 
 export function meta() {
   return [
@@ -351,7 +352,8 @@ function EnvironmentEnvVarsPanel({ environment }: { environment: ProjectEnvironm
 export default function ProjectEnvironmentsPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<string>("");
+  // Last opened environment tab per project (rivetr:ui:tabs:project-env:<id>).
+  const [storedTab, setActiveTab] = usePersistedState<string>(`tabs:project-env:${id}`, "", { validate: isString });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -375,11 +377,9 @@ export default function ProjectEnvironmentsPage() {
     enabled: !!id,
   });
 
-  // Set active tab to first environment when loaded
-  if (environments.length > 0 && !activeTab) {
-    const defaultEnv = environments.find((e) => e.is_default) || environments[0];
-    setActiveTab(defaultEnv.id);
-  }
+  // Fall back to the default environment when nothing (or a deleted one) is saved.
+  const defaultEnv = environments.find((e) => e.is_default) || environments[0];
+  const activeTab = environments.some((e) => e.id === storedTab) ? storedTab : (defaultEnv?.id ?? "");
 
   const createMutation = useMutation({
     mutationFn: () =>

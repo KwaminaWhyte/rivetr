@@ -232,7 +232,7 @@ export default function DeploymentDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5 text-purple-600 border-purple-300 hover:bg-purple-50"
+                      className="gap-1.5 text-primary border-primary/40 hover:bg-primary/10"
                       disabled={diagnosisLoading}
                       onClick={handleDiagnose}
                     >
@@ -355,9 +355,9 @@ export default function DeploymentDetailPage() {
             </Card>
           )}
           {diagnosisResult && (
-            <Card className="border-purple-200 bg-purple-50/40 dark:bg-purple-950/10">
+            <Card className="border-primary/25 bg-primary/5">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-400 text-base">
+                <CardTitle className="flex items-center gap-2 text-primary text-base">
                   <Sparkles className="h-4 w-4" />
                   AI Diagnosis
                 </CardTitle>
@@ -370,7 +370,7 @@ export default function DeploymentDetailPage() {
                     <ul className="space-y-1.5">
                       {diagnosisResult.suggestions.map((s, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm">
-                          <span className="text-purple-500 mt-0.5 shrink-0">•</span>
+                          <span className="text-primary mt-0.5 shrink-0">•</span>
                           <span>{s}</span>
                         </li>
                       ))}

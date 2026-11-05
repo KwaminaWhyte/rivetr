@@ -1708,6 +1708,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 129: per-user UI preferences (theme JSON)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/129_user_preferences.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

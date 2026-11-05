@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { whiteLabelApi } from "@/lib/api/white-label";
 import type { WhiteLabel, UpdateWhiteLabelRequest } from "@/lib/api/white-label";
+import { InstanceThemeDefault } from "@/components/appearance";
 
 export function meta() {
   return [
@@ -271,6 +272,8 @@ export default function WhiteLabelSettingsPage() {
           </Button>
         </div>
       </form>
+
+      <InstanceThemeDefault />
     </div>
   );
 }

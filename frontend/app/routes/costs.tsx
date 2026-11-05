@@ -1,4 +1,5 @@
 import { QueryError } from "@/components/query-error";
+import { useLocalPreference, usePersistedSet } from "@/lib/persisted-state";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -59,7 +60,9 @@ export function meta() {
   ];
 }
 
-type Period = "7d" | "30d" | "90d";
+const PERIODS = ["7d", "30d", "90d"] as const;
+type Period = (typeof PERIODS)[number];
+const COST_VIEWS = ["teams", "projects"] as const;
 
 /** Format currency value */
 function formatCurrency(value: number): string {
@@ -76,15 +79,15 @@ function createBarChartData(cpu: number, memory: number, disk: number): { type: 
   const total = cpu + memory + disk;
   if (total === 0) {
     return [
-      { type: "CPU", value: 0, color: "bg-blue-500", percent: 33.3 },
-      { type: "Memory", value: 0, color: "bg-purple-500", percent: 33.3 },
-      { type: "Disk", value: 0, color: "bg-orange-500", percent: 33.3 },
+      { type: "CPU", value: 0, color: "bg-chart-2", percent: 33.3 },
+      { type: "Memory", value: 0, color: "bg-chart-3", percent: 33.3 },
+      { type: "Disk", value: 0, color: "bg-chart-5", percent: 33.3 },
     ];
   }
   return [
-    { type: "CPU", value: cpu, color: "bg-blue-500", percent: (cpu / total) * 100 },
-    { type: "Memory", value: memory, color: "bg-purple-500", percent: (memory / total) * 100 },
-    { type: "Disk", value: disk, color: "bg-orange-500", percent: (disk / total) * 100 },
+    { type: "CPU", value: cpu, color: "bg-chart-2", percent: (cpu / total) * 100 },
+    { type: "Memory", value: memory, color: "bg-chart-3", percent: (memory / total) * 100 },
+    { type: "Disk", value: disk, color: "bg-chart-5", percent: (disk / total) * 100 },
   ];
 }
 
@@ -443,10 +446,10 @@ function ProjectCostRow({
 }
 
 export default function CostsPage() {
-  const [period, setPeriod] = useState<Period>("30d");
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"teams" | "projects">("teams");
+  const [period, setPeriod] = useLocalPreference<Period>("costs:period", "30d", PERIODS);
+  const [expandedTeams, setExpandedTeams] = usePersistedSet("costs:expanded-teams");
+  const [expandedProjects, setExpandedProjects] = usePersistedSet("costs:expanded-projects");
+  const [viewMode, setViewMode] = useLocalPreference<"teams" | "projects">("costs:view", "teams", COST_VIEWS);
 
   // Fetch dashboard costs (system-wide summary)
   const { data: dashboardCosts, isLoading: costsLoading, error: costsError, refetch } = useQuery<DashboardCostResponse | null>({
