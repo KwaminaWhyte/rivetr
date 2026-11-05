@@ -600,7 +600,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("API server listening on http://{}", api_addr);
     tracing::info!("Proxy server listening on http://{}", proxy_addr);
-    tracing::info!("Admin token: {}", config.auth.admin_token);
+    // Never log the token itself: journald/log shippers keep it forever.
+    tracing::info!("Admin token loaded from config (not logged)");
 
     // `into_make_service_with_connect_info` exposes the peer SocketAddr to handlers
     // via `ConnectInfo<SocketAddr>` extractors.  We use this in the audit-log helper
