@@ -1,4 +1,5 @@
 mod advanced_settings;
+mod ai_compose;
 mod ai_features;
 mod alerts;
 mod api_tokens;
@@ -51,6 +52,7 @@ mod resource_clone;
 mod routes;
 mod s3;
 mod sdk;
+mod server_network;
 mod server_ops;
 mod servers;
 mod service_templates;
@@ -62,6 +64,7 @@ pub mod ssrf;
 pub mod start_logs;
 pub(crate) mod state_cookie;
 mod swarm;
+mod swarm_spec;
 pub mod system;
 mod teams;
 mod two_factor;
@@ -308,6 +311,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(servers::delete_server),
         )
         .route("/servers/{id}/check", post(servers::check_server_health))
+        .route(
+            "/servers/{id}/network-check",
+            post(server_network::check_server_network),
+        )
         .route(
             "/servers/{id}/host-key",
             delete(servers::reset_server_host_key),
@@ -1217,6 +1224,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/swarm/services/{id}", delete(swarm::delete_service))
         .route("/swarm/services/{id}/scale", post(swarm::scale_service))
         .route("/swarm/services/{id}/logs", get(swarm::get_service_logs))
+        .route(
+            "/apps/{id}/swarm-spec",
+            get(swarm_spec::get_app_swarm_spec).put(swarm_spec::update_app_swarm_spec),
+        )
         // Bulk operations
         .route("/bulk/start", post(bulk::bulk_start))
         .route("/bulk/stop", post(bulk::bulk_stop))
@@ -1268,6 +1279,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // AI compose generation (never deploys; returns YAML for review)
+        .route("/ai/status", get(ai_compose::ai_status))
+        .route("/ai/compose/generate", post(ai_compose::generate_compose))
         // SEC-C3: resource-level authorization. Added before the auth layer so it
         // sits *inside* it — runs after the token is validated, before handlers.
         // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.

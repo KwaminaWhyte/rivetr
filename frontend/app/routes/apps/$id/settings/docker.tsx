@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { SwarmSpecCard } from "@/components/apps/swarm-spec-card";
 import type { App, UpdateAppRequest } from "@/types/api";
 
 export function meta() {
@@ -394,6 +395,8 @@ export default function AppSettingsDocker() {
           </form>
         </CardContent>
       </Card>
+
+      <SwarmSpecCard appId={app.id} />
     </div>
   );
 }

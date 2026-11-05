@@ -150,10 +150,26 @@ pub async fn create_server(
 
     let hourly_rate = req.hourly_rate.unwrap_or(0.036);
 
+    let network_mode = req
+        .network_mode
+        .clone()
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "public".to_string());
+    let tailscale_host = req
+        .tailscale_host
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    if let Err(e) = crate::db::validate_server_network(&network_mode, tailscale_host.as_deref()) {
+        tracing::warn!("Invalid server network settings: {}", e);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     sqlx::query(
         r#"
-        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, hourly_rate, status, team_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?)
+        INSERT INTO servers (id, name, host, port, username, ssh_private_key, ssh_password, hourly_rate, status, team_id, created_at, updated_at, network_mode, tailscale_host)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
@@ -167,6 +183,8 @@ pub async fn create_server(
     .bind(&req.team_id)
     .bind(&now)
     .bind(&now)
+    .bind(&network_mode)
+    .bind(&tailscale_host)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -249,6 +267,22 @@ pub async fn update_server(
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| existing.timezone.clone());
 
+    let network_mode = req
+        .network_mode
+        .clone()
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| existing.network_mode.clone());
+    // An empty string clears the Tailscale address; None keeps it.
+    let tailscale_host = match req.tailscale_host.as_deref().map(str::trim) {
+        Some("") => None,
+        Some(t) => Some(t.to_string()),
+        None => existing.tailscale_host.clone(),
+    };
+    if let Err(e) = crate::db::validate_server_network(&network_mode, tailscale_host.as_deref()) {
+        tracing::warn!("Invalid server network settings: {}", e);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     sqlx::query(
         r#"
         UPDATE servers SET
@@ -260,6 +294,8 @@ pub async fn update_server(
             ssh_password = COALESCE(?, ssh_password),
             hourly_rate = COALESCE(?, hourly_rate),
             timezone = ?,
+            network_mode = ?,
+            tailscale_host = ?,
             updated_at = ?
         WHERE id = ?
         "#,
@@ -272,6 +308,8 @@ pub async fn update_server(
     .bind(&encrypted_password)
     .bind(req.hourly_rate)
     .bind(&timezone)
+    .bind(&network_mode)
+    .bind(&tailscale_host)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
@@ -317,12 +355,20 @@ pub async fn reset_server_host_key(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let removed = crate::utils::ssh::forget_host(&server.host, server.port as u16)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to forget host key for server {}: {}", id, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    // Forget the key under every address the server is reached by (public and Tailscale).
+    let mut hosts = vec![server.host.as_str()];
+    if server.ssh_host() != server.host {
+        hosts.push(server.ssh_host());
+    }
+    let mut removed = false;
+    for host in hosts {
+        removed |= crate::utils::ssh::forget_host(host, server.port as u16)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to forget host key for server {}: {}", id, e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
     Ok(Json(serde_json::json!({ "removed": removed })))
 }
 
@@ -401,7 +447,7 @@ pub async fn check_server_health(
 
     // Run the health check
     let health_result = run_ssh_health_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -412,6 +458,21 @@ pub async fn check_server_health(
     let now = chrono::Utc::now().to_rfc3339();
 
     // Capture docker status fields before moving stats into the DB update
+    let privilege = health_result
+        .as_ref()
+        .ok()
+        .and_then(|stats| stats.privilege.clone())
+        .map(|p| {
+            if p.ssh_user.is_empty() {
+                crate::utils::privileged::PrivilegeCheck::from_status(
+                    server.username.clone(),
+                    p.status,
+                )
+            } else {
+                p
+            }
+        });
+
     let (docker_installed, docker_running, compose_installed, compose_version) =
         match &health_result {
             Ok(stats) => {
@@ -502,6 +563,7 @@ pub async fn check_server_health(
         docker_running,
         compose_installed,
         compose_version,
+        privilege,
     }))
 }
 
@@ -518,6 +580,8 @@ struct ServerHealthStats {
     docker_running: bool,
     /// Docker Compose version string ("not installed" when absent)
     compose_version: Option<String>,
+    /// Root / passwordless sudo check for the SSH user
+    privilege: Option<crate::utils::privileged::PrivilegeCheck>,
 }
 
 /// Extended health-check response: the updated Server row plus Docker status fields
@@ -534,6 +598,9 @@ pub struct ServerHealthResponse {
     pub compose_installed: bool,
     /// Raw version string from `docker compose version`, if available
     pub compose_version: Option<String>,
+    /// Whether the SSH user is root or has passwordless sudo, with the sudoers
+    /// line to add when it is missing. None when the check could not run.
+    pub privilege: Option<crate::utils::privileged::PrivilegeCheck>,
 }
 
 /// Run SSH commands to gather server health statistics.
@@ -572,15 +639,18 @@ async fn run_ssh_health_check(
     };
 
     // Build the combined command string to run remotely
-    let remote_cmd = r#"
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
         echo "CPU:$(top -bn1 2>/dev/null | grep 'Cpu(s)' | awk '{print $2}' | tr -d '%us,' || echo 'N/A')";
         echo "MEM:$(free -b 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "DISK:$(df -b / 2>/dev/null | awk 'NR==2{print $2, $3}' || echo 'N/A')";
         echo "OS:$(uname -a 2>/dev/null || echo 'N/A')";
-        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
-        echo "DOCKER_RUNNING:$(systemctl is-active docker 2>/dev/null || (docker info > /dev/null 2>&1 && echo 'active') || echo 'inactive')";
-        echo "COMPOSE:$(docker compose version --short 2>/dev/null || docker-compose --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'not installed')"
-    "#;
+        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DOCKER_RUNNING:$(systemctl is-active docker 2>/dev/null || ($DOCKER info > /dev/null 2>&1 && echo 'active') || echo 'inactive')";
+        echo "COMPOSE:$($DOCKER compose version --short 2>/dev/null || docker-compose --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'not installed')"
+    "#,
+    ) + "\n"
+        + crate::utils::privileged::SUDO_CHECK;
 
     // Use sshpass for password authentication if provided and no key is available
     let use_sshpass = password.is_some() && key_file.is_none();
@@ -612,7 +682,7 @@ async fn run_ssh_health_check(
         cmd.arg("-i").arg(key_file.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -639,7 +709,7 @@ async fn run_ssh_health_check(
                 .arg("-p")
                 .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
-                .arg(remote_cmd);
+                .arg(&remote_cmd);
 
             let fallback_output = fallback.output().await?;
             if !fallback_output.status.success() {
@@ -741,6 +811,7 @@ fn parse_health_output(output: &str) -> anyhow::Result<ServerHealthStats> {
         docker_version,
         docker_running,
         compose_version,
+        privilege: crate::utils::privileged::PrivilegeCheck::parse(output, ""),
     })
 }
 
@@ -802,7 +873,7 @@ pub async fn install_docker(
     };
 
     let result = run_ssh_install_docker(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -860,14 +931,17 @@ async fn run_ssh_install_docker(
         None
     };
 
-    let remote_cmd = r#"
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
         set -e
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sh /tmp/get-docker.sh
-        systemctl enable docker
-        systemctl start docker
+        $SUDO sh /tmp/get-docker.sh
+        $SUDO systemctl enable docker
+        $SUDO systemctl start docker
+        if [ "$(id -u)" -ne 0 ]; then $SUDO usermod -aG docker "$(id -un)" || true; fi
         echo "Docker installed successfully: $(docker --version)"
-    "#;
+    "#,
+    );
 
     let use_sshpass = password.is_some() && key_file.is_none();
 
@@ -897,7 +971,7 @@ async fn run_ssh_install_docker(
         cmd.arg("-i").arg(key_file.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -922,7 +996,7 @@ async fn run_ssh_install_docker(
                 .arg("-p")
                 .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
-                .arg(remote_cmd);
+                .arg(&remote_cmd);
             let fallback_output = fallback.output().await?;
             let fb_stdout = String::from_utf8_lossy(&fallback_output.stdout).to_string();
             let fb_stderr = String::from_utf8_lossy(&fallback_output.stderr).to_string();
@@ -1141,7 +1215,7 @@ async fn handle_server_terminal(mut socket: WebSocket, state: Arc<AppState>, ser
 
     // Build SSH args; key_path_str must outlive ssh_args
     let port_str = server.port.to_string();
-    let target = format!("{}@{}", server.username, server.host);
+    let target = format!("{}@{}", server.username, server.ssh_host());
     let key_path_str = key_file
         .as_ref()
         .map(|kf| kf.path().to_string_lossy().to_string())
@@ -1364,7 +1438,7 @@ pub async fn check_server_patches(
     };
 
     let result = run_ssh_patch_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -1407,9 +1481,10 @@ async fn run_ssh_patch_check(
     };
 
     // Detect package manager and list upgradable packages in one SSH call.
-    let remote_cmd = r#"
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
         if command -v apt-get >/dev/null 2>&1; then
-            apt-get -qq update >/dev/null 2>&1 || true;
+            $SUDO apt-get -qq update >/dev/null 2>&1 || true;
             echo "PKG_MANAGER:apt";
             apt list --upgradable 2>/dev/null | grep -v "^Listing" || true;
         elif command -v dnf >/dev/null 2>&1; then
@@ -1421,7 +1496,8 @@ async fn run_ssh_patch_check(
         else
             echo "PKG_MANAGER:unknown";
         fi
-    "#;
+    "#,
+    );
 
     let use_sshpass = password.is_some() && key_file.is_none();
 
@@ -1451,7 +1527,7 @@ async fn run_ssh_patch_check(
         cmd.arg("-i").arg(kf.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -1590,7 +1666,7 @@ pub async fn check_server_security(
     };
 
     let result = run_ssh_security_check(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -1634,31 +1710,32 @@ async fn run_ssh_security_check(
 
     // All checks run in a single SSH connection.
     // Each section is prefixed with a "CHECK:" sentinel for parsing.
-    let remote_cmd = r#"
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
         echo "CHECK:ssh_root_login";
-        grep -E "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+        $SUDO grep -E "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
 
         echo "CHECK:password_auth";
-        grep -E "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+        $SUDO grep -E "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
 
         echo "CHECK:firewall";
         if command -v ufw >/dev/null 2>&1; then
-            ufw status 2>/dev/null | head -1;
+            $SUDO ufw status 2>/dev/null | head -1;
         elif command -v firewall-cmd >/dev/null 2>&1; then
-            firewall-cmd --state 2>/dev/null;
+            $SUDO firewall-cmd --state 2>/dev/null;
         else
             echo "NOT_FOUND";
         fi;
 
         echo "CHECK:ssh_port";
-        grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
+        $SUDO grep -E "^Port " /etc/ssh/sshd_config 2>/dev/null || echo "MISSING";
 
         echo "CHECK:fail2ban";
         systemctl is-active fail2ban 2>/dev/null || echo "inactive";
 
         echo "CHECK:docker_exposed";
-        (ss -tlnp 2>/dev/null | grep -E ":(2375|2376)\s" || true);
-        (grep -rE "0\.0\.0\.0:2375|tcp://0\.0\.0\.0" /etc/docker/ 2>/dev/null || echo "NOT_EXPOSED");
+        ($SUDO ss -tlnp 2>/dev/null | grep -E ":(2375|2376)\s" || true);
+        ($SUDO grep -rE "0\.0\.0\.0:2375|tcp://0\.0\.0\.0" /etc/docker/ 2>/dev/null || echo "NOT_EXPOSED");
 
         echo "CHECK:unattended_upgrades";
         dpkg -l unattended-upgrades 2>/dev/null | grep -E "^ii" || echo "NOT_INSTALLED";
@@ -1669,7 +1746,8 @@ async fn run_ssh_security_check(
         else
             echo "0";
         fi;
-    "#;
+    "#,
+    );
 
     let use_sshpass = password.is_some() && key_file.is_none();
 
@@ -1699,7 +1777,7 @@ async fn run_ssh_security_check(
         cmd.arg("-i").arg(kf.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -2023,7 +2101,7 @@ pub async fn fetch_details(
     };
 
     let details = run_fetch_server_details(
-        &server.host,
+        server.ssh_host(),
         server.port as u16,
         &server.username,
         private_key_content.as_deref(),
@@ -2094,13 +2172,15 @@ async fn run_fetch_server_details(
         None
     };
 
-    let remote_cmd = r#"
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
         echo "OS:$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -s)";
-        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
         echo "DISK_FREE:$(df -h / 2>/dev/null | tail -1 | awk '{print $4}' || echo 'N/A')";
         echo "CPU_CORES:$(nproc 2>/dev/null || echo 'N/A')";
         echo "TOTAL_RAM:$(free -h 2>/dev/null | grep Mem | awk '{print $2}' || echo 'N/A')"
-    "#;
+    "#,
+    );
 
     let use_sshpass = password.is_some() && key_file.is_none();
 
@@ -2130,7 +2210,7 @@ async fn run_fetch_server_details(
         cmd.arg("-i").arg(kf.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 
@@ -2155,7 +2235,7 @@ async fn run_fetch_server_details(
                 .arg("-p")
                 .arg(port.to_string())
                 .arg(format!("{}@{}", username, host))
-                .arg(remote_cmd);
+                .arg(&remote_cmd);
             let fallback_output = fallback.output().await?;
             if !fallback_output.status.success() {
                 let fb_err = String::from_utf8_lossy(&fallback_output.stderr);

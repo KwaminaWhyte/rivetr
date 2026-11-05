@@ -489,11 +489,13 @@ async fn run_build_server_health_check(
     };
 
     // Build the combined command string to run remotely
-    let remote_cmd = r#"
-        echo "DOCKER:$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
+    let remote_cmd = crate::utils::privileged::wrap_script(
+        r#"
+        echo "DOCKER:$($DOCKER version --format '{{.Server.Version}}' 2>/dev/null || echo 'not installed')";
         echo "CPU:$(nproc 2>/dev/null || echo 'N/A')";
         echo "MEM:$(free -b 2>/dev/null | awk 'NR==2{print $2}' || echo 'N/A')"
-    "#;
+    "#,
+    );
 
     // Use sshpass for password authentication if provided and no key is available
     let use_sshpass = password.is_some() && key_file.is_none();
@@ -525,7 +527,7 @@ async fn run_build_server_health_check(
         cmd.arg("-i").arg(key_file.path());
     }
 
-    cmd.arg(format!("{}@{}", username, host)).arg(remote_cmd);
+    cmd.arg(format!("{}@{}", username, host)).arg(&remote_cmd);
 
     let output = cmd.output().await?;
 

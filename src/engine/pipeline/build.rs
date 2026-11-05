@@ -996,10 +996,11 @@ async fn run_remote_build(
             .cloned()
             .unwrap_or_else(|| app.dockerfile.clone());
 
-        let docker_build_cmd = format!(
-            "docker build -t '{}' -f '{}/{}' '{}'",
+        // `$DOCKER` adds `sudo -n` when the SSH user cannot reach the daemon.
+        let docker_build_cmd = crate::utils::privileged::wrap_script(&format!(
+            "$DOCKER build -t '{}' -f '{}/{}' '{}'",
             image_tag, remote_dir, dockerfile, remote_dir
-        );
+        ));
 
         let mut build_ssh = make_ssh_cmd(ssh_password_content.as_deref(), key_path.as_deref());
         build_ssh.arg(&target).arg(&docker_build_cmd);
@@ -1032,7 +1033,8 @@ async fn run_remote_build(
         // ------------------------------------------------------------------
         // 6. Stream image back: docker save on remote | gzip → local docker load
         // ------------------------------------------------------------------
-        let save_cmd = format!("docker save '{}' | gzip", image_tag);
+        let save_cmd =
+            crate::utils::privileged::wrap_script(&format!("$DOCKER save '{}' | gzip", image_tag));
 
         // Use std::process for synchronous pipeline (stdin→stdout piping)
         let mut stream_ssh_cmd = if use_sshpass {

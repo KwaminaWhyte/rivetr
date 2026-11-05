@@ -1,4 +1,5 @@
 import { QueryError } from "@/components/query-error";
+import { PrivilegeCheckBadge, PrivilegeCheckFix } from "@/components/servers/privilege-check";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -656,7 +657,7 @@ export default function ServersPage() {
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [installingDockerIds, setInstallingDockerIds] = useState<Set<string>>(new Set());
   // Map from server id → last health check result (for docker status)
-  const [dockerHealth, setDockerHealth] = useState<Record<string, Pick<ServerHealthResponse, "docker_installed" | "docker_running" | "compose_installed" | "compose_version">>>({});
+  const [dockerHealth, setDockerHealth] = useState<Record<string, Pick<ServerHealthResponse, "docker_installed" | "docker_running" | "compose_installed" | "compose_version" | "privilege">>>({});
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
   const [patchesServer, setPatchesServer] = useState<Server | null>(null);
   const [securityServer, setSecurityServer] = useState<Server | null>(null);
@@ -679,6 +680,8 @@ export default function ServersPage() {
   const [formSshKey, setFormSshKey] = useState("");
   const [authMethod, setAuthMethod] = useState<"key" | "password">("key");
   const [sshPassword, setSshPassword] = useState("");
+  const [formNetworkMode, setFormNetworkMode] = useState<"public" | "tailscale">("public");
+  const [formTailscaleHost, setFormTailscaleHost] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: servers = [], isLoading, error: listError, refetch: refetchList } = useQuery<Server[]>({
@@ -740,11 +743,17 @@ export default function ServersPage() {
     setFormSshKey("");
     setAuthMethod("key");
     setSshPassword("");
+    setFormNetworkMode("public");
+    setFormTailscaleHost("");
   };
 
   const handleAddServer = async () => {
     if (!formName.trim() || !formHost.trim()) {
       toast.error("Name and host are required");
+      return;
+    }
+    if (formNetworkMode === "tailscale" && !formTailscaleHost.trim()) {
+      toast.error("Enter the server's Tailscale IP or MagicDNS name");
       return;
     }
     setIsSubmitting(true);
@@ -757,6 +766,9 @@ export default function ServersPage() {
         username: formUsername.trim() || "root",
         ssh_private_key: authMethod === "key" ? formSshKey.trim() || undefined : undefined,
         ssh_password: authMethod === "password" ? sshPassword : undefined,
+        network_mode: formNetworkMode,
+        tailscale_host:
+          formNetworkMode === "tailscale" ? formTailscaleHost.trim() || undefined : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -802,6 +814,7 @@ export default function ServersPage() {
           docker_running: result.docker_running,
           compose_installed: result.compose_installed,
           compose_version: result.compose_version,
+          privilege: result.privilege,
         },
       }));
     } catch (error) {
@@ -1028,7 +1041,13 @@ export default function ServersPage() {
                               Compose {dockerHealth[server.id].compose_version ?? ""}
                             </Badge>
                           )}
+                          {dockerHealth[server.id].privilege && (
+                            <PrivilegeCheckBadge check={dockerHealth[server.id].privilege!} />
+                          )}
                         </div>
+                      )}
+                      {dockerHealth[server.id]?.privilege && (
+                        <PrivilegeCheckFix check={dockerHealth[server.id].privilege!} />
                       )}
                       <div className="flex items-center gap-1 justify-end">
                         {/* Primary: access actions */}
@@ -1175,6 +1194,31 @@ export default function ServersPage() {
                   placeholder="22"
                   value={formPort}
                   onChange={(e) => setFormPort(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Connect via</Label>
+                <Select
+                  value={formNetworkMode}
+                  onValueChange={(v) => setFormNetworkMode(v as "public" | "tailscale")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public IP / hostname</SelectItem>
+                    <SelectItem value="tailscale">Tailscale</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="server-tailscale-host">Tailscale address</Label>
+                <Input
+                  id="server-tailscale-host"
+                  placeholder="web-1.tail1234.ts.net"
+                  disabled={formNetworkMode !== "tailscale"}
+                  value={formTailscaleHost}
+                  onChange={(e) => setFormTailscaleHost(e.target.value)}
                 />
               </div>
               <div className="col-span-2 space-y-2">

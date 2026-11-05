@@ -470,31 +470,27 @@ pub async fn create_service(
     let replicas = req.replicas.unwrap_or(1);
     let mode = req.mode.as_deref().unwrap_or("replicated").to_string();
 
-    // Build docker service create command
-    let replicas_str = replicas.to_string();
-    let mut args = vec![
-        "service",
-        "create",
-        "--name",
+    // Apply the app's advanced Swarm spec (placement, update/rollback config,
+    // reservations, restart policy) when the service is bound to an app.
+    let app_spec = match req.app_id.as_deref().filter(|a| !a.is_empty()) {
+        Some(app_id) => Some(super::swarm_spec::load_app_spec(&state, app_id).await?),
+        None => None,
+    };
+    let spec = super::swarm_spec::new_service_spec(
         &req.service_name,
-        "--replicas",
-        &replicas_str,
-    ];
-
-    if mode == "global" {
-        args = vec![
-            "service",
-            "create",
-            "--name",
-            &req.service_name,
-            "--mode",
-            "global",
-        ];
-    }
-
-    args.push(&req.image);
-
-    let raw_id = run_docker(&args).await?.trim().to_string();
+        &req.image,
+        &mode,
+        replicas,
+        app_spec.as_ref(),
+    );
+    let docker = bollard::Docker::connect_with_local_defaults()
+        .map_err(|e| ApiError::internal(format!("Failed to connect to Docker: {e}")))?;
+    let raw_id = docker
+        .create_service(spec, None)
+        .await
+        .map_err(|e| ApiError::internal(format!("docker service create failed: {e}")))?
+        .id
+        .unwrap_or_default();
 
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();

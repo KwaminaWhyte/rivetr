@@ -1,8 +1,8 @@
 # Rivetr Service Templates
 
 > **IMPORTANT: Read this file before adding new templates** to avoid duplicates.
-> Last updated: 2026-03-18
-> Total: 335 templates across 26 categories
+> Last updated: 2026-11-05
+> Total: 365 templates across 26 categories
 
 ## How to Add Templates
 
@@ -470,6 +470,41 @@
 | `tpl-batch2-tandoor` | Tandoor Recipes | `project_mgmt.rs` |
 | `tpl-batch2-trilium` | Trilium | `project_mgmt.rs` |
 | `tpl-batch2-vikunja` | Vikunja | `project_mgmt.rs` |
+
+### Sprint 27 additions (2026-11-05)
+
+| ID | Name | Category | File |
+|----|------|----------|------|
+| `tpl-kestra` | Kestra | automation | `sprint27.rs` |
+| `tpl-superset` | Apache Superset | analytics | `sprint27.rs` |
+| `tpl-grafana-otel-lgtm` | Grafana OTel LGTM | monitoring | `sprint27.rs` |
+| `tpl-coder` | Coder | development | `sprint27.rs` |
+| `tpl-docuseal` | DocuSeal | business | `sprint27.rs` |
+| `tpl-komga` | Komga | media | `sprint27.rs` |
+| `tpl-wallabag` | Wallabag | productivity | `sprint27.rs` |
+| `tpl-kutt` | Kutt | productivity | `sprint27.rs` |
+| `tpl-planka` | Planka | productivity | `sprint27.rs` |
+| `tpl-gatus` | Gatus | monitoring | `sprint27.rs` |
+| `tpl-semaphore` | Semaphore UI | devops | `sprint27.rs` |
+| `tpl-mailpit` | Mailpit | development | `sprint27.rs` |
+| `tpl-paperless-ai` | Paperless-AI | ai | `sprint27.rs` |
+| `tpl-ghostfolio` | Ghostfolio | business | `sprint27.rs` |
+| `tpl-seerr` | Seerr | media | `sprint27.rs` |
+| `tpl-tautulli` | Tautulli | media | `sprint27.rs` |
+| `tpl-cyberchef` | CyberChef | development | `sprint27.rs` |
+| `tpl-redisinsight` | Redis Insight | database | `sprint27.rs` |
+| `tpl-pgweb` | pgweb | database | `sprint27.rs` |
+| `tpl-ocis` | ownCloud Infinite Scale | storage | `sprint27.rs` |
+| `tpl-rustdesk-server` | RustDesk Server | networking | `sprint27.rs` |
+| `tpl-librespeed` | LibreSpeed | networking | `sprint27.rs` |
+| `tpl-technitium-dns` | Technitium DNS Server | networking | `sprint27.rs` |
+| `tpl-convertx` | ConvertX | productivity | `sprint27.rs` |
+| `tpl-unleash` | Unleash | development | `sprint27.rs` |
+| `tpl-snipe-it` | Snipe-IT | business | `sprint27.rs` |
+| `tpl-centrifugo` | Centrifugo | communication | `sprint27.rs` |
+| `tpl-bugsink` | Bugsink | monitoring | `sprint27.rs` |
+| `tpl-gotenberg` | Gotenberg | development | `sprint27.rs` |
+| `tpl-whisper-asr` | Whisper ASR Webservice | ai | `sprint27.rs` |
 
 ### Uncategorized
 

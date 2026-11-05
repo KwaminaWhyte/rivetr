@@ -1715,6 +1715,26 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 130: advanced Swarm service spec per app
+    execute_sql(
+        pool,
+        include_str!("../../migrations/130_app_swarm_specs.sql"),
+    )
+    .await?;
+
+    // Migration 131: per-server network mode (public IP or Tailscale)
+    let has_network_mode: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('servers') WHERE name = 'network_mode'")
+            .fetch_optional(pool)
+            .await?;
+    if has_network_mode.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/131_server_network.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

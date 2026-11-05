@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { serversApi } from "@/lib/api/servers";
 import { relativeTime } from "@/components/servers/server-ops-utils";
 import { useServerContext } from "@/components/servers/server-context";
+import { ServerNetworkCard } from "@/components/servers/server-network-card";
 
 export function meta() {
   return [{ title: "Server - Rivetr" }];
@@ -47,6 +48,9 @@ export default function ServerGeneralPage() {
             ) : (
               <>
                 <Row label="Host" value={server ? `${server.username}@${server.host}:${server.port}` : summary?.host} />
+                {server?.network_mode === "tailscale" && (
+                  <Row label="Tailscale" value={server.tailscale_host} />
+                )}
                 <Row label="Operating system" value={server?.os_info} />
                 <Row label="Docker" value={server?.docker_version} />
                 <Row label="Last seen" value={server?.last_seen_at ? relativeTime(server.last_seen_at) : "never"} />
@@ -80,6 +84,8 @@ export default function ServerGeneralPage() {
           </dl>
         </CardContent>
       </Card>
+
+      {!isLocal && server && <ServerNetworkCard server={server} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         {links.map((l) => (

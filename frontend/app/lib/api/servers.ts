@@ -27,6 +27,25 @@ export interface Server {
   hourly_rate: number;
   created_at: string;
   updated_at: string;
+  /** How Rivetr reaches the server over SSH */
+  network_mode?: ServerNetworkMode;
+  /** Tailscale IP or MagicDNS name (used when network_mode is "tailscale") */
+  tailscale_host?: string | null;
+}
+
+export type ServerNetworkMode = "public" | "tailscale";
+
+export interface NetworkCheckItem {
+  name: string;
+  status: "pass" | "fail" | "skip";
+  detail: string;
+}
+
+export interface NetworkCheckResponse {
+  network_mode: ServerNetworkMode;
+  address: string;
+  ok: boolean;
+  checks: NetworkCheckItem[];
 }
 
 export interface CreateServerRequest {
@@ -39,6 +58,8 @@ export interface CreateServerRequest {
   team_id?: string;
   /** Hourly cost in USD for cost analysis (e.g. 0.036 for DO s-2vcpu-4gb) */
   hourly_rate?: number;
+  network_mode?: ServerNetworkMode;
+  tailscale_host?: string;
 }
 
 export interface UpdateServerRequest {
@@ -51,6 +72,19 @@ export interface UpdateServerRequest {
   timezone?: string;
   /** Hourly cost in USD for cost analysis */
   hourly_rate?: number;
+  network_mode?: ServerNetworkMode;
+  /** Empty string clears it */
+  tailscale_host?: string;
+}
+
+/** Root / passwordless sudo validation for the SSH user. */
+export interface PrivilegeCheck {
+  ssh_user: string;
+  status: "root" | "available" | "missing" | "not_installed";
+  ok: boolean;
+  message: string;
+  /** Line to add to /etc/sudoers.d/rivetr when sudo is missing. */
+  sudoers_line?: string | null;
 }
 
 export interface ServerHealthResponse extends Server {
@@ -58,6 +92,7 @@ export interface ServerHealthResponse extends Server {
   docker_running: boolean;
   compose_installed: boolean;
   compose_version?: string;
+  privilege?: PrivilegeCheck | null;
 }
 
 export interface InstallDockerResponse {
@@ -128,6 +163,10 @@ export const serversApi = {
   /** Trigger a health check on a server (includes docker_installed, docker_running, compose_installed) */
   check: (id: string, token?: string) =>
     apiRequest<ServerHealthResponse>(`/servers/${id}/check`, { method: "POST" }, token),
+
+  /** Check connectivity: tailscaled on the Rivetr host, tailscale ping, SSH port */
+  networkCheck: (id: string, token?: string) =>
+    apiRequest<NetworkCheckResponse>(`/servers/${id}/network-check`, { method: "POST" }, token),
 
   /** Fetch detailed server info (OS, Docker version, disk, CPU, RAM) via SSH */
   fetchDetails: (id: string, token?: string) =>
