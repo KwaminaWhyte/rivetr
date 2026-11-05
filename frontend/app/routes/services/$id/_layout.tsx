@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { HeaderSkeleton, PageHeader, ResourceStatus, SectionSkeleton } from "@/components/page";
+import { TopBarPortal } from "@/components/shell/top-bar-slot";
 import { api } from "@/lib/api";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
@@ -19,46 +21,6 @@ export function meta() {
   ];
 }
 
-// Status badge component
-function StatusBadge({ status }: { status?: ServiceStatus }) {
-  if (!status) return null;
-
-  switch (status) {
-    case "running":
-      return (
-        <Badge className="bg-green-500 text-white gap-1">
-          <Circle className="h-2 w-2 fill-current" />
-          Running
-        </Badge>
-      );
-    case "stopped":
-      return (
-        <Badge variant="secondary" className="gap-1">
-          <Circle className="h-2 w-2" />
-          Stopped
-        </Badge>
-      );
-    case "pending":
-      return (
-        <Badge variant="outline" className="gap-1 text-blue-600 border-blue-300">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
-          </span>
-          Pending
-        </Badge>
-      );
-    case "failed":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <Circle className="h-2 w-2 fill-current" />
-          Failed
-        </Badge>
-      );
-    default:
-      return null;
-  }
-}
 
 const tabs = [
   { id: "general", label: "General", path: "" },
@@ -189,10 +151,8 @@ export default function ServiceDetailLayout() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse">
-          <div className="h-8 w-48 bg-muted rounded mb-2" />
-          <div className="h-4 w-64 bg-muted rounded" />
-        </div>
+        <HeaderSkeleton />
+        <SectionSkeleton rows={4} />
       </div>
     );
   }
@@ -232,79 +192,56 @@ export default function ServiceDetailLayout() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <Layers className="h-8 w-8 text-muted-foreground" />
-            <h1 className="text-3xl font-bold">{service.name}</h1>
-            <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
-              Docker Compose
-            </Badge>
-            <StatusBadge status={service.status} />
-          </div>
-          {service.project_id && (
-            <p className="text-muted-foreground mt-1">
-              <Link to={`/projects/${service.project_id}`} className="hover:underline">
-                Back to Project
-              </Link>
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {/* Open button, shown when running and domain or port is configured */}
-          {service.status === "running" && (service.domain || service.port > 0) && (() => {
-            const url = service.domain
-              ? `https://${service.domain}`
-              : `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${service.port}`;
-            return (
-              <Button variant="outline" asChild className="gap-2">
-                <a href={url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Open
-                </a>
-              </Button>
-            );
-          })()}
-          {/* Start/Stop/Restart buttons */}
-          {service.status === "running" ? (
-            <>
-              <Button
-                variant="outline"
-                disabled={isSubmitting}
-                className="gap-2"
-                onClick={handleRestart}
-              >
-                <RotateCw className="h-4 w-4" />
-                Restart
-              </Button>
-              <Button
-                variant="outline"
-                disabled={isSubmitting}
-                className="gap-2"
-                onClick={handleStop}
-              >
-                <Square className="h-4 w-4" />
-                Stop
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              disabled={isSubmitting}
-              className="gap-2"
-              onClick={handleStart}
-            >
-              <Play className="h-4 w-4" />
-              Start
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        icon={<Layers />}
+        title={service.name}
+        description={service.domain ? service.domain : `Port ${service.port}`}
+        meta={
+          <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
+            Docker Compose
+          </Badge>
+        }
+      />
 
-      {/* Tabs Navigation */}
-      <Tabs value={activeTab} className="w-full">
-        <TabsList className="w-full justify-start">
+      <TopBarPortal slot="status" inlineClassName="-mt-2 flex lg:hidden">
+        <ResourceStatus status={service.status} />
+      </TopBarPortal>
+      <TopBarPortal slot="actions" inlineClassName="-mt-2 flex flex-wrap gap-2 lg:hidden">
+        {service.status === "running" && (service.domain || service.port > 0) && (() => {
+          const url = service.domain
+            ? `https://${service.domain}`
+            : `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${service.port}`;
+          return (
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open
+              </a>
+            </Button>
+          );
+        })()}
+        {service.status === "running" ? (
+          <>
+            <Button variant="outline" size="sm" disabled={isSubmitting} className="gap-1.5" onClick={handleStop}>
+              <Square className="h-3.5 w-3.5" />
+              Stop
+            </Button>
+            <Button size="sm" disabled={isSubmitting} className="gap-1.5" onClick={handleRestart}>
+              <RotateCw className="h-3.5 w-3.5" />
+              Restart
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" disabled={isSubmitting || isTransitioning} className="gap-1.5" onClick={handleStart}>
+            <Play className="h-3.5 w-3.5" />
+            Start
+          </Button>
+        )}
+      </TopBarPortal>
+
+      {/* Tabs Navigation: the contextual sidebar replaces it from md up */}
+      <Tabs value={activeTab} className="w-full overflow-x-auto md:hidden">
+        <TabsList className="w-max justify-start">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
               <Link to={`${basePath}${tab.path}`}>{tab.label}</Link>
