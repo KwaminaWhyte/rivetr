@@ -84,34 +84,7 @@ src/api/apps.rs   →   src/api/apps/
 
 Rust resolves `mod apps;` transparently to either `apps.rs` or `apps/mod.rs`, so callers never need to change.
 
-### Backend module map
-
-| Directory | Responsibility |
-|---|---|
-| `src/api/` | All Axum route handlers, grouped by resource |
-| `src/engine/` | Deployment pipeline, container monitor, scheduler |
-| `src/runtime/` | Container runtime abstraction (Docker, Podman) |
-| `src/proxy/` | Embedded reverse proxy and ACME/TLS |
-| `src/db/` | SQLite models, queries, migrations, seeders |
-| `src/backup/` | S3-compatible backup and restore |
-| `src/logging/` | Log draining to external providers |
-| `src/monitoring/` | Uptime tracking, Prometheus metrics |
-| `src/notifications/` | Alert channels (Slack, Discord, email, Telegram, etc.) |
-| `src/mcp/` | MCP server for AI assistant integration |
-| `src/crypto/` | AES-256-GCM encryption utilities |
-| `src/cli/` | CLI subcommands (`rivetr backup`, `rivetr restore`) |
-| `src/config/` | Configuration parsing (TOML → typed structs) |
-| `src/startup/` | Startup self-checks and database initialization |
-
-### Frontend structure
-
-```
-frontend/app/
-├── routes/       # Page-level route components (React Router v8 file-based routing)
-├── components/   # Reusable UI components built with shadcn/ui
-├── types/        # TypeScript type definitions (barrel-exported from types/index.ts)
-└── lib/          # API client, React Query hooks, and utilities
-```
+See [docs/architecture/architecture.md](docs/architecture/architecture.md#source-layout) for what each backend and frontend directory holds.
 
 ### Rules for new files
 

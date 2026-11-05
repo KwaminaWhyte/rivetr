@@ -375,60 +375,7 @@ The `tui` subcommand requires a build with `--features tui`. Pre-built binaries 
 
 ## Project Structure
 
-```
-rivetr/
-├── src/
-│   ├── main.rs              # Entry point and CLI
-│   ├── lib.rs               # AppState and shared state
-│   ├── api/                 # Axum REST API routes
-│   │   ├── apps/            # App CRUD, control, sharing, ZIP upload
-│   │   ├── deployments/     # Deployment handlers, rollback, approval, freeze
-│   │   ├── webhooks/        # GitHub, GitLab, Gitea, Bitbucket handlers
-│   │   ├── teams/           # Team CRUD, members, invitations, audit
-│   │   ├── git_providers/   # OAuth connections to git providers
-│   │   ├── services/        # Docker Compose and service templates
-│   │   ├── system/          # Health, backup, auto-update
-│   │   └── validation/      # Request validation layer
-│   ├── engine/              # Deployment pipeline
-│   │   ├── pipeline/        # Clone → build → start → rollback
-│   │   ├── service_deploy/  # Compose service deploys: build, hooks, images, rollback
-│   │   ├── container_monitor/ # Crash detection and recovery
-│   │   └── scheduler.rs     # Cron-based job scheduler
-│   ├── runtime/             # Container runtime abstraction
-│   │   ├── docker/          # Bollard-based Docker implementation
-│   │   └── podman.rs        # Podman CLI wrapper
-│   ├── proxy/               # Embedded reverse proxy
-│   │   ├── router.rs        # ArcSwap-based route table
-│   │   └── tls.rs           # ACME/Let's Encrypt
-│   ├── db/                  # SQLite database layer
-│   │   ├── models.rs        # All data models
-│   │   └── seeders/         # 74 service template definitions
-│   ├── backup/              # S3-compatible backup
-│   ├── logging/             # Log draining (Axiom, New Relic, Datadog, HTTP)
-│   ├── monitoring/          # Uptime, metrics, Prometheus exporter
-│   ├── notifications/       # Alert channels (Slack, Discord, email, Telegram, etc.)
-│   ├── mcp/                 # MCP server for AI assistant integration
-│   ├── tui/                 # Terminal UI (ratatui + crossterm, --features tui)
-│   ├── crypto/              # AES-256-GCM encryption utilities
-│   ├── cli/                 # CLI subcommands (backup, restore, server, tui)
-│   ├── config/              # Configuration parsing (TOML)
-│   ├── startup/             # Self-checks and initialization
-│   └── utils/               # Git operations and shared helpers
-├── frontend/                # React + TypeScript dashboard
-│   └── app/
-│       ├── routes/          # Page-level route components
-│       ├── components/      # Reusable UI components (shadcn/ui)
-│       ├── types/           # TypeScript type definitions
-│       └── lib/             # API client and utilities
-├── migrations/              # SQLite schema migrations
-├── static/dist/             # Built frontend assets (served by Rivetr)
-├── docs/                    # Architecture and reference documentation
-├── ansible/                 # Ansible playbook for automated provisioning
-├── .claude/                 # Claude Code agents and skills
-├── live-testing/            # Manual testing guides
-├── rivetr.example.toml      # Annotated configuration reference
-└── install.sh               # Production install script
-```
+See [docs/architecture/architecture.md](docs/architecture/architecture.md#source-layout) for the source layout and how the components fit together.
 
 ## Requirements
 
