@@ -360,6 +360,24 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 
 ## Teams
 
+### Team roles and abilities
+
+Team access is decided from fine-grained abilities. A member's `role` is a preset key or `custom:<role id>`; `GET /api/teams/:id` returns the caller's resolved `user_abilities`. Checks are centralized in `src/api/authz.rs` (`require`, `require_team_ability`, `authorize_action`); the resource middleware maps each request to an action with the same route table as API token scopes (`src/api/scopes.rs`) and then to an ability (e.g. `POST /api/apps/:id/deploy` needs `apps.deploy`).
+
+Abilities: `apps.{read,deploy,write,delete}`, `services.{read,deploy,write,delete}`, `databases.{read,deploy,write,delete}`, `projects.{read,write,delete}`, `env.read_secrets`, `servers.{read,manage}`, `integrations.manage`, `team.manage`, `team.audit`, `team.delete`, `settings.manage`, `tokens.manage`.
+
+| Preset | Abilities |
+|--------|-----------|
+| `owner` | All. |
+| `admin` | All except `team.delete` (delete the team, 2FA requirement). |
+| `developer` | All resource abilities including delete, `env.read_secrets`, `servers.manage`, `integrations.manage`, `tokens.manage`; no team administration. |
+| `deployer` | Read everything, `*.deploy`, `tokens.manage`. |
+| `viewer` | Read only. |
+
+**Team 2FA requirement** (`PUT /api/teams/:id/2fa-enforcement`, owners only): while it is on, a member without TOTP and without a passkey gets `403` with `{"error":{"code":"two_factor_required", ...}}` on every resource of that team (apps, databases, services, projects, servers and the rest) and on team management routes. Reading the team itself (`GET /api/teams/:id`, members list) still works, and `GET /api/teams` and `GET /api/teams/:id` return `two_factor_blocked: true` so the dashboard shows a banner linking to `/account/security`. API tokens act as their owner, so a token of a blocked member is refused for that team's resources too. Instance admins and the admin token from the config are not team-scoped and are not affected.
+
+The pre-1.1 values `owner`, `admin`, `developer` and `viewer` are these presets with the same access. Rules: only owners manage owners or hand out the owner role; nobody can create, edit or assign a role with abilities their own role lacks. Per-member resource overrides (`/members/:user_id/permissions`) apply on top of the role: `deny` removes all access to that resource (or, on a project, its apps, databases, services and environments; on an app, its deployments, volumes and previews); `allow` grants read, deploy and edit on it even when the role does not (never delete or secrets). Overrides on the resource, its app and its project are combined and a deny anywhere wins over an allow. Members with `team.manage` set overrides, but not on themselves and not on members they could not manage. Instance admins and the admin token bypass team checks.
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/teams` | List teams. |
@@ -375,6 +393,10 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 | GET | `/api/teams/:id/members/:user_id/permissions` | List member resource permissions. |
 | PUT | `/api/teams/:id/members/:user_id/permissions` | Set member permissions. |
 | DELETE | `/api/teams/:id/members/:user_id/permissions/:perm_id` | Delete a member permission. |
+| GET | `/api/teams/:id/roles` | Role presets, the team's custom roles and the ability catalogue. |
+| POST | `/api/teams/:id/roles` | Create a custom role: `{"name", "description", "abilities": ["apps.read", ...]}`. |
+| PUT | `/api/teams/:id/roles/:role_id` | Update a custom role. |
+| DELETE | `/api/teams/:id/roles/:role_id` | Delete a custom role (409 while members or pending invitations hold it). |
 | GET | `/api/teams/:id/invitations` | List invitations. |
 | POST | `/api/teams/:id/invitations` | Create an invitation. |
 | DELETE | `/api/teams/:id/invitations/:inv_id` | Delete an invitation. |

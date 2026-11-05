@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Scoped API tokens**: scopes `read`, `deploy`, `write`, `delete`, `secrets` and `admin`, enforced for every `/api` route from one table (`src/api/scopes.rs`, with a test that fails when a route is unmapped). Optional restriction to one team and to projects or resources, optional expiry, pause and resume, roll with a configurable grace period for the old secret, last used time and IP. MCP tools respect token scopes. New endpoints `PATCH /api/tokens/:id`, `POST /api/tokens/:id/{pause,resume,roll}`; the API tokens page has scope selection, restrictions, pause, roll and last use (migration 134).
+- **Granular team RBAC**: 24 fine-grained abilities (`apps.deploy`, `env.read_secrets`, `servers.manage`, `team.manage`, ...), role presets Owner, Admin, Developer, Deployer (new) and Viewer, and custom roles per team built from abilities (`/team/roles`, `GET/POST /api/teams/:id/roles`, `PUT/DELETE /api/teams/:id/roles/:role_id`). All checks go through `authz.rs`. Per-resource allow/deny overrides are now enforced (they were stored but not applied before; deny wins over allow).
+- **Team 2FA requirement enforced**: members of a team that requires 2FA and have neither TOTP nor a passkey get `403 two_factor_required` on the team's resources, also through API tokens; the dashboard shows a banner linking to Account > Security. The member and invitation role pickers show presets with descriptions and custom roles.
 
 ### Breaking
+- Teams that turned on "require 2FA" now actually block members without 2FA from the team's resources.
+- Existing roles keep their access, with these fixes: a viewer can no longer open a server terminal or run bulk or tag deploys, reading through a deny override is refused, and team routes check abilities instead of role levels (a custom role with `team.manage` can manage members).
 - Existing API tokens keep full access. Tokens restricted to a team or resources cannot call admin routes or the MCP server. `GET /api/tokens` returns the extra fields.
 
 ## [1.0.0] - 2026-11-05

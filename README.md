@@ -67,21 +67,25 @@ It supports Docker and Podman runtimes, handles webhooks from GitHub, GitLab, Gi
 
 ### Team Collaboration
 
-- Multi-tenant with full resource isolation between teams
-- RBAC: owner / admin / developer / viewer roles with fine-grained per-resource permission overrides
+- Teams, with apps, databases, services, projects and servers scoped to a team
+- Role presets owner, admin, developer, deployer and viewer, built from 24 fine-grained abilities (for example `apps.deploy`, `env.read_secrets`, `team.manage`)
+- Custom roles per team, built from those abilities (no one can grant abilities their own role lacks)
+- Per-member resource overrides on apps, databases, services and projects: deny removes access, allow grants read, deploy and edit; deny wins over allow
+- Per-team 2FA requirement: members without TOTP or a passkey are refused the team's resources (`two_factor_required`) until they set one up
 - Team invitations via email with 7-day expiry
-- Audit logging for all team operations
-- App sharing between teams
-- Per-team 2FA enforcement
+- Audit log of user and team actions
+- App sharing between teams (view-only shares cannot write)
 
 ### Security and Authentication
 
 - Automatic HTTPS with Let's Encrypt and auto-renewal
-- OAuth login: GitHub, Google
-- SSO/OIDC: Auth0, Keycloak, Azure AD, Okta
+- OAuth login: GitHub, Google, GitLab, Microsoft (Azure), Bitbucket
+- SSO with any OpenID Connect provider (for example Auth0, Keycloak, Azure AD, Okta)
 - TOTP-based 2FA with recovery codes
+- Passkey sign-in
 - AES-256-GCM encryption for secrets and SSH keys at rest
-- Named API tokens: create scoped tokens for CI/CD and scripts (prefixed `rvt_`, stored as SHA-256 hashes)
+- Personal API tokens for CI/CD and scripts (prefixed `rvt_`, stored as SHA-256 hashes): scopes `read`, `deploy`, `write`, `delete`, `secrets`, `admin` enforced on every API route and MCP tool, optional restriction to a team or projects, optional expiry, pause and resume, roll with a grace period, last use time and IP. A token never exceeds its owner's permissions.
+- API access policy for tokens (on/off and IP allowlist)
 - Rate limiting on API, webhook, and auth endpoints
 - Strict input validation and security headers
 

@@ -8,14 +8,14 @@ Impact H/M/L. Effort S (days), M (1 to 2 weeks), L (weeks).
 |---|-----|--------|--------|-----------|-----------------|
 | 1 | Backup success/failure/missed-run notifications | H | S | Coolify 4.3/4.4 | `NotificationEventType` has no backup events (`src/db/models/notification.rs`) |
 | 2 | HTTP/2 on proxy listeners | H | S | Traefik, Caddy, nginx, kamal-proxy | `http1::Builder` only, `src/proxy/handler.rs:318,341` |
-| 3 | Scoped API tokens (read/deploy/write/delete), pause and roll | H | M | Coolify 4.6 | no scope column, `migrations/070` |
+| 3 | ~~Scoped API tokens (read/deploy/write/delete), pause and roll~~ **Done** | H | M | Coolify 4.6 | scopes read/deploy/write/delete/secrets/admin from one route table `src/api/scopes.rs` (coverage test `every_api_route_has_a_scope`), team/resource restriction, expiry, pause, roll with grace, last used IP; MCP tools scoped; migration 134; `docs/reference/api.md#api-token-scopes` |
 | 4 | Per-domain certs via SNI resolver, remove 100-SAN cap | H | M | Coolify, Dokploy, Kamal | one SAN cert, `src/proxy/acme.rs:434,959`; `with_single_cert` in `src/proxy/tls.rs:31` |
 | 5 | Custom certificate upload per domain | H | S | Dokploy, kamal-proxy | missing |
 | 6 | One-click restore of DB and volume backups from S3 | H | M | Coolify, Dokploy, Easypanel | returns 501, `src/api/s3.rs:654` |
 | 7 | Scheduled volume backups to S3 with restore | H | M | Dokploy 0.24, Coolify 4.3 | manual only, `src/api/volumes.rs:249` |
 | 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | HTTP-01 only, `src/proxy/acme.rs:3` |
 | 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | missing |
-| 10 | Granular RBAC ability presets | H | M | Coolify 4.6, Dokploy Enterprise | 4 fixed roles (`src/db/models/team.rs:9`) plus overrides (migration 089) |
+| 10 | ~~Granular RBAC ability presets~~ **Done** | H | M | Coolify 4.6, Dokploy Enterprise | 24 abilities and presets owner/admin/developer/deployer/viewer in `src/db/models/rbac.rs`, custom roles per team (`team_roles`, migration 134, `/team/roles`), central `require`/`authorize_action` in `src/api/authz.rs` with allow/deny overrides enforced on top |
 | 11 | One app across several servers behind the proxy | H | L | Coolify, CapRover, Dokploy (Swarm) | single `server_id`, `src/db/models/app.rs:108`; Swarm only |
 | 12 | Published OpenAPI spec | M | S | Coolify, Dokploy, Render | none; hand-written `docs/reference/api.md` |
 | 13 | Per-app proxy rate limiting and IP allow/deny | M | S | Traefik middlewares | API-only limiter `src/api/rate_limit.rs` |
