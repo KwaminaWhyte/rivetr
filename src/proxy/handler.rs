@@ -99,6 +99,67 @@ fn record_analytics(
     }
 }
 
+/// Analytics fields waiting for the response body to finish.
+struct PendingAnalytics {
+    meta: AnalyticsMeta,
+    host: String,
+    status: u16,
+    ms: u64,
+}
+
+/// Response body that counts the bytes it streams and records the analytics event
+/// exactly once: when the body ends, fails, or is dropped (client went away).
+struct CountingBody {
+    inner: BoxBody<Bytes, hyper::Error>,
+    bytes: u64,
+    pending: Option<PendingAnalytics>,
+}
+
+impl CountingBody {
+    fn finish(&mut self) {
+        if let Some(p) = self.pending.take() {
+            record_analytics(Some(p.meta), Some(&p.host), p.status, p.ms, self.bytes);
+        }
+    }
+}
+
+impl hyper::body::Body for CountingBody {
+    type Data = Bytes;
+    type Error = hyper::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, hyper::Error>>> {
+        let this = &mut *self;
+        let res = std::pin::Pin::new(&mut this.inner).poll_frame(cx);
+        match &res {
+            std::task::Poll::Ready(Some(Ok(frame))) => {
+                if let Some(data) = frame.data_ref() {
+                    this.bytes += data.len() as u64;
+                }
+            }
+            std::task::Poll::Ready(Some(Err(_))) | std::task::Poll::Ready(None) => this.finish(),
+            std::task::Poll::Pending => {}
+        }
+        res
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        self.inner.size_hint()
+    }
+}
+
+impl Drop for CountingBody {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
 /// Handle used by request tasks to enqueue access-log entries for the writer task.
 #[derive(Clone)]
 struct ProxyLogSender {
@@ -626,14 +687,27 @@ impl ProxyHandler {
 
         let ms = start.elapsed().as_millis() as u64;
         let status = response.status().as_u16();
-        record_analytics(
-            analytics_meta,
-            host.as_deref(),
-            status,
-            ms,
-            content_length(response.headers()),
-        );
         self.log_request(log_meta, host.as_deref(), status, ms);
+        // Count the bytes actually streamed (most app responses are chunked, so the
+        // Content-Length header alone undercounts); the event is recorded when the
+        // body ends or the client goes away.
+        let response = match (analytics_meta, host) {
+            (Some(meta), Some(host)) => {
+                let (parts, body) = response.into_parts();
+                let counted = CountingBody {
+                    inner: body,
+                    bytes: 0,
+                    pending: Some(PendingAnalytics {
+                        meta,
+                        host,
+                        status,
+                        ms,
+                    }),
+                };
+                Response::from_parts(parts, counted.boxed())
+            }
+            _ => response,
+        };
         Ok(response)
     }
 
@@ -1096,5 +1170,31 @@ mod tests {
         assert!(redirect_regex("^/old/(.*)$").is_some());
         assert!(redirect_regex("(unclosed").is_none());
         assert!(redirect_regex("(unclosed").is_none());
+    }
+}
+
+#[cfg(test)]
+mod counting_body_tests {
+    use super::*;
+    use futures::stream;
+    use http_body_util::StreamBody;
+
+    #[tokio::test]
+    async fn counts_every_streamed_chunk() {
+        let chunks: Vec<Result<hyper::body::Frame<Bytes>, hyper::Error>> = vec![
+            Ok(hyper::body::Frame::data(Bytes::from(vec![0u8; 1000]))),
+            Ok(hyper::body::Frame::data(Bytes::from(vec![0u8; 2500]))),
+            Ok(hyper::body::Frame::data(Bytes::from_static(b"end"))),
+        ];
+        let inner = StreamBody::new(stream::iter(chunks)).boxed();
+        let mut body = CountingBody {
+            inner,
+            bytes: 0,
+            pending: None,
+        };
+        while let Some(frame) = body.frame().await {
+            frame.unwrap();
+        }
+        assert_eq!(body.bytes, 3503);
     }
 }
