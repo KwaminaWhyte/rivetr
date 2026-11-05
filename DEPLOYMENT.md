@@ -35,7 +35,7 @@ Visit the dashboard to create your admin account on first use.
 **Install a specific version:**
 
 ```bash
-RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo RIVETR_VERSION=vX.Y.Z bash
 ```
 
 The install script preserves your existing configuration and data when run again.
@@ -224,7 +224,7 @@ Roll back by swapping `rivetr.old` back to `rivetr` and restarting.
 The install script is idempotent and preserves existing config:
 
 ```bash
-RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo RIVETR_VERSION=vX.Y.Z bash
 ```
 
 ## Multi-Server Setup
