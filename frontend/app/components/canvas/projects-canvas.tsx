@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -272,6 +272,18 @@ function CanvasInner({
   const [envFilter, setEnvFilter] = useState(ALL);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Wrap rows to the container so narrow screens stack projects vertically.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(1200);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const rowMaxWidth = Math.max(700, Math.round(containerWidth * 1.6));
+
   const envNames = useMemo(() => {
     const names = new Set<string>();
     for (const p of projects) for (const e of p.environments) if (e.id !== SHARED_ENV_ID && p.real) names.add(e.name);
@@ -292,8 +304,8 @@ function CanvasInner({
   );
 
   const { nodes, ids } = useMemo(
-    () => layoutCanvas(visibleProjects, selectedId),
-    [visibleProjects, selectedId]
+    () => layoutCanvas(visibleProjects, selectedId, rowMaxWidth),
+    [visibleProjects, selectedId, rowMaxWidth]
   );
   const edges = useMemo(() => layoutEdges(links, ids), [links, ids]);
 
@@ -342,6 +354,7 @@ function CanvasInner({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "rivetr-canvas relative overflow-hidden rounded-xl border bg-background shadow-xs",
         className

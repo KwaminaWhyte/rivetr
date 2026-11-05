@@ -157,7 +157,7 @@ export function TableToolbar({
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
       {onSearchChange && (
-        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <div className="relative w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-xs">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
@@ -171,7 +171,7 @@ export function TableToolbar({
           />
         </div>
       )}
-      {children && <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{children}</div>}
     </div>
   );
 }

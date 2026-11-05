@@ -11,7 +11,6 @@ const ENV_GAP = 18;
 const PROJ_PAD = 18;
 const PROJ_HEAD = 64;
 const PROJ_GAP = 48;
-const ROW_MAX_W = 2000;
 const PROJ_MIN_W = 320;
 
 /**
@@ -22,7 +21,9 @@ const PROJ_MIN_W = 320;
  */
 export function layoutCanvas(
   projects: CanvasProject[],
-  selectedId: string | null
+  selectedId: string | null,
+  /** Wrap projects into a new row past this width (scaled to the viewport). */
+  rowMaxWidth = 2000
 ): { nodes: Node[]; ids: Set<string> } {
   const nodes: Node[] = [];
   const ids = new Set<string>();
@@ -45,7 +46,7 @@ export function layoutCanvas(
     const projW = Math.max(PROJ_MIN_W, innerW + PROJ_PAD * 2);
     const projH = PROJ_HEAD + Math.max(ENV_EMPTY_H, ...envBoxes.map((b) => b.h)) + PROJ_PAD;
 
-    if (x > 0 && x + projW > ROW_MAX_W) {
+    if (x > 0 && x + projW > rowMaxWidth) {
       x = 0;
       y += rowH + PROJ_GAP;
       rowH = 0;

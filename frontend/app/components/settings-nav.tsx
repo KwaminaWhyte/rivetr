@@ -56,7 +56,7 @@ function SettingsNav() {
       <nav aria-label="Settings" className="hidden lg:flex lg:flex-col lg:gap-5">
         {settingsGroups.map((group) => (
           <div key={group.title} className="flex flex-col gap-0.5">
-            <div className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">
               {group.title}
             </div>
             {group.items.map((item) => {
