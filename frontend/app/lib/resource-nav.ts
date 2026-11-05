@@ -98,7 +98,7 @@ const APP_ICONS: Record<string, LucideIcon> = {
 
 function appSections(base: string): ResourceNavSection[] {
   return APP_TAB_GROUPS.map((group) => ({
-    label: group.id === "overview" ? undefined : group.label,
+    label: group.items.length > 1 ? group.label : undefined,
     items: group.items.map((item) => ({
       title: item.id === "general" ? "Overview" : item.label,
       url: `${base}${item.path}`,

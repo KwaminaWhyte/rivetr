@@ -31,8 +31,8 @@ export default function AppSettingsLayout() {
 
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-11">
+      <Tabs value={activeTab} className="w-full overflow-x-auto md:hidden">
+        <TabsList className="w-max">
           {SETTINGS_TABS.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} asChild>
               <Link to={`${basePath}${tab.path}`} className="gap-1">
