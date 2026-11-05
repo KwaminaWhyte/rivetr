@@ -1,3 +1,4 @@
+import { imageRef } from "@/lib/image-ref";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -321,7 +322,7 @@ export function DockerRegistryCard({ app, token }: DockerRegistryCardProps) {
             <p className="text-sm text-muted-foreground">
               Currently pulling image:{" "}
               <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-foreground">
-                {app.docker_image}:{app.docker_image_tag || "latest"}
+                {imageRef(app.docker_image, app.docker_image_tag)}
               </code>
               {app.registry_username && (
                 <span className="ml-2">

@@ -1,3 +1,4 @@
+import { imageRef } from "@/lib/image-ref";
 import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -67,7 +68,7 @@ const DB_LABEL: Record<string, string> = {
 
 function appSource(app: App): string {
   if (app.docker_image) {
-    return `Image · ${app.docker_image}${app.docker_image_tag ? `:${app.docker_image_tag}` : ""}`;
+    return `Image · ${imageRef(app.docker_image, app.docker_image_tag)}`;
   }
   const build = BUILD_LABEL[app.build_type] ?? "App";
   if (app.deployment_source === "upload") return `${build} · upload`;

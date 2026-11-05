@@ -1,3 +1,4 @@
+import { imageRef } from "@/lib/image-ref";
 import { QueryError } from "@/components/query-error";
 import { useState, useMemo, useEffect } from "react";
 import {
@@ -434,7 +435,7 @@ export default function AppDetailLayout() {
               description={
                 <span className="break-all">
                   {app.docker_image
-                    ? `${app.docker_image}${app.docker_image_tag ? `:${app.docker_image_tag}` : ""}`
+                    ? imageRef(app.docker_image, app.docker_image_tag)
                     : app.git_url || "Uploaded source"}
                   {app.branch && !app.docker_image ? ` · ${app.branch}` : ""}
                 </span>

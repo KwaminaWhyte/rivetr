@@ -11,9 +11,14 @@ Deploy applications from Git with a single binary, ~30MB RAM idle, no external d
 [![Build](https://img.shields.io/github/actions/workflow/status/KwaminaWhyte/rivetr/ci.yml?branch=main)](https://github.com/KwaminaWhyte/rivetr/actions)
 [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/KwaminaWhyte/badge.svg)](https://hub.xerj.org/contributors/KwaminaWhyte)
 
-![Rivetr projects page](docs/images/projects.png)
+![Rivetr dashboard with the projects canvas](docs/images/dashboard.png)
 
 ![Rivetr app overview with live resource usage](docs/images/app-overview.png)
+
+<p>
+  <img src="docs/images/projects.png" alt="Rivetr projects page" width="49%" />
+  <img src="docs/images/appearance.png" alt="Rivetr theme customisation" width="49%" />
+</p>
 
 ## What is Rivetr?
 
