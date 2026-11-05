@@ -178,7 +178,7 @@ export default function ServicesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Services</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
           <p className="text-muted-foreground">
             Deploy and manage Docker Compose services
           </p>

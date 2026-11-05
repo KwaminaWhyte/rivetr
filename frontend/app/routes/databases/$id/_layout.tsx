@@ -172,7 +172,7 @@ export default function DatabaseDetailLayout() {
   if (!database) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Database Not Found</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Database Not Found</h1>
         <p className="text-muted-foreground">
           The database you're looking for doesn't exist or has been deleted.
         </p>

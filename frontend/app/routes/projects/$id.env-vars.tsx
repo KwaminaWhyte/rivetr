@@ -34,7 +34,7 @@ export default function ProjectEnvVarsPage() {
         <div className="flex items-center gap-2">
           <Layers className="h-5 w-5 text-muted-foreground" />
           <div>
-            <h1 className="text-2xl font-bold">
+            <h1 className="text-2xl font-semibold tracking-tight">
               {isLoading ? "..." : (project?.name ?? "Project")}
             </h1>
             <p className="text-sm text-muted-foreground">

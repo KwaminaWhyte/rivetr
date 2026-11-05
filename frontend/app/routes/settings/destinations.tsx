@@ -91,7 +91,7 @@ export default function SettingsDestinationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Destinations</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Destinations</h1>
         <p className="text-muted-foreground mt-1">
           Named Docker networks that apps can be assigned to. Each destination
           creates (or reuses) a Docker bridge network.

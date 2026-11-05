@@ -1012,7 +1012,7 @@ export default function GitIntegrationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Git Integrations</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Git Integrations</h1>
         <p className="text-muted-foreground">
           Connect Git providers to deploy from your repositories automatically.
         </p>

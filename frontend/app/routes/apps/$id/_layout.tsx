@@ -387,7 +387,7 @@ export default function AppDetailLayout() {
   if (!app) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Application Not Found</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Application Not Found</h1>
         <p className="text-muted-foreground">
           The application you're looking for doesn't exist or has been deleted.
         </p>

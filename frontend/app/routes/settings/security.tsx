@@ -195,7 +195,7 @@ export default function SecuritySettingsPage() {
   if (statusError && !status) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Security</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
         <QueryError what="two-factor status" error={statusError} onRetry={() => refetchStatus()} />
       </div>
     );
@@ -204,7 +204,7 @@ export default function SecuritySettingsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Security</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
         <Card>
           <CardContent className="flex items-center justify-center py-12">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -218,7 +218,7 @@ export default function SecuritySettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Security</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
 
       {/* Change Password Card */}
       <Card>

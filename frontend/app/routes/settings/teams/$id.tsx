@@ -339,7 +339,7 @@ export default function TeamDetailPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{team.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{team.name}</h1>
           <p className="text-muted-foreground">/{team.slug}</p>
         </div>
         {canDelete && (

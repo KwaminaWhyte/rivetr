@@ -86,7 +86,7 @@ export default function WhiteLabelSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Paintbrush className="h-7 w-7" />
           White Label
         </h1>

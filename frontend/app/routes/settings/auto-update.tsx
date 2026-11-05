@@ -82,7 +82,7 @@ export default function AutoUpdatePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Auto Updates</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Auto Updates</h1>
 
       {/* Current Version Card */}
       <Card>

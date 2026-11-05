@@ -658,7 +658,7 @@ export default function S3StoragePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">S3 Storage</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">S3 Storage</h1>
         <div className="flex items-center gap-2">
           <TriggerBackupDialog configs={configs ?? []} />
           <ConfigFormDialog

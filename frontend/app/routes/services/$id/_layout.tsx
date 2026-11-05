@@ -168,7 +168,7 @@ export default function ServiceDetailLayout() {
   if (!service) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Service Not Found</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Service Not Found</h1>
         <p className="text-muted-foreground">
           The service you're looking for doesn't exist or has been deleted.
         </p>

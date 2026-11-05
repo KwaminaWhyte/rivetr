@@ -132,7 +132,7 @@ export default function SettingsTeamsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Teams</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
           <p className="text-muted-foreground">
             Manage teams and collaborate with other users
           </p>

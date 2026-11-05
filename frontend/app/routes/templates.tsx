@@ -209,7 +209,7 @@ export default function TemplatesPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Service Templates</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Service Templates</h1>
           <p className="text-muted-foreground">
             Deploy pre-configured services with one click
           </p>

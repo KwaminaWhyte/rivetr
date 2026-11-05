@@ -310,7 +310,7 @@ export default function NewAppPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">New Application</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">New Application</h1>
 
       <Card>
         <CardHeader>
