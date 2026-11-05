@@ -37,6 +37,7 @@ import type { ServerImage } from "@/lib/api/server-ops";
 import { ConfirmActionDialog } from "@/components/servers/confirm-action-dialog";
 import { formatBytes, relativeTime } from "@/components/servers/server-ops-utils";
 import { useServerContext } from "@/components/servers/server-context";
+import { isNumber, usePersistedState } from "@/lib/persisted-state";
 
 export function meta() {
   return [{ title: "Images - Rivetr" }];
@@ -79,7 +80,7 @@ export default function ServerImagesPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [perPage, setPerPage] = usePersistedState<number>("table:server-images:page-size", 10, { validate: isNumber });
   const [toDelete, setToDelete] = useState<ServerImage | null>(null);
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({

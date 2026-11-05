@@ -11,6 +11,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { usePersistedState } from "@/lib/persisted-state";
+
+const isPageSize = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0 && (v as number) <= 500;
 
 export interface DataColumn<T> {
   id: string;
@@ -243,10 +246,21 @@ export function TablePagination({
   );
 }
 
-/** Client-side pagination for an in-memory list. Resets to page 1 when the list shrinks. */
-export function usePagedRows<T>(rows: T[], initialPageSize = 10) {
+/**
+ * Client-side pagination for an in-memory list. Resets to page 1 when the list
+ * shrinks. Pass `persistKey` to remember the page size per table
+ * (rivetr:ui:table:<key>:page-size).
+ */
+export function usePagedRows<T>(rows: T[], initialPageSize = 10, persistKey?: string) {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [storedSize, setStoredSize] = usePersistedState<number>(
+    `table:${persistKey ?? "_"}:page-size`,
+    initialPageSize,
+    { validate: isPageSize }
+  );
+  const [localSize, setLocalSize] = useState(initialPageSize);
+  const pageSize = persistKey ? storedSize : localSize;
+  const setPageSize = persistKey ? setStoredSize : setLocalSize;
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   useEffect(() => {
     if (page > pages) setPage(1);
