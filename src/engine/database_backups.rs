@@ -11,6 +11,11 @@ use crate::db::{
     BackupStatus, BackupType, DatabaseBackup, DatabaseBackupSchedule, DatabaseCredentials,
     ManagedDatabase,
 };
+use crate::engine::backup_jobs::database::{destination_label, notify_database_backup};
+use crate::engine::backup_jobs::notify::{
+    notify_backup, BackupEvent, BackupOutcome, BackupResourceKind,
+};
+use crate::engine::backup_jobs::s3_store;
 use crate::runtime::ContainerRuntime;
 use crate::DbPool;
 use anyhow::{Context, Result};
@@ -50,6 +55,8 @@ pub struct DatabaseBackupTask {
     runtime: Arc<dyn ContainerRuntime>,
     config: DatabaseBackupConfig,
     data_dir: PathBuf,
+    /// `auth.encryption_key`, needed to decrypt S3 credentials for offsite copies
+    encryption_secret: Option<String>,
 }
 
 impl DatabaseBackupTask {
@@ -64,7 +71,14 @@ impl DatabaseBackupTask {
             runtime,
             config,
             data_dir,
+            encryption_secret: None,
         }
+    }
+
+    /// Set the secret used to decrypt S3 credentials (scheduled offsite copies).
+    pub fn with_encryption_secret(mut self, secret: Option<String>) -> Self {
+        self.encryption_secret = secret;
+        self
     }
 
     /// Run a single backup check cycle
@@ -80,7 +94,8 @@ impl DatabaseBackupTask {
         let due_schedules: Vec<DatabaseBackupSchedule> = sqlx::query_as(
             r#"
             SELECT id, database_id, enabled, schedule_type, schedule_hour, schedule_day,
-                   retention_count, last_run_at, next_run_at, created_at, updated_at
+                   retention_count, last_run_at, next_run_at, created_at, updated_at,
+                   s3_config_id
             FROM database_backup_schedules
             WHERE enabled = 1
               AND next_run_at IS NOT NULL
@@ -152,15 +167,94 @@ impl DatabaseBackupTask {
             );
             // Still update the schedule to avoid repeated attempts
             self.update_schedule_next_run(&schedule.id).await?;
+            let mut event = BackupEvent::new(
+                BackupOutcome::Missed,
+                BackupResourceKind::Database,
+                database.name.clone(),
+            )
+            .resource_id(database.id.clone())
+            .trigger("scheduled")
+            .error(format!("Database is {}, not running", database.status));
+            if let Some(ref due) = schedule.next_run_at {
+                event = event.expected_at(due.clone());
+            }
+            notify_backup(&self.db, event);
             return Ok(());
         }
 
         // Run the backup
-        self.backup_database(&database, BackupType::Scheduled)
-            .await?;
+        let result = self.backup_database(&database, BackupType::Scheduled).await;
 
         // Update the schedule's next run time
         self.update_schedule_next_run(&schedule.id).await?;
+
+        let backup = match result {
+            Ok(backup) => backup,
+            Err(e) => {
+                notify_database_backup(
+                    &self.db,
+                    &database,
+                    "scheduled",
+                    Err(e.to_string()),
+                    "local".to_string(),
+                );
+                return Err(e);
+            }
+        };
+
+        // Offsite copy, when the schedule has an S3 destination.
+        let mut s3_config = None;
+        if let Some(config_id) = schedule.s3_config_id.as_deref().filter(|s| !s.is_empty()) {
+            let uploaded = async {
+                let config = s3_store::load_config(&self.db, config_id).await?;
+                let path = backup
+                    .file_path
+                    .as_deref()
+                    .context("Backup has no file on disk")?;
+                s3_store::upload_and_record(
+                    &self.db,
+                    self.encryption_secret.as_deref(),
+                    &config,
+                    "database",
+                    Some(&database.id),
+                    std::path::Path::new(path),
+                )
+                .await?;
+                s3_store::prune_s3_backups(
+                    &self.db,
+                    self.encryption_secret.as_deref(),
+                    &config,
+                    "database",
+                    Some(&database.id),
+                    schedule.retention_count.max(1) as usize,
+                )
+                .await;
+                Ok::<_, anyhow::Error>(config)
+            }
+            .await;
+            match uploaded {
+                Ok(config) => s3_config = Some(config),
+                Err(e) => {
+                    let msg = format!("Backup saved locally but the S3 upload failed: {e:#}");
+                    notify_database_backup(
+                        &self.db,
+                        &database,
+                        "scheduled",
+                        Err(msg.clone()),
+                        "local".to_string(),
+                    );
+                    return Err(anyhow::anyhow!(msg));
+                }
+            }
+        }
+
+        notify_database_backup(
+            &self.db,
+            &database,
+            "scheduled",
+            Ok(&backup),
+            destination_label(s3_config.as_ref()),
+        );
 
         Ok(())
     }
@@ -809,6 +903,7 @@ pub fn spawn_database_backup_task(
     runtime: Arc<dyn ContainerRuntime>,
     config: DatabaseBackupConfig,
     data_dir: PathBuf,
+    encryption_secret: Option<String>,
 ) {
     if !config.enabled {
         info!("Database backup scheduling is disabled");
@@ -816,13 +911,15 @@ pub fn spawn_database_backup_task(
     }
 
     let interval_secs = config.check_interval_seconds;
+    let encryption_secret = encryption_secret.filter(|s| !s.is_empty());
     info!(
         interval_secs = interval_secs,
         backup_dir = %config.backup_dir,
         "Starting database backup scheduler"
     );
 
-    let task = DatabaseBackupTask::new(db, runtime, config, data_dir);
+    let task = DatabaseBackupTask::new(db, runtime, config, data_dir)
+        .with_encryption_secret(encryption_secret);
 
     tokio::spawn(async move {
         // Wait a bit before the first check to let the system stabilize

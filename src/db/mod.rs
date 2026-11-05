@@ -37,6 +37,27 @@ async fn execute_sql(pool: &SqlitePool, sql: &str) -> Result<()> {
     Ok(())
 }
 
+/// Add `column` to `table` unless it already exists (SQLite has no ADD COLUMN IF NOT EXISTS).
+/// Only called with literal identifiers from the migration code.
+async fn add_column_if_missing(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<()> {
+    let exists: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info(?) WHERE name = ?")
+            .bind(table)
+            .bind(column)
+            .fetch_optional(pool)
+            .await?;
+    if exists.is_none() {
+        let sql = format!("ALTER TABLE {table} ADD COLUMN {column} {definition}");
+        sqlx::query(sqlx::AssertSqlSafe(sql)).execute(pool).await?;
+    }
+    Ok(())
+}
+
 pub async fn init(data_dir: &Path) -> Result<DbPool> {
     let db_path = data_dir.join("rivetr.db");
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -1752,6 +1773,30 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     execute_sql(
         pool,
         include_str!("../../migrations/136_app_server_placements.sql"),
+    )
+    .await?;
+
+    // Migration 133: backup notifications, scheduled volume backups, restore jobs
+    let subs_allow_backup_events: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'notification_subscriptions' AND sql LIKE '%backup_missed%'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+    if !subs_allow_backup_events {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/133_backup_notification_events.sql"),
+        )
+        .await?;
+    }
+    execute_sql(pool, include_str!("../../migrations/133_backup_jobs.sql")).await?;
+    add_column_if_missing(pool, "s3_backups", "checksum_sha256", "TEXT").await?;
+    add_column_if_missing(
+        pool,
+        "database_backup_schedules",
+        "s3_config_id",
+        "TEXT REFERENCES s3_storage_configs(id) ON DELETE SET NULL",
     )
     .await?;
 

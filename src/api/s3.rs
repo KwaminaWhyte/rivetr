@@ -12,12 +12,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::authz;
+use crate::api::error::ApiError;
 use crate::backup::s3::S3Client;
 use crate::crypto;
 use crate::db::{
     CreateS3StorageConfigRequest, S3Backup, S3BackupResponse, S3StorageConfig,
     S3StorageConfigResponse, TriggerS3BackupRequest, UpdateS3StorageConfigRequest, User,
 };
+use crate::engine::backup_jobs::s3_store;
 use crate::AppState;
 
 /// Key length for AES-256 encryption
@@ -385,155 +387,220 @@ pub async fn test_config(
 // ---------------------------------------------------------------------------
 
 /// Trigger a backup to S3
+///
+/// `instance` uploads a fresh instance backup, `database` dumps the database
+/// (`source_id`) and uploads the dump, `volume` archives the volume (`source_id`)
+/// straight to S3. The work runs in the background; the returned row is `pending`
+/// and moves to `uploading`, then `completed` or `failed`.
 pub async fn trigger_backup(
     State(state): State<Arc<AppState>>,
     user: User,
     Json(req): Json<TriggerS3BackupRequest>,
-) -> Result<Json<S3BackupResponse>, StatusCode> {
-    // Validate backup type
+) -> Result<Json<S3BackupResponse>, ApiError> {
+    use crate::engine::backup_jobs::{database as db_jobs, notify, volume, JobContext};
+
     if !["instance", "database", "volume"].contains(&req.backup_type.as_str()) {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request(
+            "backup_type must be instance, database or volume",
+        ));
+    }
+    let source_id = req.source_id.clone().filter(|s| !s.is_empty());
+    if req.backup_type != "instance" && source_id.is_none() {
+        return Err(ApiError::bad_request(
+            "source_id is required for database and volume backups",
+        ));
     }
 
-    // Fetch the storage config
     let config =
         sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
             .bind(&req.storage_config_id)
             .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch S3 config: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
+            .await?
+            .ok_or_else(|| ApiError::not_found("S3 storage config not found"))?;
 
     // SEC-C3: the caller must have access to the storage config they target.
-    authz::authorize_team_assignment(&state, &user, config.team_id.as_deref())
-        .await
-        .map_err(|e| e.status())?;
+    authz::authorize_team_assignment(&state, &user, config.team_id.as_deref()).await?;
 
-    let backup_id = Uuid::new_v4().to_string();
-    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let s3_key = match req.backup_type.as_str() {
-        "instance" => format!("backups/instance/rivetr-backup-{}.tar.gz", timestamp),
-        "database" => {
-            let source = req.source_id.as_deref().unwrap_or("unknown");
-            format!("backups/database/{}/backup-{}.sql.gz", source, timestamp)
+    let ctx = JobContext::from_state(&state);
+    let config_name = config.name.clone();
+
+    if req.backup_type == "volume" {
+        let volume_id = source_id.clone().unwrap_or_default();
+        let vol = volume::get_volume(&state.db, &volume_id)
+            .await
+            .map_err(|_| ApiError::not_found("Volume not found"))?;
+        authz::authorize_app_write(&state, &user, &vol.app_id).await?;
+        let destination = volume::Destination::S3(Box::new(config.clone()));
+        let record = volume::create_pending(
+            &state.db,
+            &vol.id,
+            "manual",
+            &destination,
+            volume::SnapshotMode::Live,
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+        // The volume job creates the s3_backups row once the archive exists; answer
+        // with a pending placeholder that mirrors the request.
+        let job_ctx = ctx.clone();
+        tokio::spawn(async move {
+            let _ = volume::run_backup_job(
+                &job_ctx,
+                &vol,
+                record,
+                destination,
+                volume::SnapshotMode::Live,
+            )
+            .await;
+        });
+        return Ok(Json(S3BackupResponse {
+            id: String::new(),
+            storage_config_id: config.id.clone(),
+            storage_config_name: Some(config_name),
+            backup_type: "volume".into(),
+            source_id,
+            s3_key: s3_store::listing_prefix("volume", Some(&volume_id)),
+            size_bytes: None,
+            size_human: None,
+            status: "pending".into(),
+            error_message: None,
+            team_id: config.team_id.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            checksum_sha256: None,
+        }));
+    }
+
+    let database = if req.backup_type == "database" {
+        let database_id = source_id.clone().unwrap_or_default();
+        let database = authz::authorize_database(&state, &user, &database_id).await?;
+        if database.status != "running" {
+            return Err(ApiError::bad_request(
+                "Database must be running to create a backup",
+            ));
         }
-        "volume" => {
-            let source = req.source_id.as_deref().unwrap_or("unknown");
-            format!("backups/volume/{}/backup-{}.tar.gz", source, timestamp)
-        }
-        _ => return Err(StatusCode::BAD_REQUEST),
+        Some(database)
+    } else {
+        None
     };
 
-    // Create backup record as pending
-    sqlx::query(
-        "INSERT INTO s3_backups (id, storage_config_id, backup_type, source_id, s3_key, status, team_id)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+    let backup_id = s3_store::insert_pending(
+        &state.db,
+        &config,
+        &req.backup_type,
+        source_id.as_deref(),
+        &s3_store::listing_prefix(&req.backup_type, source_id.as_deref()),
     )
-    .bind(&backup_id)
-    .bind(&req.storage_config_id)
-    .bind(&req.backup_type)
-    .bind(&req.source_id)
-    .bind(&s3_key)
-    .bind(&config.team_id)
-    .execute(&state.db)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create S3 backup record: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
-    // Clone what we need for the background task
-    let config_name = config.name.clone();
-    let db = state.db.clone();
-    let state_clone = state.clone();
-    let backup_id_clone = backup_id.clone();
-    let s3_key_clone = s3_key.clone();
+    let row_id = backup_id.clone();
     let backup_type = req.backup_type.clone();
-
-    // Perform the backup in a background task
     tokio::spawn(async move {
-        // Update status to uploading
-        let _ = sqlx::query("UPDATE s3_backups SET status = 'uploading' WHERE id = ?")
-            .bind(&backup_id_clone)
-            .execute(&db)
-            .await;
-
-        let result = async {
-            let client = build_s3_client(&config, &state_clone)?;
-
-            // Get backup data based on type
-            let data = match backup_type.as_str() {
-                "instance" => {
-                    // Create an instance backup
-                    let data_dir = &state_clone.config.server.data_dir;
-                    let config_path = data_dir.join("../rivetr.toml");
-                    let acme_cache_dir = &state_clone.config.proxy.acme_cache_dir;
-
-                    let backup_result = crate::backup::create_backup(
-                        &db,
-                        data_dir,
-                        &config_path,
-                        acme_cache_dir,
+        match database {
+            Some(database) => {
+                let result = async {
+                    let task = crate::engine::database_backups::DatabaseBackupTask::new(
+                        ctx.db.clone(),
+                        ctx.runtime.clone(),
+                        ctx.db_backup.clone(),
+                        ctx.data_dir.clone(),
+                    );
+                    let local = task
+                        .backup_database(&database, crate::db::BackupType::Manual)
+                        .await?;
+                    let path = local
+                        .file_path
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("Backup has no file on disk"))?;
+                    s3_store::upload_into_record(
+                        &ctx.db,
+                        ctx.secret(),
+                        &config,
+                        &row_id,
+                        "database",
+                        Some(&database.id),
+                        std::path::Path::new(&path),
+                    )
+                    .await?;
+                    Ok::<_, anyhow::Error>(local)
+                }
+                .await;
+                match result {
+                    Ok(local) => db_jobs::notify_database_backup(
+                        &ctx.db,
+                        &database,
+                        "manual",
+                        Ok(&local),
+                        db_jobs::destination_label(Some(&config)),
+                    ),
+                    Err(e) => {
+                        s3_store::mark_failed(&ctx.db, &row_id, &format!("{e:#}")).await;
+                        db_jobs::notify_database_backup(
+                            &ctx.db,
+                            &database,
+                            "manual",
+                            Err(format!("{e:#}")),
+                            notify::s3_destination(&config.name),
+                        );
+                    }
+                }
+            }
+            None if backup_type == "instance" => {
+                let started = std::time::Instant::now();
+                let result = async {
+                    let backup = crate::backup::create_backup(
+                        &ctx.db,
+                        &ctx.data_dir,
+                        &ctx.config_path,
+                        &ctx.acme_cache_dir,
                         None,
                     )
+                    .await?;
+                    s3_store::upload_into_record(
+                        &ctx.db,
+                        ctx.secret(),
+                        &config,
+                        &row_id,
+                        "instance",
+                        None,
+                        &backup.path,
+                    )
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-                    // Read the backup file
-                    std::fs::read(&backup_result.path)
-                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
                 }
-                _ => {
-                    // For database/volume types, we read from the local backup directory
-                    // A source_id-based lookup would be needed here
-                    tracing::warn!("Database/volume S3 backup not yet fully integrated");
-                    return Err(StatusCode::NOT_IMPLEMENTED);
+                .await;
+                let event = |outcome| {
+                    notify::BackupEvent::new(
+                        outcome,
+                        notify::BackupResourceKind::Instance,
+                        "Rivetr instance",
+                    )
+                    .trigger("manual")
+                    .destination(notify::s3_destination(&config.name))
+                };
+                match result {
+                    Ok(row) => notify::notify_backup(
+                        &ctx.db,
+                        event(notify::BackupOutcome::Succeeded)
+                            .size(row.size_bytes)
+                            .duration(Some(started.elapsed())),
+                    ),
+                    Err(e) => {
+                        s3_store::mark_failed(&ctx.db, &row_id, &format!("{e:#}")).await;
+                        notify::notify_backup(
+                            &ctx.db,
+                            event(notify::BackupOutcome::Failed).error(format!("{e:#}")),
+                        );
+                    }
                 }
-            };
-
-            let size = data.len() as i64;
-
-            // Upload to S3
-            client
-                .upload_backup(&s3_key_clone, data)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-            // Update record with success
-            let _ = sqlx::query(
-                "UPDATE s3_backups SET status = 'completed', size_bytes = ? WHERE id = ?",
-            )
-            .bind(size)
-            .bind(&backup_id_clone)
-            .execute(&db)
-            .await;
-
-            Ok::<(), StatusCode>(())
-        }
-        .await;
-
-        if result.is_err() {
-            let _ = sqlx::query(
-                "UPDATE s3_backups SET status = 'failed', error_message = 'Backup upload failed' WHERE id = ?",
-            )
-            .bind(&backup_id_clone)
-            .execute(&db)
-            .await;
+            }
+            None => {}
         }
     });
 
-    // Return the pending backup record
     let backup = sqlx::query_as::<_, S3Backup>("SELECT * FROM s3_backups WHERE id = ?")
         .bind(&backup_id)
         .fetch_one(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch backup record: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .await?;
 
     Ok(Json(backup.to_response(Some(config_name))))
 }
@@ -589,71 +656,106 @@ pub async fn list_backups(
 }
 
 /// Restore from an S3 backup
+///
+/// Database and volume backups start a background restore job (safety backup of
+/// the current data first, then the same restore used for local backups) and
+/// return it. Instance backups are downloaded, verified, preceded by a local safety
+/// backup of the instance, and restored in the request.
 pub async fn restore_backup(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    use crate::engine::backup_jobs::{restore, JobContext};
+
     let backup = sqlx::query_as::<_, S3Backup>("SELECT * FROM s3_backups WHERE id = ?")
         .bind(&id)
         .fetch_optional(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch S3 backup: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or_else(|| ApiError::not_found("S3 backup not found"))?;
 
     if backup.status != "completed" {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request(format!(
+            "Backup is not complete (status: {})",
+            backup.status
+        )));
     }
 
-    // Get the storage config
-    let config =
-        sqlx::query_as::<_, S3StorageConfig>("SELECT * FROM s3_storage_configs WHERE id = ?")
-            .bind(&backup.storage_config_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch S3 config: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
-
-    let client = build_s3_client(&config, &state)?;
-
-    // Download the backup from S3
-    let data = client.download_backup(&backup.s3_key).await.map_err(|e| {
-        tracing::error!("Failed to download backup from S3: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    // Restore based on type
+    let ctx = JobContext::from_state(&state);
     match backup.backup_type.as_str() {
-        "instance" => {
-            let data_dir = &state.config.server.data_dir;
-            let config_path = data_dir.join("../rivetr.toml");
-            let acme_cache_dir = &state.config.proxy.acme_cache_dir;
-
-            let result =
-                crate::backup::restore_from_backup(&data, data_dir, &config_path, acme_cache_dir)
+        "database" | "volume" => {
+            let source_id = backup
+                .source_id
+                .clone()
+                .ok_or_else(|| ApiError::bad_request("Backup has no source resource"))?;
+            let job = if backup.backup_type == "database" {
+                restore::start_database_restore(&ctx, &source_id, restore::RestoreSource::S3, &id)
                     .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to restore from S3 backup: {}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })?;
+            } else {
+                restore::start_volume_restore(&ctx, &source_id, restore::RestoreSource::S3, &id)
+                    .await
+            }
+            .map_err(super::backup_jobs::restore_error)?;
+            Ok(Json(serde_json::json!({
+                "message": "Restore started",
+                "job": job,
+            })))
+        }
+        "instance" => {
+            let tmp_dir = state.config.server.data_dir.join("backups");
+            tokio::fs::create_dir_all(&tmp_dir)
+                .await
+                .map_err(|e| ApiError::internal(e.to_string()))?;
+            let tmp = tmp_dir.join(format!(".restore-{}.tar.gz", Uuid::new_v4()));
+            let result = async {
+                s3_store::download_verified(
+                    &state.db,
+                    ctx.secret(),
+                    &backup,
+                    &tmp,
+                    crate::engine::backup_jobs::volume::MAX_VOLUME_RESTORE_BYTES,
+                )
+                .await?;
+                let data = tokio::fs::read(&tmp).await?;
+                // Safety copy of the current instance before it is overwritten.
+                let safety = crate::backup::create_backup(
+                    &state.db,
+                    &ctx.data_dir,
+                    &ctx.config_path,
+                    &ctx.acme_cache_dir,
+                    None,
+                )
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Safety backup failed, nothing was restored: {e:#}")
+                })?;
+                let result = crate::backup::restore_from_backup(
+                    &data,
+                    &ctx.data_dir,
+                    &ctx.config_path,
+                    &ctx.acme_cache_dir,
+                )
+                .await?;
+                Ok::<_, anyhow::Error>((result, safety.name))
+            }
+            .await;
+            let _ = tokio::fs::remove_file(&tmp).await;
+            let (result, safety_name) = result.map_err(|e| {
+                tracing::error!("Failed to restore from S3 backup: {e:#}");
+                ApiError::internal(format!("Restore failed: {e:#}"))
+            })?;
 
             Ok(Json(serde_json::json!({
                 "message": "Restore completed. Server restart recommended.",
+                "safety_backup": safety_name,
                 "database_restored": result.database_restored,
                 "config_restored": result.config_restored,
                 "certs_restored": result.certs_restored,
                 "warnings": result.warnings
             })))
         }
-        _ => {
-            tracing::warn!("Database/volume S3 restore not yet fully integrated");
-            Err(StatusCode::NOT_IMPLEMENTED)
-        }
+        other => Err(ApiError::bad_request(format!(
+            "Unknown backup type '{other}'"
+        ))),
     }
 }
 
@@ -692,6 +794,12 @@ pub async fn delete_backup(
             }
         }
     }
+
+    // Volume history rows that pointed at this upload go with it.
+    let _ = sqlx::query("DELETE FROM volume_backups WHERE s3_backup_id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await;
 
     // Delete the database record
     sqlx::query("DELETE FROM s3_backups WHERE id = ?")

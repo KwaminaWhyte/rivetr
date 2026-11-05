@@ -9,6 +9,7 @@ mod audit;
 pub mod auth;
 pub mod authz;
 mod autoscaling;
+mod backup_jobs;
 mod basic_auth;
 mod build_servers;
 mod bulk;
@@ -553,6 +554,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/volumes/{id}", put(volumes::update_volume))
         .route("/volumes/{id}", delete(volumes::delete_volume))
         .route("/volumes/{id}/backup", post(volumes::backup_volume))
+        .route(
+            "/volumes/{id}/backups",
+            get(backup_jobs::volume_catalog).post(backup_jobs::create_volume_backup),
+        )
+        .route(
+            "/volumes/{id}/backups/restores",
+            get(backup_jobs::volume_restores),
+        )
+        .route(
+            "/volumes/{id}/backups/{backup_id}",
+            delete(backup_jobs::delete_volume_backup),
+        )
+        .route(
+            "/volumes/{id}/backups/{backup_id}/restore",
+            post(backup_jobs::restore_volume_backup),
+        )
+        .route(
+            "/volumes/{id}/backup-schedule",
+            get(backup_jobs::get_volume_schedule)
+                .put(backup_jobs::upsert_volume_schedule)
+                .delete(backup_jobs::delete_volume_schedule),
+        )
         // Log Drains
         .route("/apps/{id}/log-drains", get(log_drains::list_log_drains))
         .route("/apps/{id}/log-drains", post(log_drains::create_log_drain))
@@ -904,6 +927,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/databases/{id}/backups/schedule",
             delete(database_backups::delete_schedule),
+        )
+        .route(
+            "/databases/{id}/backups/catalog",
+            get(backup_jobs::database_catalog),
+        )
+        .route(
+            "/databases/{id}/backups/restores",
+            get(backup_jobs::database_restores),
+        )
+        .route(
+            "/databases/{id}/backups/{backup_id}/restore",
+            post(backup_jobs::restore_database_backup),
+        )
+        .route(
+            "/databases/{id}/backups/{backup_id}/upload-s3",
+            post(backup_jobs::upload_database_backup),
         )
         // Docker Compose Services
         .route("/services", get(services::list_services))

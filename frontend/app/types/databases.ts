@@ -159,6 +159,8 @@ export interface DatabaseBackupSchedule {
   last_run_at?: string;
   next_run_at?: string;
   created_at: string;
+  /** S3 storage config each scheduled backup is also uploaded to */
+  s3_config_id?: string | null;
 }
 
 /** Request to create/update backup schedule */
@@ -168,6 +170,8 @@ export interface CreateBackupScheduleRequest {
   schedule_hour?: number;
   schedule_day?: number;
   retention_count?: number;
+  /** Upload each scheduled backup to this S3 config; "" for local only */
+  s3_config_id?: string;
 }
 
 /** Available database configurations */

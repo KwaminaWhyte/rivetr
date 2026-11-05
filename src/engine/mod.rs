@@ -1,4 +1,5 @@
 mod alert_evaluator;
+pub mod backup_jobs;
 pub mod build_detect;
 mod cleanup;
 mod container_monitor;

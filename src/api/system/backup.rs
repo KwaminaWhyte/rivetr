@@ -103,32 +103,72 @@ pub struct CreateBackupScheduleRequest {
 /// - Configuration file (rivetr.toml)
 /// - SSL/ACME certificates (if present)
 pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
-    let data_dir = &state.config.server.data_dir;
-    let acme_cache_dir = &state.config.proxy.acme_cache_dir;
+    use crate::engine::backup_jobs::{notify, s3_store, JobContext};
 
-    // Determine the config file path - use the same logic as main.rs
-    // The config path is stored in the Config, but we default to "rivetr.toml"
-    let config_path = std::path::PathBuf::from("rivetr.toml");
-
-    let result = backup::create_backup(&state.db, data_dir, &config_path, acme_cache_dir, None)
-        .await
-        .map_err(|e| {
+    let ctx = JobContext::from_state(&state);
+    let started = std::time::Instant::now();
+    let result = backup::create_backup(
+        &state.db,
+        &ctx.data_dir,
+        &ctx.config_path,
+        &ctx.acme_cache_dir,
+        None,
+    )
+    .await;
+    let event = |outcome| {
+        notify::BackupEvent::new(
+            outcome,
+            notify::BackupResourceKind::Instance,
+            "Rivetr instance",
+        )
+        .trigger("manual")
+    };
+    let result = match result {
+        Ok(r) => r,
+        Err(e) => {
             tracing::error!(error = %e, "Failed to create backup");
-            ApiError::internal(format!("Failed to create backup: {}", e))
-        })?;
+            notify::notify_backup(
+                &state.db,
+                event(notify::BackupOutcome::Failed)
+                    .destination("local")
+                    .error(format!("{e:#}")),
+            );
+            return Err(ApiError::internal(format!(
+                "Failed to create backup: {}",
+                e
+            )));
+        }
+    };
 
     // Read the backup file and return it as a download
     let backup_data = std::fs::read(&result.path)
         .map_err(|e| ApiError::internal(format!("Failed to read backup file: {}", e)))?;
 
-    // Best-effort: upload to S3 if a default S3 config exists
-    if let Some((s3_client, _url_prefix)) = get_default_s3_client(&state).await {
-        let s3_key = format!("instance-backups/{}", result.name);
-        match s3_client.upload_backup(&s3_key, backup_data.clone()).await {
-            Ok(()) => {
+    // Best-effort: copy to the default S3 config when there is one (recorded in
+    // s3_backups with a checksum so it can be restored from the dashboard).
+    let mut destination = "local".to_string();
+    let default_config: Option<crate::db::S3StorageConfig> =
+        sqlx::query_as("SELECT * FROM s3_storage_configs WHERE is_default = 1 LIMIT 1")
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    if let Some(config) = default_config {
+        match s3_store::upload_and_record(
+            &state.db,
+            ctx.secret(),
+            &config,
+            "instance",
+            None,
+            &result.path,
+        )
+        .await
+        {
+            Ok(row) => {
+                destination = format!("local + {}", notify::s3_destination(&config.name));
                 tracing::info!(
                     backup_name = %result.name,
-                    s3_key = %s3_key,
+                    s3_key = %row.s3_key,
                     "Instance backup uploaded to S3"
                 );
             }
@@ -142,6 +182,13 @@ pub async fn create_backup(State(state): State<Arc<AppState>>) -> Result<Respons
             }
         }
     }
+    notify::notify_backup(
+        &state.db,
+        event(notify::BackupOutcome::Succeeded)
+            .size(Some(result.size as i64))
+            .duration(Some(started.elapsed()))
+            .destination(destination),
+    );
 
     let response = Response::builder()
         .status(StatusCode::OK)
@@ -507,13 +554,13 @@ pub async fn run_backup_schedule(
     // Execute the backup based on type
     let result_msg = match schedule.backup_type.as_str() {
         "instance" => {
-            // Run a standard instance backup and optionally upload to S3
-            let data_dir = &state.config.server.data_dir;
-            let acme_cache_dir = &state.config.proxy.acme_cache_dir;
-            let config_path = std::path::PathBuf::from("rivetr.toml");
-
-            match backup::create_backup(&state.db, data_dir, &config_path, acme_cache_dir, None)
-                .await
+            let ctx = crate::engine::backup_jobs::JobContext::from_state(&state);
+            match crate::engine::scheduler::run_instance_backup(
+                &ctx,
+                schedule.s3_config_id.as_deref(),
+                "manual",
+            )
+            .await
             {
                 Ok(result) => {
                     tracing::info!(
@@ -521,15 +568,6 @@ pub async fn run_backup_schedule(
                         backup_name = %result.name,
                         "Manual instance backup run completed"
                     );
-                    // Best-effort S3 upload
-                    if let Some((s3_client, _)) = get_default_s3_client(&state).await {
-                        let s3_key = format!("instance-backups/{}", result.name);
-                        if let Ok(backup_data) = std::fs::read(&result.path) {
-                            if let Err(e) = s3_client.upload_backup(&s3_key, backup_data).await {
-                                tracing::warn!(error = %e, "S3 upload failed for manual run");
-                            }
-                        }
-                    }
                     format!("Instance backup created: {}", result.name)
                 }
                 Err(e) => {
@@ -539,11 +577,15 @@ pub async fn run_backup_schedule(
             }
         }
         _ => {
-            // For s3_database / s3_volume types we just signal success — the actual
-            // S3 pipeline is invoked via the s3::trigger_backup endpoint which requires
-            // additional context. Return a helpful message.
+            // Database and volume S3 schedules can take a while: run them in the
+            // background exactly as the scheduler would.
+            let ctx = crate::engine::backup_jobs::JobContext::from_state(&state);
+            let schedule_id = id.clone();
+            tokio::spawn(async move {
+                crate::engine::scheduler::run_backup_schedule_now(&ctx, &schedule_id).await;
+            });
             format!(
-                "Backup schedule '{}' (type: {}) queued",
+                "Backup schedule '{}' (type: {}) started",
                 id, schedule.backup_type
             )
         }
@@ -571,21 +613,15 @@ pub async fn run_backup_schedule(
     })))
 }
 
-/// Compute the next run time from a cron expression using the `cron` crate.
-/// Falls back to 24-hours-from-now for invalid expressions.
+/// Compute the next run time from a cron expression (standard 5-field cron or the
+/// `cron` crate's 6/7-field form). Falls back to 24 hours from now for invalid
+/// expressions.
 fn compute_next_run(cron_expression: &str) -> Option<String> {
-    use cron::Schedule;
-    use std::str::FromStr;
-
-    match Schedule::from_str(cron_expression) {
-        Ok(schedule) => schedule
-            .upcoming(chrono::Utc)
-            .next()
-            .map(|t| t.to_rfc3339()),
-        Err(_) => {
-            // Fall back to 24 hours from now for unrecognised expressions
-            Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339())
-        }
+    match crate::engine::backup_jobs::schedule::next_run_after(cron_expression, chrono::Utc::now())
+    {
+        Ok(t) => Some(t.to_rfc3339()),
+        // Fall back to 24 hours from now for unrecognised expressions
+        Err(_) => Some((chrono::Utc::now() + chrono::Duration::hours(24)).to_rfc3339()),
     }
 }
 

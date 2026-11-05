@@ -185,6 +185,9 @@ pub struct DatabaseBackupSchedule {
     pub next_run_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// When set, each scheduled backup is also uploaded to this S3 storage config
+    #[sqlx(default)]
+    pub s3_config_id: Option<String>,
 }
 
 impl DatabaseBackupSchedule {
@@ -204,6 +207,7 @@ impl DatabaseBackupSchedule {
             next_run_at: Some(next_run.to_rfc3339()),
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
+            s3_config_id: None,
         }
     }
 
@@ -321,6 +325,8 @@ pub struct DatabaseBackupScheduleResponse {
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
     pub created_at: String,
+    /// S3 storage config each scheduled backup is also uploaded to
+    pub s3_config_id: Option<String>,
 }
 
 impl From<DatabaseBackupSchedule> for DatabaseBackupScheduleResponse {
@@ -337,6 +343,7 @@ impl From<DatabaseBackupSchedule> for DatabaseBackupScheduleResponse {
             last_run_at: schedule.last_run_at,
             next_run_at: schedule.next_run_at,
             created_at: schedule.created_at,
+            s3_config_id: schedule.s3_config_id,
         }
     }
 }
@@ -349,4 +356,8 @@ pub struct CreateBackupScheduleRequest {
     pub schedule_hour: Option<i32>,
     pub schedule_day: Option<i32>,
     pub retention_count: Option<i32>,
+    /// Upload each scheduled backup to this S3 storage config. Send an empty string
+    /// to switch back to local only; omit to keep the current destination.
+    #[serde(default)]
+    pub s3_config_id: Option<String>,
 }

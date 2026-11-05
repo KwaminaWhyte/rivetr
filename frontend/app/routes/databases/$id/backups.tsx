@@ -1,22 +1,16 @@
-import { QueryError } from "@/components/query-error";
 import { useState } from "react";
 import { useOutletContext } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Archive,
+  CloudUpload,
   Calendar,
-  Clock,
   Download,
-  HardDrive,
   Loader2,
-  Play,
   Plus,
-  RefreshCw,
   Settings,
   Trash2,
-  CheckCircle,
-  XCircle,
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,18 +35,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { s3Api } from "@/lib/api/s3";
+import { backupsApi } from "@/lib/api/backups";
+import { BackupCatalog } from "@/components/backup-catalog";
+import type { BackupCatalogEntry } from "@/types/backups";
+import type { S3StorageConfigResponse } from "@/types/api";
 import type {
   ManagedDatabase,
-  DatabaseBackup,
   DatabaseBackupSchedule,
   ScheduleType,
 } from "@/types/api";
@@ -80,50 +70,6 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-// Format duration
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
-}
-
-// Status badge for backups
-function BackupStatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge className="bg-green-500 text-white gap-1">
-          <CheckCircle className="h-3 w-3" />
-          Completed
-        </Badge>
-      );
-    case "running":
-      return (
-        <Badge className="bg-blue-500 text-white gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Running
-        </Badge>
-      );
-    case "failed":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <XCircle className="h-3 w-3" />
-          Failed
-        </Badge>
-      );
-    case "pending":
-      return (
-        <Badge variant="outline" className="gap-1">
-          <Clock className="h-3 w-3" />
-          Pending
-        </Badge>
-      );
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
-}
-
 // Schedule description
 function getScheduleDescription(schedule: DatabaseBackupSchedule): string {
   const hour = schedule.schedule_hour.toString().padStart(2, "0");
@@ -145,7 +91,6 @@ function getScheduleDescription(schedule: DatabaseBackupSchedule): string {
 export default function DatabaseBackupsPage() {
   const { database } = useOutletContext<{ database: ManagedDatabase }>();
   const queryClient = useQueryClient();
-  const [deleteBackupId, setDeleteBackupId] = useState<string | null>(null);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
 
   // Schedule form state
@@ -154,12 +99,17 @@ export default function DatabaseBackupsPage() {
   const [scheduleHour, setScheduleHour] = useState(2);
   const [scheduleDay, setScheduleDay] = useState(0);
   const [retentionCount, setRetentionCount] = useState(5);
+  const [scheduleS3ConfigId, setScheduleS3ConfigId] = useState<string>("__local__");
+  const [uploadTarget, setUploadTarget] = useState<BackupCatalogEntry | null>(null);
+  const [uploadConfigId, setUploadConfigId] = useState<string>("");
+  const [deleteTarget, setDeleteTarget] = useState<BackupCatalogEntry | null>(null);
 
-  // Fetch backups
-  const { data: backups, isLoading: backupsLoading, error: backupsError, refetch: refetchBackups } = useQuery<DatabaseBackup[]>({
-    queryKey: ["database-backups", database.id],
-    queryFn: () => api.getDatabaseBackups(database.id, 50),
-    refetchInterval: 10000, // Refresh every 10 seconds
+  const catalogKey = ["backup-catalog", "database", database.id];
+
+  // S3 storage configs for offsite copies
+  const { data: s3Configs = [] } = useQuery<S3StorageConfigResponse[]>({
+    queryKey: ["s3-configs"],
+    queryFn: () => s3Api.listConfigs(),
   });
 
   // Fetch schedule
@@ -172,21 +122,24 @@ export default function DatabaseBackupsPage() {
   const createBackupMutation = useMutation({
     mutationFn: () => api.createDatabaseBackup(database.id),
     onSuccess: () => {
-      toast.success("Backup started");
-      queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] });
+      toast.success("Backup created");
+      queryClient.invalidateQueries({ queryKey: catalogKey });
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to start backup");
     },
   });
 
-  // Delete backup mutation
+  // Delete backup mutation (local file or S3 object)
   const deleteBackupMutation = useMutation({
-    mutationFn: (backupId: string) => api.deleteDatabaseBackup(database.id, backupId),
+    mutationFn: (entry: BackupCatalogEntry) =>
+      entry.source === "s3"
+        ? s3Api.deleteBackup(entry.id).then(() => undefined)
+        : api.deleteDatabaseBackup(database.id, entry.id).then(() => undefined),
     onSuccess: () => {
       toast.success("Backup deleted");
-      queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] });
-      setDeleteBackupId(null);
+      queryClient.invalidateQueries({ queryKey: catalogKey });
+      setDeleteTarget(null);
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to delete backup");
@@ -204,6 +157,7 @@ export default function DatabaseBackupsPage() {
           schedule_hour: scheduleHour,
           schedule_day: scheduleType === "weekly" ? scheduleDay : undefined,
           retention_count: retentionCount,
+          s3_config_id: scheduleS3ConfigId === "__local__" ? "" : scheduleS3ConfigId,
         }
       ),
     onSuccess: () => {
@@ -239,6 +193,20 @@ export default function DatabaseBackupsPage() {
     },
   });
 
+  // Copy a local backup to S3
+  const uploadMutation = useMutation({
+    mutationFn: ({ backupId, configId }: { backupId: string; configId: string }) =>
+      backupsApi.uploadDatabaseBackup(database.id, backupId, configId),
+    onSuccess: () => {
+      toast.success("Backup uploaded to S3");
+      setUploadTarget(null);
+      queryClient.invalidateQueries({ queryKey: catalogKey });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Upload failed");
+    },
+  });
+
   // Initialize form when editing schedule
   const handleEditSchedule = () => {
     if (schedule) {
@@ -247,6 +215,7 @@ export default function DatabaseBackupsPage() {
       setScheduleHour(schedule.schedule_hour);
       setScheduleDay(schedule.schedule_day ?? 0);
       setRetentionCount(schedule.retention_count);
+      setScheduleS3ConfigId(schedule.s3_config_id ?? "__local__");
     }
     setShowScheduleForm(true);
   };
@@ -359,6 +328,23 @@ export default function DatabaseBackupsPage() {
                 )}
 
                 <div className="space-y-2">
+                  <Label>Destination</Label>
+                  <Select value={scheduleS3ConfigId} onValueChange={setScheduleS3ConfigId}>
+                    <SelectTrigger aria-label="Backup destination">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__local__">Local only</SelectItem>
+                      {s3Configs.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          Local + S3 ({c.name})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Retention (keep last N backups)</Label>
                   <Select
                     value={retentionCount.toString()}
@@ -410,6 +396,12 @@ export default function DatabaseBackupsPage() {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Keeping last {schedule.retention_count} backups
+                  {schedule.s3_config_id && (
+                    <>
+                      {" "}• copied to S3 (
+                      {s3Configs.find((c) => c.id === schedule.s3_config_id)?.name ?? "unknown config"})
+                    </>
+                  )}
                   {schedule.next_run_at && schedule.enabled && (
                     <> • Next run: {formatRelativeTime(schedule.next_run_at)}</>
                   )}
@@ -438,24 +430,27 @@ export default function DatabaseBackupsPage() {
       {/* Backups List Card */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Archive className="h-5 w-5" />
-                Backups
-              </CardTitle>
-              <CardDescription>
-                View and manage database backups
-              </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Archive className="h-5 w-5" />
+            Backups
+          </CardTitle>
+          <CardDescription>
+            Local and S3 backups of this database. Restoring takes a safety backup of the
+            current data first.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!isDbRunning && (
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md text-yellow-700 dark:text-yellow-300 text-sm">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>Database must be running to create or restore backups</span>
             </div>
-            <div className="flex gap-2">
-              <Button aria-label="Refresh"
-                variant="outline"
-                size="sm"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ["database-backups", database.id] })}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+          )}
+          <BackupCatalog
+            kind="database"
+            resourceId={database.id}
+            resourceName={database.name}
+            toolbar={
               <Button
                 size="sm"
                 onClick={() => createBackupMutation.mutate()}
@@ -468,129 +463,111 @@ export default function DatabaseBackupsPage() {
                 )}
                 Create Backup
               </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!isDbRunning && (
-            <div className="flex items-center gap-2 p-3 mb-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md text-yellow-700 dark:text-yellow-300 text-sm">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>Database must be running to create backups</span>
-            </div>
-          )}
-
-          {backupsError ? (
-            <QueryError what="backups" error={backupsError} onRetry={() => refetchBackups()} />
-          ) : backupsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : !backups || backups.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <HardDrive className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No backups yet</p>
-              <p className="text-sm">
-                Create a manual backup or set up automatic backups
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {backups.map((backup) => (
-                  <TableRow key={backup.id}>
-                    <TableCell>
-                      <div>
-                        <span className="font-medium">
-                          {formatRelativeTime(backup.created_at)}
-                        </span>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(backup.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {backup.backup_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <BackupStatusBadge status={backup.status} />
-                      {backup.error_message && (
-                        <p className="text-xs text-destructive mt-1 max-w-xs truncate">
-                          {backup.error_message}
-                        </p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {backup.file_size_human || "-"}
-                    </TableCell>
-                    <TableCell>
-                      {backup.duration_seconds !== undefined
-                        ? formatDuration(backup.duration_seconds)
-                        : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {backup.status === "completed" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => downloadBackupMutation.mutate(backup.id)}
-                            disabled={downloadBackupMutation.isPending}
-                            title="Download backup"
-                          >
-                            {downloadBackupMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Download className="h-4 w-4" />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteBackupId(backup.id)}
-                          disabled={backup.status === "running"}
-                          title="Delete backup"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+            }
+            renderActions={(entry) => (
+              <>
+                {entry.source === "local" && entry.status === "completed" && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => downloadBackupMutation.mutate(entry.id)}
+                      disabled={downloadBackupMutation.isPending}
+                      title="Download backup"
+                      aria-label="Download backup"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    {s3Configs.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          setUploadConfigId(s3Configs[0]?.id ?? "");
+                          setUploadTarget(entry);
+                        }}
+                        title="Copy to S3"
+                        aria-label="Copy to S3"
+                      >
+                        <CloudUpload className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() => setDeleteTarget(entry)}
+                  disabled={entry.status === "running" || entry.status === "uploading"}
+                  title="Delete backup"
+                  aria-label="Delete backup"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          />
         </CardContent>
       </Card>
 
+      {/* Copy to S3 */}
+      <AlertDialog open={!!uploadTarget} onOpenChange={(open) => !open && setUploadTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Copy backup to S3</AlertDialogTitle>
+            <AlertDialogDescription>
+              The file is uploaded with its SHA-256 checksum, which is checked again on restore.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Select value={uploadConfigId} onValueChange={setUploadConfigId}>
+            <SelectTrigger aria-label="S3 storage">
+              <SelectValue placeholder="Select S3 storage" />
+            </SelectTrigger>
+            <SelectContent>
+              {s3Configs.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name} ({c.bucket})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!uploadConfigId || uploadMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (uploadTarget && uploadConfigId) {
+                  uploadMutation.mutate({ backupId: uploadTarget.id, configId: uploadConfigId });
+                }
+              }}
+            >
+              {uploadMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Upload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteBackupId} onOpenChange={() => setDeleteBackupId(null)}>
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Backup</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this backup? This action cannot be undone.
+              {deleteTarget?.source === "s3"
+                ? "The backup object is deleted from S3. This action cannot be undone."
+                : "Are you sure you want to delete this backup? This action cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteBackupId && deleteBackupMutation.mutate(deleteBackupId)}
+              onClick={() => deleteTarget && deleteBackupMutation.mutate(deleteTarget)}
               disabled={deleteBackupMutation.isPending}
             >
               {deleteBackupMutation.isPending && (
