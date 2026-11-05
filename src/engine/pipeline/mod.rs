@@ -15,6 +15,24 @@ use crate::DbPool;
 
 use super::{add_deployment_log, update_deployment_status, BuildLimits, KEY_LENGTH};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Seconds a new container gets to become healthy, set at startup from config.
+static HEALTH_CHECK_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(20);
+
+/// Interval between health check attempts, in seconds.
+const HEALTH_CHECK_INTERVAL_SECS: u64 = 2;
+
+/// Set the health check window (`[runtime] health_check_timeout_secs`).
+pub fn set_health_check_timeout_secs(secs: u64) {
+    HEALTH_CHECK_TIMEOUT_SECS.store(secs, Ordering::Relaxed);
+}
+
+/// Number of health check attempts that fit the configured window (at least 1).
+pub(crate) fn health_check_attempts() -> u64 {
+    (HEALTH_CHECK_TIMEOUT_SECS.load(Ordering::Relaxed) / HEALTH_CHECK_INTERVAL_SECS).max(1)
+}
+
 /// Information about a successfully deployed container
 pub struct DeploymentResult {
     pub container_id: String,
@@ -623,4 +641,21 @@ pub async fn run_deployment(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod health_window_tests {
+    use super::*;
+
+    #[test]
+    fn attempts_follow_the_configured_window() {
+        set_health_check_timeout_secs(20);
+        assert_eq!(health_check_attempts(), 10);
+        set_health_check_timeout_secs(180);
+        assert_eq!(health_check_attempts(), 90);
+        // Never zero attempts, even for a tiny or zero window.
+        set_health_check_timeout_secs(0);
+        assert_eq!(health_check_attempts(), 1);
+        set_health_check_timeout_secs(20);
+    }
 }

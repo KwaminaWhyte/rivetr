@@ -146,6 +146,7 @@ async fn main() -> Result<()> {
         .parse()
         .expect("Invalid proxy address");
     rivetr::proxy::inflight::set_drain_timeout_secs(config.proxy.drain_timeout_secs);
+    rivetr::engine::set_health_check_timeout_secs(config.runtime.health_check_timeout_secs);
     let proxy_server = ProxyServer::new(proxy_addr).with_db(db.clone());
     let routes = proxy_server.routes();
 

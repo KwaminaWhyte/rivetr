@@ -531,7 +531,7 @@ pub(super) async fn start_container(
 
             // Retry health check a few times
             let mut healthy = false;
-            for attempt in 1..=10 {
+            for attempt in 1..=super::health_check_attempts() {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
                 match reqwest::get(&health_url).await {
@@ -611,12 +611,12 @@ pub(super) async fn start_container(
                                 &format!("Auto-rollback failed: {}. No previous deployment available for rollback.", rollback_err),
                             )
                             .await?;
-                            anyhow::bail!("Health check failed after 10 attempts. Auto-rollback also failed: {}", rollback_err);
+                            anyhow::bail!("Health check failed after {} attempts. Auto-rollback also failed: {}", super::health_check_attempts(), rollback_err);
                         }
                     }
                 }
 
-                anyhow::bail!("Health check failed after 10 attempts");
+                anyhow::bail!("Health check failed after {} attempts", super::health_check_attempts());
             }
         }
 

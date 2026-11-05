@@ -35,6 +35,9 @@ build_memory_limit = "2g"
 # frees, so a monorepo push that triggers several apps can't thrash the host.
 # Minimum 1. Default: 2
 max_concurrent_deployments = 2
+# Seconds a new container gets to pass its health check (checked every 2s) before the
+# deploy fails. Raise for apps that run migrations on boot. Default: 20
+health_check_timeout_secs = 20
 
 # Host-protection defaults for RUNNING containers (apps, services, databases).
 # Applied automatically when a resource sets no limit of its own; per-resource

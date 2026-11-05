@@ -84,6 +84,31 @@ pub fn mysql_config() -> DatabaseTypeConfig {
     }
 }
 
+/// CMD args for a database container, adjusted for the image version.
+///
+/// MySQL 8.4 removed `--skip-ssl` (mysqld exits with "unknown option"), and
+/// `latest` resolves to a release that also lacks it, so the flag is only
+/// passed to versions that still accept it (5.7 and 8.0).
+pub fn cmd_args_for_version(config: &DatabaseTypeConfig, version: &str) -> Vec<&'static str> {
+    config
+        .cmd_args
+        .iter()
+        .copied()
+        .filter(|arg| *arg != "--skip-ssl" || mysql_accepts_skip_ssl(version))
+        .collect()
+}
+
+fn mysql_accepts_skip_ssl(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let major = parts.next().and_then(|p| p.parse::<u32>().ok());
+    let minor = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
+    match major {
+        Some(m) if m < 8 => true,
+        Some(8) => minor < 4,
+        _ => false,
+    }
+}
+
 /// Get configuration for MongoDB
 pub fn mongodb_config() -> DatabaseTypeConfig {
     DatabaseTypeConfig {
@@ -351,6 +376,18 @@ mod tests {
             assert_eq!(data_path_for(&pg, v), "/var/lib/postgresql", "{v}");
         }
         assert_eq!(data_path_for(&DatabaseType::Redis, "18"), "/data");
+    }
+
+    #[test]
+    fn test_skip_ssl_only_for_versions_that_accept_it() {
+        let config = mysql_config();
+        assert_eq!(cmd_args_for_version(&config, "8.0"), vec!["--skip-ssl"]);
+        assert_eq!(cmd_args_for_version(&config, "5.7"), vec!["--skip-ssl"]);
+        assert_eq!(cmd_args_for_version(&config, "8.0.36"), vec!["--skip-ssl"]);
+        assert!(cmd_args_for_version(&config, "8.4").is_empty());
+        assert!(cmd_args_for_version(&config, "8.4.3").is_empty());
+        assert!(cmd_args_for_version(&config, "9.1").is_empty());
+        assert!(cmd_args_for_version(&config, "latest").is_empty());
     }
 
     #[test]

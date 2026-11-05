@@ -211,7 +211,7 @@ pub async fn run_rollback(
             let health_url = format!("http://127.0.0.1:{}{}", port, healthcheck);
 
             let mut healthy = false;
-            for attempt in 1..=10 {
+            for attempt in 1..=super::health_check_attempts() {
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
                 match reqwest::get(&health_url).await {
@@ -243,7 +243,7 @@ pub async fn run_rollback(
             if !healthy {
                 let _ = runtime.stop(&container_id).await;
                 let _ = runtime.remove(&container_id).await;
-                anyhow::bail!("Health check failed after 10 attempts during rollback");
+                anyhow::bail!("Health check failed after {} attempts during rollback", super::health_check_attempts());
             }
         }
 

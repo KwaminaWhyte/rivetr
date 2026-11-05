@@ -948,9 +948,10 @@ async fn start_database_container_inner(
 
     // Apply database-specific CMD args (e.g. `--skip-ssl` for MySQL 8 to avoid
     // self-signed-cert TLS errors when clients connect over the private network).
-    let run_config = if !config.cmd_args.is_empty() {
+    let cmd_args = crate::engine::database_config::cmd_args_for_version(&config, &database.version);
+    let run_config = if !cmd_args.is_empty() {
         let mut rc = run_config;
-        rc.cmd = Some(config.cmd_args.iter().map(|s| s.to_string()).collect());
+        rc.cmd = Some(cmd_args.iter().map(|s| s.to_string()).collect());
         rc
     } else {
         run_config

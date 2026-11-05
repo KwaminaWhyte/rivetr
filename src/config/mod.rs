@@ -167,6 +167,13 @@ pub struct RuntimeConfig {
     /// several apps at once). Clamped to a minimum of 1. Default: 2
     #[serde(default = "default_max_concurrent_deployments")]
     pub max_concurrent_deployments: usize,
+    /// How long a new container may take to pass its health check before the
+    /// deployment is failed, in seconds (checked every 2s). Raise it for apps
+    /// that run migrations or warm caches on boot. Success returns on the first
+    /// healthy response, so a larger value only delays a failing deploy.
+    /// Minimum 2. Default: 20
+    #[serde(default = "default_health_check_timeout_secs")]
+    pub health_check_timeout_secs: u64,
 }
 
 impl Default for RuntimeConfig {
@@ -182,12 +189,17 @@ impl Default for RuntimeConfig {
             default_log_max_size: default_run_log_max_size(),
             default_log_max_file: default_run_log_max_file(),
             max_concurrent_deployments: default_max_concurrent_deployments(),
+            health_check_timeout_secs: default_health_check_timeout_secs(),
         }
     }
 }
 
 fn default_max_concurrent_deployments() -> usize {
     2
+}
+
+fn default_health_check_timeout_secs() -> u64 {
+    20
 }
 
 fn default_run_memory_limit() -> String {
