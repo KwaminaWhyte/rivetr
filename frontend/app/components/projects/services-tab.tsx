@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ComposeInputTabs } from "@/components/services/compose-input-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -366,7 +366,7 @@ services:
 
       {/* Create Service Dialog */}
       <Dialog open={isCreateServiceDialogOpen} onOpenChange={setIsCreateServiceDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -390,18 +390,7 @@ services:
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="compose-content">Docker Compose Content</Label>
-                <Textarea
-                  id="compose-content"
-                  value={composeContent}
-                  onChange={(e) => setComposeContent(e.target.value)}
-                  placeholder="Paste your docker-compose.yml content..."
-                  className="font-mono text-sm"
-                  rows={12}
-                  required
-                />
-              </div>
+              <ComposeInputTabs value={composeContent} onChange={setComposeContent} />
             </div>
             <DialogFooter>
               <Button

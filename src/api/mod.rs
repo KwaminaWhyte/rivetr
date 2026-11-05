@@ -1,4 +1,5 @@
 mod advanced_settings;
+mod ai_compose;
 mod ai_features;
 mod alerts;
 mod api_tokens;
@@ -1258,6 +1259,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // AI compose generation (never deploys; returns YAML for review)
+        .route("/ai/status", get(ai_compose::ai_status))
+        .route("/ai/compose/generate", post(ai_compose::generate_compose))
         // SEC-C3: resource-level authorization. Added before the auth layer so it
         // sits *inside* it — runs after the token is validated, before handlers.
         // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.
