@@ -944,6 +944,8 @@ async fn start_database_container_inner(
         cmd: None,
         network: None,
         custom_labels: vec![],
+        healthcheck: None,
+        extra_ports: vec![],
     };
 
     // Apply database-specific CMD args (e.g. `--skip-ssl` for MySQL 8 to avoid

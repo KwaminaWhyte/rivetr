@@ -16,6 +16,7 @@ import {
   Camera,
   Container,
   FileDiff,
+  HeartPulse,
 } from "lucide-react";
 
 export interface AppTabItem {
@@ -58,6 +59,7 @@ export const APP_TAB_GROUPS: AppTabGroup[] = [
       { id: "monitoring", label: "Monitoring", path: "/monitoring" },
       { id: "log-drains", label: "Log Drains", path: "/log-drains" },
       { id: "terminal", label: "Terminal", path: "/terminal" },
+      { id: "files", label: "Files", path: "/files" },
     ],
   },
   {
@@ -118,6 +120,7 @@ export interface AppSettingsTab {
 /** Sub-pages of /apps/:id/settings. Shared by the settings tab strip and the contextual sidebar. */
 export const APP_SETTINGS_TABS: AppSettingsTab[] = [
   { id: "general", label: "General", path: "", icon: Settings },
+  { id: "healthcheck", label: "Health", path: "/healthcheck", icon: HeartPulse },
   { id: "build", label: "Build", path: "/build", icon: Hammer },
   { id: "network", label: "Network", path: "/network", icon: Network },
   { id: "storage", label: "Storage", path: "/storage", icon: HardDrive },

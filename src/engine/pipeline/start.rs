@@ -414,6 +414,8 @@ pub(super) async fn start_container(
         cmd: None,
         network: destination_network,
         custom_labels,
+        healthcheck: app.container_healthcheck(),
+        extra_ports: app.domain_internal_ports(),
     };
 
     let container_id = runtime
@@ -519,46 +521,22 @@ pub(super) async fn start_container(
         }
     }
 
-    // Step 6: Health check
-    if let Some(healthcheck) = &app.healthcheck {
+    // Step 6: Health check (structured config, or the legacy path mapped to HTTP GET)
+    if let Some(hc) = app.effective_healthcheck().filter(|h| h.enabled) {
         add_deployment_log(db, deployment_id, "info", "Running health check...").await?;
         update_deployment_status(db, deployment_id, "checking", None).await?;
 
-        // Get the assigned port
-        let info = runtime.inspect(&container_id).await?;
-        if let Some(port) = info.port {
-            let health_url = format!("http://127.0.0.1:{}{}", port, healthcheck);
-
-            // Retry health check a few times
-            let mut healthy = false;
-            for attempt in 1..=10 {
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                match reqwest::get(&health_url).await {
-                    Ok(resp) if resp.status().is_success() => {
-                        healthy = true;
-                        break;
-                    }
-                    Ok(resp) => {
-                        add_deployment_log(
-                            db,
-                            deployment_id,
-                            "warn",
-                            &format!("Health check attempt {}: status {}", attempt, resp.status()),
-                        )
-                        .await?;
-                    }
-                    Err(e) => {
-                        add_deployment_log(
-                            db,
-                            deployment_id,
-                            "warn",
-                            &format!("Health check attempt {}: {}", attempt, e),
-                        )
-                        .await?;
-                    }
-                }
-            }
+        {
+            let healthy = super::healthcheck::run_health_check(
+                db,
+                &runtime,
+                deployment_id,
+                &container_id,
+                app.port as u16,
+                &hc,
+            )
+            .await?;
+            let attempts = hc.retries.max(1);
 
             if !healthy {
                 // Stop the unhealthy container
@@ -611,12 +589,12 @@ pub(super) async fn start_container(
                                 &format!("Auto-rollback failed: {}. No previous deployment available for rollback.", rollback_err),
                             )
                             .await?;
-                            anyhow::bail!("Health check failed after 10 attempts. Auto-rollback also failed: {}", rollback_err);
+                            anyhow::bail!("Health check failed after {} attempts. Auto-rollback also failed: {}", attempts, rollback_err);
                         }
                     }
                 }
 
-                anyhow::bail!("Health check failed after 10 attempts");
+                anyhow::bail!("Health check failed after {} attempts", attempts);
             }
         }
 

@@ -39,11 +39,11 @@ Status key: `[ ]` todo, `[x]` done.
 
 ## Batch C: app configuration
 
-- [ ] **Structured healthcheck** (`apps/:id/settings` Healthcheck section): enable, type HTTP | command, method, scheme, host, port, path, expected status code, expected body text, interval, timeout, retries, start period. Used by the pipeline health check and mapped to the container HEALTHCHECK. The old single `healthcheck` path keeps working (migrated into the new fields).
-- [ ] **Domains table extras**: per domain internal port, search indexing (adds `X-Robots-Tag: noindex, nofollow` in the proxy when off), DNS status column with "Check" action, redirect type temporary/permanent.
-- [ ] **Global unsaved-changes bar**: a hook `useDirtyForm` + sticky bar component ("You have changes that haven't been saved yet", Reset, Save, Enter submits). Adopt on app, database, service and instance settings forms.
-- [ ] **Container file browser** (`apps/:id/files`, also databases/services): list dir via `docker exec ls -la --time-style=+%s`, columns name, perms, owner, group, size, modified; open/download file, upload, new file/folder, delete with confirm. Mark as beta.
-- [ ] **Clone resource**: target server, project, environment, optional "clone volume data" (copy volumes with a helper container). Move resource stays as is.
+- [x] **Structured healthcheck** (`apps/:id/settings` Healthcheck section): enable, type HTTP | command, method, scheme, host, port, path, expected status code, expected body text, interval, timeout, retries, start period. Used by the pipeline health check and mapped to the container HEALTHCHECK. The old single `healthcheck` path keeps working (migrated into the new fields).
+- [x] **Domains table extras**: per domain internal port, search indexing (adds `X-Robots-Tag: noindex, nofollow` in the proxy when off), DNS status column with "Check" action, redirect type temporary/permanent.
+- [x] **Global unsaved-changes bar**: a hook `useDirtyForm` + sticky bar component ("You have changes that haven't been saved yet", Reset, Save, Enter submits). Adopt on app, database, service and instance settings forms.
+- [x] **Container file browser** (`apps/:id/files`, also databases/services): list dir via `docker exec ls -la --time-style=+%s`, columns name, perms, owner, group, size, modified; open/download file, upload, new file/folder, delete with confirm. Mark as beta.
+- [x] **Clone resource**: target server, project, environment, optional "clone volume data" (copy volumes with a helper container). Move resource stays as is.
 
 ## Batch D: canvas and UI polish
 

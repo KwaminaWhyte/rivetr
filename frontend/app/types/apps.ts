@@ -210,6 +210,12 @@ export interface Domain {
    * "to_non_www" redirects www → non-www.
    */
   www_redirect_mode?: "both" | "to_www" | "to_non_www";
+  /** Container port this domain routes to; unset uses the app port */
+  internal_port?: number | null;
+  /** When false the proxy sends X-Robots-Tag: noindex, nofollow (default true) */
+  search_indexing?: boolean;
+  /** Status for the www redirect: permanent (301, default) or temporary (302) */
+  redirect_type?: "permanent" | "temporary";
 }
 
 // -------------------------------------------------------------------------
@@ -225,6 +231,10 @@ export interface App {
   domain: string | null;
   port: number;
   healthcheck: string | null;
+  /** Effective structured healthcheck (null when none is configured) */
+  healthcheck_config?: import("./app-config").HealthcheckConfig | null;
+  /** Remote server the app deploys to (null = this Rivetr host) */
+  server_id?: string | null;
   memory_limit: string | null;
   cpu_limit: string | null;
   environment: AppEnvironment;
@@ -282,8 +292,6 @@ export interface App {
   require_approval: boolean;
   maintenance_mode: boolean;
   maintenance_message: string | null;
-  /** Remote server the app runs on (null = the local runtime) */
-  server_id?: string | null;
   /** Build server ID for offloading Docker builds to a remote machine */
   build_server_id: string | null;
   /** Container restart policy */

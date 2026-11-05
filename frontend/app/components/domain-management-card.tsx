@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,9 @@ import {
 } from "@/components/ui/table";
 import { Plus, Trash2, Globe, Star, ExternalLink, Copy, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Wand2 } from "lucide-react";
 import type { Domain, App, UpdateAppRequest } from "@/types/api";
-import { appsApi } from "@/lib/api";
+import { apiRequest, appsApi } from "@/lib/api";
+import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
+import { useDirtyForm } from "@/hooks/use-dirty-form";
 
 interface DnsCheckResult {
   domain: string;
@@ -40,13 +43,11 @@ interface DnsCheckResult {
   validation_disabled?: boolean;
 }
 
-async function checkDns(domain: string): Promise<DnsCheckResult> {
-  const res = await fetch(`/api/domains/check?domain=${encodeURIComponent(domain)}`);
-  if (!res.ok) throw new Error("DNS check failed");
-  return res.json();
+function checkDns(domain: string): Promise<DnsCheckResult> {
+  return apiRequest<DnsCheckResult>(`/domains/check?domain=${encodeURIComponent(domain)}`);
 }
 
-function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null; loading: boolean }) {
+function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null | undefined; loading: boolean }) {
   if (loading) {
     return (
       <Badge variant="outline" className="gap-1 text-xs">
@@ -55,7 +56,14 @@ function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null; lo
       </Badge>
     );
   }
-  if (!result || result.validation_disabled) return null;
+  if (!result) {
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        Not checked
+      </Badge>
+    );
+  }
+  if (result.validation_disabled) return null;
 
   if (result.points_to_server) {
     return (
@@ -67,9 +75,13 @@ function DnsStatusBadge({ result, loading }: { result: DnsCheckResult | null; lo
   }
   if (result.resolves) {
     return (
-      <Badge variant="outline" className="gap-1 text-xs text-yellow-600 border-yellow-300" title={`Resolves to: ${result.resolved_ips.join(", ")}`}>
+      <Badge
+        variant="outline"
+        className="gap-1 text-xs text-yellow-600 border-yellow-300"
+        title={`Resolves to: ${result.resolved_ips.join(", ")}${result.server_ip ? `; this server is ${result.server_ip}` : ""}`}
+      >
         <AlertTriangle className="h-3 w-3" />
-        Wrong IP
+        {result.server_ip ? "Wrong IP" : "Resolves"}
       </Badge>
     );
   }
@@ -102,8 +114,11 @@ export function DomainManagementCard({
   onSave,
   isSaving = false,
 }: DomainManagementCardProps) {
-  // Parse current domains from app
-  const [domains, setDomains] = useState<Domain[]>(parseDomains(app.domains));
+  // Saved domains from the app; the form resets to them after a save.
+  const initial = useMemo(() => ({ domains: parseDomains(app.domains) }), [app.domains]);
+  const form = useDirtyForm(initial);
+  const domains = form.values.domains;
+  const setDomains = (next: Domain[]) => form.setField("domains", next);
 
   // Form state for adding new domain
   const [newDomain, setNewDomain] = useState({
@@ -112,39 +127,22 @@ export function DomainManagementCard({
     www_redirect_mode: "none" as "none" | "both" | "to_www" | "to_non_www",
   });
 
-  // Track if there are unsaved changes
-  const [hasChanges, setHasChanges] = useState(false);
-
   // Generate domain state
   const [isGeneratingDomain, setIsGeneratingDomain] = useState(false);
 
-  // DNS check state: map of domain -> result or null (null = loading)
+  // DNS check state: map of domain -> result, null (failed) or "loading"
   const [dnsResults, setDnsResults] = useState<Record<string, DnsCheckResult | null | "loading">>({});
-
-  // Update state when app changes
-  useEffect(() => {
-    setDomains(parseDomains(app.domains));
-    setHasChanges(false);
-  }, [app.domains]);
 
   const runDnsCheck = useCallback(async (domain: string) => {
     setDnsResults((prev) => ({ ...prev, [domain]: "loading" }));
     try {
       const result = await checkDns(domain);
       setDnsResults((prev) => ({ ...prev, [domain]: result }));
-    } catch {
+    } catch (error) {
       setDnsResults((prev) => ({ ...prev, [domain]: null }));
+      toast.error(error instanceof Error ? error.message : "DNS check failed");
     }
   }, []);
-
-  // Auto-check DNS for all saved domains on mount / when domains change
-  useEffect(() => {
-    const savedDomains = parseDomains(app.domains);
-    for (const d of savedDomains) {
-      runDnsCheck(d.domain);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app.domains]);
 
   // Validate domain format
   const isValidDomain = (domain: string): boolean => {
@@ -183,11 +181,11 @@ export function DomainManagementCard({
       primary: newDomain.primary || domains.length === 0, // First domain is always primary
       redirect_www: false,
       www_redirect_mode: newDomain.www_redirect_mode === "none" ? undefined : newDomain.www_redirect_mode,
+      search_indexing: true,
     };
 
     setDomains([...updatedDomains, newEntry]);
     setNewDomain({ domain: "", primary: false, www_redirect_mode: "none" });
-    setHasChanges(true);
   };
 
   // Remove domain
@@ -197,29 +195,19 @@ export function DomainManagementCard({
 
     // If we removed the primary domain, make the first remaining domain primary
     if (removedDomain.primary && newDomains.length > 0) {
-      newDomains[0].primary = true;
+      newDomains[0] = { ...newDomains[0], primary: true };
     }
 
     setDomains(newDomains);
-    setHasChanges(true);
   };
 
   // Set domain as primary
   const setPrimaryDomain = (index: number) => {
-    const updatedDomains = domains.map((d, i) => ({
-      ...d,
-      primary: i === index,
-    }));
-    setDomains(updatedDomains);
-    setHasChanges(true);
+    setDomains(domains.map((d, i) => ({ ...d, primary: i === index })));
   };
 
-  // Update www redirect mode for an existing domain
-  const setWwwRedirectMode = (index: number, mode: Domain["www_redirect_mode"]) => {
-    const updatedDomains = [...domains];
-    updatedDomains[index] = { ...updatedDomains[index], www_redirect_mode: mode };
-    setDomains(updatedDomains);
-    setHasChanges(true);
+  const updateDomain = (index: number, patch: Partial<Domain>) => {
+    setDomains(domains.map((d, i) => (i === index ? { ...d, ...patch } : d)));
   };
 
   // Copy domain to clipboard
@@ -246,13 +234,19 @@ export function DomainManagementCard({
     }
   };
 
+  const invalidPort = domains.find(
+    (d) => d.internal_port != null && (!Number.isInteger(d.internal_port) || d.internal_port < 1 || d.internal_port > 65535)
+  );
+
   // Save handler
   const handleSave = async () => {
+    if (invalidPort) {
+      toast.error(`Internal port for ${invalidPort.domain} must be between 1 and 65535`);
+      return;
+    }
     try {
-      await onSave({
-        domains: domains,
-      });
-      setHasChanges(false);
+      await onSave({ domains });
+      form.markSaved();
       toast.success("Domain configuration saved");
     } catch (error) {
       toast.error(
@@ -332,122 +326,192 @@ export function DomainManagementCard({
         {/* Custom domains list */}
         {domains.length > 0 && (
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Custom Domains</Label>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead className="w-[110px]">DNS Status</TableHead>
-                  <TableHead className="w-[100px] text-center">Primary</TableHead>
-                  <TableHead className="w-[160px]">WWW Redirect</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {domains.map((domain, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{domain.domain}</span>
-                        {domain.primary && (
-                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                        )}
-                        <Button aria-label="Copy to clipboard"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyDomain(domain.domain)}
-                          className="h-6 w-6 p-0"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button aria-label="Open in new tab"
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                          className="h-6 w-6 p-0"
-                        >
-                          <a
-                            href={`https://${domain.domain}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </Button>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <DnsStatusBadge
-                          result={dnsResults[domain.domain] === "loading" ? null : (dnsResults[domain.domain] as DnsCheckResult | null)}
-                          loading={dnsResults[domain.domain] === "loading"}
-                        />
-                        {dnsResults[domain.domain] !== "loading" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => runDnsCheck(domain.domain)}
-                            className="h-6 w-6 p-0"
-                            title="Re-check DNS"
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant={domain.primary ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPrimaryDomain(index)}
-                        disabled={domain.primary}
-                        className="h-7"
-                      >
-                        {domain.primary ? "Primary" : "Set Primary"}
-                      </Button>
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={domain.www_redirect_mode ?? "none"}
-                        onValueChange={(value) =>
-                          setWwwRedirectMode(
-                            index,
-                            value === "none" ? undefined : (value as Domain["www_redirect_mode"])
-                          )
-                        }
-                      >
-                        <SelectTrigger aria-label="WWW redirect mode" className="h-7 text-xs w-36">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No redirect</SelectItem>
-                          <SelectItem value="both">Serve both</SelectItem>
-                          <SelectItem value="to_www">→ www</SelectItem>
-                          <SelectItem value="to_non_www">→ non-www</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Button aria-label="Delete"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeDomain(index)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-sm font-medium">Custom Domains</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => domains.forEach((d) => runDnsCheck(d.domain))}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Check DNS
+              </Button>
+            </div>
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Domain</TableHead>
+                    <TableHead className="w-[150px]">DNS status</TableHead>
+                    <TableHead className="w-[150px]">WWW redirect</TableHead>
+                    <TableHead className="w-[140px]">Redirect type</TableHead>
+                    <TableHead className="w-[120px]">Internal port</TableHead>
+                    <TableHead className="w-[110px] text-center">Search indexing</TableHead>
+                    <TableHead className="w-[120px] text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {domains.map((domain, index) => {
+                    const dns = dnsResults[domain.domain];
+                    const hasRedirect =
+                      domain.www_redirect_mode === "to_www" || domain.www_redirect_mode === "to_non_www";
+                    return (
+                      <TableRow key={domain.domain}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm break-all">{domain.domain}</span>
+                            {domain.primary && (
+                              <Star className="h-4 w-4 shrink-0 text-yellow-500 fill-yellow-500" aria-label="Primary domain" />
+                            )}
+                            <Button aria-label="Copy to clipboard"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => copyDomain(domain.domain)}
+                              className="h-6 w-6 p-0"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button aria-label="Open in new tab"
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                              className="h-6 w-6 p-0"
+                            >
+                              <a
+                                href={`https://${domain.domain}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <DnsStatusBadge
+                              result={dns === "loading" ? null : dns}
+                              loading={dns === "loading"}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => runDnsCheck(domain.domain)}
+                              className="h-6 px-2 text-xs"
+                              disabled={dns === "loading"}
+                            >
+                              Check
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={domain.www_redirect_mode ?? "none"}
+                            onValueChange={(value) =>
+                              updateDomain(index, {
+                                www_redirect_mode:
+                                  value === "none" ? undefined : (value as Domain["www_redirect_mode"]),
+                              })
+                            }
+                          >
+                            <SelectTrigger aria-label={`WWW redirect for ${domain.domain}`} className="h-7 text-xs w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No redirect</SelectItem>
+                              <SelectItem value="both">Serve both</SelectItem>
+                              <SelectItem value="to_www">To www</SelectItem>
+                              <SelectItem value="to_non_www">To non-www</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={domain.redirect_type ?? "permanent"}
+                            onValueChange={(value) =>
+                              updateDomain(index, {
+                                redirect_type: value === "permanent" ? undefined : (value as Domain["redirect_type"]),
+                              })
+                            }
+                            disabled={!hasRedirect}
+                          >
+                            <SelectTrigger
+                              aria-label={`Redirect type for ${domain.domain}`}
+                              className="h-7 text-xs w-32"
+                              title={hasRedirect ? undefined : "Applies when a www redirect is set"}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="permanent">Permanent (301)</SelectItem>
+                              <SelectItem value="temporary">Temporary (302)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            aria-label={`Internal port for ${domain.domain}`}
+                            type="number"
+                            min={1}
+                            max={65535}
+                            className="h-7 w-24 text-xs"
+                            placeholder={String(app.port)}
+                            value={domain.internal_port ?? ""}
+                            onChange={(e) =>
+                              updateDomain(index, {
+                                internal_port: e.target.value === "" ? undefined : Number(e.target.value),
+                              })
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Switch
+                            aria-label={`Search indexing for ${domain.domain}`}
+                            checked={domain.search_indexing !== false}
+                            onCheckedChange={(checked) => updateDomain(index, { search_indexing: checked })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant={domain.primary ? "secondary" : "outline"}
+                              size="sm"
+                              onClick={() => setPrimaryDomain(index)}
+                              disabled={domain.primary}
+                              className="h-7 text-xs"
+                            >
+                              {domain.primary ? "Primary" : "Make primary"}
+                            </Button>
+                            <Button aria-label={`Delete ${domain.domain}`}
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeDomain(index)}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Internal port routes a domain to another port inside the container (empty uses the
+              app port, {app.port}); a new port takes effect on the next deploy. Turning search
+              indexing off adds <code className="font-mono">X-Robots-Tag: noindex, nofollow</code> to
+              every response on that domain.
+            </p>
           </div>
         )}
 
         {/* Add new domain form */}
         <div className="space-y-3 pt-4 border-t">
           <Label className="text-sm font-medium">Add Domain</Label>
-          <div className="flex gap-4 items-start">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="flex-1 space-y-1">
               <Input aria-label="example.com"
                 placeholder="example.com"
@@ -455,7 +519,12 @@ export function DomainManagementCard({
                 onChange={(e) =>
                   setNewDomain({ ...newDomain, domain: e.target.value })
                 }
-                onKeyDown={(e) => e.key === "Enter" && addDomain()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addDomain();
+                  }
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Enter a domain without the protocol (no http:// or https://)
@@ -478,8 +547,8 @@ export function DomainManagementCard({
                 <SelectContent>
                   <SelectItem value="none">No redirect</SelectItem>
                   <SelectItem value="both">Serve both</SelectItem>
-                  <SelectItem value="to_www">→ www</SelectItem>
-                  <SelectItem value="to_non_www">→ non-www</SelectItem>
+                  <SelectItem value="to_www">To www</SelectItem>
+                  <SelectItem value="to_non_www">To non-www</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -528,16 +597,15 @@ export function DomainManagementCard({
             </div>
           </div>
         )}
-
-        {/* Save Button */}
-        {hasChanges && (
-          <div className="flex justify-end pt-4 border-t">
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Domain Configuration"}
-            </Button>
-          </div>
-        )}
       </CardContent>
+      <UnsavedChangesBar
+        show={form.isDirty}
+        onSave={() => void handleSave()}
+        onReset={form.reset}
+        saving={isSaving}
+        saveDisabled={Boolean(invalidPort)}
+        message="You have domain changes that haven't been saved yet."
+      />
     </Card>
   );
 }

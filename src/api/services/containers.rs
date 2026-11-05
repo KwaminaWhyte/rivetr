@@ -80,6 +80,19 @@ pub(crate) fn find_container<'a>(
         .find(|e| e.name == key || e.id.starts_with(key) || key.starts_with(&e.id))
 }
 
+/// ID of a running container of `service` matched by name or ID.
+pub(crate) async fn resolve_running_container(
+    state: &AppState,
+    service: &Service,
+    key: &str,
+) -> Result<String, ApiError> {
+    let entries = list_entries(state, service).await?;
+    find_container(&entries, key)
+        .filter(|e| e.state == "running")
+        .map(|e| e.id.clone())
+        .ok_or_else(|| ApiError::not_found("No running container with that name"))
+}
+
 /// GET /api/services/:id/containers
 pub async fn list_service_containers(
     State(state): State<Arc<AppState>>,

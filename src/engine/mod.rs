@@ -299,6 +299,13 @@ impl DeploymentEngine {
                         }
                         if let Some(port) = routed_port {
                             let domain_entries = app.get_all_domains_with_redirects();
+                            // Per-domain settings (internal port, indexing, redirect type)
+                            let app_domains = app.get_domains();
+                            let port_map = runtime
+                                .inspect(&container_info.container_id)
+                                .await
+                                .map(|i| i.port_map)
+                                .unwrap_or_default();
                             let all_domains: Vec<String> = domain_entries
                                 .iter()
                                 .filter(|(_, r)| r.is_none())
@@ -307,33 +314,39 @@ impl DeploymentEngine {
                             let route_table = routes.load();
 
                             // Helper to create primary backend with basic auth if configured
-                            let create_backend = |www_redirect_target: Option<String>| {
-                                let mut backend = Backend::new(
-                                    container_info.container_id.clone(),
-                                    "127.0.0.1".to_string(),
-                                    port,
-                                )
-                                .with_healthcheck(app.healthcheck.clone())
-                                .with_access_logging(app.access_logging != 0)
-                                .with_strip_prefix(app.strip_prefix.clone());
+                            let create_backend =
+                                |domain: &str, www_redirect_target: Option<String>| {
+                                    let mut backend = Backend::new(
+                                        container_info.container_id.clone(),
+                                        "127.0.0.1".to_string(),
+                                        port,
+                                    )
+                                    .with_healthcheck(app.healthcheck.clone())
+                                    .with_access_logging(app.access_logging != 0)
+                                    .with_strip_prefix(app.strip_prefix.clone());
 
-                                backend.www_redirect_target = www_redirect_target;
+                                    backend.www_redirect_target = www_redirect_target;
+                                    backend.apply_domain_options(
+                                        &crate::db::domain_proxy_options(&app_domains, domain),
+                                        &port_map,
+                                    );
 
-                                // Configure HTTP Basic Auth if enabled (skip for redirect backends)
-                                if backend.www_redirect_target.is_none()
-                                    && app.basic_auth_enabled != 0
-                                {
-                                    if let (Some(username), Some(password_hash)) =
-                                        (&app.basic_auth_username, &app.basic_auth_password_hash)
+                                    // Configure HTTP Basic Auth if enabled (skip for redirect backends)
+                                    if backend.www_redirect_target.is_none()
+                                        && app.basic_auth_enabled != 0
                                     {
-                                        backend.set_basic_auth(BasicAuthConfig::new(
-                                            username.clone(),
-                                            password_hash.clone(),
-                                        ));
+                                        if let (Some(username), Some(password_hash)) = (
+                                            &app.basic_auth_username,
+                                            &app.basic_auth_password_hash,
+                                        ) {
+                                            backend.set_basic_auth(BasicAuthConfig::new(
+                                                username.clone(),
+                                                password_hash.clone(),
+                                            ));
+                                        }
                                     }
-                                }
-                                backend
-                            };
+                                    backend
+                                };
 
                             // Collect all replica backend addresses for round-robin load balancing
                             let replica_backends: Vec<String> = {
@@ -375,14 +388,21 @@ impl DeploymentEngine {
                                     if www_redirect_target.is_some() {
                                         route_table.add_route(
                                             domain.clone(),
-                                            create_backend(www_redirect_target.clone()),
+                                            create_backend(domain, www_redirect_target.clone()),
                                         );
                                     } else {
-                                        route_table.add_backends(
-                                            domain.clone(),
-                                            replica_backends.clone(),
-                                            create_backend(None),
-                                        );
+                                        let backend = create_backend(domain, None);
+                                        if backend.port != port {
+                                            // Routed to another container port: replicas
+                                            // only serve the app port, so no round-robin.
+                                            route_table.add_route(domain.clone(), backend);
+                                        } else {
+                                            route_table.add_backends(
+                                                domain.clone(),
+                                                replica_backends.clone(),
+                                                backend,
+                                            );
+                                        }
                                     }
                                 }
 
@@ -411,7 +431,7 @@ impl DeploymentEngine {
                                 route_table.add_backends(
                                     domain.clone(),
                                     replica_backends.clone(),
-                                    create_backend(None),
+                                    create_backend(domain, None),
                                 );
                                 tracing::info!(
                                     domain = %domain,
@@ -476,6 +496,7 @@ impl DeploymentEngine {
                                         if let Some(port) = info.port {
                                             let domain_entries =
                                                 app.get_all_domains_with_redirects();
+                                            let app_domains = app.get_domains();
                                             let all_domains: Vec<String> = domain_entries
                                                 .iter()
                                                 .filter(|(_, r)| r.is_none())
@@ -495,6 +516,13 @@ impl DeploymentEngine {
 
                                                 backend.www_redirect_target =
                                                     www_redirect_target.clone();
+                                                backend.apply_domain_options(
+                                                    &crate::db::domain_proxy_options(
+                                                        &app_domains,
+                                                        domain,
+                                                    ),
+                                                    &info.port_map,
+                                                );
 
                                                 if www_redirect_target.is_none()
                                                     && app.basic_auth_enabled != 0

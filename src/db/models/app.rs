@@ -16,6 +16,9 @@ pub struct App {
     pub domain: Option<String>,
     pub port: i32,
     pub healthcheck: Option<String>,
+    /// Structured healthcheck as JSON (see `HealthcheckConfig`). Migration 125.
+    #[sqlx(default)]
+    pub healthcheck_config: Option<String>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
     pub ssh_key_id: Option<String>,
@@ -199,6 +202,8 @@ pub struct AppResponse {
     pub domain: Option<String>,
     pub port: i32,
     pub healthcheck: Option<String>,
+    /// Effective structured healthcheck (stored config or the legacy path mapped).
+    pub healthcheck_config: Option<super::HealthcheckConfig>,
     pub memory_limit: Option<String>,
     pub cpu_limit: Option<String>,
     pub ssh_key_id: Option<String>,
@@ -342,6 +347,10 @@ impl From<App> for AppResponse {
             dockerfile: app.dockerfile,
             domain: app.domain,
             port: app.port,
+            healthcheck_config: super::HealthcheckConfig::resolve(
+                app.healthcheck_config.as_deref(),
+                app.healthcheck.as_deref(),
+            ),
             healthcheck: app.healthcheck,
             memory_limit: app.memory_limit,
             cpu_limit: app.cpu_limit,
@@ -419,6 +428,35 @@ impl From<App> for AppResponse {
 }
 
 impl App {
+    /// The container HEALTHCHECK for this app, if a healthcheck is enabled.
+    pub fn container_healthcheck(&self) -> Option<crate::runtime::ContainerHealthcheck> {
+        self.effective_healthcheck()
+            .and_then(|hc| hc.to_container_healthcheck(self.port as u16))
+    }
+
+    /// Container ports, other than the app port, that a domain routes to. They are
+    /// published on random host ports so the proxy can reach them.
+    pub fn domain_internal_ports(&self) -> Vec<u16> {
+        let mut ports: Vec<u16> = self
+            .get_domains()
+            .iter()
+            .filter_map(|d| d.internal_port)
+            .filter(|p| *p > 0 && i32::from(*p) != self.port)
+            .collect();
+        ports.sort_unstable();
+        ports.dedup();
+        ports
+    }
+
+    /// The effective healthcheck: the structured config, or the legacy path mapped to
+    /// an HTTP GET. `None` when the app has no healthcheck configured.
+    pub fn effective_healthcheck(&self) -> Option<super::HealthcheckConfig> {
+        super::HealthcheckConfig::resolve(
+            self.healthcheck_config.as_deref(),
+            self.healthcheck.as_deref(),
+        )
+    }
+
     /// Parse domains from JSON string
     pub fn get_domains(&self) -> Vec<Domain> {
         parse_domains(self.domains.as_deref())

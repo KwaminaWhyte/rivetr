@@ -766,6 +766,13 @@ pub async fn update_app(
         }
     })?;
 
+    // A legacy client that sets only the healthcheck path keeps the structured config in step.
+    if let Some(path) = req.healthcheck.as_deref() {
+        if existing.healthcheck.as_deref().unwrap_or("") != path {
+            crate::api::app_healthcheck::sync_legacy_path(&state.db, &id, path).await;
+        }
+    }
+
     let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&id)
         .fetch_one(&state.db)
@@ -822,6 +829,10 @@ pub async fn update_app(
 
                         // Set www redirect target
                         backend.www_redirect_target = www_redirect_target.clone();
+                        backend.apply_domain_options(
+                            &crate::db::domain_proxy_options(&app.get_domains(), domain),
+                            &info.port_map,
+                        );
 
                         // Restore basic auth if enabled (skip for redirect backends)
                         if www_redirect_target.is_none() && app.basic_auth_enabled != 0 {

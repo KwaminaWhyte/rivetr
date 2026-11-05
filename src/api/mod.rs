@@ -2,6 +2,7 @@ mod advanced_settings;
 mod ai_features;
 mod alerts;
 mod api_tokens;
+pub(crate) mod app_healthcheck;
 mod apps;
 mod audit;
 pub mod auth;
@@ -13,6 +14,7 @@ mod bulk;
 mod ca_certificates;
 mod clone;
 mod cloudflare_tunnels;
+mod container_files;
 mod cost_rates;
 mod costs;
 pub mod csp;
@@ -22,6 +24,7 @@ pub mod database_links;
 mod databases;
 mod deployments;
 mod destinations;
+mod domains;
 mod env_vars;
 pub mod environments;
 pub mod error;
@@ -44,6 +47,7 @@ mod proxy_logs;
 pub mod rate_limit;
 mod redirect_rules;
 mod replicas;
+mod resource_clone;
 mod routes;
 mod s3;
 mod sdk;
@@ -352,6 +356,88 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/servers/{id}/files/content",
             get(filesystem::read_file).put(filesystem::write_file),
         )
+        // Container file browser (beta) for apps, databases and services
+        .route(
+            "/apps/{id}/files",
+            get(container_files::app_list).delete(container_files::app_delete),
+        )
+        .route(
+            "/apps/{id}/files/content",
+            get(container_files::app_read).put(container_files::app_write),
+        )
+        .route(
+            "/apps/{id}/files/download",
+            get(container_files::app_download),
+        )
+        .route(
+            "/apps/{id}/files/upload",
+            post(container_files::app_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route("/apps/{id}/files/mkdir", post(container_files::app_mkdir))
+        .route(
+            "/databases/{id}/files",
+            get(container_files::database_list).delete(container_files::database_delete),
+        )
+        .route(
+            "/databases/{id}/files/content",
+            get(container_files::database_read).put(container_files::database_write),
+        )
+        .route(
+            "/databases/{id}/files/download",
+            get(container_files::database_download),
+        )
+        .route(
+            "/databases/{id}/files/upload",
+            post(container_files::database_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/databases/{id}/files/mkdir",
+            post(container_files::database_mkdir),
+        )
+        .route(
+            "/services/{id}/files",
+            get(container_files::service_list).delete(container_files::service_delete),
+        )
+        .route(
+            "/services/{id}/files/content",
+            get(container_files::service_read).put(container_files::service_write),
+        )
+        .route(
+            "/services/{id}/files/download",
+            get(container_files::service_download),
+        )
+        .route(
+            "/services/{id}/files/upload",
+            post(container_files::service_upload)
+                .layer(DefaultBodyLimit::max(container_files::UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/services/{id}/files/mkdir",
+            post(container_files::service_mkdir),
+        )
+        // DNS status check for custom domains
+        .route("/domains/check", get(domains::check_domain_dns))
+        // Structured app healthcheck
+        .route(
+            "/apps/{id}/healthcheck",
+            get(app_healthcheck::get_healthcheck).put(app_healthcheck::update_healthcheck),
+        )
+        // Clone resource across server / project / environment
+        .route(
+            "/apps/{id}/clone-resource",
+            post(resource_clone::clone_app_resource),
+        )
+        .route(
+            "/databases/{id}/clone-resource",
+            post(resource_clone::clone_database_resource),
+        )
+        .route(
+            "/services/{id}/clone-resource",
+            post(resource_clone::clone_service_resource),
+        )
+        .route("/clone-jobs/{id}", get(resource_clone::get_clone_job))
         // Server app assignments
         .route("/servers/{id}/apps", get(servers::list_server_apps))
         .route(

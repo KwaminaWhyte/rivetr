@@ -622,12 +622,10 @@ pub async fn restart_app(
                 }
             }
 
-            let host_port = state
-                .runtime
-                .inspect(&container_id)
-                .await
-                .ok()
-                .and_then(|info| info.host_port);
+            let inspected = state.runtime.inspect(&container_id).await.ok();
+            let host_port = inspected.as_ref().and_then(|info| info.host_port);
+            let port_map = inspected.map(|info| info.port_map).unwrap_or_default();
+            let app_domains = app.get_domains();
 
             if let Some(port) = host_port {
                 let route_table = state.routes.load();
@@ -640,6 +638,10 @@ pub async fn restart_app(
                     .with_healthcheck(app.healthcheck.clone())
                     .with_access_logging(app.access_logging != 0);
                     backend.www_redirect_target = www_redirect_target;
+                    backend.apply_domain_options(
+                        &crate::db::domain_proxy_options(&app_domains, &domain),
+                        &port_map,
+                    );
                     route_table.add_route(domain, backend);
                 }
             }
@@ -808,6 +810,8 @@ pub async fn restart_app(
         cmd: None,
         network: None,
         custom_labels: vec![],
+        healthcheck: app.container_healthcheck(),
+        extra_ports: app.domain_internal_ports(),
     };
 
     log_restart_step(
@@ -1025,6 +1029,13 @@ pub async fn restart_app(
     // 7. Atomically update proxy routes to point at the new container
     {
         let domain_entries = app.get_all_domains_with_redirects();
+        let app_domains = app.get_domains();
+        let port_map = state
+            .runtime
+            .inspect(&new_container_id)
+            .await
+            .map(|i| i.port_map)
+            .unwrap_or_default();
         let route_table = state.routes.load();
         for (domain, www_redirect_target) in &domain_entries {
             let mut backend = crate::proxy::Backend::new(
@@ -1035,6 +1046,10 @@ pub async fn restart_app(
             .with_healthcheck(app.healthcheck.clone())
             .with_access_logging(app.access_logging != 0);
             backend.www_redirect_target = www_redirect_target.clone();
+            backend.apply_domain_options(
+                &crate::db::domain_proxy_options(&app_domains, domain),
+                &port_map,
+            );
             route_table.add_route(domain.clone(), backend);
             tracing::info!(
                 domain = %domain,
