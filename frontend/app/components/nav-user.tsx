@@ -10,6 +10,8 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Sun,
   UserRound,
@@ -122,9 +124,21 @@ export function NavUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link to="/settings/security">
+              <Link to="/account">
                 <UserRound className="size-4" />
-                Profile and security
+                Account
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/security">
+                <ShieldCheck className="size-4" />
+                Security
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/preferences">
+                <SlidersHorizontal className="size-4" />
+                Preferences
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSub>

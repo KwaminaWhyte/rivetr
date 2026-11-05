@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { useTeamContext } from "@/lib/team-context";
 import type { TeamWithMemberCount, TeamRole, CreateTeamRequest } from "@/types/api";
 import { Users, Settings, ChevronRight, Loader2 } from "lucide-react";
 
@@ -55,7 +56,9 @@ function formatRole(role: TeamRole | null): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-export default function SettingsTeamsPage() {
+export default function TeamsPage() {
+  const navigate = useNavigate();
+  const { setCurrentTeamId } = useTeamContext();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -201,12 +204,17 @@ export default function SettingsTeamsPage() {
                     <TableCell>{formatDate(team.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/teams/${team.id}`}>
-                            <Settings className="h-4 w-4 mr-1" />
-                            Manage
-                            <ChevronRight className="h-4 w-4 ml-1" />
-                          </Link>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCurrentTeamId(team.id);
+                            navigate("/team");
+                          }}
+                        >
+                          <Settings className="h-4 w-4 mr-1" />
+                          Manage
+                          <ChevronRight className="h-4 w-4 ml-1" />
                         </Button>
                       </div>
                     </TableCell>

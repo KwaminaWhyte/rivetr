@@ -48,15 +48,6 @@ import {
   WELL_KNOWN_PROVIDERS,
 } from "@/lib/api/sso";
 
-export function meta() {
-  return [
-    { title: "SSO / OIDC - Rivetr" },
-    {
-      name: "description",
-      content: "Configure OpenID Connect providers for enterprise single sign-on",
-    },
-  ];
-}
 
 function ProviderCard({
   provider,
@@ -417,7 +408,7 @@ function AddProviderDialog({
   );
 }
 
-export default function SsoSettingsPage() {
+export function SsoProviderSettings() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -470,7 +461,7 @@ export default function SsoSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">SSO / OIDC</h1>
+        <h2 className="text-lg font-semibold tracking-tight">SSO / OIDC</h2>
         <p className="text-muted-foreground">
           Configure OpenID Connect identity providers to allow enterprise users
           to sign in with their organization&apos;s SSO.

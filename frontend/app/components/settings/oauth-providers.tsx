@@ -39,15 +39,6 @@ import {
   type UserOAuthConnection,
 } from "@/lib/api/oauth";
 
-export function meta() {
-  return [
-    { title: "Authentication - Rivetr" },
-    {
-      name: "description",
-      content: "Configure OAuth login providers for your Rivetr instance",
-    },
-  ];
-}
 
 // Google icon SVG
 const GoogleIcon = ({ className }: { className?: string }) => (
@@ -504,7 +495,7 @@ function OAuthConnectionsCard() {
   );
 }
 
-export default function OAuthSettingsPage() {
+export function OAuthProviderSettings() {
   const queryClient = useQueryClient();
 
   const { data: providers = [], isLoading, error: providersError, refetch: refetchProviders } = useQuery<OAuthProviderResponse[]>(

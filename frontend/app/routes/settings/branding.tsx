@@ -20,7 +20,7 @@ import type { WhiteLabel, UpdateWhiteLabelRequest } from "@/lib/api/white-label"
 
 export function meta() {
   return [
-    { title: "White Label - Settings" },
+    { title: "Branding - Settings" },
     { name: "description", content: "Customize your Rivetr instance branding" },
   ];
 }
@@ -88,7 +88,7 @@ export default function WhiteLabelSettingsPage() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Paintbrush className="h-7 w-7" />
-          White Label
+          Branding
         </h1>
         <p className="text-muted-foreground">
           Customize the branding and appearance of your Rivetr instance.

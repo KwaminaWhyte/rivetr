@@ -1,18 +1,13 @@
 import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
-import { Link, useParams, useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useBreadcrumb } from "@/lib/breadcrumb-context";
+import { useTeamContext } from "@/lib/team-context";
+import { EmptyState, PageHeader } from "@/components/page";
 import { toast } from "sonner";
 import { teamsApi } from "@/lib/api/teams";
 import { Button } from "@/components/ui/button";
 
-export function meta() {
-  return [
-    { title: "Team Details - Rivetr" },
-    { name: "description", content: "Manage team members and permissions" },
-  ];
-}
 import {
   Card,
   CardContent,
@@ -62,13 +57,10 @@ import type {
 } from "@/types/api";
 import { canManageMembers, canDeleteTeam } from "@/types/api";
 import {
-  ArrowLeft,
   Users,
   Mail,
   Loader2,
   Trash2,
-  Activity,
-  SlidersHorizontal,
 } from "lucide-react";
 import { TeamNotificationChannelsCard } from "@/components/team-notification-channels-card";
 import { SharedEnvVarsTable } from "@/components/shared-env-vars-table";
@@ -88,8 +80,31 @@ function isExpired(dateStr: string): boolean {
   return new Date(dateStr) < new Date();
 }
 
-export default function TeamDetailPage() {
-  const { id } = useParams();
+export type TeamSection = "general" | "members" | "variables" | "audit";
+
+/**
+ * The current team's pages (/team, /team/members, /team/variables,
+ * /team/audit). They follow the team picked in the team switcher.
+ */
+export function TeamPage({ section }: { section: TeamSection }) {
+  const { currentTeamId, currentTeam } = useTeamContext();
+  if (!currentTeamId) {
+    return (
+      <EmptyState
+        title="You are in your personal workspace"
+        description="Team settings, members and variables belong to a team. Switch to a team or create one."
+        action={
+          <Button asChild>
+            <Link to="/teams">All teams</Link>
+          </Button>
+        }
+      />
+    );
+  }
+  return <TeamDetail key={currentTeamId} id={currentTeamId} name={currentTeam?.name} section={section} />;
+}
+
+function TeamDetail({ id, section }: { id: string; name?: string; section: TeamSection }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -113,32 +128,22 @@ export default function TeamDetailPage() {
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
   const [inviteEmail, setInviteEmail] = useState("");
 
-  const { setItems } = useBreadcrumb();
-
   const { data: team, isLoading, error: teamError, refetch: refetchTeam } = useQuery<TeamDetail>({
     queryKey: ["team", id],
-    queryFn: () => api.getTeam(id!),
+    queryFn: () => api.getTeam(id),
     enabled: !!id,
   });
 
-  useEffect(() => {
-    if (team) {
-      setItems([
-        { label: "Teams", href: "/teams" },
-        { label: team.name },
-      ]);
-    }
-  }, [team, setItems]);
 
   const { data: invitations = [], isLoading: isLoadingInvitations } = useQuery<TeamInvitation[]>({
     queryKey: ["team-invitations", id],
-    queryFn: () => api.getTeamInvitations(id!),
+    queryFn: () => api.getTeamInvitations(id),
     enabled: !!id,
   });
 
   const updateTeamMutation = useMutation({
     mutationFn: ({ name, slug }: { name?: string; slug?: string }) =>
-      api.updateTeam(id!, { name, slug }),
+      api.updateTeam(id, { name, slug }),
     onSuccess: () => {
       toast.success("Team updated successfully");
       queryClient.invalidateQueries({ queryKey: ["team", id] });
@@ -151,7 +156,7 @@ export default function TeamDetailPage() {
 
   const inviteMemberMutation = useMutation({
     mutationFn: ({ userIdentifier, role }: { userIdentifier: string; role: TeamRole }) =>
-      api.inviteTeamMember(id!, { user_identifier: userIdentifier, role }),
+      api.inviteTeamMember(id, { user_identifier: userIdentifier, role }),
     onSuccess: () => {
       toast.success("Member invited successfully");
       setShowInviteDialog(false);
@@ -164,7 +169,7 @@ export default function TeamDetailPage() {
 
   const createInvitationMutation = useMutation({
     mutationFn: ({ email, role }: { email: string; role: TeamRole }) =>
-      api.createTeamInvitation(id!, { email, role }),
+      api.createTeamInvitation(id, { email, role }),
     onSuccess: () => {
       toast.success("Invitation sent successfully");
       queryClient.invalidateQueries({ queryKey: ["team-invitations", id] });
@@ -175,7 +180,7 @@ export default function TeamDetailPage() {
   });
 
   const resendInvitationMutation = useMutation({
-    mutationFn: (invitationId: string) => api.resendTeamInvitation(id!, invitationId),
+    mutationFn: (invitationId: string) => api.resendTeamInvitation(id, invitationId),
     onSuccess: () => {
       toast.success("Invitation email resent");
     },
@@ -185,7 +190,7 @@ export default function TeamDetailPage() {
   });
 
   const revokeInvitationMutation = useMutation({
-    mutationFn: (invitationId: string) => api.deleteTeamInvitation(id!, invitationId),
+    mutationFn: (invitationId: string) => api.deleteTeamInvitation(id, invitationId),
     onSuccess: () => {
       toast.success("Invitation revoked");
       setShowRevokeInvitationDialog(false);
@@ -199,7 +204,7 @@ export default function TeamDetailPage() {
 
   const updateRoleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: TeamRole }) =>
-      api.updateTeamMemberRole(id!, userId, { role }),
+      api.updateTeamMemberRole(id, userId, { role }),
     onSuccess: () => {
       toast.success("Member role updated");
       queryClient.invalidateQueries({ queryKey: ["team", id] });
@@ -210,7 +215,7 @@ export default function TeamDetailPage() {
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => api.removeTeamMember(id!, userId),
+    mutationFn: (userId: string) => api.removeTeamMember(id, userId),
     onSuccess: () => {
       toast.success("Member removed");
       setShowRemoveMemberDialog(false);
@@ -223,7 +228,7 @@ export default function TeamDetailPage() {
   });
 
   const deleteTeamMutation = useMutation({
-    mutationFn: () => api.deleteTeam(id!),
+    mutationFn: () => api.deleteTeam(id),
     onSuccess: () => {
       toast.success("Team deleted");
       navigate("/teams");
@@ -326,32 +331,31 @@ export default function TeamDetailPage() {
     return <div>Team not found</div>;
   }
 
+  const sectionTitle: Record<TeamSection, { title: string; description: string }> = {
+    general: { title: team.name, description: `/${team.slug}` },
+    members: { title: "Members", description: `People in ${team.name}, their roles and pending invitations.` },
+    variables: { title: "Variables", description: `Shared variables inherited by every app in ${team.name}.` },
+    audit: { title: "Audit log", description: `Recent activity in ${team.name}.` },
+  };
+  const header = sectionTitle[section];
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link to="/teams">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Teams
-          </Link>
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{team.name}</h1>
-          <p className="text-muted-foreground">/{team.slug}</p>
-        </div>
-        {canDelete && (
-          <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete Team
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={header.title}
+        description={header.description}
+        actions={
+          section === "general" && canDelete ? (
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Team
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Team Settings Card */}
-      {canManage && (
+      {section === "general" && canManage && (
         <Card>
           <CardHeader>
             <CardTitle>Team Settings</CardTitle>
@@ -382,93 +386,85 @@ export default function TeamDetailPage() {
         </Card>
       )}
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList>
-          <TabsTrigger value="members" className="gap-2">
-            <Users className="h-4 w-4" />
-            Members ({team.members.length})
-          </TabsTrigger>
-          {canManage && (
-            <TabsTrigger value="invitations" className="gap-2">
-              <Mail className="h-4 w-4" />
-              Invitations ({pendingInvitations.length})
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="activity" className="gap-2">
-              <Activity className="h-4 w-4" />
-              Activity
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="shared-vars" className="gap-2">
-            <SlidersHorizontal className="h-4 w-4" />
-            Shared Variables
-          </TabsTrigger>
-        </TabsList>
+      {/* Notification Channels */}
+      {section === "general" && canManage && <TeamNotificationChannelsCard teamId={id} />}
 
-        {/* Members Tab */}
-        <TabsContent value="members">
-          <MembersTab
-            members={team.members}
-            currentUserRole={currentUserRole}
-            canManage={canManage}
-            isUpdatingRole={updateRoleMutation.isPending}
-            onShowInviteDialog={() => setShowInviteDialog(true)}
-            onRoleChange={handleRoleChange}
-            onRemoveMember={(member) => {
-              setSelectedMember(member);
-              setShowRemoveMemberDialog(true);
-            }}
-            onManagePermissions={(member) => {
-              setPermissionsMember(member);
-              setShowPermissionsDialog(true);
-            }}
-          />
-        </TabsContent>
+      {section === "members" && (
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList>
+            <TabsTrigger value="members" className="gap-2">
+              <Users className="h-4 w-4" />
+              Members ({team.members.length})
+            </TabsTrigger>
+            {canManage && (
+              <TabsTrigger value="invitations" className="gap-2">
+                <Mail className="h-4 w-4" />
+                Invitations ({pendingInvitations.length})
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        {/* Invitations Tab */}
-        {canManage && (
-          <TabsContent value="invitations">
-            <InvitationsTab
-              pendingInvitations={pendingInvitations}
+          <TabsContent value="members">
+            <MembersTab
+              members={team.members}
               currentUserRole={currentUserRole}
-              isLoadingInvitations={isLoadingInvitations}
-              isResending={resendInvitationMutation.isPending}
-              isRevoking={revokeInvitationMutation.isPending}
-              isCreatingInvitation={createInvitationMutation.isPending}
-              onCreateInvitation={(email, role) =>
-                createInvitationMutation.mutate({ email, role })
-              }
-              onResend={(invitationId) => resendInvitationMutation.mutate(invitationId)}
-              onRevoke={(invitation) => {
-                setSelectedInvitation(invitation);
-                setShowRevokeInvitationDialog(true);
+              canManage={canManage}
+              isUpdatingRole={updateRoleMutation.isPending}
+              onShowInviteDialog={() => setShowInviteDialog(true)}
+              onRoleChange={handleRoleChange}
+              onRemoveMember={(member) => {
+                setSelectedMember(member);
+                setShowRemoveMemberDialog(true);
+              }}
+              onManagePermissions={(member) => {
+                setPermissionsMember(member);
+                setShowPermissionsDialog(true);
               }}
             />
           </TabsContent>
-        )}
 
-        {/* Activity Tab */}
-        {canManage && (
-          <TabsContent value="activity">
-            <AuditTab teamId={id!} isActiveTab={activeTab === "activity"} />
-          </TabsContent>
-        )}
+          {canManage && (
+            <TabsContent value="invitations">
+              <InvitationsTab
+                pendingInvitations={pendingInvitations}
+                currentUserRole={currentUserRole}
+                isLoadingInvitations={isLoadingInvitations}
+                isResending={resendInvitationMutation.isPending}
+                isRevoking={revokeInvitationMutation.isPending}
+                isCreatingInvitation={createInvitationMutation.isPending}
+                onCreateInvitation={(email, role) =>
+                  createInvitationMutation.mutate({ email, role })
+                }
+                onResend={(invitationId) => resendInvitationMutation.mutate(invitationId)}
+                onRevoke={(invitation) => {
+                  setSelectedInvitation(invitation);
+                  setShowRevokeInvitationDialog(true);
+                }}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
+      )}
 
-        {/* Shared Variables Tab */}
-        <TabsContent value="shared-vars">
-          <SharedEnvVarsTable
-            scope="team"
-            scopeId={id!}
-            title="Team Shared Variables"
-            description="These variables are inherited by all apps in this team. App-level variables take precedence."
+      {section === "audit" &&
+        (canManage ? (
+          <AuditTab teamId={id} isActiveTab />
+        ) : (
+          <EmptyState
+            bordered
+            title="Only team owners and admins can see the audit log"
+            description="Ask an owner or admin of this team for access."
           />
-        </TabsContent>
-      </Tabs>
+        ))}
 
-      {/* Notification Channels */}
-      {canManage && <TeamNotificationChannelsCard teamId={id!} />}
+      {section === "variables" && (
+        <SharedEnvVarsTable
+          scope="team"
+          scopeId={id}
+          title="Team Shared Variables"
+          description="These variables are inherited by all apps in this team. App-level variables take precedence."
+        />
+      )}
 
       {/* Invite Member Dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
@@ -659,7 +655,7 @@ export default function TeamDetailPage() {
           setShowPermissionsDialog(open);
           if (!open) setPermissionsMember(null);
         }}
-        teamId={id!}
+        teamId={id}
         member={permissionsMember}
       />
 
