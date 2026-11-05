@@ -59,6 +59,7 @@ export default [
       route("terminal", "routes/apps/$id/terminal.tsx"),
       route("files", "routes/apps/$id/files.tsx"),
       route("security", "routes/apps/$id/security.tsx"),
+      route("analytics", "routes/apps/$id/analytics.tsx"),
     ]),
 
     // Databases (nested layout with tabs)
@@ -100,10 +101,12 @@ export default [
       route("docker-cleanup", "routes/servers/$id/docker-cleanup.tsx"),
       route("security", "routes/servers/$id/security.tsx"),
       route("files", "routes/servers/$id/files.tsx"),
+      route("analytics", "routes/servers/$id/analytics.tsx"),
     ]),
 
     // Monitoring
     route("monitoring", "routes/monitoring.tsx"),
+    route("monitoring/analytics", "routes/monitoring/analytics.tsx"),
 
     // Costs
     route("costs", "routes/costs.tsx"),

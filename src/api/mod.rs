@@ -66,6 +66,7 @@ mod swarm;
 pub mod system;
 pub(crate) mod tags;
 mod teams;
+mod traffic_analytics;
 mod two_factor;
 mod validation;
 mod volumes;
@@ -1264,6 +1265,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // Traffic analytics (E3)
+        .route("/analytics", get(traffic_analytics::team_analytics))
+        .route(
+            "/analytics/settings",
+            get(traffic_analytics::get_settings).put(traffic_analytics::update_settings),
+        )
+        .route(
+            "/apps/{id}/analytics",
+            get(traffic_analytics::app_analytics),
+        )
+        .route(
+            "/servers/{id}/analytics",
+            get(traffic_analytics::server_analytics).put(traffic_analytics::set_server_analytics),
+        )
         // Passkeys of the signed-in user (E2)
         .route("/passkeys", get(passkeys::list_passkeys))
         .route("/passkeys/register/start", post(passkeys::register_start))

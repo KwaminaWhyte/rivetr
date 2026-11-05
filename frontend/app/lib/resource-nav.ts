@@ -14,6 +14,7 @@ import {
   BarChart3,
   Box,
   CalendarClock,
+  ChartNoAxesCombined,
   Database,
   Eye,
   FileText,
@@ -90,6 +91,7 @@ const APP_ICONS: Record<string, LucideIcon> = {
   jobs: CalendarClock,
   logs: ScrollText,
   monitoring: BarChart3,
+  analytics: ChartNoAxesCombined,
   "log-drains": Logs,
   terminal: SquareTerminal,
   files: FolderOpen,
@@ -192,6 +194,7 @@ function serverSections(base: string): ResourceNavSection[] {
       items: [
         { title: "Security", url: `${base}/security`, icon: ShieldCheck },
         ...(isLocal ? [] : [{ title: "Files", url: `${base}/files`, icon: FolderOpen }]),
+        { title: "Analytics", url: `${base}/analytics`, icon: ChartNoAxesCombined },
       ],
     },
   ];

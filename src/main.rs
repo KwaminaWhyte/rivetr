@@ -209,6 +209,8 @@ async fn main() -> Result<()> {
     // Instance settings saved from the dashboard (Advanced policy cache and
     // update schedule) override the toml defaults.
     rivetr::settings::init(&db).await;
+    // Traffic analytics aggregator (fed by the proxy, flushes every 60s)
+    rivetr::proxy::analytics::spawn(db.clone());
     match rivetr::settings::updates::UpdateSettings::load(&db, &config.auto_update).await {
         Ok(s) => update_checker.set_settings(s),
         Err(e) => tracing::warn!(error = %e, "Failed to load update settings; using rivetr.toml"),

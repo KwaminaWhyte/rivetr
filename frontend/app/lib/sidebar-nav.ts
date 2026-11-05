@@ -60,6 +60,7 @@ export const sidebarSections: SidebarSection[] = [
         children: [
           { title: "Metrics", url: "/monitoring" },
           { title: "Costs", url: "/costs" },
+          { title: "Analytics", url: "/monitoring/analytics" },
           { title: "Proxy logs", url: "/settings/proxy-logs" },
         ],
       },

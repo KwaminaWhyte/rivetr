@@ -1714,6 +1714,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Migration 127: passkeys + WebAuthn challenge state (idempotent)
     execute_sql(pool, include_str!("../../migrations/127_passkeys.sql")).await?;
 
+    // Migration 128: traffic analytics rollups (idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/128_traffic_analytics.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

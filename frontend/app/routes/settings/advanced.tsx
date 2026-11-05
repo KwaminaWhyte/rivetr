@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { instanceSettingsApi } from "@/lib/api/instance-settings";
+import { AnalyticsSettingsSection } from "@/components/analytics/analytics-settings-section";
 import type { AdvancedSettings, ConfirmationMode } from "@/types/instance-settings";
 
 export function meta() {
@@ -358,6 +359,9 @@ export default function AdvancedSettingsPage() {
           <button type="submit" hidden aria-hidden tabIndex={-1} />
         </form>
       )}
+
+      {/* Traffic analytics (E3) saves on its own */}
+      {form && <AnalyticsSettingsSection />}
 
       <UnsavedChangesBar
         visible={dirty}

@@ -42,6 +42,7 @@ export interface NavGroup {
 export const monitoringTabs: NavLink[] = [
   { title: "Monitoring", url: "/monitoring" },
   { title: "Costs", url: "/costs" },
+  { title: "Analytics", url: "/monitoring/analytics" },
 ];
 
 export const infrastructureTabs: NavLink[] = [

@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ChartNoAxesCombined,
   Container,
   FolderOpen,
   Info,
@@ -44,6 +45,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
     items: [
       { label: "Security", path: "/security", icon: ShieldCheck },
       { label: "Files", path: "/files", icon: FolderOpen, remoteOnly: true },
+      { label: "Analytics", path: "/analytics", icon: ChartNoAxesCombined },
     ],
   },
 ];
