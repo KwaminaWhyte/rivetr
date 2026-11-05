@@ -20,6 +20,7 @@ Reference documentation for developers and operators.
 | Architecture | [architecture/code-organization.md](architecture/code-organization.md) | Module splitting rules and split log |
 | Reference | [reference/service-templates.md](reference/service-templates.md) | Service template registry, grouped by category |
 | Reference | [reference/service-deployments.md](reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
+| Reference | [reference/remote-servers.md](reference/remote-servers.md) | Remote servers: non-root SSH users with passwordless sudo |
 | Planning | [planning/tasks.md](planning/tasks.md) | Current and historical task tracker |
 | Planning | [planning/ai-opportunities.md](planning/ai-opportunities.md) | AI feature opportunities and implementation notes |
 | Research | [research/competitive-gap-analysis.md](research/competitive-gap-analysis.md) | Competitive analysis against Coolify and Dokploy |

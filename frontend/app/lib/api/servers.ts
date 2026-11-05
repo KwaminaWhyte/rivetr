@@ -53,11 +53,22 @@ export interface UpdateServerRequest {
   hourly_rate?: number;
 }
 
+/** Root / passwordless sudo validation for the SSH user. */
+export interface PrivilegeCheck {
+  ssh_user: string;
+  status: "root" | "available" | "missing" | "not_installed";
+  ok: boolean;
+  message: string;
+  /** Line to add to /etc/sudoers.d/rivetr when sudo is missing. */
+  sudoers_line?: string | null;
+}
+
 export interface ServerHealthResponse extends Server {
   docker_installed: boolean;
   docker_running: boolean;
   compose_installed: boolean;
   compose_version?: string;
+  privilege?: PrivilegeCheck | null;
 }
 
 export interface InstallDockerResponse {

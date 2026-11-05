@@ -1,4 +1,5 @@
 import { QueryError } from "@/components/query-error";
+import { PrivilegeCheckBadge, PrivilegeCheckFix } from "@/components/servers/privilege-check";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -655,7 +656,7 @@ export default function ServersPage() {
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [installingDockerIds, setInstallingDockerIds] = useState<Set<string>>(new Set());
   // Map from server id → last health check result (for docker status)
-  const [dockerHealth, setDockerHealth] = useState<Record<string, Pick<ServerHealthResponse, "docker_installed" | "docker_running" | "compose_installed" | "compose_version">>>({});
+  const [dockerHealth, setDockerHealth] = useState<Record<string, Pick<ServerHealthResponse, "docker_installed" | "docker_running" | "compose_installed" | "compose_version" | "privilege">>>({});
   const [terminalServer, setTerminalServer] = useState<Server | null>(null);
   const [patchesServer, setPatchesServer] = useState<Server | null>(null);
   const [securityServer, setSecurityServer] = useState<Server | null>(null);
@@ -801,6 +802,7 @@ export default function ServersPage() {
           docker_running: result.docker_running,
           compose_installed: result.compose_installed,
           compose_version: result.compose_version,
+          privilege: result.privilege,
         },
       }));
     } catch (error) {
@@ -1027,7 +1029,13 @@ export default function ServersPage() {
                               Compose {dockerHealth[server.id].compose_version ?? ""}
                             </Badge>
                           )}
+                          {dockerHealth[server.id].privilege && (
+                            <PrivilegeCheckBadge check={dockerHealth[server.id].privilege!} />
+                          )}
                         </div>
+                      )}
+                      {dockerHealth[server.id]?.privilege && (
+                        <PrivilegeCheckFix check={dockerHealth[server.id].privilege!} />
                       )}
                       <div className="flex items-center gap-1 justify-end">
                         {/* Primary: access actions */}

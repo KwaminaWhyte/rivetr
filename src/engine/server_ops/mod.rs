@@ -78,8 +78,8 @@ impl HostTarget {
         match self {
             HostTarget::Local {
                 prefer_podman: true,
-            } => PRELUDE_PODMAN,
-            _ => PRELUDE_DOCKER,
+            } => PRELUDE_PODMAN.as_str(),
+            _ => PRELUDE_DOCKER.as_str(),
         }
     }
 
@@ -124,11 +124,24 @@ impl HostTarget {
     }
 }
 
-const PRELUDE_DOCKER: &str = r#"D=$(command -v docker || command -v podman || echo docker)
-if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo -n"; else SUDO=""; fi"#;
+// `$SUDO` and the `$D` container CLI wrapper come from the shared privilege
+// helper (crate::utils::privileged): `$D` goes through `sudo -n` when the SSH
+// user cannot reach the daemon directly.
+static PRELUDE_DOCKER: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use crate::utils::privileged::{container_cli_line, SUDO_LINE};
+    format!(
+        "{SUDO_LINE}\n{}",
+        container_cli_line("D", &["docker", "podman"])
+    )
+});
 
-const PRELUDE_PODMAN: &str = r#"D=$(command -v podman || command -v docker || echo podman)
-if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo -n"; else SUDO=""; fi"#;
+static PRELUDE_PODMAN: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use crate::utils::privileged::{container_cli_line, SUDO_LINE};
+    format!(
+        "{SUDO_LINE}\n{}",
+        container_cli_line("D", &["podman", "docker"])
+    )
+});
 
 fn to_exec_output(output: std::process::Output) -> ExecOutput {
     ExecOutput {
