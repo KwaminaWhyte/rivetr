@@ -475,7 +475,7 @@ export default function ProjectEnvironmentsPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Environments
           </h1>
           {project && (

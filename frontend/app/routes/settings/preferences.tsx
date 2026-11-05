@@ -96,7 +96,7 @@ export default function SettingsPreferencesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <SlidersHorizontal className="h-7 w-7" />
           Preferences
         </h1>

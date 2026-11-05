@@ -121,7 +121,7 @@ export default function UpdatesPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Updates</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Updates</h1>
         <p className="text-sm text-muted-foreground">
           Release channel and schedules. Changes apply right away, no restart needed.
         </p>

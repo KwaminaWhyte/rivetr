@@ -32,10 +32,10 @@ Status key: `[ ]` todo, `[x]` done.
 
 ## Batch B: server operations
 
-- [ ] **Images page** per server (`/servers/:id/images`, and `localhost` for the local runtime): repo, tag, short ID with copy, created, size, used-by (container names), "Unused" badge, delete for unused; header chips "Total X GB" and "Reclaimable Y GB (Z%)"; search; pagination. Local via runtime API, remote via SSH `docker image ls --format json` + `docker ps -a`.
-- [ ] **Docker cleanup** page per server: schedule (cron), trigger (`every schedule` | `disk above N%`), toggles with warning for unused volumes / unused networks / retained rollback images, "Run cleanup", and a recent executions list (status, started, duration, freed bytes, log). New table `docker_cleanup_runs`.
-- [ ] **Server patching**: settings per server (check frequency, automatic security updates on/off for apt/dnf, maintenance window time), package list with "restarts Docker" warning for docker/containerd packages, per-package Update and Update All, reboot-required badge (`/var/run/reboot-required` or `needs-restarting -r`), Reboot Server with two-step confirm, last checked time.
-- [ ] **Servers list**: columns Server, Resources count, Patches (N updates, Reboot required chips), Status (Reachable / Attention required / Unreachable).
+- [x] **Images page** per server (`/servers/:id/images`, and `localhost` for the local runtime): repo, tag, short ID with copy, created, size, used-by (container names), "Unused" badge, delete for unused; header chips "Total X GB" and "Reclaimable Y GB (Z%)"; search; pagination. Local via runtime API, remote via SSH `docker image ls --format json` + `docker ps -a`.
+- [x] **Docker cleanup** page per server: schedule (cron), trigger (`every schedule` | `disk above N%`), toggles with warning for unused volumes / unused networks / retained rollback images, "Run cleanup", and a recent executions list (status, started, duration, freed bytes, log). New table `docker_cleanup_runs`.
+- [x] **Server patching**: settings per server (check frequency, automatic security updates on/off for apt/dnf, maintenance window time), package list with "restarts Docker" warning for docker/containerd packages, per-package Update and Update All, reboot-required badge (`/var/run/reboot-required` or `needs-restarting -r`), Reboot Server with two-step confirm, last checked time.
+- [x] **Servers list**: columns Server, Resources count, Patches (N updates, Reboot required chips), Status (Reachable / Attention required / Unreachable).
 
 ## Batch C: app configuration
 
@@ -47,11 +47,13 @@ Status key: `[ ]` todo, `[x]` done.
 
 ## Batch D: canvas and UI polish
 
-- [ ] **Projects canvas** (`/projects?view=canvas`, also dashboard default): `@xyflow/react`, pan/zoom controls with %, fit view, project > environment > resource cards with type icon, source line (e.g. "Dockerfile · main"), URL, live status dot. Click opens a right side panel (type, status, details, URL, server, Open button). Filters: all projects / all environments. List/canvas toggle remembered per viewer.
-- [ ] **App shell**: sidebar grouped like Coolify (top: Dashboard, Projects, Monitoring, Terminal; Infrastructure: Servers, Integrations, Shared variables; Manage: Team, Notifications, Keys and tokens, Tags, Settings), collapsible submenus, context sidebar when inside a resource or server (back arrow + section list), user menu at the bottom (profile, appearance, what's new, docs, log out).
-- [ ] **Breadcrumb switchers**: Team / Project / Environment / Resource each with a dropdown to jump to siblings, plus a status pill and primary action (Redeploy with dropdown) on the right.
-- [ ] **Page patterns**: card sections with an underlined title and an inner bordered body, consistent form grid (2 columns on desktop), consistent empty states (icon, title, one line, action), table style shared across lists, skeleton loaders. Apply to every route.
-- [ ] **Deployment history table**: search, status filter, source (webhook/manual/API/rollback), short commit + message, started (relative), duration, server, pagination.
+- [x] **Projects canvas** (`/projects?view=canvas`, also dashboard default): `@xyflow/react`, pan/zoom controls with %, fit view, project > environment > resource cards with type icon, source line (e.g. "Dockerfile · main"), URL, live status dot. Click opens a right side panel (type, status, details, URL, server, Open button). Filters: all projects / all environments. List/canvas toggle remembered per viewer.
+- [x] **App shell**: sidebar grouped like Coolify (top: Dashboard, Projects, Monitoring, Terminal; Infrastructure: Servers, Integrations, Shared variables; Manage: Team, Notifications, Keys and tokens, Tags, Settings), collapsible submenus, context sidebar when inside a resource or server (back arrow + section list), user menu at the bottom (profile, appearance, what's new, docs, log out).
+- [x] **Breadcrumb switchers**: Team / Project / Environment / Resource each with a dropdown to jump to siblings, plus a status pill and primary action (Redeploy with dropdown) on the right.
+- [x] **Page patterns**: card sections with an underlined title and an inner bordered body, consistent form grid (2 columns on desktop), consistent empty states (icon, title, one line, action), table style shared across lists, skeleton loaders. Apply to every route.
+- [x] **Deployment history table**: search, status filter, source (webhook/manual/API/rollback), short commit + message, started (relative), duration, server, pagination.
+
+Batch D notes: shared blocks live in `frontend/app/components/page/` (PageHeader, SectionCard, FormGrid/FormField, DataTable, EmptyState, ResourceStatus, ViewToggle, skeletons); the shell is in `components/shell/`, `app-sidebar.tsx`, `nav-*.tsx`, with nav data in `lib/sidebar-nav.ts` (global) and `lib/resource-nav.ts` (contextual). Any `Card` with a `CardHeader` renders as a framed section, so older pages pick up the pattern. Sidebar has no Terminal, Shared variables or Tags entries yet: Rivetr has no global terminal page, shared variables are per project, and Tags arrive with E1; add them to `lib/sidebar-nav.ts` when the pages exist.
 
 ## Batch E: larger features
 

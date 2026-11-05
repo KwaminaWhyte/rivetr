@@ -573,7 +573,7 @@ export default function OAuthSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Authentication</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Authentication</h1>
         <p className="text-muted-foreground">
           Configure OAuth providers to allow users to sign in with their GitHub,
           Google, GitLab, Microsoft, or Bitbucket accounts.

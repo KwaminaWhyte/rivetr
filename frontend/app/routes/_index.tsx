@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
+import { PageHeader } from "@/components/page";
+import { ProjectsCanvas } from "@/components/canvas/projects-canvas";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,7 @@ function formatUptime(seconds: number): string {
 
 export default function DashboardPage() {
   const { currentTeamId } = useTeamContext();
+  const navigate = useNavigate();
 
   // Use React Query for real-time updates
   // Note: system stats are always fetched, teamId is optional server-side scoping,
@@ -108,16 +111,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Health and resource use across your apps, databases and services
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          {dataUpdatedAt > 0 && (
+      <PageHeader
+        title="Dashboard"
+        description="Your projects, environments and resources at a glance"
+        meta={
+          dataUpdatedAt > 0 ? (
             <span
               className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex"
               title={new Date(dataUpdatedAt).toLocaleString()}
@@ -128,15 +126,17 @@ export default function DashboardPage() {
               </span>
               Live, updated {formatRelativeTime(new Date(dataUpdatedAt))}
             </span>
-          )}
+          ) : undefined
+        }
+        actions={
           <Button asChild>
-            <Link to="/projects">
-              <Plus className="mr-2 h-4 w-4" />
-              Quick Deploy
+            <Link to="/projects?new=1">
+              <Plus className="h-4 w-4" />
+              New Project
             </Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {loadError && (
         <QueryError
@@ -207,6 +207,12 @@ export default function DashboardPage() {
           detail={stats ? "since last restart" : undefined}
         />
       </MetricStrip>
+
+      {/* Projects canvas (switch to the list on the Projects page) */}
+      <ProjectsCanvas
+        className="h-[min(640px,70svh)] min-h-[420px]"
+        onListView={() => navigate("/projects?view=list")}
+      />
 
       {/* Chart and running services share one height: the list scrolls inside its card */}
       <div className="grid gap-4 lg:grid-cols-3">

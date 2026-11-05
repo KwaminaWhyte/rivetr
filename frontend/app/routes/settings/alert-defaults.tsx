@@ -163,7 +163,7 @@ export default function SettingsAlertDefaultsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Alert Defaults</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Alert Defaults</h1>
         <p className="text-muted-foreground">
           Configure global alert thresholds for resource monitoring. Apps without custom alert configurations will use these defaults.
         </p>

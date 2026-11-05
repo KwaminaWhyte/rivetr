@@ -169,7 +169,7 @@ export default function ServerFilesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">File Browser</h2>
+        <h1 className="text-2xl font-semibold tracking-tight">File Browser</h1>
         <Button
           variant="outline"
           size="sm"

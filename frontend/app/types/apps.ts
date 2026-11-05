@@ -282,6 +282,8 @@ export interface App {
   require_approval: boolean;
   maintenance_mode: boolean;
   maintenance_message: string | null;
+  /** Remote server the app runs on (null = the local runtime) */
+  server_id?: string | null;
   /** Build server ID for offloading Docker builds to a remote machine */
   build_server_id: string | null;
   /** Container restart policy */

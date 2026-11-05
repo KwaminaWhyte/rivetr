@@ -851,7 +851,7 @@ export default function ServersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Remote Servers</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Remote Servers</h1>
         <p className="text-muted-foreground">
           Register and manage remote servers for multi-server deployments.
         </p>
