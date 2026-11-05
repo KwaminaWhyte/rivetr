@@ -141,64 +141,11 @@ pub async fn update_instance_settings(
                     "Registered new instance domain proxy route"
                 );
 
-                // Spawn ACME cert renewal in background if TLS is enabled.
-                let acme_enabled =
-                    state.config.proxy.acme_enabled && state.config.proxy.acme_email.is_some();
-
-                if acme_enabled {
-                    let acme_cfg = crate::proxy::AcmeConfig {
-                        email: state.config.proxy.acme_email.clone().unwrap_or_default(),
-                        cache_dir: state.config.proxy.acme_cache_dir.clone(),
-                        staging: state.config.proxy.acme_staging,
-                    };
-                    let domain = new.clone();
-
-                    tokio::spawn(async move {
-                        tracing::info!(
-                            domain = %domain,
-                            "Triggering background ACME certificate renewal for new instance domain"
-                        );
-                        match crate::proxy::AcmeClient::new(acme_cfg).await {
-                            Ok(acme_client) => {
-                                let cert_dir = acme_client.cert_dir(&domain);
-                                // Only request a new cert if one doesn't already exist for this domain.
-                                if !cert_dir.join("fullchain.pem").exists() {
-                                    match acme_client
-                                        .request_certificate(std::slice::from_ref(&domain))
-                                        .await
-                                    {
-                                        Ok(result) => {
-                                            let _ = acme_client
-                                                .save_certificate(&result, &domain)
-                                                .await;
-                                            tracing::info!(
-                                                domain = %domain,
-                                                "ACME certificate obtained for new instance domain"
-                                            );
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                domain = %domain,
-                                                error = %e,
-                                                "ACME certificate request failed for new instance domain"
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    tracing::info!(
-                                        domain = %domain,
-                                        "Cached TLS certificate already exists for instance domain"
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    "Failed to init ACME client for instance domain renewal"
-                                );
-                            }
-                        }
-                    });
+                // The certificate manager orders a certificate for the new
+                // instance domain on its next pass; wake it so that is now.
+                if let Some(certs) = crate::proxy::certs::runtime() {
+                    certs.store.set_default_name(Some(new.clone()));
+                    certs.wake();
                 }
             }
         }

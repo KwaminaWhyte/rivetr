@@ -340,6 +340,8 @@ pub struct ProxyHandler {
     https_redirect_enabled: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Queue to the access-log writer task (None when logging is disabled)
     log_tx: Option<ProxyLogSender>,
+    /// When set, HTTP is redirected to HTTPS only for hosts with a certificate.
+    cert_store: Option<Arc<super::CertStore>>,
     /// Scheme reported to backends via X-Forwarded-Proto ("http" or "https").
     /// The HTTPS listener sets this to "https" so upstream apps (Laravel, Rails,
     /// etc.) generate correct absolute URLs instead of insecure http:// ones.
@@ -355,6 +357,7 @@ impl ProxyHandler {
             https_redirect_port: None,
             https_redirect_enabled: None,
             log_tx: None,
+            cert_store: None,
             forwarded_proto: "http",
         }
     }
@@ -375,6 +378,13 @@ impl ProxyHandler {
     /// Create a new handler with ACME challenge support
     pub fn with_acme(mut self, challenges: AcmeChallenges) -> Self {
         self.acme_challenges = Some(challenges);
+        self
+    }
+
+    /// Limit the HTTPS redirect to hosts `store` has a real certificate for, so
+    /// a domain whose certificate is still pending stays reachable over HTTP.
+    pub fn with_cert_store(mut self, store: Arc<super::CertStore>) -> Self {
+        self.cert_store = Some(store);
         self
     }
 
@@ -491,11 +501,16 @@ impl ProxyHandler {
                 .as_ref()
                 .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
                 .unwrap_or(false);
+        // HTTP/2 (h2c) requests carry the host in the URI authority.
+        let request_host = self.extract_host(&req).unwrap_or_default();
+        let redirect_active = redirect_active
+            && self
+                .cert_store
+                .as_ref()
+                .is_none_or(|store| store.covers(&request_host));
         if redirect_active {
             if let Some(https_port) = self.https_redirect_port {
-                // HTTP/2 (h2c) requests carry the host in the URI authority.
-                let host_header = self.extract_host(&req).unwrap_or_default();
-                let host_header = host_header.as_str();
+                let host_header = request_host.as_str();
                 // Strip existing port from host header, add https port if non-standard
                 let host_without_port = host_header.split(':').next().unwrap_or(host_header);
                 let redirect_host = if https_port == 443 {

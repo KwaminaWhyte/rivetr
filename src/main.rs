@@ -19,8 +19,8 @@ use rivetr::engine::{
     spawn_stats_history_task, spawn_stats_retention_task, updater, BuildLimits, DeploymentEngine,
 };
 use rivetr::proxy::{
-    AcmeClient, AcmeConfig, Backend, BasicAuthConfig, CertificateRenewalManager, HealthChecker,
-    HealthCheckerConfig, HttpsProxyServer, ProxyServer, RedirectRule, RouteTable,
+    Backend, BasicAuthConfig, HealthChecker, HealthCheckerConfig, ProxyServer, RedirectRule,
+    RouteTable,
 };
 use rivetr::runtime::{detect_runtime, ContainerRuntime};
 use rivetr::startup::run_startup_checks;
@@ -422,7 +422,6 @@ async fn main() -> Result<()> {
     let app = api_router;
 
     // Start HTTP proxy server and optionally HTTPS with ACME
-    let https_port = config.server.proxy_https_port;
 
     // Pre-bind proxy listeners using systemd socket activation (fd 0 = HTTP, fd 1 = HTTPS).
     // We MUST call ListenFd::from_env() exactly once — the crate clears LISTEN_FDS after the
@@ -445,164 +444,17 @@ async fn main() -> Result<()> {
         (http_l, https_l)
     };
 
-    let acme_enabled = config.proxy.acme_enabled
-        && config.proxy.acme_email.is_some()
-        && config.proxy.instance_domain.is_some();
-
-    if acme_enabled {
-        let acme_email = config.proxy.acme_email.clone().unwrap();
-        let instance_domain = config.proxy.instance_domain.clone().unwrap();
-        let acme_cfg = AcmeConfig {
-            email: acme_email,
-            cache_dir: config.proxy.acme_cache_dir.clone(),
-            staging: config.proxy.acme_staging,
-        };
-
-        match AcmeClient::new(acme_cfg).await {
-            Ok(acme_client) => {
-                let acme_client = std::sync::Arc::new(acme_client);
-                let acme_challenges = acme_client.challenges();
-
-                // IMPORTANT: Start HTTP proxy FIRST so ACME HTTP-01 challenges can be served
-                // The proxy must be listening on port 80 before Let's Encrypt tries to verify.
-                // HTTP→HTTPS redirect starts disabled; enabled only once TLS cert is confirmed.
-                let https_redirect_flag =
-                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                let https_redirect_flag_clone = https_redirect_flag.clone();
-                let http_challenges = acme_challenges.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = proxy_server
-                        .run_with_options(
-                            http_proxy_listener,
-                            Some(http_challenges),
-                            Some(https_redirect_flag_clone),
-                            https_port,
-                        )
-                        .await
-                    {
-                        tracing::error!(error = %e, "HTTP proxy server error");
-                    }
-                });
-
-                // Give the HTTP proxy a moment to start listening
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-                // Collect all domains to include in the TLS cert (SAN list)
-                // Start with the instance_domain, then add all app domains from DB
-                let mut all_cert_domains: Vec<String> = vec![instance_domain.clone()];
-                if let Ok(app_domains) = rivetr::proxy::acme::collect_cert_domains(&db).await {
-                    for d in app_domains {
-                        if !all_cert_domains.contains(&d) && all_cert_domains.len() < 100 {
-                            all_cert_domains.push(d);
-                        }
-                    }
-                }
-                tracing::info!(
-                    "Requesting TLS cert covering {} domain(s): {:?}",
-                    all_cert_domains.len(),
-                    all_cert_domains
-                );
-
-                // Now request or load the certificate
-                let cert_dir = acme_client.cert_dir(&instance_domain);
-                // `cert_domains` tracks what's *actually in the cert* (not just the DB list).
-                // The renewal manager uses this as its baseline so it can detect new app
-                // subdomains that aren't yet covered and reissue immediately.
-                let mut cert_domains = all_cert_domains.clone();
-                let tls_config_result = if cert_dir.join("fullchain.pem").exists() {
-                    tracing::info!(domain = %instance_domain, "Loading cached TLS certificate");
-                    // Restore the saved domain list so the renewal manager knows exactly
-                    // what SANs the cached cert covers.
-                    if let Some(saved) = AcmeClient::load_cert_domains(&cert_dir).await {
-                        cert_domains = saved;
-                    }
-                    AcmeClient::load_certificate(&cert_dir).await.ok()
-                } else {
-                    tracing::info!(domain = %instance_domain, "Requesting Let's Encrypt certificate");
-                    match acme_client.request_certificate(&all_cert_domains).await {
-                        Ok(result) => {
-                            let _ = acme_client
-                                .save_certificate(&result, &instance_domain)
-                                .await;
-                            rivetr::proxy::TlsConfig::from_pem(
-                                &result.certificate_chain_pem,
-                                &result.private_key_pem,
-                            )
-                            .ok()
-                        }
-                        Err(e) => {
-                            tracing::error!(error = %e, "Failed to get Let's Encrypt certificate; running HTTP-only");
-                            None
-                        }
-                    }
-                };
-
-                if let Some(tls_config) = tls_config_result {
-                    // TLS cert is available — enable HTTP→HTTPS redirect now
-                    https_redirect_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                    let https_addr: SocketAddr = format!("{}:{}", config.server.host, https_port)
-                        .parse()
-                        .expect("Invalid HTTPS proxy address");
-
-                    // Wrap the TLS acceptor in a hot-reload handle so cert renewals take
-                    // effect immediately without restarting the HTTPS server.
-                    let tls_reload = std::sync::Arc::new(rivetr::proxy::TlsReloadHandle::new(
-                        tls_config.acceptor,
-                    ));
-                    let https_server =
-                        HttpsProxyServer::new(https_addr, routes.clone(), tls_reload.clone())
-                            .with_db(db.clone());
-                    tokio::spawn(async move {
-                        if let Err(e) = https_server.run(https_proxy_listener).await {
-                            tracing::error!(error = %e, "HTTPS proxy server error");
-                        }
-                    });
-                    tracing::info!("HTTPS proxy listening on https://{}", https_addr);
-
-                    // Start certificate renewal manager. `cert_domains` reflects what's
-                    // actually in the cert; the DB is queried each cycle for new subdomains.
-                    let renewal_mgr = CertificateRenewalManager::new(
-                        acme_client,
-                        instance_domain.clone(),
-                        cert_domains,
-                    )
-                    .with_db_and_reload(db.clone(), Some(tls_reload));
-                    tokio::spawn(async move { renewal_mgr.run().await });
-                } else {
-                    tracing::warn!("Running HTTP-only (no TLS certificate available)");
-                    // Start renewal manager anyway — it will retry on next cycle.
-                    // No tls_reload handle since HTTPS server is not running yet.
-                    let renewal_mgr = CertificateRenewalManager::new(
-                        acme_client,
-                        instance_domain.clone(),
-                        cert_domains,
-                    )
-                    .with_db_and_reload(db.clone(), None);
-                    tokio::spawn(async move { renewal_mgr.run().await });
-                }
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "ACME client init failed, starting HTTP-only proxy");
-                tokio::spawn(async move {
-                    if let Err(e) = proxy_server
-                        .run_with_options(http_proxy_listener, None, None, 443)
-                        .await
-                    {
-                        tracing::error!(error = %e, "Proxy server error");
-                    }
-                });
-            }
-        }
-    } else {
-        tokio::spawn(async move {
-            if let Err(e) = proxy_server
-                .run_with_options(http_proxy_listener, None, None, 443)
-                .await
-            {
-                tracing::error!(error = %e, "Proxy server error");
-            }
-        });
-    }
+    // HTTP proxy, plus HTTPS with per-domain certificates (SNI) when ACME is
+    // on or custom certificates exist.
+    rivetr::proxy::certs::launch::launch_proxies(
+        proxy_server,
+        http_proxy_listener,
+        https_proxy_listener,
+        routes.clone(),
+        db.clone(),
+        &config,
+    )
+    .await;
 
     // Start health checker for backend health monitoring
     let health_config = HealthCheckerConfig::from_proxy_config(&config.proxy);
