@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Moon, Sun, Monitor, SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -17,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTheme } from "@/components/providers/theme-provider";
+import { AppearanceSettings } from "@/components/appearance";
 
 export function meta() {
   return [
@@ -29,7 +28,6 @@ export function meta() {
 const PREF_DATE_FORMAT = "pref_date_format";
 const PREF_LOG_LINES = "pref_log_lines";
 const PREF_DEPLOY_NOTIFY = "pref_deploy_notify";
-const PREF_COMPACT_MODE = "pref_compact_mode";
 
 function readPref<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -48,8 +46,6 @@ function writePref(key: string, value: unknown) {
 }
 
 export default function SettingsPreferencesPage() {
-  const { theme, setTheme } = useTheme();
-
   const [dateFormat, setDateFormat] = useState<"relative" | "absolute">(() =>
     readPref(PREF_DATE_FORMAT, "relative")
   );
@@ -59,19 +55,6 @@ export default function SettingsPreferencesPage() {
   const [deployNotify, setDeployNotify] = useState<boolean>(() =>
     readPref(PREF_DEPLOY_NOTIFY, false)
   );
-  const [compactMode, setCompactMode] = useState<boolean>(() =>
-    readPref(PREF_COMPACT_MODE, false)
-  );
-
-  // Apply compact mode to root element
-  useEffect(() => {
-    const root = document.documentElement;
-    if (compactMode) {
-      root.classList.add("compact");
-    } else {
-      root.classList.remove("compact");
-    }
-  }, [compactMode]);
 
   const handleDateFormatChange = (value: "relative" | "absolute") => {
     setDateFormat(value);
@@ -88,10 +71,6 @@ export default function SettingsPreferencesPage() {
     writePref(PREF_DEPLOY_NOTIFY, checked);
   };
 
-  const handleCompactModeChange = (checked: boolean) => {
-    setCompactMode(checked);
-    writePref(PREF_COMPACT_MODE, checked);
-  };
 
   return (
     <div className="space-y-6">
@@ -102,56 +81,11 @@ export default function SettingsPreferencesPage() {
         </h1>
         <p className="text-muted-foreground mt-1">
           Customize your personal dashboard experience. Changes are saved
-          instantly and stored locally in your browser.
+          instantly. Appearance follows your account; the rest stays in this browser.
         </p>
       </div>
 
-      {/* Theme */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>
-            Choose how the dashboard looks. "System" follows your OS setting.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label>Theme</Label>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={theme === "light" ? "default" : "outline"}
-                size="sm"
-                className="gap-2"
-                onClick={() => setTheme("light")}
-              >
-                <Sun className="h-4 w-4" />
-                Light
-              </Button>
-              <Button
-                variant={theme === "dark" ? "default" : "outline"}
-                size="sm"
-                className="gap-2"
-                onClick={() => setTheme("dark")}
-              >
-                <Moon className="h-4 w-4" />
-                Dark
-              </Button>
-              <Button
-                variant={theme === "system" ? "default" : "outline"}
-                size="sm"
-                className="gap-2"
-                onClick={() => setTheme("system")}
-              >
-                <Monitor className="h-4 w-4" />
-                System
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Currently active: <span className="font-medium">{theme}</span>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <AppearanceSettings />
 
       {/* Date/time format */}
       <Card>
@@ -240,32 +174,6 @@ export default function SettingsPreferencesPage() {
         </CardContent>
       </Card>
 
-      {/* Compact mode */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Layout Density</CardTitle>
-          <CardDescription>
-            Reduce padding and spacing throughout the UI for a denser layout.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="compact-mode">Compact mode</Label>
-              <p className="text-xs text-muted-foreground">
-                Adds a <code className="bg-muted px-1 rounded font-mono text-xs">compact</code> class
-                to the root element. Useful on smaller screens or for power users
-                who prefer less whitespace.
-              </p>
-            </div>
-            <Switch
-              id="compact-mode"
-              checked={compactMode}
-              onCheckedChange={handleCompactModeChange}
-            />
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

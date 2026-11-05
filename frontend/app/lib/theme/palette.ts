@@ -182,6 +182,17 @@ export const THEME_STYLE_ID = "rivetr-theme-vars";
  * Selectors use `html:root` / `html.dark` so they beat the defaults in
  * app.css regardless of stylesheet order.
  */
+/** All colour tokens for one mode, e.g. for a scoped preview via inline style. */
+export function themeTokens(settings: ThemeSettings, dark: boolean): Tokens {
+  const spec = accentSpec(settings);
+  const tokens = { ...neutralTokens(settings.neutral, dark, settings.highContrast), ...accentTokens(spec, dark) };
+  if (settings.sidebar === "accent") {
+    const side = accentSidebarTokens(spec);
+    for (const key of Object.keys(side)) if (key.startsWith("--sidebar")) tokens[key] = side[key];
+  }
+  return tokens;
+}
+
 export function buildThemeOutput(settings: ThemeSettings): ThemeOutput {
   const spec = accentSpec(settings);
   const light = { ...neutralTokens(settings.neutral, false, settings.highContrast), ...accentTokens(spec, false) };

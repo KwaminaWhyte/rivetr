@@ -8,6 +8,8 @@ import {
   Monitor,
   Moon,
   Palette,
+  Check,
+  SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
@@ -34,7 +36,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useTheme } from "@/components/providers/theme-provider";
+import { ACCENT_PRESETS, LABELS, accentSwatch, useTheme, useThemeServerSync } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -64,7 +66,7 @@ export function useVersionInfo() {
 /** User button at the bottom of the sidebar, plus the collapse toggle. */
 export function NavUser() {
   const { isMobile, state, toggleSidebar } = useSidebar();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, settings, update } = useTheme();
   const { data: versionInfo } = useVersionInfo();
   const version = versionInfo?.current_version;
 
@@ -73,6 +75,8 @@ export function NavUser() {
     queryFn: getCurrentUser,
     staleTime: 5 * 60 * 1000,
   });
+  // Load this user's saved theme once we know who they are.
+  useThemeServerSync(user?.id);
 
   const displayName = user?.name ?? "User";
   const email = (user as { email?: string } | undefined)?.email;
@@ -133,10 +137,42 @@ export function NavUser() {
                 Appearance
               </DropdownMenuSubTrigger>
               <DropdownMenuPortal>
-                <DropdownMenuSubContent>
+                <DropdownMenuSubContent className="w-52">
                   {themeItem("light", "Light", Sun)}
                   {themeItem("dark", "Dark", Moon)}
                   {themeItem("system", "System", Monitor)}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Accent</DropdownMenuLabel>
+                  <div role="radiogroup" aria-label="Accent colour" className="grid grid-cols-5 gap-1.5 px-2 pb-2">
+                    {ACCENT_PRESETS.map((accent) => {
+                      const selected = settings.accent === accent;
+                      return (
+                        <button
+                          key={accent}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          aria-label={LABELS.accent[accent]}
+                          title={LABELS.accent[accent]}
+                          onClick={() => update({ accent })}
+                          className={cn(
+                            "inline-flex size-7 items-center justify-center rounded-full ring-offset-2 ring-offset-popover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            selected ? "ring-2 ring-foreground/70" : "ring-1 ring-foreground/10 hover:ring-foreground/30"
+                          )}
+                          style={{ background: accentSwatch({ accent, customAccent: settings.customAccent }) }}
+                        >
+                          {selected && <Check className="size-3.5 text-white drop-shadow-[0_1px_1px_rgb(0_0_0/0.6)]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings/preferences">
+                      <SlidersHorizontal className="size-4" />
+                      More appearance options
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
             </DropdownMenuSub>
