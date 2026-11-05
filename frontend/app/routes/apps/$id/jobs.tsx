@@ -44,6 +44,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { jobsApi } from "@/lib/api/jobs";
+import { ScheduledRestartsCard } from "@/components/apps/scheduled-restarts-card";
 import type {
   ScheduledJob,
   ScheduledJobRun,
@@ -627,6 +628,9 @@ export default function JobsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Scheduled container restarts */}
+      {appId && <ScheduledRestartsCard appId={appId} />}
 
       {/* Delete Confirmation */}
       <Dialog open={!!deleteConfirmJob} onOpenChange={(open) => !open && setDeleteConfirmJob(null)}>

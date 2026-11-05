@@ -214,6 +214,21 @@ export interface ScheduledRestart {
   created_at: string;
 }
 
+/** One run (or skip) of a scheduled restart */
+export interface ScheduledRestartRun {
+  id: string;
+  schedule_id: string;
+  app_id: string;
+  scheduled_for: string | null;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "succeeded" | "failed" | "skipped";
+  /** 1 when the run was late (Rivetr was down at the scheduled time) */
+  catch_up: number;
+  deployment_id: string | null;
+  error_message: string | null;
+}
+
 /** Request to create a scheduled restart */
 export interface CreateScheduledRestartRequest {
   cron_expression: string;

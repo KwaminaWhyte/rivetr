@@ -12,6 +12,7 @@ import type {
   UptimeSummary,
   UptimeCheck,
   ScheduledRestart,
+  ScheduledRestartRun,
   CreateScheduledRestartRequest,
   UpdateScheduledRestartRequest,
 } from "@/types/api";
@@ -100,6 +101,14 @@ export const monitoringApi = {
       method: "PUT",
       body: JSON.stringify(data),
     }, token),
+
+  /** Recent runs of every restart schedule of an app, newest first */
+  getScheduledRestartRuns: (appId: string, limit = 20, token?: string) =>
+    apiRequest<ScheduledRestartRun[]>(
+      `/apps/${appId}/scheduled-restarts/runs?limit=${limit}`,
+      {},
+      token,
+    ),
 
   /** Delete a scheduled restart */
   deleteScheduledRestart: (appId: string, restartId: string, token?: string) =>

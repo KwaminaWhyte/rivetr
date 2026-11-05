@@ -462,6 +462,7 @@ export const api = {
   createScheduledRestart: monitoringApi.createScheduledRestart,
   updateScheduledRestart: monitoringApi.updateScheduledRestart,
   deleteScheduledRestart: monitoringApi.deleteScheduledRestart,
+  getScheduledRestartRuns: monitoringApi.getScheduledRestartRuns,
 
   // Project Environments
   getEnvironments: environmentsApi.getEnvironments,

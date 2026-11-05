@@ -468,7 +468,7 @@ async fn create_restart_deployment(
     )
     .bind(&restart_deployment_id)
     .bind(&app.id)
-    .bind(format!("Manual restart triggered by {}", triggered_by))
+    .bind(format!("Restart triggered by {}", triggered_by))
     .bind(&now)
     .execute(&state.db)
     .await
@@ -560,16 +560,43 @@ pub async fn restart_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
+    let actor = RestartActor {
+        triggered_by: user.email.as_str(),
+        user_id: Some(user.id.as_str()),
+        client_ip: client_ip.as_deref(),
+    };
+    restart_app_with(&state, &app, &actor).await.map(Json)
+}
+
+/// Who asked for a restart (recorded on the deployment row and audit log).
+pub struct RestartActor<'a> {
+    /// Shown as "Restart triggered by ..." on the restart deployment.
+    pub triggered_by: &'a str,
+    pub user_id: Option<&'a str>,
+    pub client_ip: Option<&'a str>,
+}
+
+/// The app restart path shared by the Restart button and scheduled restarts:
+/// multi-server apps restart every container in place; single-server apps get
+/// a zero-downtime blue-green swap, falling back to restarting the existing
+/// container when there is no running deployment.
+pub async fn restart_app_with(
+    state: &Arc<AppState>,
+    app: &App,
+    actor: &RestartActor<'_>,
+) -> Result<AppStatusResponse, ApiError> {
+    let id = app.id.clone();
+
     // Apps placed on several servers restart every container in place
     // (stop, then start, re-reading the published ports).
     if let Some(res) =
-        super::super::placement::start_stop_if_multi_server(&state, &app, false).await
+        super::super::placement::start_stop_if_multi_server(state, app, false).await
     {
         let _stopped = res?;
         if let Some(res) =
-            super::super::placement::start_stop_if_multi_server(&state, &app, true).await
+            super::super::placement::start_stop_if_multi_server(state, app, true).await
         {
-            return res;
+            return res.map(|Json(r)| r);
         }
     }
 
@@ -602,8 +629,8 @@ pub async fn restart_app(
                 })?;
 
             // Create a restart deployment record for the fallback path
-            let triggered_by = user.email.as_str();
-            let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
+            let triggered_by = actor.triggered_by;
+            let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
             log_restart_step(&state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
             log_restart_step(
                 &state,
@@ -695,13 +722,13 @@ pub async fn restart_app(
                 resource_types::APP,
                 Some(&app.id),
                 Some(&app.name),
-                Some(&user.id),
-                client_ip.as_deref(),
+                actor.user_id,
+                actor.client_ip,
                 None,
             )
             .await;
 
-            return Ok(Json(AppStatusResponse {
+            return Ok(AppStatusResponse {
                 app_id: id,
                 container_id: Some(container_id),
                 running: true,
@@ -710,7 +737,7 @@ pub async fn restart_app(
                 deployment_phase: "stable".to_string(),
                 active_deployment_id: Some(restart_dep_id),
                 uptime_seconds: None,
-            }));
+            });
         }
     };
 
@@ -729,8 +756,8 @@ pub async fn restart_app(
     })?;
 
     // 2. Create the restart deployment record (tracks this restart in the Deployments tab)
-    let triggered_by = user.email.as_str();
-    let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
+    let triggered_by = actor.triggered_by;
+    let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
 
     log_restart_step(
         &state,
@@ -1191,13 +1218,13 @@ pub async fn restart_app(
         resource_types::APP,
         Some(&app.id),
         Some(&app.name),
-        Some(&user.id),
-        client_ip.as_deref(),
+        actor.user_id,
+        actor.client_ip,
         None,
     )
     .await;
 
-    Ok(Json(AppStatusResponse {
+    Ok(AppStatusResponse {
         app_id: id,
         container_id: Some(new_container_id),
         running: true,
@@ -1206,7 +1233,7 @@ pub async fn restart_app(
         deployment_phase: "stable".to_string(),
         active_deployment_id: Some(restart_dep_id),
         uptime_seconds: None,
-    }))
+    })
 }
 
 /// Get recent activity (audit log events) for a specific app.

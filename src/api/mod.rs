@@ -53,6 +53,7 @@ mod replicas;
 mod resource_clone;
 mod routes;
 mod s3;
+pub mod scheduled_restarts;
 mod sdk;
 mod server_network;
 mod server_ops;
@@ -590,6 +591,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/apps/{id}/scheduled-restarts",
             get(monitoring::list_scheduled_restarts),
+        )
+        .route(
+            "/apps/{id}/scheduled-restarts/runs",
+            get(scheduled_restarts::list_runs),
         )
         .route(
             "/apps/{id}/scheduled-restarts/{restart_id}",

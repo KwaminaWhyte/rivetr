@@ -16,6 +16,7 @@ pub mod preview;
 pub mod railpack;
 pub mod remote;
 mod resource_metrics_collector;
+pub mod restart_scheduler;
 pub mod retire;
 pub mod scheduler;
 pub mod server_ops;
