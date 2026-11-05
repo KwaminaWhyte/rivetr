@@ -76,6 +76,7 @@ import { MembersTab } from "@/components/teams/members-tab";
 import { InvitationsTab } from "@/components/teams/invitations-tab";
 import { AuditTab } from "@/components/teams/audit-tab";
 import { ResourcePermissionsDialog } from "@/components/teams/resource-permissions-dialog";
+import { isString, usePersistedState } from "@/lib/persisted-state";
 
 const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] = [
   { value: "owner", label: "Owner", description: "Full access, can delete team" },
@@ -94,7 +95,9 @@ export default function TeamDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const initialTab = searchParams.get("tab") || "members";
+  // ?tab= wins; otherwise reopen the tab used last (rivetr:ui:tabs:team).
+  const [lastTab, setLastTab] = usePersistedState<string>("tabs:team", "members", { validate: isString });
+  const initialTab = searchParams.get("tab") || lastTab;
   const [activeTab, setActiveTab] = useState(initialTab);
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -303,6 +306,7 @@ export default function TeamDetailPage() {
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
+    setLastTab(value);
     setSearchParams({ tab: value });
   };
 
