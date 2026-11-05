@@ -35,8 +35,8 @@ pub async fn list_channels(
     .await?;
 
     // SEC-C3: hide other teams' channels (global NULL-team channels stay visible).
-    let channels = super::authz::retain_visible(&state, &user, channels, |c| c.team_id.as_deref())
-        .await?;
+    let channels =
+        super::authz::retain_visible(&state, &user, channels, |c| c.team_id.as_deref()).await?;
 
     let responses: Vec<NotificationChannelResponse> =
         channels.into_iter().map(|c| c.into()).collect();
@@ -444,12 +444,14 @@ async fn validate_channel_egress(config: &serde_json::Value) -> Result<(), ApiEr
     for key in ["url", "webhook_url", "server_url"] {
         if let Some(u) = config.get(key).and_then(|v| v.as_str()) {
             if !u.is_empty() {
-                crate::api::ssrf::validate_external_url(u).await.map_err(|_| {
-                    ApiError::validation_field(
-                        format!("config.{key}").as_str(),
-                        "URL is not allowed (points at an internal or unresolvable address)",
-                    )
-                })?;
+                crate::api::ssrf::validate_external_url(u)
+                    .await
+                    .map_err(|_| {
+                        ApiError::validation_field(
+                            format!("config.{key}").as_str(),
+                            "URL is not allowed (points at an internal or unresolvable address)",
+                        )
+                    })?;
             }
         }
     }

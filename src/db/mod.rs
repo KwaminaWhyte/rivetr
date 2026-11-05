@@ -1675,6 +1675,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 123: seed Advanced instance settings defaults (INSERT OR IGNORE)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/123_instance_advanced_settings.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

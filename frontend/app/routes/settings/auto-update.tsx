@@ -1,53 +1,92 @@
-import { QueryError } from "@/components/query-error";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
-import type { UpdateStatus } from "@/types/api";
-import { RefreshCw, Download, Play, CheckCircle, AlertTriangle, Clock, ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { CheckCircle, Clock, Download, ExternalLink, Play, RefreshCw } from "lucide-react";
+
+import { QueryError } from "@/components/query-error";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FormGrid, SettingsSection, UnsavedChangesBar } from "@/components/settings-section";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { api } from "@/lib/api";
+import { instanceSettingsApi } from "@/lib/api/instance-settings";
+import type { UpdateStatus } from "@/types/api";
+import type { UpdateChannel, UpdateSettings } from "@/types/instance-settings";
 
 export function meta() {
   return [
-    { title: "Auto Updates - Rivetr" },
-    { name: "description", content: "Configure automatic updates for your Rivetr instance" },
+    { title: "Updates - Rivetr" },
+    { name: "description", content: "Update channel, schedule and automatic updates" },
   ];
 }
 
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Never";
-  const date = new Date(dateStr);
-  return date.toLocaleString();
+  return new Date(dateStr).toLocaleString();
 }
 
-export default function AutoUpdatePage() {
+const CRON_HELP = "Cron in UTC: minute hour day month weekday.";
+
+export default function UpdatesPage() {
   const queryClient = useQueryClient();
   const [isDownloading, setIsDownloading] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
-  const { data: updateStatus, isLoading, error: statusError, refetch, isRefetching } = useQuery<UpdateStatus | null>({
+  const {
+    data: status,
+    isLoading: statusLoading,
+    error: statusError,
+    refetch,
+  } = useQuery<UpdateStatus | null>({
     queryKey: ["update-status"],
     queryFn: () => api.getVersionInfo(),
-    refetchInterval: 60000, // Check every minute
+    refetchInterval: 60000,
   });
 
-  const checkMutation = useMutation({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["update-settings"],
+    queryFn: () => instanceSettingsApi.getUpdateSettings(),
+  });
+
+  const [form, setForm] = useState<UpdateSettings | null>(null);
+  useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+  const dirty = !!form && !!settings && JSON.stringify(form) !== JSON.stringify(settings);
+
+  const check = useMutation({
     mutationFn: () => api.checkForUpdate(),
     onSuccess: (data) => {
       queryClient.setQueryData(["update-status"], data);
-      if (data?.update_available) {
-        toast.success(`Update available: ${data.latest_version}`);
-      } else {
-        toast.info("You're running the latest version");
-      }
+      if (data?.last_error) toast.error(`Update check failed: ${data.last_error}`);
+      else if (data?.update_available) toast.success(`Update available: ${data.latest_version}`);
+      else toast.info("Rivetr is up to date");
     },
-    onError: (error) => {
-      toast.error("Failed to check for updates");
-      console.error(error);
-    },
+    onError: () => toast.error("Failed to check for updates"),
   });
+
+  const save = useMutation({
+    mutationFn: (s: UpdateSettings) => instanceSettingsApi.updateUpdateSettings(s),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(["update-settings"], saved);
+      queryClient.invalidateQueries({ queryKey: ["update-status"] });
+      toast.success("Update settings saved");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save settings"),
+  });
+
+  const set = <K extends keyof UpdateSettings>(key: K, value: UpdateSettings[K]) =>
+    setForm((f) => (f ? { ...f, [key]: value } : f));
 
   const handleDownload = async () => {
     setIsDownloading(true);
@@ -55,219 +94,231 @@ export default function AutoUpdatePage() {
       const result = await api.downloadUpdate();
       toast.success(`Downloaded update ${result.version}`);
       refetch();
-    } catch (error) {
+    } catch {
       toast.error("Failed to download update");
-      console.error(error);
     } finally {
       setIsDownloading(false);
     }
   };
 
   const handleApply = async () => {
-    if (!confirm("This will restart the Rivetr server. Continue?")) {
-      return;
-    }
     setIsApplying(true);
     try {
       await api.applyUpdate();
-      toast.success("Update applied! Server is restarting...");
-      // The server will restart, so the page will eventually reload
-    } catch (error) {
+      toast.success("Update applied. Restart the Rivetr service to finish.");
+      setApplyOpen(false);
+    } catch {
       toast.error("Failed to apply update");
-      console.error(error);
     } finally {
       setIsApplying(false);
     }
   };
 
+  const headerStatus = status?.update_available
+    ? `${status.latest_version} is available.`
+    : "Rivetr is up to date.";
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Auto Updates</h1>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Updates</h1>
+        <p className="text-sm text-muted-foreground">
+          Release channel and schedules. Changes apply right away, no restart needed.
+        </p>
+      </div>
 
-      {/* Current Version Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Current Version</span>
-            {updateStatus?.update_available ? (
-              <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                Update Available
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                Up to Date
-              </Badge>
-            )}
-          </CardTitle>
-          <CardDescription>
-            Information about your Rivetr installation
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {statusError ? (
-            <QueryError what="update status" error={statusError} onRetry={() => refetch()} />
-          ) : isLoading ? (
-            <div className="animate-pulse space-y-3">
-              <div className="h-4 bg-muted rounded w-1/3"></div>
-              <div className="h-4 bg-muted rounded w-1/2"></div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <div className="text-sm text-muted-foreground">Running Version</div>
-                  <div className="font-mono text-lg font-semibold">{updateStatus?.current_version || "Unknown"}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Latest Version</div>
-                  <div className="font-mono text-lg font-semibold">
-                    {updateStatus?.latest_version || updateStatus?.current_version || "Unknown"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Last Checked</div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span>{formatDate(updateStatus?.last_checked || null)}</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Auto-Update</div>
-                  <div className="flex items-center gap-1">
-                    {updateStatus?.auto_update_enabled ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span>Enabled</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="h-4 w-4 text-amber-500" />
-                        <span>Disabled</span>
-                      </>
-                    )}
-                  </div>
+      <SettingsSection
+        title="Version"
+        description={statusLoading ? "Checking..." : headerStatus}
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => check.mutate()}
+            disabled={check.isPending}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${check.isPending ? "animate-spin" : ""}`} />
+            Check Now
+          </Button>
+        }
+      >
+        {statusError ? (
+          <QueryError what="update status" error={statusError} onRetry={() => refetch()} />
+        ) : statusLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-sm text-muted-foreground">Running version</div>
+                <div className="font-mono text-lg font-semibold">
+                  {status?.current_version || "Unknown"}
                 </div>
               </div>
-
-              {updateStatus?.last_error && (
-                <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                  Last check error: {updateStatus.last_error}
+              <div>
+                <div className="text-sm text-muted-foreground">Latest version</div>
+                <div className="flex items-center gap-2 font-mono text-lg font-semibold">
+                  {status?.latest_version || status?.current_version || "Unknown"}
+                  {!status?.update_available && <CheckCircle className="h-4 w-4 text-green-500" />}
                 </div>
-              )}
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Last checked</div>
+                <div className="flex items-center gap-1 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  {formatDate(status?.last_checked)}
+                </div>
+              </div>
+            </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => checkMutation.mutate()}
-                  disabled={checkMutation.isPending || isRefetching}
+            {status?.last_error && (
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                Last check error: {status.last_error}
+              </div>
+            )}
+
+            {status?.update_available && (
+              <div className="space-y-3 rounded-md border p-3">
+                {status.release_notes && (
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm text-muted-foreground">
+                    {status.release_notes}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {status.download_url && (
+                    <Button variant="outline" size="sm" onClick={handleDownload} disabled={isDownloading}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {isDownloading ? "Downloading..." : "Download"}
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => setApplyOpen(true)}>
+                    <Play className="mr-2 h-4 w-4" />
+                    Apply update
+                  </Button>
+                  {status.release_url && (
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={status.release_url} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Release notes
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </SettingsSection>
+
+      {settingsLoading || !form ? (
+        <Skeleton className="h-48 w-full" />
+      ) : (
+        <form
+          className="space-y-8"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (dirty) save.mutate(form);
+          }}
+        >
+          <SettingsSection title="Update checks">
+            <FormGrid>
+              <div className="space-y-2">
+                <Label htmlFor="channel">Channel</Label>
+                <Select value={form.channel} onValueChange={(v) => set("channel", v as UpdateChannel)}>
+                  <SelectTrigger id="channel" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stable">Stable</SelectItem>
+                    <SelectItem value="beta">Beta (includes pre-releases)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="check-enabled">Update checks</Label>
+                <Select
+                  value={form.check_enabled ? "on" : "off"}
+                  onValueChange={(v) => set("check_enabled", v === "on")}
                 >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${(checkMutation.isPending || isRefetching) ? "animate-spin" : ""}`} />
-                  Check for Updates
-                </Button>
-
-                {updateStatus?.update_available && updateStatus?.download_url && (
-                  <Button
-                    variant="outline"
-                    onClick={handleDownload}
-                    disabled={isDownloading}
-                  >
-                    <Download className={`h-4 w-4 mr-2 ${isDownloading ? "animate-pulse" : ""}`} />
-                    {isDownloading ? "Downloading..." : "Download Update"}
-                  </Button>
-                )}
-
-                {updateStatus?.release_url && (
-                  <Button variant="outline" asChild>
-                    <a href={updateStatus.release_url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View Release Notes
-                    </a>
-                  </Button>
-                )}
+                  <SelectTrigger id="check-enabled" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="on">Enabled</SelectItem>
+                    <SelectItem value="off">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Update Actions */}
-      {updateStatus?.update_available && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Update</CardTitle>
-            <CardDescription>
-              Version {updateStatus.latest_version} is available for download
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {updateStatus.release_notes && (
-              <div className="p-4 bg-muted rounded-md">
-                <h4 className="font-medium mb-2">Release Notes</h4>
-                <div className="text-sm text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
-                  {updateStatus.release_notes}
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="check-cron">Check frequency</Label>
+                <Input
+                  id="check-cron"
+                  className="font-mono"
+                  value={form.check_cron}
+                  onChange={(e) => set("check_cron", e.target.value)}
+                  placeholder="0 */6 * * *"
+                />
+                <p className="text-xs text-muted-foreground">{CRON_HELP}</p>
               </div>
-            )}
+            </FormGrid>
+          </SettingsSection>
 
-            <div className="flex gap-2">
-              <Button
-                onClick={handleApply}
-                disabled={isApplying}
-              >
-                <Play className={`h-4 w-4 mr-2 ${isApplying ? "animate-pulse" : ""}`} />
-                {isApplying ? "Applying..." : "Apply Update & Restart"}
-              </Button>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Applying the update will restart the Rivetr server. There will be brief downtime.
-            </p>
-          </CardContent>
-        </Card>
+          <SettingsSection
+            title="Automatic updates"
+            description="Downloads and installs the latest release on schedule. Restart the service afterwards to run it."
+          >
+            <FormGrid>
+              <div className="space-y-2">
+                <Label htmlFor="auto-update">Auto update</Label>
+                <Select
+                  value={form.auto_update_enabled ? "on" : "off"}
+                  onValueChange={(v) => set("auto_update_enabled", v === "on")}
+                >
+                  <SelectTrigger id="auto-update" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="on">Enabled</SelectItem>
+                    <SelectItem value="off">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="auto-update-cron">Auto update frequency</Label>
+                <Input
+                  id="auto-update-cron"
+                  className="font-mono"
+                  value={form.auto_update_cron}
+                  onChange={(e) => set("auto_update_cron", e.target.value)}
+                  placeholder="0 0 * * *"
+                  disabled={!form.auto_update_enabled}
+                />
+                <p className="text-xs text-muted-foreground">{CRON_HELP}</p>
+              </div>
+            </FormGrid>
+          </SettingsSection>
+          <button type="submit" hidden aria-hidden tabIndex={-1} />
+        </form>
       )}
 
-      {/* Configuration Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Update Configuration</CardTitle>
-          <CardDescription>
-            Auto-update settings are configured in rivetr.toml
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="p-3 bg-muted rounded-md">
-                <div className="text-sm font-medium">Auto-Update Check</div>
-                <div className="text-sm text-muted-foreground">
-                  {updateStatus?.auto_update_enabled ? "Enabled (checks every 6 hours)" : "Disabled"}
-                </div>
-              </div>
-              <div className="p-3 bg-muted rounded-md">
-                <div className="text-sm font-medium">Auto-Apply</div>
-                <div className="text-sm text-muted-foreground">
-                  {updateStatus?.auto_apply_enabled ? "Enabled (automatically applies updates)" : "Disabled (manual approval required)"}
-                </div>
-              </div>
-            </div>
+      <UnsavedChangesBar
+        visible={dirty}
+        saving={save.isPending}
+        onReset={() => settings && setForm(settings)}
+        onSave={() => form && save.mutate(form)}
+      />
 
-            <div className="p-4 bg-muted/50 rounded-md">
-              <h4 className="font-medium mb-2">Configuration Example</h4>
-              <pre className="text-xs bg-background p-3 rounded overflow-x-auto">
-{`[auto_update]
-# Enable automatic update checking (default: true)
-enabled = true
-
-# Check interval in hours (default: 6)
-check_interval_hours = 6
-
-# Automatically apply updates (default: false)
-auto_apply = false`}
-              </pre>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <ConfirmDialog
+        open={applyOpen}
+        onOpenChange={setApplyOpen}
+        title={`Apply ${status?.latest_version ?? "update"}?`}
+        description="The Rivetr binary is replaced. Restart the service to run the new version; there is a short downtime."
+        resourceName={status?.latest_version ?? undefined}
+        confirmLabel="Apply update"
+        isPending={isApplying}
+        onConfirm={handleApply}
+      />
     </div>
   );
 }

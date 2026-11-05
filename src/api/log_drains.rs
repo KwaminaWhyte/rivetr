@@ -80,12 +80,14 @@ pub async fn create_log_drain(
     validate_drain_config(&req.provider, &req.config)?;
     // SEC-M1: HTTP drains carry a user-supplied `url` — block internal targets.
     if let Some(url) = req.config.get("url").and_then(|v| v.as_str()) {
-        crate::api::ssrf::validate_external_url(url).await.map_err(|_| {
-            ApiError::validation_field(
-                "config.url",
-                "URL is not allowed (points at an internal or unresolvable address)",
-            )
-        })?;
+        crate::api::ssrf::validate_external_url(url)
+            .await
+            .map_err(|_| {
+                ApiError::validation_field(
+                    "config.url",
+                    "URL is not allowed (points at an internal or unresolvable address)",
+                )
+            })?;
     }
 
     let id = Uuid::new_v4().to_string();
@@ -157,12 +159,14 @@ pub async fn update_log_drain(
         validate_drain_config(&provider, config)?;
         // SEC-M1: block HTTP drains pointing at internal addresses.
         if let Some(url) = config.get("url").and_then(|v| v.as_str()) {
-            crate::api::ssrf::validate_external_url(url).await.map_err(|_| {
-                ApiError::validation_field(
-                    "config.url",
-                    "URL is not allowed (points at an internal or unresolvable address)",
-                )
-            })?;
+            crate::api::ssrf::validate_external_url(url)
+                .await
+                .map_err(|_| {
+                    ApiError::validation_field(
+                        "config.url",
+                        "URL is not allowed (points at an internal or unresolvable address)",
+                    )
+                })?;
         }
         serde_json::to_string(config)
             .map_err(|_| ApiError::validation_field("config", "Invalid configuration format"))?
@@ -243,12 +247,14 @@ pub async fn test_log_drain(
     // create/update guard existed) so this endpoint can't be an SSRF trigger.
     if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&drain.config) {
         if let Some(url) = cfg.get("url").and_then(|v| v.as_str()) {
-            crate::api::ssrf::validate_external_url(url).await.map_err(|_| {
-                ApiError::validation_field(
-                    "config.url",
-                    "URL is not allowed (points at an internal or unresolvable address)",
-                )
-            })?;
+            crate::api::ssrf::validate_external_url(url)
+                .await
+                .map_err(|_| {
+                    ApiError::validation_field(
+                        "config.url",
+                        "URL is not allowed (points at an internal or unresolvable address)",
+                    )
+                })?;
         }
     }
 

@@ -13,6 +13,7 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
+  route("register", "routes/register.tsx"),
   route("invitations/accept", "routes/invitations/accept.tsx"),
 
   // Protected routes with dashboard layout
@@ -119,6 +120,8 @@ export default [
       route("destinations", "routes/settings/destinations.tsx"),
       route("alert-defaults", "routes/settings/alert-defaults.tsx"),
       route("auto-update", "routes/settings/auto-update.tsx"),
+      route("advanced", "routes/settings/advanced.tsx"),
+      route("email", "routes/settings/email.tsx"),
       route("backup", "routes/settings/backup.tsx"),
       route("s3", "routes/settings/s3.tsx"),
       route("security", "routes/settings/security.tsx"),

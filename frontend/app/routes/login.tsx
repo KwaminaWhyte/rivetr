@@ -14,6 +14,7 @@ import { Github } from "@/components/github-icon";
 import { validateAuth, checkSetupStatus, setAuthToken } from "@/lib/auth";
 import { oauthApi, type OAuthProviderPublic } from "@/lib/api/oauth";
 import { twoFactorApi } from "@/lib/api/two-factor";
+import { instanceSettingsApi } from "@/lib/api/instance-settings";
 
 // Only same-origin absolute paths are valid post-login destinations (SEC-M7).
 // Rejects "//host", backslash-prefixed paths, absolute URLs and control characters.
@@ -111,6 +112,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [oauthProviders, setOauthProviders] = useState<OAuthProviderPublic[]>([]);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+  const [canRegister, setCanRegister] = useState(false);
 
   // Track field values so the submit button can be disabled when empty (U2)
   const [emailValue, setEmailValue] = useState("");
@@ -163,6 +165,13 @@ export default function LoginPage() {
         setOauthProviders(providers);
       } catch {
         // OAuth providers are optional, don't fail the page
+      }
+
+      try {
+        const registration = await instanceSettingsApi.getRegistrationStatus();
+        setCanRegister(registration.password_registration);
+      } catch {
+        // Sign up link is optional
       }
 
       setIsLoading(false);
@@ -536,6 +545,14 @@ export default function LoginPage() {
                       {isSubmitting ? "Signing in..." : "Login"}
                     </Button>
                   </Field>
+                  {canRegister && (
+                    <p className="text-center text-sm text-muted-foreground">
+                      No account yet?{" "}
+                      <Link to="/register" className="text-foreground underline-offset-4 hover:underline">
+                        Create one
+                      </Link>
+                    </p>
+                  )}
                 </FieldGroup>
               </form>
             )}

@@ -53,15 +53,20 @@ pub async fn dockerhub_webhook(
 
     // SEC-H1: fail closed. DockerHub can't sign requests, so require a configured
     // shared token supplied as ?token=... and compare it in constant time.
-    let expected = state.config.webhooks.dockerhub_secret.as_ref().ok_or_else(|| {
-        tracing::error!(
+    let expected = state
+        .config
+        .webhooks
+        .dockerhub_secret
+        .as_ref()
+        .ok_or_else(|| {
+            tracing::error!(
             "DockerHub webhook rejected: webhooks.dockerhub_secret is not configured (fail-closed)."
         );
-        StatusCode::UNAUTHORIZED
-    })?;
+            StatusCode::UNAUTHORIZED
+        })?;
     let provided = auth.token.as_deref().unwrap_or("");
-    let token_ok = provided.len() == expected.len()
-        && provided.as_bytes().ct_eq(expected.as_bytes()).into();
+    let token_ok =
+        provided.len() == expected.len() && provided.as_bytes().ct_eq(expected.as_bytes()).into();
     if !token_ok {
         tracing::warn!("DockerHub webhook rejected: missing/invalid ?token=");
         return Err(StatusCode::UNAUTHORIZED);

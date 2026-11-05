@@ -205,6 +205,14 @@ async fn main() -> Result<()> {
 
     // Start auto-update checker
     let update_checker = updater::start_update_checker(config.auto_update.clone());
+
+    // Instance settings saved from the dashboard (Advanced policy cache and
+    // update schedule) override the toml defaults.
+    rivetr::settings::init(&db).await;
+    match rivetr::settings::updates::UpdateSettings::load(&db, &config.auto_update).await {
+        Ok(s) => update_checker.set_settings(s),
+        Err(e) => tracing::warn!(error = %e, "Failed to load update settings; using rivetr.toml"),
+    }
     if config.auto_update.enabled {
         tracing::info!(
             "Auto-update checker enabled (interval: {} hours, auto-apply: {})",

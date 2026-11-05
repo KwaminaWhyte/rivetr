@@ -13,6 +13,7 @@ pub mod monitoring;
 pub mod notifications;
 pub mod proxy;
 pub mod runtime;
+pub mod settings;
 pub mod startup;
 #[cfg(feature = "tui")]
 pub mod tui;

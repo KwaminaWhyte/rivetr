@@ -61,6 +61,7 @@ export type {
 export { filesystemApi } from "./filesystem";
 export type { FileEntry } from "./filesystem";
 export { aiApi } from "./ai";
+export { instanceSettingsApi } from "./instance-settings";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";
