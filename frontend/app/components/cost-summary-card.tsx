@@ -92,7 +92,7 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
             <CardTitle>Cost overview</CardTitle>
           </div>
           <Button variant="ghost" size="sm" asChild className="text-xs">
-            <Link to="/costs">
+            <Link to="/monitoring/costs">
               View Details
               <ArrowRight className="ml-1 h-3 w-3" />
             </Link>
@@ -142,12 +142,12 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
                       >
                         <stop
                           offset="0%"
-                          stopColor="rgb(16, 185, 129)"
+                          stopColor="var(--chart-2)"
                           stopOpacity="0.3"
                         />
                         <stop
                           offset="100%"
-                          stopColor="rgb(16, 185, 129)"
+                          stopColor="var(--chart-2)"
                           stopOpacity="0.05"
                         />
                       </linearGradient>
@@ -155,7 +155,7 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
                     <path
                       d={sparklineConfig.path}
                       fill="none"
-                      stroke="rgb(16, 185, 129)"
+                      stroke="var(--chart-2)"
                       strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"

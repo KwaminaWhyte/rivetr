@@ -149,7 +149,7 @@ export function BitbucketRepoPicker({
         <Button
           onClick={() =>
             (window.location.href =
-              "/git-providers?tab=token&action=connect&provider=bitbucket")
+              "/integrations/git?tab=token&action=connect&provider=bitbucket")
           }
           className="gap-2"
         >

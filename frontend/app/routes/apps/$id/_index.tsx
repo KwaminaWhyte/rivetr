@@ -7,7 +7,7 @@ import { DetailField as Field } from "@/components/metrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ResourceLimitsCard } from "@/components/resource-limits-card";
+import { AppIdentitySettings } from "@/components/apps/app-general-settings";
 import { ResourceMonitor } from "@/components/resource-monitor";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
@@ -29,7 +29,7 @@ import {
 
 export function meta() {
   return [
-    { title: "App Overview - Rivetr" },
+    { title: "Application - Rivetr" },
     { name: "description", content: "Application overview, status, and resource usage" },
   ];
 }
@@ -48,7 +48,7 @@ function activityIcon(action: string) {
   if (action === "app.restart") return <RotateCw className="h-3.5 w-3.5 text-blue-500" />;
   if (action === "app.start") return <Play className="h-3.5 w-3.5 text-green-500" />;
   if (action === "app.stop") return <Square className="h-3.5 w-3.5 text-yellow-500" />;
-  if (action === "deployment.trigger") return <Rocket className="h-3.5 w-3.5 text-purple-500" />;
+  if (action === "deployment.trigger") return <Rocket className="h-3.5 w-3.5 text-primary" />;
   if (action === "deployment.rollback") return <RotateCw className="h-3.5 w-3.5 text-orange-500" />;
   if (action === "app.update") return <Pencil className="h-3.5 w-3.5 text-muted-foreground" />;
   if (action === "app.delete") return <Trash2 className="h-3.5 w-3.5 text-destructive" />;
@@ -153,7 +153,7 @@ export default function AppGeneralTab() {
         </CardContent>
       </Card>
 
-      <ResourceLimitsCard app={app} token={token} />
+      <AppIdentitySettings app={app} />
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Activity / Restart history */}
@@ -203,7 +203,7 @@ export default function AppGeneralTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-purple-500" />
+            <Sparkles className="h-4 w-4 text-primary" />
             AI Insights
           </CardTitle>
         </CardHeader>

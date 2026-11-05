@@ -1,342 +1,69 @@
-import { Link, Outlet, useLocation } from "react-router";
-import { Fragment, useEffect, useState } from "react";
+import { isRouteErrorResponse, Link, Outlet, useLocation, useRouteError } from "react-router";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { CommandPalette } from "@/components/command-palette";
 import { SectionTabs } from "@/components/section-tabs";
-import { SettingsShell } from "@/components/settings-nav";
+import { AreaShell } from "@/components/area-shell";
+import { TopBar } from "@/components/shell/top-bar";
+import { TopBarSlotProvider } from "@/components/shell/top-bar-slot";
+import { RivetrLogo } from "@/components/rivetr-logo";
 import { useRequireAuth } from "@/lib/auth";
-import { BreadcrumbProvider, useBreadcrumb, type BreadcrumbItem as BreadcrumbItemType } from "@/lib/breadcrumb-context";
+import { BreadcrumbProvider, type BreadcrumbItem } from "@/lib/breadcrumb-context";
+import { EmptyState } from "@/components/page";
+import { Button } from "@/components/ui/button";
 import { TeamProvider } from "@/lib/team-context";
+import { cn } from "@/lib/utils";
 
-// Static route titles as fallback
-const routeTitles: Record<string, BreadcrumbItemType[]> = {
-  "/": [{ label: "Dashboard" }],
-  "/projects": [{ label: "Projects" }],
-  "/deployments": [{ label: "Deployments" }],
-  "/monitoring": [{ label: "Monitoring" }],
-  "/settings": [{ label: "Settings" }],
-  "/settings/notifications": [
-    { label: "Settings", href: "/settings" },
-    { label: "Notifications" },
-  ],
-  "/settings/oauth": [
-    { label: "Settings", href: "/settings" },
-    { label: "Authentication" },
-  ],
-  "/settings/audit": [
-    { label: "Settings", href: "/settings" },
-    { label: "Audit Log" },
-  ],
-  "/settings/ca-certificates": [
-    { label: "Settings", href: "/settings" },
-    { label: "CA Certificates" },
-  ],
-  "/settings/destinations": [
-    { label: "Settings", href: "/settings" },
-    { label: "Destinations" },
-  ],
-  "/settings/auto-update": [
-    { label: "Settings", href: "/settings" },
-    { label: "Auto Updates" },
-  ],
-  "/settings/white-label": [
-    { label: "Settings", href: "/settings" },
-    { label: "White Label" },
-  ],
-  "/settings/backup": [
-    { label: "Settings", href: "/settings" },
-    { label: "Backup & Restore" },
-  ],
-  "/settings/security": [
-    { label: "Settings", href: "/settings" },
-    { label: "Security" },
-  ],
-  "/settings/sso": [
-    { label: "Settings", href: "/settings" },
-    { label: "SSO / OIDC" },
-  ],
-  "/settings/s3": [
-    { label: "Settings", href: "/settings" },
-    { label: "S3 Storage" },
-  ],
-  "/settings/alert-defaults": [
-    { label: "Settings", href: "/settings" },
-    { label: "Alert Defaults" },
-  ],
-  "/settings/git-providers": [
-    { label: "Settings", href: "/settings" },
-    { label: "Git Providers" },
-  ],
-  "/settings/ssh-keys": [
-    { label: "Settings", href: "/settings" },
-    { label: "SSH Keys" },
-  ],
-  "/settings/webhooks": [
-    { label: "Settings", href: "/settings" },
-    { label: "Webhooks" },
-  ],
-  "/settings/tokens": [
-    { label: "Settings", href: "/settings" },
-    { label: "API Tokens" },
-  ],
-  "/settings/preferences": [
-    { label: "Settings", href: "/settings" },
-    { label: "Preferences" },
-  ],
-  "/settings/webhook-events": [
-    { label: "Settings", href: "/settings" },
-    { label: "Webhook Events" },
-  ],
-  "/settings/proxy-logs": [
-    { label: "Settings", href: "/settings" },
-    { label: "Proxy Logs" },
-  ],
-  "/settings/servers": [
-    { label: "Settings", href: "/settings" },
-    { label: "Servers" },
-  ],
-  // Infrastructure routes
-  "/servers": [{ label: "Servers" }],
-  "/build-servers": [{ label: "Build Servers" }],
-  "/ssh-keys": [{ label: "SSH Keys" }],
-  "/swarm": [{ label: "Docker Swarm" }],
-  // Access routes
-  "/teams": [{ label: "Teams" }],
-  "/git-providers": [{ label: "Git Integrations" }],
-  "/webhooks": [{ label: "Webhooks" }],
-  "/webhook-events": [{ label: "Webhook Events" }],
-  "/tokens": [{ label: "API Tokens" }],
-  "/costs": [{ label: "Cost Analysis" }],
-  "/tunnels": [{ label: "Tunnels" }],
-};
-
-function getDefaultBreadcrumbs(pathname: string): BreadcrumbItemType[] {
-  // Check static routes first
-  if (routeTitles[pathname]) {
-    return routeTitles[pathname];
-  }
-
-  // Handle dynamic routes with defaults
-  if (pathname.match(/^\/apps\/[^/]+\/settings$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Settings" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/deployments$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Deployments" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/deployments\/[^/]+$/)) {
-    const appId = pathname.split("/")[2];
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Deployments", href: `/apps/${appId}/deployments` },
-      { label: "Detail" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/network$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Network" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/logs$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Logs" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/terminal$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Terminal" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/previews$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Previews" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/jobs$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Jobs" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/log-drains$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Log Drains" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+\/monitoring$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-      { label: "Monitoring" },
-    ];
-  }
-  if (pathname.match(/^\/apps\/[^/]+$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Apps" },
-    ];
-  }
-  if (pathname.match(/^\/databases\/[^/]+/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Databases" },
-    ];
-  }
-  if (pathname.match(/^\/services\/[^/]+/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Services" },
-    ];
-  }
-  if (pathname.startsWith("/projects/") && pathname.includes("/apps/new")) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "New Application" },
-    ];
-  }
-  const environmentsMatch = pathname.match(/^\/projects\/([^/]+)\/environments$/);
-  if (environmentsMatch) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Project", href: `/projects/${environmentsMatch[1]}` },
-      { label: "Environments" },
-    ];
-  }
-  const envVarsMatch = pathname.match(/^\/projects\/([^/]+)\/env-vars$/);
-  if (envVarsMatch) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Project", href: `/projects/${envVarsMatch[1]}` },
-      { label: "Shared Variables" },
-    ];
-  }
-  if (pathname.match(/^\/projects\/[^/]+$/)) {
-    return [
-      { label: "Projects", href: "/projects" },
-      { label: "Project" },
-    ];
-  }
-  if (pathname.match(/^\/teams\/[^/]+$/)) {
-    return [
-      { label: "Teams", href: "/teams" },
-      { label: "Team Details" },
-    ];
-  }
-
-  return [{ label: "Page" }];
+/** Pages that use the whole content width (canvas views). */
+function isFullBleed(pathname: string, search: string): boolean {
+  if (pathname === "/") return true;
+  return pathname === "/projects" && new URLSearchParams(search).get("view") === "canvas";
 }
 
-// Inner component that uses the breadcrumb context
-function DashboardLayoutInner() {
+function DashboardLayoutInner({
+  children,
+  crumbs,
+}: {
+  children?: ReactNode;
+  crumbs?: BreadcrumbItem[];
+}) {
   const location = useLocation();
-  const { items: contextItems, setItems } = useBreadcrumb();
   const { isLoading, isAuthenticated } = useRequireAuth();
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // Set default breadcrumbs based on route when no context items are set
-  useEffect(() => {
-    if (contextItems.length === 0) {
-      setItems(getDefaultBreadcrumbs(location.pathname));
-    }
-  }, [location.pathname, contextItems.length, setItems]);
-
-  // Reset breadcrumbs when route changes
-  useEffect(() => {
-    setItems(getDefaultBreadcrumbs(location.pathname));
-  }, [location.pathname, setItems]);
-
-  const breadcrumbItems = contextItems.length > 0 ? contextItems : getDefaultBreadcrumbs(location.pathname);
-
-  // Show loading state while checking auth
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-background">
+        <RivetrLogo decorative className="size-9 animate-pulse" />
+        <span className="text-sm text-muted-foreground">Loading</span>
       </div>
     );
   }
 
-  // Don't render content if not authenticated (redirect will happen)
   if (!isAuthenticated) {
     return null;
   }
 
   return (
     <SidebarProvider>
-      <AppSidebar onOpenSearch={() => setSearchOpen(true)} />
-      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
-      <SidebarInset className="min-w-0">
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4 flex-1">
-            <SidebarTrigger className="-ml-1" />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-[orientation=vertical]:h-4"
-            />
-            <Breadcrumb>
-              <BreadcrumbList>
-                {breadcrumbItems.map((item, index) => (
-                  <Fragment key={index}>
-                    {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                    <BreadcrumbItem className={index < breadcrumbItems.length - 1 ? "hidden md:block" : ""}>
-                      {item.href && index < breadcrumbItems.length - 1 ? (
-                        <BreadcrumbLink asChild>
-                          <Link to={item.href}>{item.label}</Link>
-                        </BreadcrumbLink>
-                      ) : (
-                        <BreadcrumbPage>{item.label}</BreadcrumbPage>
-                      )}
-                    </BreadcrumbItem>
-                  </Fragment>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
+      <TopBarSlotProvider>
+        <AppSidebar onOpenSearch={() => setSearchOpen(true)} />
+        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
+        <SidebarInset className="min-w-0 bg-background">
+          <TopBar crumbs={crumbs} />
+          <div
+            className={cn(
+              "mx-auto flex w-full flex-1 flex-col gap-5 px-4 py-5 sm:px-6 lg:py-6",
+              isFullBleed(location.pathname, location.search) ? "max-w-[1600px]" : "max-w-7xl"
+            )}
+          >
+            <SectionTabs />
+            <AreaShell>{children ?? <Outlet />}</AreaShell>
           </div>
-          <div className="flex items-center gap-1 px-4">
-            <ThemeToggle />
-          </div>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <SectionTabs />
-          <SettingsShell>
-            <Outlet />
-          </SettingsShell>
-        </div>
-      </SidebarInset>
+        </SidebarInset>
+      </TopBarSlotProvider>
     </SidebarProvider>
   );
 }
@@ -346,6 +73,45 @@ export default function DashboardLayout() {
     <TeamProvider>
       <BreadcrumbProvider>
         <DashboardLayoutInner />
+      </BreadcrumbProvider>
+    </TeamProvider>
+  );
+}
+
+/**
+ * Errors thrown by any dashboard page render inside the shell, so the
+ * sidebar and breadcrumbs stay and the user can navigate away.
+ */
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const notFound = isRouteErrorResponse(error) && error.status === 404;
+  const title = notFound ? "Page not found" : "Something went wrong";
+  const details = isRouteErrorResponse(error)
+    ? error.statusText || `Error ${error.status}`
+    : error instanceof Error
+      ? error.message
+      : "An unexpected error occurred.";
+
+  return (
+    <TeamProvider>
+      <BreadcrumbProvider>
+        <DashboardLayoutInner crumbs={[{ label: title }]}>
+          <EmptyState
+            bordered
+            title={title}
+            description={details}
+            action={
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Reload
+                </Button>
+                <Button asChild>
+                  <Link to="/">Back to dashboard</Link>
+                </Button>
+              </div>
+            }
+          />
+        </DashboardLayoutInner>
       </BreadcrumbProvider>
     </TeamProvider>
   );

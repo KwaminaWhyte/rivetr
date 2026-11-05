@@ -18,6 +18,7 @@ import { Users, Clock, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { teamsApi } from "@/lib/api/teams";
 import { getAuthToken, validateAuth, setAuthToken } from "@/lib/auth";
 import type { TeamInvitation, TeamRole } from "@/types/api";
+import { rememberCurrentTeam } from "@/lib/team-context";
 
 export function meta() {
   return [
@@ -127,8 +128,9 @@ export default function AcceptInvitationPage() {
       return teamsApi.acceptInvitation(token!, authToken ?? undefined);
     },
     onSuccess: (member) => {
-      // Navigate to the team settings page
-      navigate(`/teams/${member.team_id}`, { replace: true });
+      // Open the team the user just joined
+      rememberCurrentTeam(member.team_id);
+      navigate("/team", { replace: true });
     },
     onError: (error: Error) => {
       // Handle specific error cases
@@ -157,7 +159,8 @@ export default function AcceptInvitationPage() {
       teamsApi.registerWithInvitation({ token: token!, name, password }),
     onSuccess: (data) => {
       setAuthToken(data.token);
-      navigate(`/teams/${data.member.team_id}`, { replace: true });
+      rememberCurrentTeam(data.member.team_id);
+      navigate("/team", { replace: true });
     },
     onError: (error: Error) => {
       setInvitationState({

@@ -95,6 +95,12 @@ pub mod actions {
     pub const SERVICE_START: &str = "service.start";
     pub const SERVICE_STOP: &str = "service.stop";
     pub const SERVICE_DEPLOY: &str = "service.deploy";
+
+    // Tag actions
+    pub const TAG_CREATE: &str = "tag.create";
+    pub const TAG_UPDATE: &str = "tag.update";
+    pub const TAG_DELETE: &str = "tag.delete";
+    pub const TAG_DEPLOY: &str = "tag.deploy";
     pub const SERVICE_ROLLBACK: &str = "service.rollback";
     pub const SERVICE_CONTAINER_RESTART: &str = "service.container_restart";
 
@@ -118,6 +124,8 @@ pub mod actions {
     pub const AUTH_2FA_ENABLE: &str = "auth.2fa.enable";
     pub const AUTH_2FA_DISABLE: &str = "auth.2fa.disable";
     pub const AUTH_2FA_VALIDATE: &str = "auth.2fa.validate";
+    pub const PASSKEY_ADD: &str = "auth.passkey.add";
+    pub const PASSKEY_REMOVE: &str = "auth.passkey.remove";
     pub const AUTH_PASSWORD_RESET_REQUEST: &str = "auth.password.reset_request";
     pub const AUTH_PASSWORD_RESET: &str = "auth.password.reset";
     pub const AUTH_PASSWORD_CHANGE: &str = "auth.password.change";

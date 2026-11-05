@@ -266,3 +266,39 @@ impl InstanceSettings {
         Self::load(db).await
     }
 }
+
+/// Load every instance setting as a `key -> value` map. Keys with a NULL value
+/// are left out, so a missing key always means "not set, use the default".
+pub async fn load_setting_map(
+    db: &SqlitePool,
+) -> Result<std::collections::HashMap<String, String>, sqlx::Error> {
+    let rows: Vec<InstanceSettingRow> =
+        sqlx::query_as("SELECT key, value, updated_at FROM instance_settings")
+            .fetch_all(db)
+            .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| r.value.map(|v| (r.key, v)))
+        .collect())
+}
+
+/// Upsert a single instance setting. `None` stores NULL (treated as unset).
+pub async fn set_setting_value(
+    db: &SqlitePool,
+    key: &str,
+    value: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO instance_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(key)
+    .bind(value)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(db)
+    .await?;
+    Ok(())
+}

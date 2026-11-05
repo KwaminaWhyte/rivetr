@@ -4,7 +4,23 @@
  */
 import { apiRequest } from "./core";
 
+export interface GeneratedCompose {
+  compose: string;
+  explanation: string;
+  services: string[];
+}
+
 export const aiApi = {
+  /** Whether an AI provider is configured on this instance. */
+  getStatus: () => apiRequest<{ configured: boolean }>("/ai/status"),
+
+  /** Generate (or modify) a docker-compose file from a prompt. Never deploys. */
+  generateCompose: (prompt: string, existingCompose?: string) =>
+    apiRequest<GeneratedCompose>("/ai/compose/generate", {
+      method: "POST",
+      body: JSON.stringify({ prompt, existing_compose: existingCompose || null }),
+    }),
+
   diagnoseDeployment: (appId: string, deploymentId: string) =>
     apiRequest<{ diagnosis: string; suggestions: string[] }>(
       `/apps/${appId}/deployments/${deploymentId}/diagnose`,

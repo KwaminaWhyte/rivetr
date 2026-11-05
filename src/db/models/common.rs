@@ -16,6 +16,63 @@ pub struct Domain {
     /// WWW redirect mode: "both" (allow both), "to_www" (redirect non-www → www),
     /// "to_non_www" (redirect www → non-www). Overrides `redirect_www` when set.
     pub www_redirect_mode: Option<String>,
+    /// Container port this domain routes to. `None` uses the app port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_port: Option<u16>,
+    /// When false the proxy adds `X-Robots-Tag: noindex, nofollow` to responses.
+    #[serde(default = "default_search_indexing")]
+    pub search_indexing: bool,
+    /// Status used for the www redirect: "permanent" (301, default) or "temporary" (302).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirect_type: Option<String>,
+}
+
+fn default_search_indexing() -> bool {
+    true
+}
+
+/// Per-domain proxy behaviour derived from a [`Domain`] entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainProxyOptions {
+    /// Container port to route to instead of the app port.
+    pub internal_port: Option<u16>,
+    /// Add `X-Robots-Tag: noindex, nofollow` to responses.
+    pub noindex: bool,
+    /// Use 301 (true) or 302 (false) for the www redirect.
+    pub permanent_redirect: bool,
+}
+
+impl Default for DomainProxyOptions {
+    fn default() -> Self {
+        Self {
+            internal_port: None,
+            noindex: false,
+            permanent_redirect: true,
+        }
+    }
+}
+
+/// Proxy options for `host`, matching a configured domain or its www/non-www variant.
+/// Hosts that match no entry (auto subdomain, legacy domain) get the defaults.
+pub fn domain_proxy_options(domains: &[Domain], host: &str) -> DomainProxyOptions {
+    let host = host.to_ascii_lowercase();
+    let entry = domains
+        .iter()
+        .find(|d| d.domain.eq_ignore_ascii_case(&host))
+        .or_else(|| {
+            domains.iter().find(|d| {
+                d.www_domain().eq_ignore_ascii_case(&host)
+                    || d.non_www_domain().eq_ignore_ascii_case(&host)
+            })
+        });
+    match entry {
+        Some(d) => DomainProxyOptions {
+            internal_port: d.internal_port.filter(|p| *p > 0),
+            noindex: !d.search_indexing,
+            permanent_redirect: d.redirect_type.as_deref() != Some("temporary"),
+        },
+        None => DomainProxyOptions::default(),
+    }
 }
 
 impl Domain {
@@ -25,6 +82,9 @@ impl Domain {
             primary: false,
             redirect_www: false,
             www_redirect_mode: None,
+            internal_port: None,
+            search_indexing: true,
+            redirect_type: None,
         }
     }
 
@@ -34,6 +94,9 @@ impl Domain {
             primary: true,
             redirect_www: false,
             www_redirect_mode: None,
+            internal_port: None,
+            search_indexing: true,
+            redirect_type: None,
         }
     }
 
@@ -164,5 +227,38 @@ impl std::str::FromStr for Environment {
 impl From<String> for Environment {
     fn from(s: String) -> Self {
         s.parse().unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod domain_option_tests {
+    use super::*;
+
+    #[test]
+    fn old_domain_json_keeps_defaults() {
+        let domains = parse_domains(Some(r#"[{"domain":"example.com","primary":true}]"#));
+        assert!(domains[0].search_indexing);
+        assert_eq!(domains[0].internal_port, None);
+        assert_eq!(
+            domain_proxy_options(&domains, "example.com"),
+            DomainProxyOptions::default()
+        );
+    }
+
+    #[test]
+    fn options_apply_to_domain_and_its_www_variant() {
+        let domains = parse_domains(Some(
+            r#"[{"domain":"example.com","internal_port":9000,"search_indexing":false,"redirect_type":"temporary"}]"#,
+        ));
+        for host in ["example.com", "WWW.example.com"] {
+            let o = domain_proxy_options(&domains, host);
+            assert_eq!(o.internal_port, Some(9000));
+            assert!(o.noindex);
+            assert!(!o.permanent_redirect);
+        }
+        assert_eq!(
+            domain_proxy_options(&domains, "other.com"),
+            DomainProxyOptions::default()
+        );
     }
 }

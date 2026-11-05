@@ -367,6 +367,40 @@ pub async fn authorize_app_write(
     Ok(app)
 }
 
+/// Authorize a service and require the developer team role for changing it.
+pub async fn authorize_service_write(
+    state: &Arc<AppState>,
+    user: &User,
+    service_id: &str,
+) -> Result<Service, ApiError> {
+    let service = authorize_service(state, user, service_id).await?;
+    authorize_write(&state.db, user, ResourceKind::Service, service_id).await?;
+    Ok(service)
+}
+
+/// Does the user hold at least the developer role in `team_id`? Privileged users
+/// always do; `None` (global / legacy) is writable by any authenticated user.
+pub async fn can_write_team(
+    state: &Arc<AppState>,
+    user: &User,
+    team_id: Option<&str>,
+) -> Result<bool, ApiError> {
+    if is_privileged(user) {
+        return Ok(true);
+    }
+    let Some(team_id) = team_id else {
+        return Ok(true);
+    };
+    let role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM team_members WHERE team_id = ? AND user_id = ?")
+            .bind(team_id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| ApiError::internal(format!("authz lookup failed: {e}")))?;
+    Ok(role.is_some_and(|r| TeamRole::from(r).has_at_least(TeamRole::Developer)))
+}
+
 /// Authorize access to an app and return it. Honors `app_shares` so an app shared
 /// with one of the user's teams is reachable.
 pub async fn authorize_app(

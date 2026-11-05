@@ -160,6 +160,8 @@ pub async fn set_replica_count(
                     cmd: None,
                     network: None,
                     custom_labels: vec![],
+                    healthcheck: app.container_healthcheck(),
+                    extra_ports: vec![],
                 };
 
                 match state.runtime.run(&run_config).await {
@@ -191,6 +193,13 @@ pub async fn set_replica_count(
                                     .with_healthcheck(app.healthcheck.clone())
                                     .with_access_logging(app.access_logging != 0);
                                     backend.www_redirect_target = www_redirect_target.clone();
+                                    backend.apply_domain_options(
+                                        &crate::db::domain_proxy_options(
+                                            &app.get_domains(),
+                                            domain,
+                                        ),
+                                        &info.port_map,
+                                    );
                                     route_table.add_route(domain.clone(), backend);
                                 }
                             }
@@ -355,6 +364,8 @@ pub async fn restart_replica(
         cmd: None,
         network: None,
         custom_labels: vec![],
+        healthcheck: app.container_healthcheck(),
+        extra_ports: vec![],
     };
 
     // Update status to starting

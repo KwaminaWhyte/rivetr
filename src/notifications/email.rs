@@ -1,39 +1,55 @@
 //! System email service for sending invitation and notification emails.
 //!
-//! This module provides a service for sending system emails like team invitations,
-//! using the SMTP configuration from the main config file.
+//! Transport precedence: the transactional email settings saved in the
+//! dashboard (Settings > Email), then `rivetr.toml [email]` SMTP, then an
+//! enabled Sendry notification channel.
 
 use anyhow::Result;
-use lettre::{
-    message::{header::ContentType, Mailbox, MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-};
 
 use crate::config::EmailConfig;
 use crate::db::{NotificationChannel, SendryConfig};
+use crate::settings::email::EffectiveEmail;
 
 /// Service for sending system emails.
-///
-/// Delivery prefers toml `[email]` SMTP. When that isn't configured, it falls
-/// back to an enabled Sendry notification channel from the database, so system
-/// mail works even on instances that only set up email via the dashboard.
 pub struct SystemEmailService {
     config: EmailConfig,
     db: Option<sqlx::SqlitePool>,
+    /// Derived key for decrypting secrets saved from the dashboard.
+    encryption_key: Option<[u8; 32]>,
 }
 
 impl SystemEmailService {
-    /// Create a new system email service (SMTP-only; no DB fallback).
+    /// Create a new system email service (toml SMTP only; no DB lookups).
     pub fn new(config: EmailConfig) -> Self {
-        Self { config, db: None }
+        Self {
+            config,
+            db: None,
+            encryption_key: None,
+        }
     }
 
-    /// Create a service that can fall back to a Sendry notification channel.
+    /// Create a service that also uses dashboard email settings and the Sendry
+    /// fallback. Without an encryption key, encrypted dashboard secrets can not
+    /// be read; prefer [`SystemEmailService::from_state`].
     pub fn with_db(config: EmailConfig, db: sqlx::SqlitePool) -> Self {
         Self {
             config,
             db: Some(db),
+            encryption_key: None,
+        }
+    }
+
+    /// Full service built from the app state (DB settings, toml, Sendry).
+    pub fn from_state(state: &crate::AppState) -> Self {
+        Self {
+            config: state.config.email.clone(),
+            db: Some(state.db.clone()),
+            encryption_key: state
+                .config
+                .auth
+                .encryption_key
+                .as_deref()
+                .map(crate::crypto::derive_key),
         }
     }
 
@@ -42,9 +58,24 @@ impl SystemEmailService {
         self.config.is_configured()
     }
 
-    /// Whether email can be delivered by ANY route (SMTP or a Sendry channel).
+    /// Whether email can be delivered by ANY route.
     pub async fn is_available(&self) -> bool {
-        self.config.is_configured() || self.find_sendry_channel().await.is_some()
+        self.resolve().await.is_some() || self.find_sendry_channel().await.is_some()
+    }
+
+    /// Dashboard settings (if enabled) merged over toml, else toml alone.
+    async fn resolve(&self) -> Option<EffectiveEmail> {
+        match &self.db {
+            Some(db) => {
+                crate::settings::email::load_effective(
+                    db,
+                    &self.config,
+                    self.encryption_key.as_ref(),
+                )
+                .await
+            }
+            None => crate::settings::email::from_toml(&self.config),
+        }
     }
 
     /// Look up an enabled Sendry channel's config, preferring a global one.
@@ -99,9 +130,8 @@ impl SystemEmailService {
             .await
     }
 
-    /// Send an email, choosing a transport: toml SMTP first, then a Sendry
-    /// notification channel. If neither is configured, logs a warning and
-    /// returns Ok so callers' flows aren't broken.
+    /// Send an email through the first available transport. If none is
+    /// configured, logs a warning and returns Ok so callers' flows aren't broken.
     async fn send_email(
         &self,
         to_email: &str,
@@ -109,92 +139,26 @@ impl SystemEmailService {
         html_body: &str,
         text_body: &str,
     ) -> Result<()> {
-        if self.config.is_configured() {
-            return self.send_smtp(to_email, subject, html_body, text_body).await;
+        if let Some(cfg) = self.resolve().await {
+            return crate::settings::email::send(&cfg, to_email, subject, html_body, text_body)
+                .await;
         }
 
         if let Some(sendry) = self.find_sendry_channel().await {
             let client = reqwest::Client::new();
-            super::sendry::send_sendry_raw(&client, &sendry, to_email, subject, html_body, text_body)
-                .await?;
+            super::sendry::send_sendry_raw(
+                &client, &sendry, to_email, subject, html_body, text_body,
+            )
+            .await?;
             tracing::info!(to = %to_email, subject = %subject, "System email sent via Sendry channel");
             return Ok(());
         }
 
         tracing::warn!(
             to = %to_email,
-            "No email transport configured (set [email] SMTP or add an enabled Sendry \
-             notification channel); skipping email"
+            "No email transport configured (Settings > Email, [email] SMTP, or an enabled \
+             Sendry notification channel); skipping email"
         );
-        Ok(())
-    }
-
-    /// Send an email via toml-configured SMTP.
-    async fn send_smtp(
-        &self,
-        to_email: &str,
-        subject: &str,
-        html_body: &str,
-        text_body: &str,
-    ) -> Result<()> {
-        let smtp_host = self
-            .config
-            .smtp_host
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("SMTP host not configured"))?;
-        let from_address = self
-            .config
-            .from_address
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("From address not configured"))?;
-
-        // Build the from mailbox with name
-        let from_mailbox = format!("{} <{}>", self.config.from_name, from_address);
-        let from: Mailbox = from_mailbox.parse()?;
-        let to: Mailbox = to_email.parse()?;
-
-        let email = Message::builder()
-            .from(from)
-            .to(to)
-            .subject(subject)
-            .multipart(
-                MultiPart::alternative()
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_PLAIN)
-                            .body(text_body.to_string()),
-                    )
-                    .singlepart(
-                        SinglePart::builder()
-                            .header(ContentType::TEXT_HTML)
-                            .body(html_body.to_string()),
-                    ),
-            )?;
-
-        // Build SMTP transport
-        let mailer = if self.config.smtp_tls {
-            AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host)?
-        } else {
-            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
-        }
-        .port(self.config.smtp_port);
-
-        let mailer = if let (Some(username), Some(password)) =
-            (&self.config.smtp_username, &self.config.smtp_password)
-        {
-            mailer.credentials(Credentials::new(username.clone(), password.clone()))
-        } else {
-            mailer
-        };
-
-        mailer.build().send(email).await?;
-
-        tracing::info!(
-            to = %to_email,
-            subject = %subject,
-            "Email sent successfully"
-        );
-
         Ok(())
     }
 }

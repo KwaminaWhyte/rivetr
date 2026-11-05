@@ -3,6 +3,8 @@
 /// GET /api/domains/check?domain=example.com
 ///
 /// Resolves the provided domain and reports whether it points to this server.
+/// Settings > Advanced controls whether the check runs at all and which
+/// nameservers it uses (the OS resolver when none are set).
 use axum::{
     extract::{Query, State},
     Json,
@@ -31,6 +33,11 @@ pub struct DnsCheckResponse {
     pub resolved_ips: Vec<String>,
     /// The server's configured public IP (or empty string if not configured)
     pub server_ip: String,
+    /// All known public IPs of this server (IPv4 and IPv6 when set)
+    pub server_ips: Vec<String>,
+    /// True when DNS validation is turned off in Settings > Advanced; the
+    /// other fields are then empty and callers should not show a warning.
+    pub validation_disabled: bool,
 }
 
 /// GET /api/domains/check — check whether a domain resolves to this server
@@ -38,78 +45,67 @@ pub async fn check_domain_dns(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DnsCheckQuery>,
 ) -> Json<DnsCheckResponse> {
-    let domain = params.domain.trim().to_lowercase();
+    let domain = params.domain.trim().trim_end_matches('.').to_lowercase();
+    let advanced = crate::settings::advanced::current();
 
-    // Determine the server's public IP from instance settings or config.
-    // We try (in order):
-    //   1. `instance_domain` stored in the DB (which is what the user configured as their
-    //      Rivetr domain — not directly the IP, but useful for wildcard subdomain setups).
-    //   2. A best-effort self-lookup by resolving the instance domain itself.
-    //   3. The `server.host` value from rivetr.toml (may be "0.0.0.0").
-    //
-    // For the most accurate result the operator should configure an explicit IP in instance
-    // settings. For now we surface whatever we can determine.
-    let server_ip = get_server_ip(&state).await;
-
-    if domain.is_empty() {
+    if !advanced.settings.dns_validation_enabled {
         return Json(DnsCheckResponse {
             domain,
             resolves: false,
             points_to_server: false,
             resolved_ips: vec![],
-            server_ip,
+            server_ip: String::new(),
+            server_ips: vec![],
+            validation_disabled: true,
         });
     }
 
-    // Resolve the domain using the OS resolver (same resolver as the container runtime).
-    let lookup_host = format!("{}:80", domain);
-    match tokio::net::lookup_host(&lookup_host).await {
-        Ok(addrs) => {
-            let resolved_ips: Vec<String> = addrs
-                .map(|addr| addr.ip().to_string())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
+    let nameservers = advanced.settings.dns_servers.clone();
+    let server_ips = get_server_ips(&state, &nameservers).await;
+    let server_ip = server_ips.first().cloned().unwrap_or_default();
 
-            let points_to_server = !server_ip.is_empty()
-                && resolved_ips.iter().any(|ip| ip == &server_ip);
+    let resolved_ips: Vec<String> = if domain.is_empty() {
+        vec![]
+    } else {
+        crate::settings::dns::resolve_host(&domain, &nameservers)
+            .await
+            .map(|ips| ips.into_iter().map(|ip| ip.to_string()).collect())
+            .unwrap_or_default()
+    };
 
-            Json(DnsCheckResponse {
-                domain,
-                resolves: !resolved_ips.is_empty(),
-                points_to_server,
-                resolved_ips,
-                server_ip,
-            })
-        }
-        Err(_) => Json(DnsCheckResponse {
-            domain,
-            resolves: false,
-            points_to_server: false,
-            resolved_ips: vec![],
-            server_ip,
-        }),
-    }
+    let points_to_server = resolved_ips.iter().any(|ip| server_ips.contains(ip));
+
+    Json(DnsCheckResponse {
+        domain,
+        resolves: !resolved_ips.is_empty(),
+        points_to_server,
+        resolved_ips,
+        server_ip,
+        server_ips,
+        validation_disabled: false,
+    })
 }
 
-/// Attempt to determine the server's public IP address.
+/// Determine this server's public IP addresses.
 ///
 /// Priority:
-/// 1. If the instance domain is set (e.g. "rivetr.site"), try to resolve it and use the
-///    first resulting IP. This handles the case where the operator already configured DNS.
-/// 2. Fall back to the `server.host` config value (but not "0.0.0.0" since that is
+/// 1. The public IPv4 / IPv6 saved on Settings > General.
+/// 2. The addresses the instance domain resolves to.
+/// 3. The `server.host` config value (but not "0.0.0.0" since that is
 ///    unroutable).
-async fn get_server_ip(state: &Arc<AppState>) -> String {
-    // Try to load instance settings from the DB.
+async fn get_server_ips(state: &Arc<AppState>, nameservers: &[String]) -> Vec<String> {
+    let (v4, v6) = crate::settings::advanced::public_ips(&state.db).await;
+    let saved: Vec<String> = [v4, v6].into_iter().flatten().collect();
+    if !saved.is_empty() {
+        return saved;
+    }
+
     if let Ok(settings) = crate::db::InstanceSettings::load(&state.db).await {
-        if let Some(ref instance_domain) = settings.instance_domain {
-            if !instance_domain.is_empty() {
-                // Resolve the instance domain to find this server's IP.
-                let lookup = format!("{}:80", instance_domain);
-                if let Ok(mut addrs) = tokio::net::lookup_host(&lookup).await {
-                    if let Some(addr) = addrs.next() {
-                        return addr.ip().to_string();
-                    }
+        if let Some(instance_domain) = settings.instance_domain.filter(|d| !d.is_empty()) {
+            if let Ok(ips) = crate::settings::dns::resolve_host(&instance_domain, nameservers).await
+            {
+                if !ips.is_empty() {
+                    return ips.into_iter().map(|ip| ip.to_string()).collect();
                 }
             }
         }
@@ -118,8 +114,8 @@ async fn get_server_ip(state: &Arc<AppState>) -> String {
     // Fall back to server.host — only useful if it's an actual IP (not 0.0.0.0).
     let host = &state.config.server.host;
     if host != "0.0.0.0" && host != "::" && !host.is_empty() {
-        return host.clone();
+        return vec![host.clone()];
     }
 
-    String::new()
+    Vec::new()
 }

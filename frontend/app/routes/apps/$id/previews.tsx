@@ -127,7 +127,7 @@ export default function AppPreviewsTab() {
             <div>
               <p className="font-medium">Enable PR Previews</p>
               <p className="text-sm text-muted-foreground">
-                Go to Settings &gt; Build to enable automatic preview deployments for pull requests.
+                Go to Source and build to enable automatic preview deployments for pull requests.
               </p>
             </div>
           </div>
@@ -218,7 +218,7 @@ export default function AppPreviewsTab() {
                           href={`https://${preview.preview_domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-primary hover:underline flex items-center gap-1"
                         >
                           {preview.preview_domain}
                           <ExternalLink className="h-3 w-3" />

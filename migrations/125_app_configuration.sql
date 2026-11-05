@@ -1,0 +1,11 @@
+-- Migration 125: app configuration (Coolify parity batch C).
+--
+-- 1. apps.healthcheck_config holds the structured healthcheck as JSON (enable, type,
+--    method, scheme, host, port, path, expected status and body, timing). The legacy
+--    apps.healthcheck path stays in sync for the proxy health checker.
+-- 2. resource_clone_jobs tracks "clone resource" runs, including the background copy
+--    of volume data, so the dashboard can show progress.
+--
+-- The ALTER TABLE runs only when the column is missing (guarded in src/db/mod.rs);
+-- the backfill and CREATE TABLE are idempotent and run on every start.
+ALTER TABLE apps ADD COLUMN healthcheck_config TEXT;

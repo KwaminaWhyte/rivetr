@@ -59,6 +59,46 @@ struct LogMeta {
     user_agent: String,
 }
 
+/// Request fields captured for traffic analytics (only when analytics is active).
+struct AnalyticsMeta {
+    path: String,
+    client_ip: String,
+    user_agent: String,
+    referrer: String,
+    bytes_in: u64,
+}
+
+fn content_length(headers: &hyper::HeaderMap) -> u64 {
+    headers
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Hand a finished request to the analytics aggregator (non-blocking).
+fn record_analytics(
+    meta: Option<AnalyticsMeta>,
+    host: Option<&str>,
+    status: u16,
+    ms: u64,
+    bytes_out: u64,
+) {
+    if let (Some(m), Some(host)) = (meta, host) {
+        super::analytics::record(super::analytics::TrafficEvent {
+            host: host.to_string(),
+            path: m.path,
+            status,
+            latency_ms: ms,
+            bytes_in: m.bytes_in,
+            bytes_out,
+            client_ip: m.client_ip,
+            user_agent: m.user_agent,
+            referrer: m.referrer,
+        });
+    }
+}
+
 /// Handle used by request tasks to enqueue access-log entries for the writer task.
 #[derive(Clone)]
 struct ProxyLogSender {
@@ -178,6 +218,29 @@ fn redirect_regex(pattern: &str) -> Option<Regex> {
 
 /// Whether a request should be access-logged: the writer must be running and the
 /// matched backend must not have opted out (unmatched hosts keep logging).
+/// Value sent in `X-Robots-Tag` for domains with search indexing turned off.
+pub const NOINDEX_HEADER_VALUE: &str = "noindex, nofollow";
+
+/// Add `X-Robots-Tag: noindex, nofollow` when the domain has search indexing off.
+/// Replaces any value the app set, so the domain setting always wins.
+pub fn apply_robots_header<B>(response: &mut Response<B>, noindex: bool) {
+    if noindex {
+        response.headers_mut().insert(
+            "x-robots-tag",
+            hyper::header::HeaderValue::from_static(NOINDEX_HEADER_VALUE),
+        );
+    }
+}
+
+/// Status for the www redirect: 301 when permanent, 302 otherwise.
+fn www_redirect_status(permanent: bool) -> StatusCode {
+    if permanent {
+        StatusCode::MOVED_PERMANENTLY
+    } else {
+        StatusCode::FOUND
+    }
+}
+
 fn should_log(writer_enabled: bool, backend_flag: Option<bool>) -> bool {
     writer_enabled && backend_flag.unwrap_or(true)
 }
@@ -406,9 +469,38 @@ impl ProxyHandler {
                 .to_string(),
         });
 
+        // Analytics fields, independent of the per-app access log switch.
+        let analytics_meta = super::analytics::active().then(|| AnalyticsMeta {
+            path: path.to_string(),
+            client_ip: log_meta
+                .as_ref()
+                .map(|m| m.client_ip.clone())
+                .unwrap_or_else(|| {
+                    req.headers()
+                        .get("X-Forwarded-For")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| remote_addr.ip().to_string())
+                }),
+            user_agent: req
+                .headers()
+                .get(hyper::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+            referrer: req
+                .headers()
+                .get(hyper::header::REFERER)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+            bytes_in: content_length(req.headers()),
+        });
+
         let response = match backend {
             Some(backend) if backend.healthy => {
-                // If this backend is a www-redirect proxy, issue a permanent redirect
+                // If this backend is a www-redirect proxy, redirect (301 or 302 per domain)
                 if let Some(ref target_host) = backend.www_redirect_target {
                     let query = uri.query().map(|q| format!("?{}", q)).unwrap_or_default();
                     let location = format!("https://{}{}{}", target_host, path, query);
@@ -418,7 +510,7 @@ impl ProxyHandler {
                         "www redirect"
                     );
                     Response::builder()
-                        .status(hyper::StatusCode::MOVED_PERMANENTLY)
+                        .status(www_redirect_status(backend.permanent_redirect))
                         .header(hyper::header::LOCATION, location)
                         .header("X-Powered-By", "Rivetr")
                         .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
@@ -440,6 +532,13 @@ impl ProxyHandler {
                                     "Basic auth required but not provided or invalid"
                                 );
                                 let ms = start.elapsed().as_millis() as u64;
+                                record_analytics(
+                                    analytics_meta,
+                                    host.as_deref(),
+                                    response.status().as_u16(),
+                                    ms,
+                                    content_length(response.headers()),
+                                );
                                 self.log_request(
                                     log_meta,
                                     host.as_deref(),
@@ -457,6 +556,13 @@ impl ProxyHandler {
                             self.apply_redirect_rules(path, &backend.redirect_rules)
                         {
                             let ms = start.elapsed().as_millis() as u64;
+                            record_analytics(
+                                analytics_meta,
+                                host.as_deref(),
+                                redirect_response.status().as_u16(),
+                                ms,
+                                0,
+                            );
                             self.log_request(
                                 log_meta,
                                 host.as_deref(),
@@ -488,7 +594,10 @@ impl ProxyHandler {
                         .forward(req, &backend, self.forwarded_proto)
                         .await
                     {
-                        Ok(response) => response,
+                        Ok(mut response) => {
+                            apply_robots_header(&mut response, backend.noindex);
+                            response
+                        }
                         Err(e) => {
                             error!(error = %e, backend = %backend.addr(), "Backend request failed");
                             self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable")
@@ -517,6 +626,13 @@ impl ProxyHandler {
 
         let ms = start.elapsed().as_millis() as u64;
         let status = response.status().as_u16();
+        record_analytics(
+            analytics_meta,
+            host.as_deref(),
+            status,
+            ms,
+            content_length(response.headers()),
+        );
         self.log_request(log_meta, host.as_deref(), status, ms);
         Ok(response)
     }
@@ -860,6 +976,31 @@ fn empty_response(status: StatusCode) -> Response<BoxBody<Bytes, hyper::Error>> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn noindex_header_is_added_only_when_indexing_is_off() {
+        let mut resp = Response::new(());
+        super::apply_robots_header(&mut resp, false);
+        assert!(resp.headers().get("x-robots-tag").is_none());
+
+        let mut resp = Response::builder()
+            .header("X-Robots-Tag", "all")
+            .body(())
+            .unwrap();
+        super::apply_robots_header(&mut resp, true);
+        let values: Vec<_> = resp.headers().get_all("x-robots-tag").iter().collect();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], super::NOINDEX_HEADER_VALUE);
+    }
+
+    #[test]
+    fn www_redirect_status_follows_redirect_type() {
+        assert_eq!(
+            super::www_redirect_status(true),
+            StatusCode::MOVED_PERMANENTLY
+        );
+        assert_eq!(super::www_redirect_status(false), StatusCode::FOUND);
+    }
+
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 

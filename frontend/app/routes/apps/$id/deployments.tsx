@@ -1,6 +1,6 @@
 import { QueryError } from "@/components/query-error";
 import { useState, useMemo } from "react";
-import { useOutletContext, useSearchParams, useNavigate } from "react-router";
+import { useOutletContext } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function meta() {
@@ -24,12 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DeploymentTimeline } from "@/components/deployment-timeline";
+import { DeploymentHistoryTable } from "@/components/deployment-history-table";
+import { useServers } from "@/lib/resource-queries";
 import { api } from "@/lib/api";
 import { apiRequest } from "@/lib/api/core";
 import type { App, AppStatus, Deployment, DeploymentStatus, DeploymentLog, DeploymentListResponse, DeploymentSnapshot } from "@/types/api";
 import { CheckCircle, XCircle, Clock, CalendarClock, Shield, Zap, HeartPulse, RefreshCw, GitCompare, Ban } from "lucide-react";
-import { PaginationControls } from "@/components/pagination-controls";
 
 interface DeploymentDiff {
   deployment_id: string;
@@ -97,8 +97,6 @@ function formatUptime(seconds: number | null | undefined): string {
 export default function AppDeploymentsTab() {
   const { app, deploymentsData: parentDeploymentsData } = useOutletContext<OutletContext>();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [showBuildLogsDialog, setShowBuildLogsDialog] = useState(false);
@@ -123,27 +121,24 @@ export default function AppDeploymentsTab() {
   const [diffData, setDiffData] = useState<DeploymentDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
 
-  // Read pagination params from URL
-  const page = parseInt(searchParams.get("page") || "1");
-  const perPage = parseInt(searchParams.get("per_page") || "20");
-
-  // Fetch deployments with pagination - only if page > 1, otherwise use parent data
-  const { data: deploymentsData, isLoading, error: deploymentsError, refetch: refetchDeployments } = useQuery<DeploymentListResponse>({
-    queryKey: ["deployments", app.id, page, perPage],
-    queryFn: () => api.getDeployments(app.id, { page, per_page: perPage }),
-    enabled: page > 1, // Only fetch when on page 2+
+  // Latest 100 deployments (the API maximum); the history table searches,
+  // filters and paginates them client side.
+  const { data, isLoading, error: deploymentsError, refetch: refetchDeployments } = useQuery<DeploymentListResponse>({
+    queryKey: ["deployments", app.id, "history"],
+    queryFn: () => api.getDeployments(app.id, { per_page: 100 }),
+    placeholderData: parentDeploymentsData,
     refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data || data.items.length === 0) return 5000;
-      const hasActive = data.items.some((d: Deployment) => isActiveDeployment(d.status));
-      return hasActive ? 2000 : 30000;
+      const d = query.state.data;
+      if (!d || d.items.length === 0) return 5000;
+      return d.items.some((x: Deployment) => isActiveDeployment(x.status)) ? 2000 : 30000;
     },
     refetchIntervalInBackground: false,
   });
-
-  // Use parent data for page 1, otherwise use fetched data
-  const data = page === 1 ? parentDeploymentsData : deploymentsData;
   const deployments = data?.items ?? [];
+  const { data: servers = [] } = useServers(!!app.server_id);
+  const serverName = app.server_id
+    ? servers.find((srv) => srv.id === app.server_id)?.name ?? "Remote server"
+    : "localhost";
 
   // Fetch build logs for selected deployment
   const { data: buildLogs = [], isLoading: buildLogsLoading } = useQuery<DeploymentLog[]>({
@@ -174,17 +169,6 @@ export default function AppDeploymentsTab() {
       (deployment.status === "replaced" || deployment.status === "stopped") &&
       deployment.image_tag != null
     );
-  };
-
-  // Update URL with new page
-  const goToPage = (newPage: number) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (newPage > 1) {
-      newParams.set("page", String(newPage));
-    } else {
-      newParams.delete("page");
-    }
-    setSearchParams(newParams);
   };
 
   // Handle rollback action
@@ -271,10 +255,7 @@ export default function AppDeploymentsTab() {
     }
   };
 
-  // Pagination info
   const total = data?.total ?? 0;
-  const totalPages = data?.total_pages ?? 1;
-  const currentPage = data?.page ?? page;
 
   // Pending-approval deployments for this app
   const pendingDeployments = deployments.filter(
@@ -383,77 +364,53 @@ export default function AppDeploymentsTab() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              Deployments
-              {hasActiveDeployment && (
-                <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
-                  </span>
-                  In Progress
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium">Deployment history</h2>
+            {hasActiveDeployment && (
+              <span className="flex items-center gap-1.5 text-xs text-blue-600">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
                 </span>
-              )}
-            </CardTitle>
-            {hasActiveDeployment && activeDeployment && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
-                disabled={isSubmitting}
-                onClick={() => handleCancel(activeDeployment.id)}
-              >
-                <Ban className="h-3.5 w-3.5" />
-                Cancel Deployment
-              </Button>
+                In progress
+              </span>
             )}
           </div>
-          {total > 0 && (
-            <CardDescription>
-              Showing {deployments.length} of {total} deployments
-            </CardDescription>
+          {hasActiveDeployment && activeDeployment && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
+              disabled={isSubmitting}
+              onClick={() => handleCancel(activeDeployment.id)}
+            >
+              <Ban className="h-3.5 w-3.5" />
+              Cancel Deployment
+            </Button>
           )}
-        </CardHeader>
-        <CardContent>
-          {page > 1 && deploymentsError && !deploymentsData ? (
-            <QueryError what="deployments" error={deploymentsError} onRetry={() => refetchDeployments()} />
-          ) : isLoading && page > 1 ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-muted rounded animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <>
-              <DeploymentTimeline
-                deployments={deployments}
-                branch={app.branch}
-                onViewLogs={(deploymentId) => {
-                  navigate(`/apps/${app.id}/deployments/${deploymentId}`);
-                }}
-                onRollback={(deploymentId) => {
-                  setSelectedDeploymentId(deploymentId);
-                  setShowRollbackDialog(true);
-                }}
-                onViewDiff={handleViewDiff}
-                canRollback={canRollback}
-              />
-
-              {/* Pagination Controls */}
-              <PaginationControls
-                page={currentPage}
-                totalPages={totalPages}
-                total={total}
-                perPage={perPage}
-                onPageChange={goToPage}
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+        {deploymentsError && !data ? (
+          <QueryError what="deployments" error={deploymentsError} onRetry={() => refetchDeployments()} />
+        ) : (
+          <DeploymentHistoryTable
+            appId={app.id}
+            deployments={deployments}
+            total={total}
+            loading={isLoading && !data}
+            serverName={serverName}
+            canRollback={canRollback}
+            onRollback={(deploymentId) => {
+              setSelectedDeploymentId(deploymentId);
+              setShowRollbackDialog(true);
+            }}
+            onViewDiff={handleViewDiff}
+            onCancel={handleCancel}
+            busy={isSubmitting}
+          />
+        )}
+      </section>
 
       {/* Rollback confirmation dialog */}
       <Dialog

@@ -114,6 +114,23 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         exposed_ports.push(port_key);
     }
 
+    // Extra container ports routed to by individual domains, published on random host
+    // ports. A port already listed above keeps its existing binding.
+    for port in &config.extra_ports {
+        let key = format!("{}/tcp", port);
+        if port_bindings.contains_key(&key) {
+            continue;
+        }
+        port_bindings.insert(
+            key.clone(),
+            Some(vec![bollard::service::PortBinding {
+                host_ip: Some("0.0.0.0".to_string()),
+                host_port: None,
+            }]),
+        );
+        exposed_ports.push(key);
+    }
+
     // Convert extra_hosts to the format Docker expects
     let extra_hosts: Option<Vec<String>> = if config.extra_hosts.is_empty() {
         None
@@ -300,6 +317,10 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
     for (k, v) in &config.custom_labels {
         merged_labels.insert(k.clone(), v.clone());
     }
+    merged_labels.insert(
+        crate::runtime::PRIMARY_PORT_LABEL.to_string(),
+        config.port.to_string(),
+    );
     let labels: Option<HashMap<String, String>> = if merged_labels.is_empty() {
         None
     } else {
@@ -317,6 +338,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         host_config: Some(host_config),
         labels,
         cmd: config.cmd.clone(),
+        healthcheck: config.healthcheck.as_ref().map(docker_health_config),
         ..Default::default()
     };
 
@@ -519,6 +541,52 @@ pub async fn rename_container(
     Ok(())
 }
 
+/// Read `path` from a container as a tar archive, failing past `max_bytes`.
+pub async fn copy_from_container(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    path: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>> {
+    let options = bollard::query_parameters::DownloadFromContainerOptionsBuilder::new()
+        .path(path)
+        .build();
+    let mut stream = runtime
+        .client
+        .download_from_container(container_id, Some(options));
+    let mut buf = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("Failed to read file from container")?;
+        buf.extend_from_slice(&chunk);
+        if buf.len() as u64 > max_bytes {
+            anyhow::bail!("File is larger than the {} byte limit", max_bytes);
+        }
+    }
+    Ok(buf)
+}
+
+/// Extract a tar archive into `dest_dir` inside a container.
+pub async fn copy_to_container(
+    runtime: &DockerRuntime,
+    container_id: &str,
+    dest_dir: &str,
+    tar: Vec<u8>,
+) -> Result<()> {
+    let options = bollard::query_parameters::UploadToContainerOptionsBuilder::new()
+        .path(dest_dir)
+        .build();
+    runtime
+        .client
+        .upload_to_container(
+            container_id,
+            Some(options),
+            bollard::body_full(Bytes::from(tar)),
+        )
+        .await
+        .context("Failed to write file into container")?;
+    Ok(())
+}
+
 pub async fn start(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
     runtime
         .client
@@ -562,6 +630,46 @@ pub async fn remove(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Map a runtime-neutral healthcheck to Docker's `HealthConfig` (durations in ns).
+fn docker_health_config(
+    hc: &crate::runtime::ContainerHealthcheck,
+) -> bollard::models::HealthConfig {
+    const NS: i64 = 1_000_000_000;
+    bollard::models::HealthConfig {
+        test: Some(hc.test.clone()),
+        interval: Some(i64::from(hc.interval_secs) * NS),
+        timeout: Some(i64::from(hc.timeout_secs) * NS),
+        retries: Some(i64::from(hc.retries)),
+        start_period: Some(i64::from(hc.start_period_secs) * NS),
+        ..Default::default()
+    }
+}
+
+/// Published TCP ports as `(container_port, host_port)` pairs.
+fn published_port_map(
+    ports: &HashMap<String, Option<Vec<bollard::service::PortBinding>>>,
+) -> Vec<(u16, u16)> {
+    let mut out: Vec<(u16, u16)> = ports
+        .iter()
+        .filter_map(|(key, bindings)| {
+            let (port, proto) = key.split_once('/').unwrap_or((key.as_str(), "tcp"));
+            if proto != "tcp" {
+                return None;
+            }
+            let container_port: u16 = port.parse().ok()?;
+            let host_port = bindings.as_ref()?.iter().find_map(|b| {
+                b.host_port
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+                    .and_then(|p| p.parse::<u16>().ok())
+            })?;
+            Some((container_port, host_port))
+        })
+        .collect();
+    out.sort_unstable();
+    out
+}
+
 /// The host port a container is published on.
 ///
 /// `NetworkSettings.Ports` lists every port the image EXPOSEs, including ones that are not
@@ -592,11 +700,24 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         .await
         .context("Failed to inspect container")?;
 
-    let host_port = info
+    let ports = info
         .network_settings
         .as_ref()
-        .and_then(|ns| ns.ports.as_ref())
-        .and_then(published_host_port);
+        .and_then(|ns| ns.ports.as_ref());
+    let port_map = ports.map(published_port_map).unwrap_or_default();
+    // Containers created by this version record their primary port in a label; prefer
+    // its binding so extra published ports never take over the route.
+    let primary_port: Option<u16> = info
+        .config
+        .as_ref()
+        .and_then(|c| c.labels.as_ref())
+        .and_then(|l| l.get(crate::runtime::PRIMARY_PORT_LABEL))
+        .and_then(|p| p.parse().ok());
+    let host_port = match primary_port {
+        Some(p) => crate::runtime::primary_host_port(&port_map, Some(p))
+            .or_else(|| ports.and_then(published_host_port)),
+        None => ports.and_then(published_host_port),
+    };
 
     let (running, status) = info
         .state
@@ -622,6 +743,7 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         running,
         host_port,
         restart_count,
+        port_map,
     })
 }
 
@@ -676,6 +798,7 @@ pub async fn list_containers(
             running: is_running,
             host_port: port,
             restart_count: 0,
+            port_map: Vec::new(),
         });
     }
 
@@ -735,6 +858,7 @@ pub async fn list_compose_containers(
             running: is_running,
             host_port: port,
             restart_count: 0,
+            port_map: Vec::new(),
         });
     }
 

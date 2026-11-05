@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ComposeInputTabs } from "@/components/services/compose-input-tabs";
 import type { Service, ServiceStatus } from "@/types/api";
 
 export function meta() {
@@ -178,7 +178,7 @@ export default function ServicesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Services</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
           <p className="text-muted-foreground">
             Deploy and manage Docker Compose services
           </p>
@@ -198,7 +198,7 @@ export default function ServicesPage() {
                 New Service
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
               <form onSubmit={handleCreateSubmit}>
                 <DialogHeader>
                   <DialogTitle>Create Docker Compose Service</DialogTitle>
@@ -233,19 +233,10 @@ export default function ServicesPage() {
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="compose-content">Docker Compose Content</Label>
-                    <Textarea
-                      id="compose-content"
-                      name="compose_content"
-                      placeholder="Paste your docker-compose.yml content..."
-                      className="font-mono text-sm"
-                      rows={12}
-                      value={newComposeContent}
-                      onChange={(e) => setNewComposeContent(e.target.value)}
-                      required
-                    />
-                  </div>
+                  <ComposeInputTabs
+                    value={newComposeContent}
+                    onChange={setNewComposeContent}
+                  />
                 </div>
                 <DialogFooter>
                   <Button

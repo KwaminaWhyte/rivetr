@@ -44,6 +44,7 @@ import type {
   DeployTemplateRequest,
 } from "@/types/api";
 import { TEMPLATE_CATEGORIES } from "@/types/api";
+import { usePersistedSet } from "@/lib/persisted-state";
 
 export function meta() {
   return [
@@ -119,7 +120,7 @@ export default function TemplatesPage() {
   // Track which category sections the user has expanded inline (overrides the
   // PREVIEW_LIMIT cap on the "all" view so users can see every card without
   // leaving the grouped layout). U5: also gives us a target to scrollIntoView.
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = usePersistedSet("templates:expanded-categories");
   const [selectedTemplate, setSelectedTemplate] = useState<ServiceTemplate | null>(null);
   const [deployName, setDeployName] = useState("");
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
@@ -209,7 +210,7 @@ export default function TemplatesPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Service Templates</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Service Templates</h1>
           <p className="text-muted-foreground">
             Deploy pre-configured services with one click
           </p>

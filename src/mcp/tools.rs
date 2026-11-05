@@ -13,11 +13,12 @@ pub fn get_tools() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "list_apps".to_string(),
-            description: "List all deployed applications".to_string(),
+            description: "List all deployed applications with their tags".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "project_id": {"type": "string", "description": "Filter by project"}
+                    "project_id": {"type": "string", "description": "Filter by project"},
+                    "tag": {"type": "string", "description": "Only apps with this tag name"}
                 }
             }),
         },
@@ -78,24 +79,33 @@ pub fn get_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "list_services".to_string(),
-            description: "List all deployed services (Docker Compose / template services)"
-                .to_string(),
+            description:
+                "List all deployed services (Docker Compose / template services) with their tags"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "project_id": {"type": "string", "description": "Filter by project"}
+                    "project_id": {"type": "string", "description": "Filter by project"},
+                    "tag": {"type": "string", "description": "Only services with this tag name"}
                 }
             }),
         },
         McpTool {
             name: "list_databases".to_string(),
-            description: "List all managed databases".to_string(),
+            description: "List all managed databases with their tags".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "project_id": {"type": "string", "description": "Filter by project"}
+                    "project_id": {"type": "string", "description": "Filter by project"},
+                    "tag": {"type": "string", "description": "Only databases with this tag name"}
                 }
             }),
+        },
+        McpTool {
+            name: "list_tags".to_string(),
+            description: "List resource tags with how many apps, databases and services carry each"
+                .to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
         },
         McpTool {
             name: "list_projects".to_string(),

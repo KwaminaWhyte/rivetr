@@ -3,19 +3,17 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Link,
   Outlet,
-  useLocation,
   useParams,
   useNavigate,
 } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
-import { cn, getPrimaryDomain } from "@/lib/utils";
-import { APP_TAB_GROUPS, resolveActiveAppTab } from "@/lib/app-tabs";
+import { getPrimaryDomain } from "@/lib/utils";
+import { ResourceSection } from "@/components/shell/resource-section";
 import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
@@ -54,6 +52,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ZipUploadZone } from "@/components/zip-upload-zone";
+import { HeaderSkeleton, PageHeader, ResourceStatus, SectionSkeleton } from "@/components/page";
+import { TopBarPortal } from "@/components/shell/top-bar-slot";
 import type { BuildDetectionResult } from "@/types/api";
 
 export function meta() {
@@ -61,39 +61,6 @@ export function meta() {
     { title: "Application - Rivetr" },
     { name: "description", content: "Application overview and management" },
   ];
-}
-
-// Running status badge component
-function RunningStatusBadge({ status }: { status?: AppStatus }) {
-  if (!status) return null;
-
-  if (status.running) {
-    return (
-      <Badge className="bg-green-500 text-white gap-1">
-        <Circle className="h-2 w-2 fill-current" />
-        Running
-      </Badge>
-    );
-  }
-
-  if (status.status === "stopped") {
-    return (
-      <Badge variant="secondary" className="gap-1">
-        <Circle className="h-2 w-2" />
-        Stopped
-      </Badge>
-    );
-  }
-
-  if (status.status === "not_deployed") {
-    return (
-      <Badge variant="outline" className="gap-1 text-muted-foreground">
-        Not Deployed
-      </Badge>
-    );
-  }
-
-  return null;
 }
 
 const ACTIVE_STATUSES: DeploymentStatus[] = [
@@ -110,7 +77,6 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
 
 export default function AppDetailLayout() {
   const { id } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { show: showDeployPanel } = useDeployPanel();
@@ -392,19 +358,12 @@ export default function AppDetailLayout() {
 
   // Determine active tab from path
   const basePath = `/apps/${id}`;
-  const currentPath = location.pathname;
-  const { group: activeGroup, item: activeItem } = resolveActiveAppTab(
-    location.pathname,
-    basePath
-  );
 
   if (appLoading) {
     return (
       <div className="space-y-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-muted rounded w-1/3 mb-2"></div>
-          <div className="h-4 bg-muted rounded w-1/2"></div>
-        </div>
+        <HeaderSkeleton />
+        <SectionSkeleton rows={4} />
       </div>
     );
   }
@@ -420,7 +379,7 @@ export default function AppDetailLayout() {
   if (!app) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Application Not Found</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Application Not Found</h1>
         <p className="text-muted-foreground">
           The application you're looking for doesn't exist or has been deleted.
         </p>
@@ -430,148 +389,148 @@ export default function AppDetailLayout() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{app.name}</h1>
-            <EnvironmentBadge environment={app.environment} />
-            <RunningStatusBadge status={appStatus} />
-            {isRestarting && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-amber-600">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+      {/* Header: title in the page, status pill and actions in the top bar (inline on small screens) */}
+      {(() => {
+        const maintenance = (app as App & { maintenance_mode?: boolean }).maintenance_mode ?? false;
+        const parsedDomains: Array<{ domain: string }> = (() => {
+          try { return app.domains ? JSON.parse(app.domains) : []; } catch { return []; }
+        })();
+        const allLinks: string[] = [];
+        for (const d of parsedDomains) allLinks.push(d.domain);
+        if (app.auto_subdomain && !allLinks.includes(app.auto_subdomain)) allLinks.push(app.auto_subdomain);
+        if (app.domain && !allLinks.includes(app.domain)) allLinks.push(app.domain);
+        const primaryDomain = getPrimaryDomain(app);
+        const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+        const openUrl = appStatus?.running
+          ? primaryDomain
+            ? `https://${primaryDomain}`
+            : appStatus.host_port
+              ? `http://${host}:${appStatus.host_port}`
+              : null
+          : null;
+
+        const statusKey = isRestarting
+          ? "restarting"
+          : hasActiveDeployment
+            ? "deploying"
+            : appStatus?.running
+              ? "running"
+              : appStatus?.status ?? "unknown";
+        const statusText =
+          statusKey === "running"
+            ? app.healthcheck
+              ? "Running"
+              : "Running (no healthcheck)"
+            : statusKey === "not_deployed"
+              ? "Not deployed"
+              : statusKey === "no_container"
+                ? "No container"
+                : undefined;
+
+        return (
+          <>
+            <PageHeader
+              title={app.name}
+              description={
+                <span className="break-all">
+                  {app.docker_image
+                    ? `${app.docker_image}${app.docker_image_tag ? `:${app.docker_image_tag}` : ""}`
+                    : app.git_url || "Uploaded source"}
+                  {app.branch && !app.docker_image ? ` · ${app.branch}` : ""}
                 </span>
-                Restarting
-              </span>
-            )}
-            {!isRestarting && hasActiveDeployment && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-blue-600">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
-                </span>
-                Deploying
-              </span>
-            )}
-          </div>
-          <p className="break-all text-muted-foreground">{app.git_url}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {/* Start/Stop/Restart buttons */}
-          {appStatus?.status === "running" ? (
-            <>
-              <Button
-                variant="outline"
-                disabled={isSubmitting || isRestarting || hasActiveDeployment}
-                className="gap-2"
-                onClick={handleRestart}
-              >
-                <RotateCw className={`h-4 w-4 ${isRestarting ? "animate-spin" : ""}`} />
-                {isRestarting ? "Restarting..." : "Restart"}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={isSubmitting || hasActiveDeployment}
-                className="gap-2"
-                onClick={handleStop}
-              >
-                <Square className="h-4 w-4" />
-                Stop
-              </Button>
-            </>
-          ) : appStatus?.status === "stopped" ? (
-            <Button
-              variant="outline"
-              disabled={isSubmitting || hasActiveDeployment}
-              className="gap-2"
-              onClick={handleStart}
-            >
-              <Play className="h-4 w-4" />
-              Start
-            </Button>
-          ) : null}
-          {/* Deploy button with dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                disabled={isSubmitting || hasActiveDeployment}
-                className="gap-2"
-              >
-                <Rocket className="h-4 w-4" />
-                {isSubmitting ? "Deploying..." : "Deploy"}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuItem onClick={() => handleDeploy()}>
-                <Rocket className="h-4 w-4 mr-2" />
-                Redeploy (latest commit)
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  // Prevent the dropdown's auto-focus restore from racing
-                  // with the dialog mount; defer the open one tick so the
-                  // menu closes cleanly first.
-                  e.preventDefault();
-                  setTimeout(() => setShowDeployOptionsDialog(true), 0);
-                }}
-              >
-                <GitCommitHorizontal className="h-4 w-4 mr-2" />
-                Deploy specific commit/tag
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setTimeout(() => setShowUploadDialog(true), 0);
-                }}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Deploy from ZIP file
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {/* Links dropdown, shows all app URLs */}
-          {(() => {
-            const parsedDomains: Array<{ domain: string; primary: boolean; redirect_www: boolean }> = (() => {
-              try { return app.domains ? JSON.parse(app.domains) : []; } catch { return []; }
-            })();
-            const allLinks: string[] = [];
-            for (const d of parsedDomains) {
-              allLinks.push(d.domain);
-            }
-            if (app.auto_subdomain && !allLinks.includes(app.auto_subdomain)) {
-              allLinks.push(app.auto_subdomain);
-            }
-            if (app.domain && !allLinks.includes(app.domain)) {
-              allLinks.push(app.domain);
-            }
-            return (
+              }
+              meta={
+                <>
+                  <EnvironmentBadge environment={app.environment} />
+                  {maintenance && (
+                    <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600">
+                      <WrenchIcon className="h-3 w-3" />
+                      Maintenance
+                    </Badge>
+                  )}
+                </>
+              }
+            />
+
+            <TopBarPortal slot="status" inlineClassName="-mt-2 flex lg:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Status and power actions"
+                >
+                  <ResourceStatus status={statusKey} label={statusText} />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  {appStatus?.status === "running" ? (
+                    <>
+                      <DropdownMenuItem
+                        disabled={isSubmitting || isRestarting || hasActiveDeployment}
+                        onClick={handleRestart}
+                      >
+                        <RotateCw className={`h-4 w-4 ${isRestarting ? "animate-spin" : ""}`} />
+                        {isRestarting ? "Restarting..." : "Restart"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={isSubmitting || hasActiveDeployment}
+                        onClick={handleStop}
+                      >
+                        <Square className="h-4 w-4" />
+                        Stop
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem
+                      disabled={isSubmitting || hasActiveDeployment || appStatus?.status !== "stopped"}
+                      onClick={handleStart}
+                    >
+                      <Play className="h-4 w-4" />
+                      Start
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={`${basePath}/logs`}>
+                      <Circle className="h-4 w-4" />
+                      Runtime logs
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TopBarPortal>
+
+            <TopBarPortal slot="actions" inlineClassName="-mt-2 flex flex-wrap items-center gap-2 lg:hidden">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Link2 className="h-4 w-4" />
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <Link2 className="h-3.5 w-3.5" />
                     Links
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-72">
-                  {allLinks.length === 0 ? (
+                  {openUrl && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a href={openUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-4 w-4 shrink-0" />
+                          Open app
+                          {!primaryDomain && appStatus?.host_port && (
+                            <span className="ml-auto text-xs text-muted-foreground">port {appStatus.host_port}</span>
+                          )}
+                        </a>
+                      </DropdownMenuItem>
+                      {allLinks.length > 0 && <DropdownMenuSeparator />}
+                    </>
+                  )}
+                  {allLinks.length === 0 && !openUrl ? (
                     <DropdownMenuItem disabled>
                       <span className="text-muted-foreground">No domains configured</span>
                     </DropdownMenuItem>
                   ) : (
                     allLinks.map((link) => (
                       <DropdownMenuItem key={link} asChild>
-                        <a
-                          href={`https://${link}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2"
-                        >
+                        <a href={`https://${link}`} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="h-4 w-4 shrink-0" />
                           <span className="truncate font-mono text-sm">{link}</span>
                         </a>
@@ -580,135 +539,85 @@ export default function AppDetailLayout() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            );
-          })()}
 
-          {/* Open App button - prefer domains JSON > domain > auto_subdomain > host_port */}
-          {appStatus?.running && (() => {
-            const primaryDomain = getPrimaryDomain(app);
-            if (primaryDomain) {
-              return (
-                <Button variant="outline" asChild className="gap-2">
-                  <a href={`https://${primaryDomain}`} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    Open App
-                  </a>
-                </Button>
-              );
-            }
-            if (appStatus.host_port) {
-              const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-              return (
-                <Button variant="outline" asChild className="gap-2">
-                  <a href={`http://${host}:${appStatus.host_port}`} target="_blank" rel="noopener noreferrer" title="No domain configured, accessing via host port">
-                    <ExternalLink className="h-4 w-4" />
-                    Open App
-                    <span className="text-xs text-muted-foreground ml-1">
-                      (port {appStatus.host_port})
-                    </span>
-                  </a>
-                </Button>
-              );
-            }
-            return null;
-          })()}
-          {/* More actions dropdown: Clone + Maintenance */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label="More app actions" variant="outline" size="icon">
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  setCloneName(`${app.name}-copy`);
-                  setShowCloneDialog(true);
-                }}
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                Clone App
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleToggleMaintenance}
-                disabled={isMaintenanceLoading}
-              >
-                <WrenchIcon className="h-4 w-4 mr-2" />
-                {(app as App & { maintenance_mode?: boolean }).maintenance_mode
-                  ? "Disable Maintenance"
-                  : "Enable Maintenance"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {/* Maintenance mode badge */}
-          {(app as App & { maintenance_mode?: boolean }).maintenance_mode && (
-            <Badge variant="outline" className="gap-1 border-yellow-500 text-yellow-600">
-              <WrenchIcon className="h-3 w-3" />
-              Maintenance
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs Navigation */}
-      <div className="space-y-2">
-        <Tabs value={activeGroup.id} className="w-full overflow-x-auto">
-          <TabsList className="w-full justify-start">
-            {APP_TAB_GROUPS.map((group) => (
-              <TabsTrigger key={group.id} value={group.id} asChild>
-                <Link
-                  to={`${basePath}${group.items[0].path}`}
-                  className="gap-1.5"
+              {/* Redeploy split button */}
+              <div className="inline-flex items-center rounded-lg shadow-xs" data-slot="button-group">
+                <Button
+                  size="sm"
+                  disabled={isSubmitting || hasActiveDeployment}
+                  className="gap-1.5 rounded-r-none"
+                  onClick={() => handleDeploy()}
                 >
-                  {group.label}
-                  {group.id === "deployments" && pendingApprovalCount > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="h-4 min-w-4 px-1 text-[10px] rounded-full"
+                  <Rocket className="h-3.5 w-3.5" />
+                  {isSubmitting ? "Deploying..." : hasActiveDeployment ? "Deploying" : appStatus?.status === "not_deployed" ? "Deploy" : "Redeploy"}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      aria-label="More deploy actions"
+                      className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
                     >
-                      {pendingApprovalCount}
-                    </Badge>
-                  )}
-                </Link>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    <DropdownMenuItem
+                      disabled={isSubmitting || hasActiveDeployment}
+                      onClick={() => handleDeploy()}
+                    >
+                      <Rocket className="h-4 w-4" />
+                      Redeploy (latest commit)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={isSubmitting || hasActiveDeployment}
+                      onSelect={(e) => {
+                        // Defer so the menu closes before the dialog mounts.
+                        e.preventDefault();
+                        setTimeout(() => setShowDeployOptionsDialog(true), 0);
+                      }}
+                    >
+                      <GitCommitHorizontal className="h-4 w-4" />
+                      Deploy specific commit/tag
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={isSubmitting || hasActiveDeployment}
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setTimeout(() => setShowUploadDialog(true), 0);
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Deploy from ZIP file
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setCloneName(`${app.name}-copy`);
+                        setShowCloneDialog(true);
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Clone app
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleToggleMaintenance} disabled={isMaintenanceLoading}>
+                      <WrenchIcon className="h-4 w-4" />
+                      {maintenance ? "Disable maintenance" : "Enable maintenance"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </TopBarPortal>
+          </>
+        );
+      })()}
 
-        {activeGroup.items.length > 1 && (
-          <nav
-            aria-label={`${activeGroup.label} sections`}
-            className="flex items-center gap-1 overflow-x-auto"
-          >
-            {activeGroup.items.map((item) => (
-              <Link
-                key={item.id}
-                to={`${basePath}${item.path}`}
-                aria-current={item.id === activeItem.id ? "page" : undefined}
-                className={cn(
-                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm transition-colors",
-                  item.id === activeItem.id
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                )}
-              >
-                {item.label}
-                {item.id === "deployments" && pendingApprovalCount > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="h-4 min-w-4 px-1 text-[10px] rounded-full"
-                  >
-                    {pendingApprovalCount}
-                  </Badge>
-                )}
-              </Link>
-            ))}
-          </nav>
-        )}
-      </div>
+      <ResourceSection
+        match={{ kind: "app", id: id!, base: basePath }}
+        badges={{ deployments: pendingApprovalCount }}
+      />
 
-      {/* Tab Content via Outlet */}
+      {/* Section content */}
       <Outlet context={{ app, deployments, deploymentsData }} />
 
       {/* Upload Deploy Dialog */}

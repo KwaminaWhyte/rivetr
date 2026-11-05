@@ -1,116 +1,95 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, MessageCircle, Search } from "lucide-react";
+import { Link, useLocation } from "react-router";
+import { Search } from "lucide-react";
 
 import { NavMain } from "@/components/nav-main";
-import { NavUser } from "@/components/nav-user";
-import { TeamSwitcher } from "@/components/team-switcher";
+import { NavResource } from "@/components/nav-resource";
+import { NavUser, useVersionInfo } from "@/components/nav-user";
+import { RivetrLogo } from "@/components/rivetr-logo";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
   SidebarMenu,
-  SidebarMenuItem,
   SidebarMenuButton,
-  useSidebar,
+  SidebarMenuItem,
+  SidebarRail,
 } from "@/components/ui/sidebar";
-import { useTeamContext } from "@/lib/team-context";
-import { api } from "@/lib/api";
-import { primaryNav } from "@/lib/nav";
-import type { UpdateStatus } from "@/types/api";
+import { matchResource } from "@/lib/resource-nav";
+import { useWhiteLabel } from "@/lib/white-label-context";
+import { useTheme } from "@/lib/theme";
 
-function SidebarFooterInfo() {
-  const { state } = useSidebar();
-  const isCollapsed = state === "collapsed";
-
-  const { data: versionInfo } = useQuery<UpdateStatus | null>({
-    queryKey: ["version-info"],
-    queryFn: () => api.getVersionInfo(),
-    staleTime: 10 * 60 * 1000,
-    retry: false,
-  });
-
+function Brand() {
+  const { config } = useWhiteLabel();
+  const { data: versionInfo } = useVersionInfo();
   const version = versionInfo?.current_version;
-
-  if (isCollapsed) return null;
-
   return (
-    <div className="px-2 py-1">
-      <SidebarMenu>
-        {version && (
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground">
-              <a
-                href={`https://github.com/KwaminaWhyte/rivetr/releases/tag/${version}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`Rivetr ${version}: view release notes`}
-              >
-                <span className="font-mono">{version}</span>
-                <ExternalLink className="ml-auto h-3 w-3 opacity-50" />
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        )}
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground">
-            <a
-              href="https://github.com/KwaminaWhyte/rivetr/issues/new"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Open a GitHub issue or feature request"
-            >
-              <MessageCircle className="h-3 w-3" />
-              <span>Feedback</span>
-              <ExternalLink className="ml-auto h-3 w-3 opacity-50" />
-            </a>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </div>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild size="lg" tooltip={config?.app_name || "Rivetr"} className="h-11 gap-2.5 px-1.5 hover:bg-transparent">
+          <Link to="/">
+            <RivetrLogo decorative className="size-7 rounded-md" />
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate text-[15px] font-semibold tracking-tight">
+                {config?.app_name || "Rivetr"}
+              </span>
+              {version && (
+                <span className="truncate font-mono text-[10px] text-muted-foreground">{version}</span>
+              )}
+            </span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 
+function SearchButton({ onOpenSearch }: { onOpenSearch: () => void }) {
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip="Search (Cmd+K)"
+          onClick={onOpenSearch}
+          className="h-8 border bg-field text-muted-foreground shadow-none hover:text-foreground group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent"
+        >
+          <Search />
+          <span>Search</span>
+          <kbd className="ml-auto rounded border bg-card px-1.5 font-mono text-[10px] leading-4 text-muted-foreground">
+            {"⌘"}K
+          </kbd>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+/**
+ * Dashboard sidebar. Shows the grouped global nav, or a contextual section
+ * list when inside an app, database, service or server. Becomes a sheet on
+ * mobile (handled by the Sidebar primitive).
+ */
 export function AppSidebar({
   onOpenSearch,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { onOpenSearch?: () => void }) {
-  const { teams, currentTeamId, setCurrentTeamId } = useTeamContext();
+  const { pathname } = useLocation();
+  const resource = matchResource(pathname);
+  const { settings } = useTheme();
+  const variant =
+    settings.sidebar === "inset" ? "inset" : settings.sidebar === "floating" ? "floating" : "sidebar";
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <TeamSwitcher
-          teams={teams}
-          currentTeamId={currentTeamId}
-          onTeamChange={setCurrentTeamId}
-        />
-        {onOpenSearch && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                size="sm"
-                tooltip="Search (Cmd+K or Ctrl+K)"
-                onClick={onOpenSearch}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Search />
-                <span>Search</span>
-                <kbd className="ml-auto rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
-                  {"\u2318"}K
-                </kbd>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
+    <Sidebar collapsible="icon" variant={variant} {...props}>
+      <SidebarHeader className="gap-2 pb-1">
+        <Brand />
+        {onOpenSearch && <SearchButton onOpenSearch={onOpenSearch} />}
       </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={primaryNav} />
+      <SidebarContent className="gap-0">
+        {resource ? <NavResource match={resource} /> : <NavMain />}
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarFooterInfo />
+      <SidebarFooter className="border-t">
         <NavUser />
       </SidebarFooter>
       <SidebarRail />

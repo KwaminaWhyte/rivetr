@@ -358,11 +358,8 @@ pub async fn forgot_password(
     .await;
 
     // Deliver the reset link via email (best-effort, never blocks the response).
-    // Uses toml SMTP if configured, otherwise an enabled Sendry channel.
-    let email_service = crate::notifications::SystemEmailService::with_db(
-        state.config.email.clone(),
-        state.db.clone(),
-    );
+    // Uses Settings > Email, then toml SMTP, then an enabled Sendry channel.
+    let email_service = crate::notifications::SystemEmailService::from_state(&state);
     if email_service.is_available().await {
         let base_url = state.config.dashboard_base_url();
         let reset_url = format!("{}/reset-password?token={}", base_url, token);
@@ -681,6 +678,9 @@ pub async fn auth_middleware(
 
     // Only compare if lengths match (constant-time check)
     if admin_token.len() == provided_token.len() && admin_token.ct_eq(provided_token).into() {
+        if let Some(denied) = api_access_denied(&state, &request) {
+            return Ok(denied);
+        }
         return Ok(next.run(request).await);
     }
 
@@ -697,6 +697,9 @@ pub async fn auth_middleware(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if api_token_valid.is_some() {
+            if let Some(denied) = api_access_denied(&state, &request) {
+                return Ok(denied);
+            }
             // Update last_used_at asynchronously (fire-and-forget)
             let db = state.db.clone();
             let hash = token_hash.clone();
@@ -728,6 +731,207 @@ pub async fn auth_middleware(
         Some(_) => Ok(next.run(request).await),
         None => Err(StatusCode::UNAUTHORIZED),
     }
+}
+
+/// Settings > Advanced API access policy for token-authenticated requests
+/// (API tokens and the admin token). Dashboard sessions never reach this, so
+/// the policy can not lock an admin out of the dashboard. Returns the 403
+/// response to send when the request is refused.
+fn api_access_denied(state: &AppState, request: &Request<Body>) -> Option<Response> {
+    use crate::settings::advanced::{check_api_access, current, ApiAccessDenied};
+
+    let cached = current();
+    let peer = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|axum::extract::ConnectInfo(addr)| *addr);
+    let client_ip = peer.map(|_| state.rate_limiter.client_ip(request.headers(), peer));
+
+    let reason = check_api_access(&cached, client_ip).err()?;
+    let message = match reason {
+        ApiAccessDenied::Disabled => "API access is disabled on this instance",
+        ApiAccessDenied::IpNotAllowed => "API access is not allowed from this IP address",
+    };
+    tracing::warn!(ip = ?client_ip, reason = ?reason, "Refused token-authenticated API request");
+    Some(
+        (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": { "code": "api_access_denied", "message": message }
+            })),
+        )
+            .into_response(),
+    )
+}
+
+/// Public sign up options shown on the login page.
+#[derive(Serialize)]
+pub struct RegistrationStatusResponse {
+    /// Whether a new account can be created with email + password.
+    pub password_registration: bool,
+    /// Whether first-time OAuth / SSO logins create accounts.
+    pub external_registration: bool,
+}
+
+/// GET /api/auth/registration
+pub async fn registration_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<RegistrationStatusResponse> {
+    use crate::settings::advanced::{registration_allowed_now, SignupMethod};
+    Json(RegistrationStatusResponse {
+        password_registration: registration_allowed_now(&state.db, SignupMethod::Password).await,
+        external_registration: registration_allowed_now(&state.db, SignupMethod::External).await,
+    })
+}
+
+/// Request for self-service sign up
+#[derive(Deserialize)]
+pub struct RegisterRequest {
+    pub email: String,
+    pub password: String,
+    pub name: String,
+}
+
+/// POST /api/auth/register
+///
+/// Creates a member account with its own Personal team and signs it in.
+/// Only allowed while Settings > Advanced > Registration is enabled (and, when
+/// an OAuth/SSO login provider is on, "Allow password registration").
+pub async fn register(
+    State(state): State<Arc<AppState>>,
+    client_ip: ClientIp,
+    Json(request): Json<RegisterRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    use crate::settings::advanced::{registration_allowed_now, SignupMethod};
+
+    let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if user_count.0 == 0 {
+        // The first account is the admin and is created through /setup.
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Complete the initial setup first".to_string(),
+        ));
+    }
+    if !registration_allowed_now(&state.db, SignupMethod::Password).await {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Registration is disabled on this instance. Ask an admin for an invitation."
+                .to_string(),
+        ));
+    }
+
+    let email = request.email.trim().to_lowercase();
+    let name = request.name.trim().to_string();
+    if email.is_empty() || !email.contains('@') {
+        return Err((StatusCode::BAD_REQUEST, "Invalid email address".to_string()));
+    }
+    if name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Name is required".to_string()));
+    }
+    if let Some(error) = validate_password_strength(&request.password) {
+        return Err((StatusCode::BAD_REQUEST, error));
+    }
+
+    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE lower(email) = ?")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if exists.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            "An account with this email already exists".to_string(),
+        ));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let password_hash = hash_password(&request.password).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to hash password: {}", e),
+        )
+    })?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let team_id = uuid::Uuid::new_v4().to_string();
+    let team_slug = format!("personal-{}", &team_id[..8]);
+
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query("INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&email)
+        .bind(&password_hash)
+        .bind(&name)
+        .bind("member")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO teams (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&team_id)
+    .bind("Personal")
+    .bind(&team_slug)
+    .bind(&now)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    sqlx::query(
+        "INSERT INTO team_members (id, team_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&team_id)
+    .bind(&id)
+    .bind("owner")
+    .bind(&now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let token = generate_token();
+    let expires_at = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+    sqlx::query("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&id)
+        .bind(hash_token(&token))
+        .bind(&expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    audit_log(
+        &state,
+        "auth.register",
+        resource_types::USER,
+        Some(&id),
+        Some(&email),
+        Some(&id),
+        client_ip.as_deref(),
+        None,
+    )
+    .await;
+
+    Ok(Json(LoginResponse {
+        token,
+        user: UserResponse {
+            id,
+            email,
+            name,
+            role: "member".to_string(),
+            totp_enabled: false,
+        },
+        requires_2fa: None,
+    }))
 }
 
 /// Check if initial setup is needed (no users exist)

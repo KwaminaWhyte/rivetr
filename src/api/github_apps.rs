@@ -494,9 +494,9 @@ pub async fn installation_callback(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Redirect to settings page with success
+    // Back to the dashboard Git sources page with success
     Ok(Redirect::to(&format!(
-        "/git-providers?installed=true&installation_id={}",
+        "/integrations/git?installed=true&installation_id={}",
         params.installation_id
     )))
 }

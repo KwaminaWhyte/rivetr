@@ -1,5 +1,6 @@
 // Utility modules
 
+pub mod privileged;
 pub mod ssh;
 pub mod supervise;
 

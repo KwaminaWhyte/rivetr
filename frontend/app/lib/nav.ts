@@ -1,37 +1,24 @@
 /**
- * Single source of truth for dashboard navigation.
- * Consumed by the sidebar, the section tab strips, the settings sub-nav and
- * the Cmd+K command palette so they cannot drift apart.
+ * Single source of truth for the dashboard's page areas (everything that is
+ * not inside an app, database, service or server; those live in
+ * lib/resource-nav.ts). Consumed by the sidebar (lib/sidebar-nav.ts), the
+ * area sub-navs and mobile tab strips, the breadcrumbs
+ * (lib/default-breadcrumbs.ts) and the Cmd+K command palette, so a page added
+ * here shows up everywhere with the same title.
+ *
+ * Target structure: docs/planning/ui-information-architecture.md.
  */
-
-import type { LucideIcon } from "lucide-react";
-import {
-  LayoutDashboard,
-  FolderKanban,
-  LayoutTemplate,
-  BarChart3,
-  Server,
-  Settings,
-} from "lucide-react";
 
 export interface NavLink {
   title: string;
   url: string;
   /**
    * Instance-admin only. Set only where the backend rejects non-admins
-   * (role != "admin" / not privileged), e.g. SSO provider management and
-   * white label updates. Hidden from everyone else.
+   * (role != "admin" / not privileged). Hidden from everyone else.
    */
   adminOnly?: boolean;
-}
-
-export interface PrimaryNavItem {
-  title: string;
-  /** Where the sidebar entry links to */
-  url: string;
-  icon: LucideIcon;
-  /** Path prefixes for which this entry shows as active */
-  match: string[];
+  /** The area's landing page: its breadcrumb is just the area title. */
+  index?: boolean;
 }
 
 export interface NavGroup {
@@ -39,99 +26,155 @@ export interface NavGroup {
   items: NavLink[];
 }
 
-export const monitoringTabs: NavLink[] = [
-  { title: "Monitoring", url: "/monitoring" },
-  { title: "Costs", url: "/costs" },
-];
-
-export const infrastructureTabs: NavLink[] = [
-  { title: "Servers", url: "/servers" },
-  { title: "Build Servers", url: "/build-servers" },
-  { title: "SSH Keys", url: "/ssh-keys" },
-  { title: "Swarm", url: "/swarm" },
-  { title: "Tunnels", url: "/tunnels" },
-];
-
-export const settingsGroups: NavGroup[] = [
-  {
-    title: "Instance",
-    items: [
-      { title: "General", url: "/settings" },
-      { title: "Preferences", url: "/settings/preferences" },
-      { title: "White Label", url: "/settings/white-label", adminOnly: true },
-      { title: "Auto Updates", url: "/settings/auto-update" },
-    ],
-  },
-  {
-    title: "Team and access",
-    items: [
-      { title: "Teams", url: "/teams" },
-      { title: "Authentication", url: "/settings/oauth" },
-      { title: "SSO / OIDC", url: "/settings/sso", adminOnly: true },
-      { title: "Security", url: "/settings/security" },
-      { title: "API Tokens", url: "/tokens" },
-    ],
-  },
-  {
-    title: "Integrations",
-    items: [
-      { title: "Git Providers", url: "/git-providers" },
-      { title: "Webhooks", url: "/webhooks" },
-      { title: "Webhook Events", url: "/webhook-events" },
-      { title: "Notifications", url: "/settings/notifications" },
-      { title: "Alert Defaults", url: "/settings/alert-defaults" },
-      { title: "S3 Storage", url: "/settings/s3" },
-      { title: "Destinations", url: "/settings/destinations" },
-      { title: "CA Certificates", url: "/settings/ca-certificates" },
-    ],
-  },
-  {
-    title: "Data and logs",
-    items: [
-      { title: "Backup and Restore", url: "/settings/backup" },
-      { title: "Audit Log", url: "/settings/audit" },
-      { title: "Proxy Logs", url: "/settings/proxy-logs" },
-    ],
-  },
-];
-
-/** Settings groups with admin-only links removed for non-admins. Empty groups are dropped. */
-export function visibleSettingsGroups(isAdmin: boolean): NavGroup[] {
-  if (isAdmin) return settingsGroups;
-  return settingsGroups
-    .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly) }))
-    .filter((g) => g.items.length > 0);
+export interface NavArea {
+  id: string;
+  title: string;
+  /** Where the area title links to. */
+  url: string;
+  /** Path prefixes that belong to this area. */
+  prefixes: string[];
+  groups: NavGroup[];
+  /**
+   * "subnav": a grouped left sub-nav beside the page (areas the sidebar does
+   * not list item by item). "tabs": a tab strip on narrow screens only,
+   * because the sidebar submenu covers the same links from md up.
+   */
+  layout: "subnav" | "tabs";
 }
 
-const settingsUrls = settingsGroups.flatMap((g) => g.items.map((i) => i.url));
+const single = (items: NavLink[]): NavGroup[] => [{ title: "", items }];
 
-export const primaryNav: PrimaryNavItem[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, match: ["/"] },
+export const navAreas: NavArea[] = [
   {
-    title: "Projects",
-    url: "/projects",
-    icon: FolderKanban,
-    match: ["/projects", "/apps", "/databases", "/services"],
-  },
-  { title: "Templates", url: "/templates", icon: LayoutTemplate, match: ["/templates"] },
-  {
+    id: "monitoring",
     title: "Monitoring",
     url: "/monitoring",
-    icon: BarChart3,
-    match: monitoringTabs.map((t) => t.url),
+    prefixes: ["/monitoring"],
+    layout: "tabs",
+    groups: single([
+      { title: "Overview", url: "/monitoring", index: true },
+      { title: "Costs", url: "/monitoring/costs" },
+      { title: "Proxy logs", url: "/monitoring/proxy-logs" },
+      { title: "Analytics", url: "/monitoring/analytics" },
+    ]),
   },
   {
-    title: "Infrastructure",
+    id: "servers",
+    title: "Servers",
     url: "/servers",
-    icon: Server,
-    match: infrastructureTabs.map((t) => t.url),
+    prefixes: ["/servers/build", "/servers/swarm"],
+    layout: "tabs",
+    groups: single([
+      { title: "Servers", url: "/servers", index: true },
+      { title: "Build servers", url: "/servers/build" },
+      { title: "Swarm", url: "/servers/swarm" },
+    ]),
   },
   {
+    id: "integrations",
+    title: "Integrations",
+    url: "/integrations/git",
+    prefixes: ["/integrations"],
+    layout: "tabs",
+    groups: single([
+      { title: "Git sources", url: "/integrations/git" },
+      { title: "S3 storage", url: "/integrations/s3" },
+      { title: "Destinations", url: "/integrations/destinations" },
+      { title: "Tunnels", url: "/integrations/tunnels" },
+      { title: "Webhooks", url: "/integrations/webhooks" },
+      { title: "Webhook events", url: "/integrations/webhook-events" },
+    ]),
+  },
+  {
+    id: "team",
+    title: "Team",
+    url: "/team",
+    prefixes: ["/team", "/teams"],
+    layout: "tabs",
+    groups: single([
+      { title: "General", url: "/team", index: true },
+      { title: "Members", url: "/team/members" },
+      { title: "Variables", url: "/team/variables" },
+      { title: "Audit log", url: "/team/audit" },
+      { title: "All teams", url: "/teams" },
+    ]),
+  },
+  {
+    id: "notifications",
+    title: "Notifications",
+    url: "/notifications",
+    prefixes: ["/notifications"],
+    layout: "tabs",
+    groups: single([
+      { title: "Channels", url: "/notifications", index: true },
+      { title: "Alert defaults", url: "/notifications/alerts" },
+    ]),
+  },
+  {
+    id: "keys",
+    title: "Keys and tokens",
+    url: "/keys/ssh",
+    prefixes: ["/keys"],
+    layout: "tabs",
+    groups: single([
+      { title: "SSH keys", url: "/keys/ssh" },
+      { title: "API tokens", url: "/keys/api-tokens" },
+      { title: "CA certificates", url: "/keys/ca-certificates" },
+    ]),
+  },
+  {
+    id: "account",
+    title: "Account",
+    url: "/account",
+    prefixes: ["/account"],
+    layout: "subnav",
+    groups: single([
+      { title: "Profile", url: "/account", index: true },
+      { title: "Security", url: "/account/security" },
+      { title: "Appearance", url: "/account/appearance" },
+      { title: "Preferences", url: "/account/preferences" },
+    ]),
+  },
+  {
+    id: "settings",
     title: "Settings",
     url: "/settings",
-    icon: Settings,
-    match: settingsUrls,
+    prefixes: ["/settings"],
+    layout: "subnav",
+    groups: [
+      {
+        title: "Instance",
+        items: [
+          { title: "General", url: "/settings", index: true },
+          { title: "Branding", url: "/settings/branding", adminOnly: true },
+          { title: "Updates", url: "/settings/updates", adminOnly: true },
+          { title: "AI", url: "/settings/ai" },
+          { title: "Advanced", url: "/settings/advanced", adminOnly: true },
+        ],
+      },
+      {
+        title: "Access",
+        items: [
+          { title: "Authentication", url: "/settings/authentication" },
+          { title: "Email", url: "/settings/email", adminOnly: true },
+        ],
+      },
+      {
+        title: "Data",
+        items: [
+          { title: "Backup and restore", url: "/settings/backup" },
+          { title: "Audit log", url: "/settings/audit" },
+        ],
+      },
+    ],
   },
+];
+
+/** Top-level pages that are not part of an area. */
+export const standalonePages: NavLink[] = [
+  { title: "Dashboard", url: "/" },
+  { title: "Projects", url: "/projects" },
+  { title: "Templates", url: "/templates" },
 ];
 
 /** True when pathname is exactly `url` or nested below it. */
@@ -140,21 +183,50 @@ export function pathMatches(pathname: string, url: string): boolean {
   return pathname === url || pathname.startsWith(`${url}/`);
 }
 
-export function isPrimaryActive(pathname: string, item: PrimaryNavItem): boolean {
-  return item.match.some((url) => pathMatches(pathname, url));
+function normalize(pathname: string): string {
+  return pathname.replace(/\/+$/, "") || "/";
 }
 
-/** True when the page belongs to the settings area (shows the settings sub-nav). */
-export function isSettingsPath(pathname: string): boolean {
-  return settingsUrls.some((url) => pathMatches(pathname, url));
+export function areaItems(area: NavArea, isAdmin = true): NavLink[] {
+  return area.groups.flatMap((g) => g.items).filter((i) => isAdmin || !i.adminOnly);
 }
 
-/** Top-level pages only (no nested detail pages) for the tab strips. */
-export function tabsForPath(pathname: string): NavLink[] | null {
-  const path = pathname.replace(/\/+$/, "") || "/";
-  if (monitoringTabs.some((t) => t.url === path)) return monitoringTabs;
-  if (infrastructureTabs.some((t) => t.url === path)) return infrastructureTabs;
+/** Groups with admin-only links removed for non-admins. Empty groups are dropped. */
+export function visibleGroups(area: NavArea, isAdmin: boolean): NavGroup[] {
+  if (isAdmin) return area.groups;
+  return area.groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly) }))
+    .filter((g) => g.items.length > 0);
+}
+
+/** The area a pathname belongs to (resource pages under /servers/:id excluded). */
+export function areaForPath(pathname: string): NavArea | null {
+  const path = normalize(pathname);
+  for (const area of navAreas) {
+    if (areaItems(area).some((i) => i.url === path)) return area;
+  }
+  for (const area of navAreas) {
+    if (area.prefixes.some((p) => pathMatches(path, p))) return area;
+  }
   return null;
+}
+
+/** The link that best matches the pathname inside an area (longest URL wins). */
+export function activeAreaItem(area: NavArea, pathname: string): NavLink | undefined {
+  const path = normalize(pathname);
+  let best: NavLink | undefined;
+  for (const item of areaItems(area)) {
+    const hit = item.index ? path === item.url : pathMatches(path, item.url);
+    if (hit && (!best || item.url.length > best.url.length)) best = item;
+  }
+  return best;
+}
+
+/** Narrow-screen tab strip for areas whose links live in a sidebar submenu. */
+export function tabsForPath(pathname: string): NavLink[] | null {
+  const area = areaForPath(pathname);
+  if (!area || area.layout !== "tabs") return null;
+  return areaItems(area);
 }
 
 /** Flat list of every navigable page for the command palette. */
@@ -166,13 +238,12 @@ export function allNavPages(isAdmin = true): { group: string; title: string; url
     seen.add(url);
     out.push({ group, title, url });
   };
-  // Tabs and settings first so their specific labels win the dedupe over the
-  // sidebar entries that link to the same URL (e.g. Infrastructure -> Servers).
-  for (const t of monitoringTabs) add("Monitoring", t.title, t.url);
-  for (const t of infrastructureTabs) add("Infrastructure", t.title, t.url);
-  for (const g of visibleSettingsGroups(isAdmin)) {
-    for (const i of g.items) add(`Settings: ${g.title}`, i.title, i.url);
+  for (const page of standalonePages) add("Pages", page.title, page.url);
+  for (const area of navAreas) {
+    for (const g of visibleGroups(area, isAdmin)) {
+      const group = g.title ? `${area.title}: ${g.title}` : area.title;
+      for (const i of g.items) add(group, i.title, i.url);
+    }
   }
-  for (const item of primaryNav) add("Pages", item.title, item.url);
   return out;
 }

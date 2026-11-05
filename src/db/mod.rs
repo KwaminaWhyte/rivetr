@@ -1675,6 +1675,79 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 123: seed Advanced instance settings defaults (INSERT OR IGNORE)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/123_instance_advanced_settings.sql"),
+    )
+    .await?;
+
+    // Migration 124: server operations (maintenance settings, cleanup runs, patch jobs)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/124_server_operations.sql"),
+    )
+    .await?;
+
+    // Migration 125: structured healthcheck + resource clone jobs
+    let has_healthcheck_config: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM pragma_table_info('apps') WHERE name = 'healthcheck_config'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if has_healthcheck_config.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/125_app_configuration.sql"),
+        )
+        .await?;
+    }
+    execute_sql(
+        pool,
+        include_str!("../../migrations/125_app_configuration_backfill.sql"),
+    )
+    .await?;
+
+    // Migration 126: resource tags (CREATE IF NOT EXISTS + orphan sweep, idempotent)
+    execute_sql(pool, include_str!("../../migrations/126_resource_tags.sql")).await?;
+
+    // Migration 127: passkeys + WebAuthn challenge state (idempotent)
+    execute_sql(pool, include_str!("../../migrations/127_passkeys.sql")).await?;
+
+    // Migration 128: traffic analytics rollups (idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/128_traffic_analytics.sql"),
+    )
+    .await?;
+
+    // Migration 129: per-user UI preferences (theme JSON)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/129_user_preferences.sql"),
+    )
+    .await?;
+
+    // Migration 130: advanced Swarm service spec per app
+    execute_sql(
+        pool,
+        include_str!("../../migrations/130_app_swarm_specs.sql"),
+    )
+    .await?;
+
+    // Migration 131: per-server network mode (public IP or Tailscale)
+    let has_network_mode: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('servers') WHERE name = 'network_mode'")
+            .fetch_optional(pool)
+            .await?;
+    if has_network_mode.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/131_server_network.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
@@ -1709,5 +1782,47 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(row, (1, 0));
+    }
+
+    /// Migration 125 moves the legacy single healthcheck path into the structured
+    /// config, and leaves apps without a path alone.
+    #[tokio::test]
+    async fn migration_125_moves_legacy_healthcheck_path_into_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = init(dir.path()).await.unwrap();
+        // Simulate a database from before migration 125.
+        sqlx::query("ALTER TABLE apps DROP COLUMN healthcheck_config")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, branch, port, healthcheck) VALUES \
+             ('a1', 'with-path', 'https://example.com/r.git', 'main', 8080, '/healthz'), \
+             ('a2', 'no-path', 'https://example.com/r.git', 'main', 3000, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let pool = init(dir.path()).await.unwrap();
+        let app: crate::db::App = sqlx::query_as("SELECT * FROM apps WHERE id = 'a1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let cfg: crate::db::HealthcheckConfig =
+            serde_json::from_str(app.healthcheck_config.as_deref().unwrap()).unwrap();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.check_type, crate::db::HealthcheckType::Http);
+        assert_eq!(cfg.path, "/healthz");
+        assert_eq!(cfg.expected_status, 200);
+        assert_eq!(cfg.method, "GET");
+
+        let none: (Option<String>,) =
+            sqlx::query_as("SELECT healthcheck_config FROM apps WHERE id = 'a2'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(none.0.is_none());
     }
 }

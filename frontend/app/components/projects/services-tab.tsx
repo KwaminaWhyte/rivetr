@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { EmptyState } from "@/components/page";
 import { Link } from "react-router";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ComposeInputTabs } from "@/components/services/compose-input-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -273,15 +274,12 @@ services:
         </CardHeader>
         <CardContent>
           {!project.services || project.services.length === 0 ? (
-            <div className="py-8 text-center">
-              <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                No services in this project yet. Use{" "}
-                <span className="font-medium">Deploy Template</span> or{" "}
-                <span className="font-medium">Custom Service</span> above to add
-                one.
-              </p>
-            </div>
+            <EmptyState
+              compact
+              icon={<Layers />}
+              title="No services yet"
+              description="Deploy a template or a custom Docker Compose service."
+            />
           ) : (
             <div className="rounded-md border">
               <Table>
@@ -368,7 +366,7 @@ services:
 
       {/* Create Service Dialog */}
       <Dialog open={isCreateServiceDialogOpen} onOpenChange={setIsCreateServiceDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -392,18 +390,7 @@ services:
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="compose-content">Docker Compose Content</Label>
-                <Textarea
-                  id="compose-content"
-                  value={composeContent}
-                  onChange={(e) => setComposeContent(e.target.value)}
-                  placeholder="Paste your docker-compose.yml content..."
-                  className="font-mono text-sm"
-                  rows={12}
-                  required
-                />
-              </div>
+              <ComposeInputTabs value={composeContent} onChange={setComposeContent} />
             </div>
             <DialogFooter>
               <Button

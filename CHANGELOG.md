@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-05
+
+First stable release. Everything below the highlights was previously listed as unreleased.
+
+### Highlights
+- **New dashboard shell**: grouped sidebar with submenus, a contextual sidebar inside apps, databases, services and servers, a top bar with breadcrumb switchers (team, project, environment, resource), a status pill and the primary action. Shared page components (page header, framed section cards, form grid, data table with pagination, empty states, skeletons).
+- **Clear page structure and URLs**: every page sits in one place and has breadcrumbs. Instance settings under `/settings`, personal pages under `/account`, team under `/team`, integrations under `/integrations`, credentials under `/keys`, monitoring under `/monitoring`. App, database and service sections use the same names (`/build`, `/domains`, `/environment`, `/storage`, `/healthcheck`, `/resources`, `/advanced`, `/rollback`, `/operations`, `/danger`). Duplicate tabs (two Network, two Security, a Settings tab with its own tab strip) are gone. Old URLs redirect. See `docs/planning/ui-information-architecture.md`.
+- **Projects canvas**: zoomable canvas of projects, environments and resources with live status, a side panel, filters and resource links; list, grid or canvas view on the dashboard and projects page.
+- **Theme customisation per user**: light, dark or system mode, accent colour (presets or custom hex), neutral base, corner radius, density, font and size, sidebar style, reduced motion and high contrast, with a live preview. Saved to the account (migration 129), applied before first paint; admins set the instance default under Settings > Branding.
+- **Remembered UI state**: sidebar collapse and open groups, view toggles, canvas viewport and filters, table page size and filters, log viewer options, terminal font size, metric time ranges, in-page tabs and command palette recents are kept per browser (`rivetr:ui:*`).
+- **Instance settings**: editable update channel and schedules, Advanced page (registration, API access with IP allowlist, MCP toggle, two-step destructive confirmation, DNS validation with custom resolvers, outbound target policy, passkeys), public IPv4/IPv6 detection, transactional email (SMTP or Resend) with a test send (migration 123).
+- **Server operations**: images page with reclaimable space, Docker cleanup schedule with per-category options and run history, OS patching with automatic security updates, maintenance window and reboot detection, patch status on the servers list (migration 124). Non-root SSH users with passwordless sudo, and Tailscale connectivity per server (migration 131).
+- **App configuration**: structured healthcheck (HTTP or command, expected code and body, timing), per-domain internal port, search indexing and DNS status, an unsaved-changes bar, a container file browser for apps, databases and services, and clone to another server, project or environment with optional volume data (migration 125).
+- **Tags** (migration 126), **passkey sign-in** (migration 127) and **traffic analytics** per app, server and team with optional GeoIP (migration 128).
+- **AI-generated Docker Compose** from a description, **advanced Swarm service spec** (migration 130), and 30 new service templates (365 total).
+
+### Breaking
+- Dashboard URLs changed (old ones redirect). API paths are unchanged.
+- The MCP server can now be turned off; existing installs keep it on.
+- `smtp_tls = true` in `rivetr.toml` now means STARTTLS, or implicit TLS on port 465.
+- Swarm services are created through the Docker API instead of the `docker service create` CLI.
+
 ### Added
 - **Deployments for Docker Compose services**: a Deploy button pulls (or builds) the images and runs `docker compose up -d`, recreating only changed containers. Each run is recorded with who started it, the trigger, duration, live and stored logs, and the image digest per compose service before and after (migration 120). Optional build from source per service (migration 121): a git repo + branch or a path on the server, images built in order, tagged with the revision and `latest` and pushed (a local `registry:2` works), with auto deploy on push for git sources. Pre- and post-deploy hooks run in a one-off container of a compose service (`docker compose run --rm --no-deps`); a failed pre-deploy hook leaves the running containers, the compose file and the `latest` tags as they were. Rollback redeploys a previous deployment's images pinned by digest. New Containers tab (state, health, usage, restart one container, logs, terminal) and Environment tab: encrypted env vars (migration 122) written to a managed `.env` the compose file can use, with `.env` import. Services without a build source keep deploying by pulling. See `docs/reference/service-deployments.md`.
 - **Storage usage for apps and services**: the Storage tile that databases already had now shows on app and Docker Compose service pages too. It counts the container's writable layer plus its mounted volumes; a service counts a volume its containers share only once. Sizes are measured at most once a minute per container, so polling stays cheap. Docker only for now; on Podman the tile stays hidden.

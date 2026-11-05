@@ -206,6 +206,16 @@ async fn main() -> Result<()> {
 
     // Start auto-update checker
     let update_checker = updater::start_update_checker(config.auto_update.clone());
+
+    // Instance settings saved from the dashboard (Advanced policy cache and
+    // update schedule) override the toml defaults.
+    rivetr::settings::init(&db).await;
+    // Traffic analytics aggregator (fed by the proxy, flushes every 60s)
+    rivetr::proxy::analytics::spawn(db.clone());
+    match rivetr::settings::updates::UpdateSettings::load(&db, &config.auto_update).await {
+        Ok(s) => update_checker.set_settings(s),
+        Err(e) => tracing::warn!(error = %e, "Failed to load update settings; using rivetr.toml"),
+    }
     if config.auto_update.enabled {
         tracing::info!(
             "Auto-update checker enabled (interval: {} hours, auto-apply: {})",
@@ -395,6 +405,12 @@ async fn main() -> Result<()> {
 
     // Start autoscaling checker (evaluates autoscaling rules every 60s)
     rivetr::engine::scheduler::spawn_autoscaling_checker(db.clone());
+
+    // Start server maintenance scheduler (Docker cleanup schedules, package checks)
+    rivetr::engine::server_ops::scheduler::spawn_server_ops_scheduler(
+        db.clone(),
+        Arc::new(state.config.clone()),
+    );
 
     // Start advanced monitoring tasks (uptime checker + log cleaner)
     rivetr::monitoring::spawn_uptime_checker_task(db.clone());
@@ -706,27 +722,25 @@ async fn restore_routes(
 
         // Find the running container for this app
         if let Some(container) = containers.iter().find(|c| c.name == container_name) {
-            // Use the port from list_containers if available; otherwise fall back to inspect()
-            // so that containers with only internal port mappings are still captured.
-            let port = if let Some(p) = container.port {
-                Some(p)
-            } else {
-                tracing::debug!(
-                    container = %container_name,
-                    "Port not found in list_containers, falling back to inspect()"
-                );
-                match runtime.inspect(&container.id).await {
-                    Ok(info) => info.port,
-                    Err(e) => {
-                        tracing::warn!(
-                            container = %container_name,
-                            error = %e,
-                            "Failed to inspect container during route restore"
-                        );
-                        None
-                    }
+            // Inspect first: it knows the primary port label and every published port
+            // (per-domain internal ports). Fall back to the list_containers port.
+            let inspected = match runtime.inspect(&container.id).await {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    tracing::warn!(
+                        container = %container_name,
+                        error = %e,
+                        "Failed to inspect container during route restore"
+                    );
+                    None
                 }
             };
+            let port = inspected
+                .as_ref()
+                .and_then(|info| info.port)
+                .or(container.port);
+            let port_map = inspected.map(|info| info.port_map).unwrap_or_default();
+            let app_domains = rivetr::db::parse_domains(domains_json.as_deref());
 
             if let Some(port) = port {
                 // Collect all domain names for this app (deduplicated)
@@ -820,6 +834,12 @@ async fn restore_routes(
                     if !proxy_redirect_rules.is_empty() {
                         backend.set_redirect_rules(proxy_redirect_rules.clone());
                     }
+
+                    // Per-domain settings (internal port, search indexing)
+                    backend.apply_domain_options(
+                        &rivetr::db::domain_proxy_options(&app_domains, domain),
+                        &port_map,
+                    );
 
                     route_table.add_route(domain.clone(), backend);
                     tracing::info!(

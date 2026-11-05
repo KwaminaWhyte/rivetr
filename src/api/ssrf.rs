@@ -8,15 +8,54 @@
 //! "public DNS name → 169.254.169.254" trick (best-effort; not a full
 //! DNS-rebinding defense, which also needs the HTTP client to pin the checked IP).
 
+//!
+//! Admins can relax the guard in Settings > Advanced > Outbound: specific
+//! internal CIDRs can be allowed, and localhost can be allowed.
+
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use crate::settings::net::IpCidr;
+
 use super::error::ApiError;
+
+/// Admin-configured exceptions to the internal-address block.
+#[derive(Debug, Clone, Default)]
+pub struct OutboundPolicy<'a> {
+    pub allowed_targets: &'a [IpCidr],
+    pub allow_localhost: bool,
+}
+
+/// Is `ip` blocked once the admin policy is applied?
+pub fn is_blocked_with_policy(ip: &IpAddr, policy: &OutboundPolicy<'_>) -> bool {
+    if !is_blocked_ip(ip) {
+        return false;
+    }
+    if policy.allowed_targets.iter().any(|c| c.contains(ip)) {
+        return false;
+    }
+    if policy.allow_localhost && is_loopback(ip) {
+        return false;
+    }
+    true
+}
+
+fn is_loopback(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6
+                    .to_ipv4_mapped()
+                    .map(|v4| v4.is_loopback())
+                    .unwrap_or(false)
+        }
+    }
+}
 
 /// Validate that a user-supplied URL is safe to fetch (not internal). Async
 /// because it performs DNS resolution for hostnames.
 pub async fn validate_external_url(raw: &str) -> Result<(), ApiError> {
-    let url = reqwest::Url::parse(raw)
-        .map_err(|_| ApiError::bad_request("Invalid URL"))?;
+    let url = reqwest::Url::parse(raw).map_err(|_| ApiError::bad_request("Invalid URL"))?;
 
     match url.scheme() {
         "http" | "https" => {}
@@ -28,9 +67,17 @@ pub async fn validate_external_url(raw: &str) -> Result<(), ApiError> {
         .ok_or_else(|| ApiError::bad_request("URL has no host"))?;
     let port = url.port_or_known_default().unwrap_or(443);
 
+    let cached = crate::settings::advanced::current();
+    let policy = OutboundPolicy {
+        allowed_targets: &cached.outbound_allowlist,
+        allow_localhost: cached.settings.outbound_allow_localhost,
+    };
+    // Url::host_str keeps the brackets around IPv6 literals.
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+
     // Host is an IP literal — check directly, no DNS.
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return if is_blocked_ip(&ip) {
+        return if is_blocked_with_policy(&ip, &policy) {
             Err(ApiError::bad_request(
                 "URL points at a disallowed internal address",
             ))
@@ -47,7 +94,7 @@ pub async fn validate_external_url(raw: &str) -> Result<(), ApiError> {
     let mut resolved_any = false;
     for sa in addrs {
         resolved_any = true;
-        if is_blocked_ip(&sa.ip()) {
+        if is_blocked_with_policy(&sa.ip(), &policy) {
             return Err(ApiError::bad_request(
                 "URL resolves to a disallowed internal address",
             ));
@@ -104,21 +151,53 @@ mod tests {
             "0.0.0.0",
             "100.64.0.1",
         ] {
-            assert!(is_blocked_ip(&ip.parse().unwrap()), "{ip} should be blocked");
+            assert!(
+                is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be blocked"
+            );
         }
     }
 
     #[test]
     fn allows_public_v4() {
         for ip in ["1.1.1.1", "8.8.8.8", "93.184.216.34"] {
-            assert!(!is_blocked_ip(&ip.parse().unwrap()), "{ip} should be allowed");
+            assert!(
+                !is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be allowed"
+            );
         }
+    }
+
+    #[test]
+    fn policy_allows_listed_targets_and_localhost() {
+        let targets = vec![IpCidr::parse("10.20.0.0/16").unwrap()];
+        let strict = OutboundPolicy::default();
+        let relaxed = OutboundPolicy {
+            allowed_targets: &targets,
+            allow_localhost: true,
+        };
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        assert!(is_blocked_with_policy(&ip("10.20.1.1"), &strict));
+        assert!(!is_blocked_with_policy(&ip("10.20.1.1"), &relaxed));
+        // Other internal ranges stay blocked.
+        assert!(is_blocked_with_policy(&ip("10.21.1.1"), &relaxed));
+        assert!(is_blocked_with_policy(&ip("169.254.169.254"), &relaxed));
+
+        assert!(is_blocked_with_policy(&ip("127.0.0.1"), &strict));
+        assert!(!is_blocked_with_policy(&ip("127.0.0.1"), &relaxed));
+        assert!(!is_blocked_with_policy(&ip("::1"), &relaxed));
+        // Public addresses are never blocked.
+        assert!(!is_blocked_with_policy(&ip("8.8.8.8"), &strict));
     }
 
     #[test]
     fn blocks_internal_v6() {
         for ip in ["::1", "::", "fc00::1", "fe80::1", "::ffff:127.0.0.1"] {
-            assert!(is_blocked_ip(&ip.parse().unwrap()), "{ip} should be blocked");
+            assert!(
+                is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be blocked"
+            );
         }
     }
 }

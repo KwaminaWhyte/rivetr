@@ -434,6 +434,8 @@ async fn start_tunnel_container(state: &Arc<AppState>, id: &str) -> anyhow::Resu
         ]),
         network: None,
         custom_labels: vec![],
+        healthcheck: None,
+        extra_ports: vec![],
     };
 
     tracing::info!("Pulling cloudflare/cloudflared:latest");

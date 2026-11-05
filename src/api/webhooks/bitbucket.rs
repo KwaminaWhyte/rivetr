@@ -119,12 +119,17 @@ pub async fn bitbucket_webhook(
     incr_webhooks("bitbucket");
 
     // SEC-H2: fail closed — secret MUST be configured and signature MUST verify.
-    let secret = state.config.webhooks.bitbucket_secret.as_ref().ok_or_else(|| {
-        tracing::error!(
+    let secret = state
+        .config
+        .webhooks
+        .bitbucket_secret
+        .as_ref()
+        .ok_or_else(|| {
+            tracing::error!(
             "Bitbucket webhook rejected: webhooks.bitbucket_secret is not configured (fail-closed)."
         );
-        StatusCode::UNAUTHORIZED
-    })?;
+            StatusCode::UNAUTHORIZED
+        })?;
     let signature = headers
         .get("X-Hub-Signature")
         .and_then(|v| v.to_str().ok())

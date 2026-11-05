@@ -1,4 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { Minus, Plus } from "lucide-react";
+import { usePersistedState } from "@/lib/persisted-state";
+
+const MIN_FONT = 10;
+const MAX_FONT = 24;
+const isFontSize = (v: unknown): v is number =>
+  Number.isInteger(v) && (v as number) >= MIN_FONT && (v as number) <= MAX_FONT;
 import { api } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 
@@ -23,6 +30,10 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
   const terminalRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const terminalInstance = useRef<any>(null);
+  // Font size is remembered per browser (rivetr:ui:terminal:font-size).
+  const [fontSize, setFontSize] = usePersistedState<number>("terminal:font-size", 14, { validate: isFontSize });
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fitAddonRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -79,7 +90,7 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
           cursorBlink: true,
           cursorStyle: "block",
           fontFamily: '"Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
-          fontSize: 14,
+          fontSize: fontSizeRef.current,
           lineHeight: 1.2,
           theme: {
             background: "#1a1a2e",
@@ -206,6 +217,17 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
     };
   }, [appId, token]);
 
+  // Apply font size changes to a live terminal and tell the server the new size.
+  useEffect(() => {
+    const term = terminalInstance.current;
+    if (!term || term.options.fontSize === fontSize) return;
+    term.options.fontSize = fontSize;
+    fitAddonRef.current?.fit();
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+    }
+  }, [fontSize]);
+
   return (
     <div className="flex flex-col" style={{ height: "450px" }}>
       <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg flex-shrink-0">
@@ -218,6 +240,31 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
           <span className="text-sm text-gray-400 ml-2">Container Terminal</span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded border border-gray-700 text-gray-400">
+            <button
+              type="button"
+              className="px-1.5 py-1 hover:text-gray-100 disabled:opacity-40"
+              onClick={() => setFontSize((s) => Math.max(MIN_FONT, s - 1))}
+              disabled={fontSize <= MIN_FONT}
+              aria-label="Smaller terminal font"
+              title="Smaller font"
+            >
+              <Minus className="size-3" />
+            </button>
+            <span className="min-w-6 text-center text-[11px] tabular-nums" aria-live="polite">
+              {fontSize}
+            </span>
+            <button
+              type="button"
+              className="px-1.5 py-1 hover:text-gray-100 disabled:opacity-40"
+              onClick={() => setFontSize((s) => Math.min(MAX_FONT, s + 1))}
+              disabled={fontSize >= MAX_FONT}
+              aria-label="Larger terminal font"
+              title="Larger font"
+            >
+              <Plus className="size-3" />
+            </button>
+          </div>
           <span
             className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
               connected

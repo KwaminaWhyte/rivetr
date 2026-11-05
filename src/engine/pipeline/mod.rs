@@ -1,5 +1,6 @@
 mod build;
 mod clone;
+mod healthcheck;
 mod rollback;
 mod start;
 
@@ -20,17 +21,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Seconds a new container gets to become healthy, set at startup from config.
 static HEALTH_CHECK_TIMEOUT_SECS: AtomicU64 = AtomicU64::new(20);
 
-/// Interval between health check attempts, in seconds.
-const HEALTH_CHECK_INTERVAL_SECS: u64 = 2;
-
 /// Set the health check window (`[runtime] health_check_timeout_secs`).
 pub fn set_health_check_timeout_secs(secs: u64) {
     HEALTH_CHECK_TIMEOUT_SECS.store(secs, Ordering::Relaxed);
 }
 
-/// Number of health check attempts that fit the configured window (at least 1).
-pub(crate) fn health_check_attempts() -> u64 {
-    (HEALTH_CHECK_TIMEOUT_SECS.load(Ordering::Relaxed) / HEALTH_CHECK_INTERVAL_SECS).max(1)
+/// Attempts used for a deploy or rollback health check: the app's own retries, but
+/// never a shorter window than `[runtime] health_check_timeout_secs` at the app's
+/// interval, so slow first boots (migrations) still get the configured time.
+pub(crate) fn effective_health_check_retries(retries: u32, interval_secs: u32) -> u32 {
+    let window = HEALTH_CHECK_TIMEOUT_SECS.load(Ordering::Relaxed);
+    let floor = (window / u64::from(interval_secs.max(1))).max(1);
+    retries.max(1).max(u32::try_from(floor).unwrap_or(u32::MAX))
 }
 
 /// Information about a successfully deployed container
@@ -648,14 +650,18 @@ mod health_window_tests {
     use super::*;
 
     #[test]
-    fn attempts_follow_the_configured_window() {
+    fn retries_never_shorter_than_the_configured_window() {
         set_health_check_timeout_secs(20);
-        assert_eq!(health_check_attempts(), 10);
+        // 3 retries at 2s would be 6s; the 20s window floors it at 10.
+        assert_eq!(effective_health_check_retries(3, 2), 10);
+        // An app that asks for more than the window keeps its own count.
+        assert_eq!(effective_health_check_retries(30, 2), 30);
         set_health_check_timeout_secs(180);
-        assert_eq!(health_check_attempts(), 90);
-        // Never zero attempts, even for a tiny or zero window.
+        assert_eq!(effective_health_check_retries(10, 2), 90);
+        assert_eq!(effective_health_check_retries(10, 30), 10);
+        // Never zero attempts, even for a zero window, zero retries or zero interval.
         set_health_check_timeout_secs(0);
-        assert_eq!(health_check_attempts(), 1);
+        assert_eq!(effective_health_check_retries(0, 0), 1);
         set_health_check_timeout_secs(20);
     }
 }

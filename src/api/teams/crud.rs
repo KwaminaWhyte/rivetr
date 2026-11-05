@@ -340,7 +340,7 @@ pub async fn update_team(
 ///
 /// Returns `Err(ApiError::forbidden(...))` when:
 /// - the team has `require_2fa = 1`, AND
-/// - the user does not have `totp_enabled = true`.
+/// - the user does not have `totp_enabled = true` and has no passkey.
 #[allow(dead_code)]
 pub async fn check_2fa_enforcement(
     db: &sqlx::SqlitePool,
@@ -371,7 +371,11 @@ pub async fn check_2fa_enforcement(
                     })?;
 
             if let Some((totp_enabled,)) = user_row {
-                if !totp_enabled {
+                // A passkey (user verification required) satisfies 2FA too.
+                let has_passkey = crate::api::passkeys::user_has_passkey(db, user_id)
+                    .await
+                    .unwrap_or(false);
+                if !totp_enabled && !has_passkey {
                     return Err(ApiError::forbidden(
                         "This team requires 2FA. Please enable two-factor authentication.",
                     ));

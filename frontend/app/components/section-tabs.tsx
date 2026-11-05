@@ -5,8 +5,10 @@ import { tabsForPath } from "@/lib/nav";
 
 /**
  * Tab strip shared by pages that live under one sidebar entry
- * (Monitoring | Costs, and Servers | Build Servers | SSH Keys | Swarm | Tunnels).
+ * (the areas in lib/nav.ts with layout "tabs": Monitoring, Servers, Integrations,
+ * Team, Notifications, Keys and tokens).
  * Mounted once in the dashboard layout; renders nothing on other pages.
+ * Mobile only: from md up the sidebar submenus cover the same links.
  */
 export function SectionTabs() {
   const { pathname } = useLocation();
@@ -16,7 +18,7 @@ export function SectionTabs() {
   return (
     <nav
       aria-label="Section"
-      className="-mb-1 flex gap-1 overflow-x-auto border-b"
+      className="-mb-1 flex gap-1 overflow-x-auto border-b md:hidden"
     >
       {tabs.map((tab) => {
         const active = pathname.replace(/\/+$/, "") === tab.url;

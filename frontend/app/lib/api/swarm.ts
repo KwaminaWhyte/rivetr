@@ -64,7 +64,58 @@ export interface CreateServiceRequest {
 // API methods
 // ---------------------------------------------------------------------------
 
+export interface SwarmRolloutConfig {
+  parallelism?: number | null;
+  delay_secs?: number | null;
+  failure_action?: "continue" | "pause" | "rollback" | null;
+  order?: "stop-first" | "start-first" | null;
+  monitor_secs?: number | null;
+  max_failure_ratio?: number | null;
+}
+
+export interface SwarmRestartPolicy {
+  condition: "none" | "on-failure" | "any";
+  delay_secs?: number | null;
+  max_attempts?: number | null;
+  window_secs?: number | null;
+}
+
+/** Advanced Swarm service spec stored per app. */
+export interface SwarmSpecConfig {
+  constraints: string[];
+  spread_preferences: string[];
+  max_replicas_per_node?: number | null;
+  update_config?: SwarmRolloutConfig | null;
+  rollback_config?: SwarmRolloutConfig | null;
+  reserve_cpus?: number | null;
+  reserve_memory_mb?: number | null;
+  restart_policy?: SwarmRestartPolicy | null;
+}
+
+export interface AppSwarmSpecResponse {
+  spec: SwarmSpecConfig;
+  swarm_active: boolean;
+  services: SwarmService[];
+}
+
+export interface SaveSwarmSpecResponse {
+  spec: SwarmSpecConfig;
+  applied: string[];
+  errors: string[];
+}
+
 export const swarmApi = {
+  /** Advanced Swarm spec for an app, plus its bound Swarm services. */
+  getAppSwarmSpec: (appId: string) =>
+    apiRequest<AppSwarmSpecResponse>(`/apps/${appId}/swarm-spec`),
+
+  /** Save an app's Swarm spec and re-apply it to the app's Swarm services. */
+  updateAppSwarmSpec: (appId: string, spec: SwarmSpecConfig) =>
+    apiRequest<SaveSwarmSpecResponse>(`/apps/${appId}/swarm-spec`, {
+      method: "PUT",
+      body: JSON.stringify(spec),
+    }),
+
   /** Initialize Docker Swarm on the current node */
   init: (token?: string) =>
     apiRequest<SwarmInitResponse>("/swarm/init", { method: "POST" }, token),

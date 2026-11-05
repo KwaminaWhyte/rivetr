@@ -134,6 +134,12 @@ export interface UpdateStatus {
   auto_update_enabled: boolean;
   /** Whether auto-apply is enabled */
   auto_apply_enabled: boolean;
+  /** Release channel */
+  channel?: "stable" | "beta";
+  /** Cron (UTC) for update checks */
+  check_cron?: string;
+  /** Cron (UTC) for automatic updates */
+  auto_update_cron?: string;
 }
 
 // -------------------------------------------------------------------------

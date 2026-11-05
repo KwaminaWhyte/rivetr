@@ -386,6 +386,20 @@ pub async fn oauth_login_callback(
 
             user.id
         } else {
+            // Settings > Advanced > Registration decides whether a first-time
+            // external login may create an account.
+            if !crate::settings::advanced::registration_allowed_now(
+                &state.db,
+                crate::settings::advanced::SignupMethod::External,
+            )
+            .await
+            {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "Registration is disabled on this instance. Ask an admin for an invitation."
+                        .to_string(),
+                ));
+            }
             // 3. Create a new user
             let new_user_id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().to_rfc3339();

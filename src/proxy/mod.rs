@@ -4,6 +4,7 @@
 // to containers based on the Host header.
 
 pub mod acme;
+pub mod analytics;
 mod handler;
 mod health_checker;
 pub mod inflight;
@@ -80,6 +81,10 @@ pub struct Backend {
     pub www_redirect_target: Option<String>,
     /// Whether requests to this backend are written to the proxy access log
     pub access_logging: bool,
+    /// Add `X-Robots-Tag: noindex, nofollow` to responses (search indexing off)
+    pub noindex: bool,
+    /// Use 301 for the www redirect; 302 when false
+    pub permanent_redirect: bool,
 }
 
 impl Backend {
@@ -96,6 +101,26 @@ impl Backend {
             strip_prefix: None,
             www_redirect_target: None,
             access_logging: true,
+            noindex: false,
+            permanent_redirect: true,
+        }
+    }
+
+    /// Apply per-domain settings: search indexing, redirect status and, when the
+    /// domain targets another container port, that port's host binding from
+    /// `port_map` (`(container_port, host_port)` pairs). An internal port that is not
+    /// published keeps the default port.
+    pub fn apply_domain_options(
+        &mut self,
+        options: &crate::db::DomainProxyOptions,
+        port_map: &[(u16, u16)],
+    ) {
+        self.noindex = options.noindex;
+        self.permanent_redirect = options.permanent_redirect;
+        if let Some(internal) = options.internal_port {
+            if let Some((_, host)) = port_map.iter().find(|(c, _)| *c == internal) {
+                self.port = *host;
+            }
         }
     }
 

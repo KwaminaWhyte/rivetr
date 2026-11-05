@@ -206,6 +206,12 @@ pub async fn rollback_deployment(
                 // Update proxy routes on successful rollback for all domains
                 if let Some(port) = result.port {
                     let domain_entries = app_clone.get_all_domains_with_redirects();
+                    let app_domains = app_clone.get_domains();
+                    let port_map = runtime
+                        .inspect(&result.container_id)
+                        .await
+                        .map(|i| i.port_map)
+                        .unwrap_or_default();
                     let all_domains: Vec<String> = domain_entries
                         .iter()
                         .filter(|(_, r)| r.is_none())
@@ -223,6 +229,10 @@ pub async fn rollback_deployment(
                             .with_access_logging(app_clone.access_logging != 0)
                             .with_strip_prefix(app_clone.strip_prefix.clone());
                             backend.www_redirect_target = www_redirect_target.clone();
+                            backend.apply_domain_options(
+                                &crate::db::domain_proxy_options(&app_domains, domain),
+                                &port_map,
+                            );
                             // Keep HTTP Basic Auth after a rollback (skip redirect backends),
                             // matching the route built by a normal deploy in engine/mod.rs.
                             if backend.www_redirect_target.is_none()

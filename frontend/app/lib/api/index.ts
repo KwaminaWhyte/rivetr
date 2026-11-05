@@ -35,6 +35,7 @@ export { monitoringApi } from "./monitoring";
 export { sharedEnvVarsApi } from "./shared-env-vars";
 export { serversApi } from "./servers";
 export type { Server, CreateServerRequest, UpdateServerRequest, ServerHealthResponse, InstallDockerResponse, ServerDetails } from "./servers";
+export { serverOpsApi, LOCALHOST_SERVER_ID } from "./server-ops";
 export { caCertificatesApi } from "./ca-certificates";
 export type { CaCertificate, CreateCaCertificateRequest } from "./ca-certificates";
 export { destinationsApi } from "./destinations";
@@ -61,6 +62,9 @@ export type {
 export { filesystemApi } from "./filesystem";
 export type { FileEntry } from "./filesystem";
 export { aiApi } from "./ai";
+export { instanceSettingsApi } from "./instance-settings";
+export { appConfigApi } from "./app-config";
+export type { FileBrowserResource, FileTarget } from "./app-config";
 
 // Import all for combined api object
 import { projectsApi } from "./projects";

@@ -87,6 +87,8 @@ The application runs as a single binary with these main subsystems:
    - Uses React Router for navigation
    - React Query for data fetching
    - shadcn/ui components with Tailwind CSS
+   - URL structure follows `docs/planning/ui-information-architecture.md`; when moving a page add a redirect in `frontend/app/lib/redirects.ts` and update `lib/nav.ts` / `lib/resource-nav.ts` (breadcrumbs and sidebars read from them)
+   - Shared page blocks in `frontend/app/components/page/`; per-browser UI state via `usePersistedState` in `lib/persisted-state.ts`; theme engine in `lib/theme/`
 
 7. **Email Templates** (`src/ui/`) - Reserved for email notifications (Phase 2)
 

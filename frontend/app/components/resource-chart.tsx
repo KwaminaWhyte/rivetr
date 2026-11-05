@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
+import { useLocalPreference } from "@/lib/persisted-state";
 
 interface DataPoint {
   time: string;
@@ -40,8 +41,9 @@ interface ResourceChartProps {
   className?: string;
 }
 
-const CPU_COLOR = "#3b82f6";
-const MEMORY_COLOR = "#a855f7";
+// Follow the theme accent (see lib/theme/palette.ts chart tokens).
+const CPU_COLOR = "var(--chart-2)";
+const MEMORY_COLOR = "var(--chart-3)";
 
 export const TIME_RANGES = [
   { value: "1", label: "Last 1 hour" },
@@ -138,7 +140,12 @@ export function ResourceChart({
   height = 240,
   className,
 }: ResourceChartProps) {
-  const [timeRange, setTimeRange] = useState("24");
+  // The chosen range is shared by every resource chart and remembered per browser.
+  const [timeRange, setTimeRange] = useLocalPreference<string>(
+    "metrics:range",
+    "24",
+    TIME_RANGES.map((r) => r.value)
+  );
 
   const { data: historyData } = useQuery({
     queryKey: ["statsHistory", timeRange],
