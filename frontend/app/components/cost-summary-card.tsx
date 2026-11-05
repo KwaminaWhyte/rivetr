@@ -142,12 +142,12 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
                       >
                         <stop
                           offset="0%"
-                          stopColor="rgb(16, 185, 129)"
+                          stopColor="var(--chart-2)"
                           stopOpacity="0.3"
                         />
                         <stop
                           offset="100%"
-                          stopColor="rgb(16, 185, 129)"
+                          stopColor="var(--chart-2)"
                           stopOpacity="0.05"
                         />
                       </linearGradient>
@@ -155,7 +155,7 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
                     <path
                       d={sparklineConfig.path}
                       fill="none"
-                      stroke="rgb(16, 185, 129)"
+                      stroke="var(--chart-2)"
                       strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"

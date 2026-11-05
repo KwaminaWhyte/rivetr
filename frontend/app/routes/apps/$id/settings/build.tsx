@@ -875,7 +875,7 @@ export default function AppSettingsBuild() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Wand2 className="h-5 w-5 text-purple-500" />
+                <Wand2 className="h-5 w-5 text-primary" />
                 AI Dockerfile Optimizer
               </CardTitle>
               <CardDescription>
@@ -917,7 +917,7 @@ export default function AppSettingsBuild() {
                 </div>
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Suggested</p>
-                  <pre className="rounded-md border border-purple-200 bg-purple-50/40 dark:bg-purple-950/10 p-4 text-xs font-mono overflow-x-auto whitespace-pre max-h-80">
+                  <pre className="rounded-md border border-primary/25 bg-primary/5 p-4 text-xs font-mono overflow-x-auto whitespace-pre max-h-80">
                     {dockerfileOptResult.suggested}
                   </pre>
                 </div>
@@ -929,7 +929,7 @@ export default function AppSettingsBuild() {
                   <ul className="space-y-1.5">
                     {dockerfileOptResult.improvements.map((imp, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm">
-                        <span className="text-purple-500 mt-0.5 shrink-0">•</span>
+                        <span className="text-primary mt-0.5 shrink-0">•</span>
                         <span>{imp}</span>
                       </li>
                     ))}

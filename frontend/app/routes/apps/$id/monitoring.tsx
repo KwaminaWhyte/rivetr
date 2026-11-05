@@ -870,7 +870,7 @@ function CostOptimizationSection({ appId }: { appId: string }) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
+              <Sparkles className="h-5 w-5 text-primary" />
               <DollarSign className="h-5 w-5 text-green-600" />
               Cost Optimization
             </CardTitle>

@@ -40,8 +40,9 @@ interface ResourceChartProps {
   className?: string;
 }
 
-const CPU_COLOR = "#3b82f6";
-const MEMORY_COLOR = "#a855f7";
+// Follow the theme accent (see lib/theme/palette.ts chart tokens).
+const CPU_COLOR = "var(--chart-2)";
+const MEMORY_COLOR = "var(--chart-3)";
 
 export const TIME_RANGES = [
   { value: "1", label: "Last 1 hour" },

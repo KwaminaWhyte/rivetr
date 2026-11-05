@@ -218,7 +218,7 @@ export default function AppPreviewsTab() {
                           href={`https://${preview.preview_domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-primary hover:underline flex items-center gap-1"
                         >
                           {preview.preview_domain}
                           <ExternalLink className="h-3 w-3" />
