@@ -761,8 +761,19 @@ pub async fn render_service_compose_with(
     // Service env vars count as set for `${VAR:?}` checks; generated vars win
     // on a name clash.
     let env_vars = load_service_env(db, &service.id, key).await;
-    let mut existing_vars: std::collections::HashMap<String, String> =
-        env_vars.iter().cloned().collect();
+    // A secret manager reference stays `${KEY}` in the compose file: compose fills it
+    // from the resolved `.env`, so the value is never baked into docker-compose.yml.
+    // (`$$` because the substitution uses regex replacement syntax.)
+    let mut existing_vars: std::collections::HashMap<String, String> = env_vars
+        .iter()
+        .map(|(k, v)| {
+            if crate::secret_managers::is_reference(v) {
+                (k.clone(), format!("$${{{}}}", k))
+            } else {
+                (k.clone(), v.clone())
+            }
+        })
+        .collect();
     existing_vars.extend(gen_vars_rows.into_iter().map(|r| (r.key, r.value)));
 
     let substituted = substitute_magic_vars(
@@ -1002,8 +1013,25 @@ pub async fn write_service_env_file(
     service: &crate::db::Service,
     key: Option<&[u8; 32]>,
 ) -> Result<(), RenderError> {
+    write_service_env_file_resolved(db, data_dir, service, key)
+        .await
+        .map(|_| ())
+}
+
+/// [`write_service_env_file`], returning the secret manager outcome (resolved values to
+/// mask in logs, warnings). A resolution failure is a [`RenderError::Substitution`].
+pub async fn write_service_env_file_resolved(
+    db: &sqlx::SqlitePool,
+    data_dir: &Path,
+    service: &crate::db::Service,
+    key: Option<&[u8; 32]>,
+) -> Result<crate::secret_managers::Outcome, RenderError> {
     let path = get_compose_dir(data_dir, &service.name).join(ENV_FILE_NAME);
     let vars = load_service_env(db, &service.id, key).await;
+    let mut outcome = crate::secret_managers::resolve_service_env(db, key, service, vars)
+        .await
+        .map_err(|e| RenderError::Substitution(format!("{:#}", e)))?;
+    let vars = std::mem::take(&mut outcome.vars);
     let existing = tokio::fs::read_to_string(&path).await.ok();
     let ours = existing
         .as_deref()
@@ -1016,13 +1044,13 @@ pub async fn write_service_env_file(
                 path.display()
             );
         }
-        return Ok(());
+        return Ok(outcome);
     }
     if vars.is_empty() {
         if existing.is_some() {
             let _ = tokio::fs::remove_file(&path).await;
         }
-        return Ok(());
+        return Ok(outcome);
     }
     let content = format_env_file(&vars);
     // Write to a 0600 temp file and rename so the secrets are never world-readable.
@@ -1044,7 +1072,7 @@ pub async fn write_service_env_file(
     tokio::fs::rename(&tmp, &path)
         .await
         .map_err(|e| RenderError::Write(e.to_string()))?;
-    Ok(())
+    Ok(outcome)
 }
 
 /// Add `env_file` to every compose service so its containers get the

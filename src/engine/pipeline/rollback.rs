@@ -63,6 +63,11 @@ pub async fn run_rollback(
     .await?;
     update_deployment_status(db, rollback_deployment_id, "starting", None).await?;
 
+    // Pass the rollback deployment ID so SOURCE_COMMIT is set from the rollback record.
+    // Resolved before the running container is renamed so a secret manager failure
+    // leaves it untouched.
+    let env_vars = collect_env_vars(db, app, encryption_key, Some(rollback_deployment_id)).await?;
+
     // Rename the current container so the rollback container can claim the canonical name
     // while the old one keeps serving traffic until proxy routes are swapped.
     let container_name = format!("rivetr-{}", app.name);
@@ -90,9 +95,6 @@ pub async fn run_rollback(
             // No existing container to rename.
         }
     }
-
-    // Pass the rollback deployment ID so SOURCE_COMMIT is set from the rollback record
-    let env_vars = collect_env_vars(db, app, encryption_key, Some(rollback_deployment_id)).await;
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(

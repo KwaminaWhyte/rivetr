@@ -9,9 +9,30 @@ use crate::DbPool;
 use super::super::{add_deployment_log, update_deployment_status, KEY_LENGTH};
 use super::DeploymentResult;
 
-/// Collect and decrypt all env vars for an app (app + environment + project + team layers).
-/// `deployment_id` is used to look up the deployment's commit SHA for the SOURCE_COMMIT variable.
+/// Collect, decrypt and resolve all env vars for an app (app + environment + project +
+/// team layers, then `secret://` references and secret manager imports).
+/// `deployment_id` is used to look up the deployment's commit SHA for the SOURCE_COMMIT
+/// variable, and receives secret manager warnings and log masking.
 pub(crate) async fn collect_env_vars(
+    db: &DbPool,
+    app: &App,
+    encryption_key: Option<&[u8; KEY_LENGTH]>,
+    deployment_id: Option<&str>,
+) -> Result<Vec<(String, String)>> {
+    let env_vars = collect_plain_env_vars(db, app, encryption_key, deployment_id).await;
+    let outcome =
+        crate::secret_managers::resolve_app_env(db, encryption_key, app, deployment_id, env_vars)
+            .await?;
+    if let Some(dep) = deployment_id {
+        for w in &outcome.warnings {
+            let _ = add_deployment_log(db, dep, "warn", w).await;
+        }
+    }
+    Ok(outcome.vars)
+}
+
+/// The app's env vars from every layer, decrypted, before secret manager resolution.
+async fn collect_plain_env_vars(
     db: &DbPool,
     app: &App,
     encryption_key: Option<&[u8; KEY_LENGTH]>,
@@ -172,6 +193,10 @@ pub(super) async fn start_container(
     use super::build::execute_deployment_commands;
     use super::rollback::{trigger_auto_rollback, trim_old_deployments};
 
+    // Resolve env (including secret manager references) before touching the running
+    // containers, so a resolution failure leaves the current deployment as it is.
+    let env_vars = collect_env_vars(db, app, encryption_key, Some(deployment_id)).await?;
+
     // Step 3: Capture and rename old containers for zero-downtime swap.
     //
     // The old primary container uses the canonical name "rivetr-<app>".  To allow
@@ -300,8 +325,6 @@ pub(super) async fn start_container(
     // Step 4: Start new container
     add_deployment_log(db, deployment_id, "info", "Starting container...").await?;
     update_deployment_status(db, deployment_id, "starting", None).await?;
-
-    let env_vars = collect_env_vars(db, app, encryption_key, Some(deployment_id)).await;
 
     // Get volumes from database
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
@@ -675,4 +698,144 @@ pub(super) async fn start_container(
         auto_rollback_from: None,
         old_container_ids,
     })
+}
+
+#[cfg(test)]
+mod secret_manager_tests {
+    use super::*;
+    use axum::{routing::get, Json, Router};
+
+    /// Each test uses its own deployment id: the per-deployment session is process-wide.
+    async fn setup(dep: &str, policy: Option<&str>) -> (tempfile::TempDir, DbPool, App) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, branch, port) VALUES ('a1', 'web', 'https://example.com/r.git', 'main', 3000)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO deployments (id, app_id, status, started_at) VALUES (?, 'a1', 'starting', datetime('now'))",
+        )
+        .bind(dep)
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO env_vars (id, app_id, key, value, is_secret, created_at, updated_at) \
+             VALUES ('e1', 'a1', 'API_TOKEN', 'secret://dp/#API_TOKEN', 0, datetime('now'), datetime('now'))",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        if let Some(p) = policy {
+            crate::secret_managers::store::set_policy(&db, "app", "a1", p)
+                .await
+                .unwrap();
+        }
+        let app: App = sqlx::query_as("SELECT * FROM apps WHERE id = 'a1'")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        (dir, db, app)
+    }
+
+    async fn point_connection_at(db: &DbPool, api: &str) {
+        sqlx::query("DELETE FROM secret_connections")
+            .execute(db)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO secret_connections (id, name, provider, config, credentials) VALUES ('c1', 'dp', 'doppler', ?, '{\"token\":\"t\"}')",
+        )
+        .bind(serde_json::json!({ "api_url": api }).to_string())
+        .execute(db)
+        .await
+        .unwrap();
+    }
+
+    async fn doppler() -> String {
+        crate::secret_managers::providers::test_server::serve(Router::new().route(
+            "/v3/configs/config/secrets/download",
+            get(|| async { Json(serde_json::json!({"API_TOKEN": "tok-live-778899"})) }),
+        ))
+        .await
+    }
+
+    async fn logs(db: &DbPool, dep: &str) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT message FROM deployment_logs WHERE deployment_id = ? ORDER BY id",
+        )
+        .bind(dep)
+        .fetch_all(db)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn references_resolve_and_are_masked_in_deployment_logs() {
+        let d = "d-sm-mask";
+        let (_dir, db, app) = setup(d, None).await;
+        point_connection_at(&db, &doppler().await).await;
+        let _guard = crate::secret_managers::session::SessionGuard::new(d);
+        let env = collect_env_vars(&db, &app, None, Some(d)).await.unwrap();
+        assert!(env
+            .iter()
+            .any(|(k, v)| k == "API_TOKEN" && v == "tok-live-778899"));
+        assert!(env.iter().any(|(k, _)| k == "PORT"));
+
+        add_deployment_log(&db, d, "info", "curl -H 'Authorization: tok-live-778899'")
+            .await
+            .unwrap();
+        update_deployment_status(&db, d, "failed", Some("bad token tok-live-778899"))
+            .await
+            .unwrap();
+        assert_eq!(
+            logs(&db, d).await,
+            vec!["curl -H 'Authorization: ********'"]
+        );
+        let err: Option<String> =
+            sqlx::query_scalar("SELECT error_message FROM deployments WHERE id = ?")
+                .bind(d)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(err.as_deref(), Some("bad token ********"));
+    }
+
+    #[tokio::test]
+    async fn unreachable_provider_fails_by_default() {
+        let (_dir, db, app) = setup("d-sm-fail", None).await;
+        point_connection_at(&db, "http://127.0.0.1:1").await;
+        let err = collect_env_vars(&db, &app, None, Some("d-sm-fail"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Secret manager resolution failed"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn last_known_policy_uses_stored_values_with_a_warning() {
+        let d = "d-sm-last";
+        let (_dir, db, app) = setup(d, Some("last_known")).await;
+        let key = crate::crypto::derive_key("k");
+        point_connection_at(&db, &doppler().await).await;
+        // An earlier deployment (no deployment id: nothing cached for `d`).
+        collect_env_vars(&db, &app, Some(&key), None).await.unwrap();
+
+        point_connection_at(&db, "http://127.0.0.1:1").await;
+        let _guard = crate::secret_managers::session::SessionGuard::new(d);
+        let env = collect_env_vars(&db, &app, Some(&key), Some(d))
+            .await
+            .unwrap();
+        assert!(env
+            .iter()
+            .any(|(k, v)| k == "API_TOKEN" && v == "tok-live-778899"));
+        let l = logs(&db, d).await;
+        assert!(
+            l.iter().any(|l| l.contains("using the values resolved at")),
+            "{l:?}"
+        );
+    }
 }

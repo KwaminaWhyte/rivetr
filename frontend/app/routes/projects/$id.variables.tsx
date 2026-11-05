@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Layers } from "lucide-react";
 import { api } from "@/lib/api";
 import { SharedEnvVarsTable } from "@/components/shared-env-vars-table";
+import { SecretManagerSection } from "@/components/secret-managers/secret-manager-section";
 import type { Project } from "@/types/api";
 
 export function meta() {
@@ -59,6 +60,7 @@ export default function ProjectEnvVarsPage() {
           description="These variables are inherited by all apps in this project. App-level and environment-level variables take precedence."
         />
       )}
+      {id && <SecretManagerSection ownerType="project" ownerId={id} />}
     </div>
   );
 }

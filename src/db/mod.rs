@@ -1766,6 +1766,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 135: external secret managers (connections, path imports, failure policy)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/135_secret_managers.sql"),
+    )
+    .await?;
+
     // Migration 136: multi-server placements, rollout settings, per-target records
     execute_sql(
         pool,

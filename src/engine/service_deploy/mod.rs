@@ -25,8 +25,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::services::compose::{
-    get_compose_dir, render_service_compose_with, write_service_compose, write_service_env_file,
-    RenderError, ENV_FILE_NAME,
+    get_compose_dir, render_service_compose_with, write_service_compose,
+    write_service_env_file_resolved, RenderError, ENV_FILE_NAME,
 };
 use crate::db::{
     service_deployment_status as status, Service, ServiceDeployConfig, ServiceDeployment,
@@ -510,9 +510,29 @@ async fn pipeline_inner(
     write_service_compose(&env.data_dir, service, &content)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    write_service_env_file(&env.db, &env.data_dir, service, env.encryption_key.as_ref())
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let secrets = match write_service_env_file_resolved(
+        &env.db,
+        &env.data_dir,
+        service,
+        env.encryption_key.as_ref(),
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            // Put the previous compose file back: nothing has been started yet.
+            if let Some(prev) = &previous_compose {
+                let _ = tokio::fs::write(&compose_file, prev).await;
+            }
+            return Err(anyhow::anyhow!("{}", e));
+        }
+    };
+    for v in &secrets.secret_values {
+        log.add_secret(v);
+    }
+    for w in &secrets.warnings {
+        log.warn(w).await;
+    }
 
     let restore = |reason: String| {
         let compose_file = compose_file.clone();

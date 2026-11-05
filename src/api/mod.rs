@@ -55,6 +55,7 @@ mod routes;
 mod s3;
 pub mod scopes;
 mod sdk;
+mod secret_managers;
 mod server_network;
 mod server_ops;
 mod servers;
@@ -1371,6 +1372,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/services/{id}/tags/{tag_id}",
             delete(tags::detach_service_tag),
         )
+        // External secret managers (connections, path imports, failure policy)
+        .merge(secret_managers::routes())
         // SEC-C3: resource-level authorization. Added before the auth layer so it
         // sits *inside* it — runs after the token is validated, before handlers.
         // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.
