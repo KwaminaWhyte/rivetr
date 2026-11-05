@@ -52,19 +52,27 @@ fn format_mattermost_message(payload: &NotificationPayload) -> String {
         crate::db::NotificationEventType::AppStarted => ":arrow_forward:",
         crate::db::NotificationEventType::ContainerCrash => ":skull:",
         crate::db::NotificationEventType::ContainerRestarted => ":arrows_counterclockwise:",
+        crate::db::NotificationEventType::BackupSucceeded => ":floppy_disk:",
+        crate::db::NotificationEventType::BackupFailed => ":x:",
+        crate::db::NotificationEventType::BackupMissed => ":warning:",
     };
 
     let mut msg = format!(
-        "{icon} **{title}**\n\n{message}\n\n**Application:** {app}\n**Status:** {status}",
+        "{icon} **{title}**\n\n{message}\n\n**{label}:** {app}\n**Status:** {status}",
         icon = icon,
         title = payload.title(),
         message = payload.message,
+        label = payload.subject_label(),
         app = payload.app_name,
         status = payload.status,
     );
 
     if let Some(ref deployment_id) = payload.deployment_id {
         msg.push_str(&format!("\n**Deployment ID:** `{}`", deployment_id));
+    }
+
+    for (label, value) in payload.detail_fields() {
+        msg.push_str(&format!("\n**{}:** {}", label, value));
     }
 
     if let Some(ref error) = payload.error_message {
@@ -92,6 +100,7 @@ mod tests {
             message: "Deployment completed successfully".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_mattermost_message(&payload);
@@ -113,10 +122,19 @@ mod tests {
             message: "Deployment failed".to_string(),
             error_message: Some("Build error: missing Dockerfile".to_string()),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_mattermost_message(&payload);
         assert!(msg.contains("**Error:**"));
         assert!(msg.contains("Build error: missing Dockerfile"));
+    }
+
+    #[test]
+    fn backup_events_render_details() {
+        for payload in crate::notifications::test_support::backup_payloads() {
+            let rendered = format_mattermost_message(&payload);
+            crate::notifications::test_support::assert_backup_rendered(&rendered, &payload);
+        }
     }
 }

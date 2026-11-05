@@ -82,6 +82,22 @@ pub enum NotificationEventType {
     AppStarted,
     ContainerCrash,
     ContainerRestarted,
+    /// A database, volume or instance backup finished successfully
+    BackupSucceeded,
+    /// A database, volume or instance backup failed
+    BackupFailed,
+    /// A scheduled backup did not run within its window
+    BackupMissed,
+}
+
+impl NotificationEventType {
+    /// True for the backup events, which can target a backup resource instead of an app.
+    pub fn is_backup_event(&self) -> bool {
+        matches!(
+            self,
+            Self::BackupSucceeded | Self::BackupFailed | Self::BackupMissed
+        )
+    }
 }
 
 impl std::fmt::Display for NotificationEventType {
@@ -94,6 +110,9 @@ impl std::fmt::Display for NotificationEventType {
             Self::AppStarted => write!(f, "app_started"),
             Self::ContainerCrash => write!(f, "container_crash"),
             Self::ContainerRestarted => write!(f, "container_restarted"),
+            Self::BackupSucceeded => write!(f, "backup_succeeded"),
+            Self::BackupFailed => write!(f, "backup_failed"),
+            Self::BackupMissed => write!(f, "backup_missed"),
         }
     }
 }
@@ -110,6 +129,9 @@ impl std::str::FromStr for NotificationEventType {
             "app_started" => Ok(Self::AppStarted),
             "container_crash" => Ok(Self::ContainerCrash),
             "container_restarted" => Ok(Self::ContainerRestarted),
+            "backup_succeeded" => Ok(Self::BackupSucceeded),
+            "backup_failed" => Ok(Self::BackupFailed),
+            "backup_missed" => Ok(Self::BackupMissed),
             _ => Err(format!("Unknown event type: {}", s)),
         }
     }
@@ -475,6 +497,12 @@ pub struct NotificationSubscription {
     pub channel_id: String,
     pub event_type: String,
     pub app_id: Option<String>,
+    /// Backup resource kind for backup events: database, volume or instance
+    #[sqlx(default)]
+    pub resource_type: Option<String>,
+    /// Backup resource id (database or volume id) for backup events
+    #[sqlx(default)]
+    pub resource_id: Option<String>,
     pub created_at: String,
 }
 
@@ -495,6 +523,9 @@ pub struct NotificationSubscriptionResponse {
     pub event_type: String,
     pub app_id: Option<String>,
     pub app_name: Option<String>,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub resource_name: Option<String>,
     pub created_at: String,
 }
 
@@ -529,6 +560,12 @@ pub struct UpdateNotificationChannelRequest {
 pub struct CreateNotificationSubscriptionRequest {
     pub event_type: NotificationEventType,
     pub app_id: Option<String>,
+    /// Only for backup events: limit to one resource kind (database, volume, instance)
+    #[serde(default)]
+    pub resource_type: Option<String>,
+    /// Only for backup events: limit to one database or volume
+    #[serde(default)]
+    pub resource_id: Option<String>,
 }
 
 /// Test notification request

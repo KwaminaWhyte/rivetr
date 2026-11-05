@@ -60,13 +60,17 @@ fn format_telegram_message(payload: &NotificationPayload) -> String {
         crate::db::NotificationEventType::AppStarted => "▶️",
         crate::db::NotificationEventType::ContainerCrash => "💥",
         crate::db::NotificationEventType::ContainerRestarted => "🔄",
+        crate::db::NotificationEventType::BackupSucceeded => "💾",
+        crate::db::NotificationEventType::BackupFailed => "❌",
+        crate::db::NotificationEventType::BackupMissed => "⚠️",
     };
 
     let mut msg = format!(
-        "{emoji} <b>{title}</b>\n\n{message}\n\n<b>Application:</b> <code>{app}</code>\n<b>Status:</b> {status}",
+        "{emoji} <b>{title}</b>\n\n{message}\n\n<b>{label}:</b> <code>{app}</code>\n<b>Status:</b> {status}",
         emoji = emoji,
         title = html_escape(&payload.title()),
         message = html_escape(&payload.message),
+        label = html_escape(&payload.subject_label()),
         app = html_escape(&payload.app_name),
         status = html_escape(&payload.status),
     );
@@ -75,6 +79,14 @@ fn format_telegram_message(payload: &NotificationPayload) -> String {
         msg.push_str(&format!(
             "\n<b>Deployment ID:</b> <code>{}</code>",
             html_escape(deployment_id)
+        ));
+    }
+
+    for (label, value) in payload.detail_fields() {
+        msg.push_str(&format!(
+            "\n<b>{}:</b> {}",
+            html_escape(label),
+            html_escape(value)
         ));
     }
 
@@ -113,6 +125,7 @@ mod tests {
             message: "Deployment completed successfully".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_telegram_message(&payload);
@@ -133,6 +146,7 @@ mod tests {
             message: "Deployment failed".to_string(),
             error_message: Some("Build error: missing Dockerfile".to_string()),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_telegram_message(&payload);
@@ -144,5 +158,13 @@ mod tests {
     fn test_html_escape() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
         assert_eq!(html_escape("Tom & Jerry"), "Tom &amp; Jerry");
+    }
+
+    #[test]
+    fn backup_events_render_details() {
+        for payload in crate::notifications::test_support::backup_payloads() {
+            let rendered = format_telegram_message(&payload);
+            crate::notifications::test_support::assert_backup_rendered(&rendered, &payload);
+        }
     }
 }

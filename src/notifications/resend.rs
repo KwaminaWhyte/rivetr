@@ -80,7 +80,7 @@ fn build_html_body(payload: &NotificationPayload) -> String {
         <div class="content">
             <p>{}</p>
             <div class="field">
-                <span class="field-label">Application:</span>
+                <span class="field-label">{}:</span>
                 <span class="field-value">{}</span>
             </div>
             <div class="field">
@@ -98,6 +98,7 @@ fn build_html_body(payload: &NotificationPayload) -> String {
         payload.color(),
         payload.title(),
         payload.message,
+        payload.subject_label(),
         payload.app_name,
         payload.status,
         payload
@@ -107,7 +108,8 @@ fn build_html_body(payload: &NotificationPayload) -> String {
                 r#"<div class="field"><span class="field-label">Deployment ID:</span> <span class="field-value">{}</span></div>"#,
                 id
             ))
-            .unwrap_or_default(),
+            .unwrap_or_default()
+            + &payload.detail_html_rows(),
         payload
             .error_message
             .as_ref()
@@ -119,9 +121,10 @@ fn build_html_body(payload: &NotificationPayload) -> String {
 /// Build a plain text email body for the notification
 fn build_text_body(payload: &NotificationPayload) -> String {
     let mut body = format!(
-        "{}\n\n{}\n\nApplication: {}\nStatus: {}",
+        "{}\n\n{}\n\n{}: {}\nStatus: {}",
         payload.title(),
         payload.message,
+        payload.subject_label(),
         payload.app_name,
         payload.status,
     );
@@ -129,6 +132,8 @@ fn build_text_body(payload: &NotificationPayload) -> String {
     if let Some(ref deployment_id) = payload.deployment_id {
         body.push_str(&format!("\nDeployment ID: {}", deployment_id));
     }
+
+    body.push_str(&payload.detail_text_lines());
 
     if let Some(ref error) = payload.error_message {
         body.push_str(&format!("\n\nError: {}", error));
@@ -155,6 +160,7 @@ mod tests {
             message: "Deployment completed successfully".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let body = build_text_body(&payload);
@@ -176,6 +182,7 @@ mod tests {
             message: "Deployment failed".to_string(),
             error_message: Some("Build error: missing Dockerfile".to_string()),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let body = build_text_body(&payload);
@@ -194,10 +201,25 @@ mod tests {
             message: "App has been stopped".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let html = build_html_body(&payload);
         assert!(html.contains("App Stopped: my-app"));
         assert!(html.contains("Rivetr Deployment Engine"));
+    }
+
+    #[test]
+    fn backup_events_render_details() {
+        for payload in crate::notifications::test_support::backup_payloads() {
+            crate::notifications::test_support::assert_backup_rendered(
+                &build_html_body(&payload),
+                &payload,
+            );
+            crate::notifications::test_support::assert_backup_rendered(
+                &build_text_body(&payload),
+                &payload,
+            );
+        }
     }
 }

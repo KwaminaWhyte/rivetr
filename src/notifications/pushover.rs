@@ -54,8 +54,9 @@ pub async fn send_pushover(
 /// Format a notification payload as a plain text message for Pushover
 fn format_pushover_message(payload: &NotificationPayload) -> String {
     let mut msg = format!(
-        "{message}\n\nApplication: {app}\nStatus: {status}",
+        "{message}\n\n{label}: {app}\nStatus: {status}",
         message = payload.message,
+        label = payload.subject_label(),
         app = payload.app_name,
         status = payload.status,
     );
@@ -63,6 +64,8 @@ fn format_pushover_message(payload: &NotificationPayload) -> String {
     if let Some(ref deployment_id) = payload.deployment_id {
         msg.push_str(&format!("\nDeployment ID: {}", deployment_id));
     }
+
+    msg.push_str(&payload.detail_text_lines());
 
     if let Some(ref error) = payload.error_message {
         msg.push_str(&format!("\n\nError: {}", error));
@@ -87,6 +90,7 @@ mod tests {
             message: "Deployment completed successfully".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_pushover_message(&payload);
@@ -107,6 +111,7 @@ mod tests {
             message: "Deployment failed".to_string(),
             error_message: Some("Build error: missing Dockerfile".to_string()),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_pushover_message(&payload);
@@ -124,10 +129,19 @@ mod tests {
             message: "App has been stopped".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let msg = format_pushover_message(&payload);
         assert!(!msg.contains("Deployment ID:"));
         assert!(msg.contains("Application: my-app"));
+    }
+
+    #[test]
+    fn backup_events_render_details() {
+        for payload in crate::notifications::test_support::backup_payloads() {
+            let rendered = format_pushover_message(&payload);
+            crate::notifications::test_support::assert_backup_rendered(&rendered, &payload);
+        }
     }
 }
