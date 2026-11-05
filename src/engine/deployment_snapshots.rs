@@ -119,12 +119,12 @@ pub fn snapshot_supported(db_type: &str) -> bool {
 }
 
 /// Redis-family types restored by replacing `dump.rdb` in the data volume.
-fn is_rdb_restore(db_type: &str) -> bool {
+pub(crate) fn is_rdb_restore(db_type: &str) -> bool {
     matches!(db_type, "redis" | "keydb")
 }
 
 /// Human-readable list of supported types, for log and error messages.
-const SUPPORTED_TYPES: &str = "PostgreSQL, MySQL, MariaDB, MongoDB, Redis and KeyDB";
+pub(crate) const SUPPORTED_TYPES: &str = "PostgreSQL, MySQL, MariaDB, MongoDB, Redis and KeyDB";
 
 /// Why a Redis-family database cannot be restored from an RDB snapshot, if it cannot.
 /// The restore replaces `dump.rdb` in the data volume on this host, and AOF files would
@@ -596,7 +596,7 @@ pub async fn restore_snapshots(
 
 /// The container monitor marks a database stopped when it sees the container down, which
 /// a Redis-family restore causes on purpose. Put the status back once it is running.
-async fn sync_running_status(
+pub(crate) async fn sync_running_status(
     db: &DbPool,
     runtime: &dyn ContainerRuntime,
     database: &ManagedDatabase,
@@ -620,6 +620,18 @@ async fn restore_one(
     database: &ManagedDatabase,
     snap: &DeploymentSnapshot,
 ) -> Result<()> {
+    let path = snap.file_path.as_deref().context("Snapshot has no file")?;
+    restore_dump_file(runtime, database, path).await
+}
+
+/// Load a dump file (as written by `DatabaseBackupTask::backup_database`) into a
+/// managed database, replacing its current data. Shared by rollback-with-data and
+/// backup restore (local and S3). The caller takes the safety backup first.
+pub async fn restore_dump_file(
+    runtime: &dyn ContainerRuntime,
+    database: &ManagedDatabase,
+    path: &str,
+) -> Result<()> {
     let container_id = database
         .container_id
         .as_deref()
@@ -627,10 +639,9 @@ async fn restore_one(
     let creds = database
         .get_credentials()
         .context("Database has no credentials")?;
-    let path = snap.file_path.as_deref().context("Snapshot has no file")?;
     let bytes = tokio::fs::read(path)
         .await
-        .with_context(|| format!("Failed to read snapshot file {path}"))?;
+        .with_context(|| format!("Failed to read dump file {path}"))?;
 
     if is_rdb_restore(&database.db_type) {
         return restore_rdb(runtime, database, container_id, &creds, &bytes).await;

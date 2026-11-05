@@ -13,7 +13,13 @@ export type NotificationEventType =
   | "app_stopped"
   | "app_started"
   | "container_crash"
-  | "container_restarted";
+  | "container_restarted"
+  | "backup_succeeded"
+  | "backup_failed"
+  | "backup_missed";
+
+/** Backup resource kinds a backup subscription can be limited to */
+export type BackupResourceType = "database" | "volume" | "instance";
 
 /** Slack webhook configuration */
 export interface SlackConfig {
@@ -124,6 +130,9 @@ export interface NotificationSubscription {
   event_type: NotificationEventType;
   app_id: string | null;
   app_name: string | null;
+  resource_type: BackupResourceType | null;
+  resource_id: string | null;
+  resource_name: string | null;
   created_at: string;
 }
 
@@ -148,6 +157,10 @@ export interface UpdateNotificationChannelRequest {
 export interface CreateNotificationSubscriptionRequest {
   event_type: NotificationEventType;
   app_id?: string;
+  /** Backup events only: limit to one kind of backup */
+  resource_type?: BackupResourceType;
+  /** Backup events only: limit to one database or volume */
+  resource_id?: string;
 }
 
 /** Request to test a notification channel */

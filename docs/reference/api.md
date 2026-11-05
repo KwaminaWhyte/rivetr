@@ -220,7 +220,13 @@ MCP (`POST /mcp`): read-only tools need `read`, `deploy_app` and `restart_app` n
 | GET | `/api/volumes/:id` | Get a volume. |
 | PUT | `/api/volumes/:id` | Update a volume. |
 | DELETE | `/api/volumes/:id` | Delete a volume. |
-| POST | `/api/volumes/:id/backup` | Back up a volume. |
+| POST | `/api/volumes/:id/backup` | Download a volume as a tar.gz archive. |
+| GET | `/api/volumes/:id/backups` | Volume backup history, local and S3 (`?scan=true` lists buckets). |
+| POST | `/api/volumes/:id/backups` | Start a volume backup (local or S3). |
+| DELETE | `/api/volumes/:id/backups/:backup_id` | Delete a volume backup (`?source=local\|s3`). |
+| POST | `/api/volumes/:id/backups/:backup_id/restore` | Restore a volume backup (local or S3). |
+| GET | `/api/volumes/:id/backups/restores` | Recent volume restore jobs. |
+| GET/PUT/DELETE | `/api/volumes/:id/backup-schedule` | Per-volume backup schedule. |
 
 ## Logs, monitoring, scheduled jobs (app-scoped)
 
@@ -273,6 +279,10 @@ MCP (`POST /mcp`): read-only tools need `read`, `deploy_app` and `restart_app` n
 | GET | `/api/databases/:id/backups/schedule` | Get backup schedule. |
 | POST | `/api/databases/:id/backups/schedule` | Upsert backup schedule. |
 | DELETE | `/api/databases/:id/backups/schedule` | Delete backup schedule. |
+| GET | `/api/databases/:id/backups/catalog` | Local and S3 backups (`?scan=true` lists buckets). |
+| POST | `/api/databases/:id/backups/:backup_id/restore` | Restore a backup (local or S3). |
+| POST | `/api/databases/:id/backups/:backup_id/upload-s3` | Copy a local backup to S3. |
+| GET | `/api/databases/:id/backups/restores` | Recent database restore jobs. |
 
 ## Services (Docker Compose)
 
@@ -631,9 +641,9 @@ All `/api/tokens` routes need the `admin` scope when called with an API token.
 | PUT | `/api/s3/configs/:id` | Update an S3 config. |
 | DELETE | `/api/s3/configs/:id` | Delete an S3 config. |
 | POST | `/api/s3/configs/:id/test` | Test an S3 config. |
-| POST | `/api/s3/backup` | Trigger an S3 backup. |
+| POST | `/api/s3/backup` | Trigger an S3 backup (instance, database or volume). |
 | GET | `/api/s3/backups` | List S3 backups. |
-| POST | `/api/s3/backups/:id/restore` | Restore an S3 backup. |
+| POST | `/api/s3/backups/:id/restore` | Restore an S3 backup (database and volume run as a background job). |
 | DELETE | `/api/s3/backups/:id` | Delete an S3 backup. |
 
 ## Audit, webhook events, proxy logs

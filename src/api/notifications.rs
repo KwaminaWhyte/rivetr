@@ -326,12 +326,22 @@ pub async fn list_subscriptions(
             None
         };
 
+        let resource_name = resolve_resource_name(
+            &state,
+            sub.resource_type.as_deref(),
+            sub.resource_id.as_deref(),
+        )
+        .await?;
+
         responses.push(NotificationSubscriptionResponse {
             id: sub.id,
             channel_id: sub.channel_id,
             event_type: sub.event_type,
             app_id: sub.app_id,
             app_name,
+            resource_type: sub.resource_type,
+            resource_id: sub.resource_id,
+            resource_name,
             created_at: sub.created_at,
         });
     }
@@ -375,19 +385,61 @@ pub async fn create_subscription(
         None
     };
 
+    // Resource filters only make sense for backup events.
+    let resource_type = req
+        .resource_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let resource_id = req
+        .resource_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if (resource_type.is_some() || resource_id.is_some()) && !req.event_type.is_backup_event() {
+        return Err(ApiError::validation_field(
+            "resource_type",
+            "Resource filters are only supported for backup events",
+        ));
+    }
+    if let Some(ref kind) = resource_type {
+        if !matches!(kind.as_str(), "database" | "volume" | "instance") {
+            return Err(ApiError::validation_field(
+                "resource_type",
+                "resource_type must be database, volume or instance",
+            ));
+        }
+    }
+    if resource_id.is_some() && !matches!(resource_type.as_deref(), Some("database" | "volume")) {
+        return Err(ApiError::validation_field(
+            "resource_id",
+            "resource_id needs resource_type database or volume",
+        ));
+    }
+    let resource_name =
+        resolve_resource_name(&state, resource_type.as_deref(), resource_id.as_deref()).await?;
+    if resource_id.is_some() && resource_name.is_none() {
+        return Err(ApiError::not_found("Backup resource not found"));
+    }
+
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO notification_subscriptions (id, channel_id, event_type, app_id, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO notification_subscriptions
+            (id, channel_id, event_type, app_id, resource_type, resource_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&id)
     .bind(&channel_id)
     .bind(req.event_type.to_string())
     .bind(&req.app_id)
+    .bind(&resource_type)
+    .bind(&resource_id)
     .bind(&now)
     .execute(&state.db)
     .await
@@ -406,6 +458,9 @@ pub async fn create_subscription(
         event_type: req.event_type.to_string(),
         app_id: req.app_id,
         app_name,
+        resource_type,
+        resource_id,
+        resource_name,
         created_at: now,
     };
 
@@ -1094,4 +1149,24 @@ pub async fn test_team_channel(
     );
 
     Ok(StatusCode::OK)
+}
+
+/// Display name of a backup resource a subscription points at.
+async fn resolve_resource_name(
+    state: &AppState,
+    resource_type: Option<&str>,
+    resource_id: Option<&str>,
+) -> Result<Option<String>, ApiError> {
+    let Some(id) = resource_id else {
+        return Ok(None);
+    };
+    let sql = match resource_type {
+        Some("database") => "SELECT name FROM databases WHERE id = ?",
+        Some("volume") => "SELECT name FROM volumes WHERE id = ?",
+        _ => return Ok(None),
+    };
+    Ok(sqlx::query_scalar::<_, String>(sql)
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?)
 }

@@ -47,6 +47,9 @@ fn build_adaptive_card(payload: &NotificationPayload) -> serde_json::Value {
         crate::db::NotificationEventType::DeploymentFailed
         | crate::db::NotificationEventType::ContainerCrash => "attention",
         crate::db::NotificationEventType::AppStopped => "warning",
+        crate::db::NotificationEventType::BackupSucceeded => "good",
+        crate::db::NotificationEventType::BackupFailed => "attention",
+        crate::db::NotificationEventType::BackupMissed => "warning",
     };
 
     let mut body = vec![
@@ -108,12 +111,16 @@ fn build_adaptive_card(payload: &NotificationPayload) -> serde_json::Value {
 /// Build the fact set for the Adaptive Card
 fn build_facts(payload: &NotificationPayload) -> Vec<serde_json::Value> {
     let mut facts = vec![
-        json!({ "title": "Application", "value": payload.app_name }),
+        json!({ "title": payload.subject_label(), "value": payload.app_name }),
         json!({ "title": "Status", "value": payload.status }),
     ];
 
     if let Some(ref deployment_id) = payload.deployment_id {
         facts.push(json!({ "title": "Deployment ID", "value": deployment_id }));
+    }
+
+    for (label, value) in payload.detail_fields() {
+        facts.push(json!({ "title": label, "value": value }));
     }
 
     facts
@@ -135,6 +142,7 @@ mod tests {
             message: "Deployment completed successfully".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let card = build_adaptive_card(&payload);
@@ -166,6 +174,7 @@ mod tests {
             message: "Deployment failed".to_string(),
             error_message: Some("Build error".to_string()),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let card = build_adaptive_card(&payload);
@@ -187,11 +196,20 @@ mod tests {
             message: "Done".to_string(),
             error_message: None,
             timestamp: "2024-01-01T00:00:00Z".to_string(),
+            extras: Default::default(),
         };
 
         let facts = build_facts(&payload);
         assert_eq!(facts.len(), 3); // Application, Status, Deployment ID
         assert_eq!(facts[0]["title"], "Application");
         assert_eq!(facts[0]["value"], "my-app");
+    }
+
+    #[test]
+    fn backup_events_render_details() {
+        for payload in crate::notifications::test_support::backup_payloads() {
+            let rendered = build_adaptive_card(&payload).to_string();
+            crate::notifications::test_support::assert_backup_rendered(&rendered, &payload);
+        }
     }
 }

@@ -45,6 +45,19 @@ pub struct NotificationPayload {
     pub message: String,
     pub error_message: Option<String>,
     pub timestamp: String,
+    /// Resource scope and extra detail lines (backup events use these)
+    pub extras: NotificationExtras,
+}
+
+/// Extra context for events that are not about a deployment, such as backups.
+#[derive(Debug, Clone, Default)]
+pub struct NotificationExtras {
+    /// Backup resource kind: database, volume or instance
+    pub resource_type: Option<String>,
+    /// Backup resource id (database or volume id); matched against subscriptions
+    pub resource_id: Option<String>,
+    /// Ordered label/value pairs rendered by every channel (size, duration, ...)
+    pub fields: Vec<(String, String)>,
 }
 
 impl NotificationPayload {
@@ -67,6 +80,7 @@ impl NotificationPayload {
             message,
             error_message,
             timestamp: chrono::Utc::now().to_rfc3339(),
+            extras: Default::default(),
         }
     }
 
@@ -87,7 +101,51 @@ impl NotificationPayload {
             message,
             error_message: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
+            extras: Default::default(),
         }
+    }
+
+    /// Label for the `app_name` field: "Application", or the backup resource kind.
+    pub fn subject_label(&self) -> String {
+        if self.event_type.is_backup_event() {
+            match self.extras.resource_type.as_deref() {
+                Some("database") => "Database".to_string(),
+                Some("volume") => "Volume".to_string(),
+                Some("instance") => "Instance".to_string(),
+                _ => "Resource".to_string(),
+            }
+        } else {
+            "Application".to_string()
+        }
+    }
+
+    /// Extra label/value lines to render after the standard fields.
+    pub fn detail_fields(&self) -> &[(String, String)] {
+        &self.extras.fields
+    }
+
+    /// Detail fields as plain text lines, each starting with a newline.
+    pub fn detail_text_lines(&self) -> String {
+        self.extras
+            .fields
+            .iter()
+            .map(|(label, value)| format!("\n{}: {}", label, value))
+            .collect()
+    }
+
+    /// Detail fields as HTML rows for the email templates (values escaped).
+    pub fn detail_html_rows(&self) -> String {
+        self.extras
+            .fields
+            .iter()
+            .map(|(label, value)| {
+                format!(
+                    r#"<div class="field"><span class="field-label">{}:</span> <span class="field-value">{}</span></div>"#,
+                    escape_html(label),
+                    escape_html(value)
+                )
+            })
+            .collect()
     }
 
     /// Get the title for the notification
@@ -110,6 +168,11 @@ impl NotificationPayload {
             NotificationEventType::ContainerRestarted => {
                 format!("Container Restarted: {}", self.app_name)
             }
+            NotificationEventType::BackupSucceeded => {
+                format!("Backup Succeeded: {}", self.app_name)
+            }
+            NotificationEventType::BackupFailed => format!("Backup Failed: {}", self.app_name),
+            NotificationEventType::BackupMissed => format!("Backup Missed: {}", self.app_name),
         }
     }
 
@@ -125,6 +188,9 @@ impl NotificationPayload {
             } // Red
             NotificationEventType::AppStopped => "#f39c12",        // Orange
             NotificationEventType::ContainerRestarted => "#f39c12", // Orange
+            NotificationEventType::BackupSucceeded => "#2ecc71",   // Green
+            NotificationEventType::BackupFailed => "#e74c3c",      // Red
+            NotificationEventType::BackupMissed => "#f39c12",      // Orange
         }
     }
 
@@ -138,6 +204,9 @@ impl NotificationPayload {
             NotificationEventType::AppStarted => ":arrow_forward:",
             NotificationEventType::ContainerCrash => ":boom:",
             NotificationEventType::ContainerRestarted => ":arrows_counterclockwise:",
+            NotificationEventType::BackupSucceeded => ":floppy_disk:",
+            NotificationEventType::BackupFailed => ":x:",
+            NotificationEventType::BackupMissed => ":warning:",
         }
     }
 }
@@ -211,17 +280,22 @@ impl NotificationService {
     ) -> Result<Vec<NotificationSubscription>> {
         let event_type = payload.event_type.to_string();
 
-        // Get subscriptions for this event type that either:
-        // 1. Have no app_id (subscribe to all apps)
-        // 2. Have the specific app_id
+        // Get subscriptions for this event type whose filters all match:
+        // app_id NULL (all apps) or the payload's app, resource_type NULL or the
+        // payload's resource kind, resource_id NULL or the payload's resource.
         let subscriptions = sqlx::query_as::<_, NotificationSubscription>(
             r#"
             SELECT * FROM notification_subscriptions
-            WHERE event_type = ? AND (app_id IS NULL OR app_id = ?)
+            WHERE event_type = ?
+              AND (app_id IS NULL OR app_id = ?)
+              AND (resource_type IS NULL OR resource_type = ?)
+              AND (resource_id IS NULL OR resource_id = ?)
             "#,
         )
         .bind(&event_type)
         .bind(&payload.app_id)
+        .bind(&payload.extras.resource_type)
+        .bind(&payload.extras.resource_id)
         .fetch_all(&self.db)
         .await?;
 
@@ -396,49 +470,9 @@ impl NotificationService {
         config: &SlackConfig,
         payload: &NotificationPayload,
     ) -> Result<()> {
-        let mut fields = vec![
-            json!({
-                "title": "Application",
-                "value": &payload.app_name,
-                "short": true
-            }),
-            json!({
-                "title": "Status",
-                "value": &payload.status,
-                "short": true
-            }),
-        ];
-
-        if let Some(ref deployment_id) = payload.deployment_id {
-            fields.push(json!({
-                "title": "Deployment ID",
-                "value": deployment_id,
-                "short": true
-            }));
-        }
-
-        if let Some(ref error) = payload.error_message {
-            fields.push(json!({
-                "title": "Error",
-                "value": error,
-                "short": false
-            }));
-        }
-
-        let message = json!({
-            "attachments": [{
-                "color": payload.color(),
-                "title": payload.title(),
-                "text": &payload.message,
-                "fields": fields,
-                "footer": "Rivetr Deployment Engine",
-                "ts": chrono::Utc::now().timestamp()
-            }]
-        });
-
         self.http_client
             .post(&config.webhook_url)
-            .json(&message)
+            .json(&build_slack_message(payload))
             .send()
             .await?
             .error_for_status()?;
@@ -452,55 +486,9 @@ impl NotificationService {
         config: &DiscordConfig,
         payload: &NotificationPayload,
     ) -> Result<()> {
-        let mut fields = vec![
-            json!({
-                "name": "Application",
-                "value": &payload.app_name,
-                "inline": true
-            }),
-            json!({
-                "name": "Status",
-                "value": &payload.status,
-                "inline": true
-            }),
-        ];
-
-        if let Some(ref deployment_id) = payload.deployment_id {
-            fields.push(json!({
-                "name": "Deployment ID",
-                "value": deployment_id,
-                "inline": true
-            }));
-        }
-
-        if let Some(ref error) = payload.error_message {
-            fields.push(json!({
-                "name": "Error",
-                "value": error,
-                "inline": false
-            }));
-        }
-
-        // Convert hex color to integer
-        let color_hex = payload.color().trim_start_matches('#');
-        let color = i32::from_str_radix(color_hex, 16).unwrap_or(0x3498db);
-
-        let message = json!({
-            "embeds": [{
-                "title": payload.title(),
-                "description": &payload.message,
-                "color": color,
-                "fields": fields,
-                "footer": {
-                    "text": "Rivetr Deployment Engine"
-                },
-                "timestamp": &payload.timestamp
-            }]
-        });
-
         self.http_client
             .post(&config.webhook_url)
-            .json(&message)
+            .json(&build_discord_message(payload))
             .send()
             .await?
             .error_for_status()?;
@@ -515,88 +503,7 @@ impl NotificationService {
         payload: &NotificationPayload,
     ) -> Result<()> {
         let from: Mailbox = config.from_address.parse()?;
-
-        // Build HTML content
-        let html_body = format!(
-            r#"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
-                    .container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-                    .header {{ background-color: {}; color: white; padding: 20px; text-align: center; }}
-                    .content {{ padding: 20px; }}
-                    .field {{ margin-bottom: 15px; }}
-                    .field-label {{ font-weight: bold; color: #666; }}
-                    .field-value {{ color: #333; }}
-                    .error {{ background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 10px; margin-top: 15px; }}
-                    .footer {{ padding: 15px; text-align: center; color: #888; font-size: 12px; border-top: 1px solid #eee; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>{}</h1>
-                    </div>
-                    <div class="content">
-                        <p>{}</p>
-                        <div class="field">
-                            <span class="field-label">Application:</span>
-                            <span class="field-value">{}</span>
-                        </div>
-                        <div class="field">
-                            <span class="field-label">Status:</span>
-                            <span class="field-value">{}</span>
-                        </div>
-                        {}
-                        {}
-                    </div>
-                    <div class="footer">
-                        Rivetr Deployment Engine
-                    </div>
-                </div>
-            </body>
-            </html>
-            "#,
-            payload.color(),
-            payload.title(),
-            payload.message,
-            payload.app_name,
-            payload.status,
-            payload
-                .deployment_id
-                .as_ref()
-                .map(|id| format!(
-                    r#"<div class="field"><span class="field-label">Deployment ID:</span> <span class="field-value">{}</span></div>"#,
-                    id
-                ))
-                .unwrap_or_default(),
-            payload
-                .error_message
-                .as_ref()
-                .map(|e| format!(r#"<div class="error"><strong>Error:</strong> {}</div>"#, e))
-                .unwrap_or_default(),
-        );
-
-        // Build plain text version
-        let text_body = format!(
-            "{}\n\n{}\n\nApplication: {}\nStatus: {}{}{}\n\n---\nRivetr Deployment Engine",
-            payload.title(),
-            payload.message,
-            payload.app_name,
-            payload.status,
-            payload
-                .deployment_id
-                .as_ref()
-                .map(|id| format!("\nDeployment ID: {}", id))
-                .unwrap_or_default(),
-            payload
-                .error_message
-                .as_ref()
-                .map(|e| format!("\nError: {}", e))
-                .unwrap_or_default(),
-        );
+        let (html_body, text_body) = build_email_bodies(payload);
 
         for to_address in &config.to_addresses {
             let to: Mailbox = to_address.parse()?;
@@ -647,104 +554,7 @@ impl NotificationService {
         config: &WebhookConfig,
         payload: &NotificationPayload,
     ) -> Result<()> {
-        // Build the payload based on template type
-        let body = match config.payload_template.as_str() {
-            "slack" => {
-                // Slack-compatible format
-                json!({
-                    "attachments": [{
-                        "color": payload.color(),
-                        "title": payload.title(),
-                        "text": &payload.message,
-                        "fields": [
-                            {
-                                "title": "Application",
-                                "value": &payload.app_name,
-                                "short": true
-                            },
-                            {
-                                "title": "Status",
-                                "value": &payload.status,
-                                "short": true
-                            }
-                        ],
-                        "footer": "Rivetr Deployment Engine",
-                        "ts": chrono::Utc::now().timestamp()
-                    }]
-                })
-            }
-            "discord" => {
-                // Discord-compatible format
-                let color_str = payload.color();
-                json!({
-                    "embeds": [{
-                        "color": match color_str {
-                            "#36a64f" => 0x36a64f,
-                            "#dc3545" => 0xdc3545,
-                            "#0d6efd" => 0x0d6efd,
-                            _ => 0x6c757d,
-                        },
-                        "title": payload.title(),
-                        "description": &payload.message,
-                        "fields": [
-                            {
-                                "name": "Application",
-                                "value": &payload.app_name,
-                                "inline": true
-                            },
-                            {
-                                "name": "Status",
-                                "value": &payload.status,
-                                "inline": true
-                            }
-                        ],
-                        "footer": {
-                            "text": "Rivetr Deployment Engine"
-                        },
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    }]
-                })
-            }
-            "custom" => {
-                // Parse custom template and substitute variables
-                if let Some(ref template) = config.custom_template {
-                    let result = template
-                        .replace("{{app_name}}", &payload.app_name)
-                        .replace("{{metric_type}}", &payload.status)
-                        .replace("{{value}}", &payload.status)
-                        .replace("{{threshold}}", "")
-                        .replace("{{timestamp}}", &payload.timestamp)
-                        .replace("{{severity}}", &payload.status)
-                        .replace("{{message}}", &payload.message)
-                        .replace("{{event_type}}", &payload.event_type.to_string());
-
-                    // Try to parse as JSON, if it fails, wrap in a message object
-                    serde_json::from_str(&result).unwrap_or_else(|_| json!({"message": result}))
-                } else {
-                    // Default JSON format if no custom template
-                    json!({
-                        "app_name": &payload.app_name,
-                        "event_type": payload.event_type.to_string(),
-                        "status": &payload.status,
-                        "message": &payload.message,
-                        "timestamp": &payload.timestamp
-                    })
-                }
-            }
-            _ => {
-                // Default JSON format
-                json!({
-                    "app_name": &payload.app_name,
-                    "app_id": &payload.app_id,
-                    "deployment_id": &payload.deployment_id,
-                    "event_type": payload.event_type.to_string(),
-                    "status": &payload.status,
-                    "message": &payload.message,
-                    "error_message": &payload.error_message,
-                    "timestamp": &payload.timestamp
-                })
-            }
-        };
+        let body = build_webhook_body(config, payload);
 
         // Serialize body to bytes so we can optionally sign it
         let body_bytes = serde_json::to_vec(&body)?;
@@ -811,8 +621,505 @@ impl NotificationService {
             message: test_message,
             error_message: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
+            extras: Default::default(),
         };
 
         self.send_to_channel(channel, &payload).await
+    }
+}
+
+/// Slack attachment fields shared by the Slack and Slack-compatible webhook formats.
+fn slack_fields(payload: &NotificationPayload) -> Vec<serde_json::Value> {
+    let mut fields = vec![
+        json!({ "title": payload.subject_label(), "value": &payload.app_name, "short": true }),
+        json!({ "title": "Status", "value": &payload.status, "short": true }),
+    ];
+    if let Some(ref deployment_id) = payload.deployment_id {
+        fields.push(json!({ "title": "Deployment ID", "value": deployment_id, "short": true }));
+    }
+    for (label, value) in payload.detail_fields() {
+        fields.push(json!({ "title": label, "value": value, "short": true }));
+    }
+    if let Some(ref error) = payload.error_message {
+        fields.push(json!({ "title": "Error", "value": error, "short": false }));
+    }
+    fields
+}
+
+/// Discord embed fields shared by the Discord and Discord-compatible webhook formats.
+fn discord_fields(payload: &NotificationPayload) -> Vec<serde_json::Value> {
+    let mut fields = vec![
+        json!({ "name": payload.subject_label(), "value": &payload.app_name, "inline": true }),
+        json!({ "name": "Status", "value": &payload.status, "inline": true }),
+    ];
+    if let Some(ref deployment_id) = payload.deployment_id {
+        fields.push(json!({ "name": "Deployment ID", "value": deployment_id, "inline": true }));
+    }
+    for (label, value) in payload.detail_fields() {
+        fields.push(json!({ "name": label, "value": value, "inline": true }));
+    }
+    if let Some(ref error) = payload.error_message {
+        fields.push(json!({ "name": "Error", "value": error, "inline": false }));
+    }
+    fields
+}
+
+/// Slack incoming-webhook message.
+pub(crate) fn build_slack_message(payload: &NotificationPayload) -> serde_json::Value {
+    json!({
+        "attachments": [{
+            "color": payload.color(),
+            "title": payload.title(),
+            "text": &payload.message,
+            "fields": slack_fields(payload),
+            "footer": "Rivetr Deployment Engine",
+            "ts": chrono::Utc::now().timestamp()
+        }]
+    })
+}
+
+/// Discord webhook message.
+pub(crate) fn build_discord_message(payload: &NotificationPayload) -> serde_json::Value {
+    let color_hex = payload.color().trim_start_matches('#');
+    let color = i32::from_str_radix(color_hex, 16).unwrap_or(0x3498db);
+    json!({
+        "embeds": [{
+            "title": payload.title(),
+            "description": &payload.message,
+            "color": color,
+            "fields": discord_fields(payload),
+            "footer": { "text": "Rivetr Deployment Engine" },
+            "timestamp": &payload.timestamp
+        }]
+    })
+}
+
+/// Escape text for an HTML email body.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// HTML and plain text bodies for an SMTP notification email.
+pub(crate) fn build_email_bodies(payload: &NotificationPayload) -> (String, String) {
+    let mut html_fields = String::new();
+    let mut text_fields = String::new();
+    if let Some(ref id) = payload.deployment_id {
+        html_fields.push_str(&format!(
+            r#"<div class="field"><span class="field-label">Deployment ID:</span> <span class="field-value">{}</span></div>"#,
+            escape_html(id)
+        ));
+        text_fields.push_str(&format!("\nDeployment ID: {}", id));
+    }
+    for (label, value) in payload.detail_fields() {
+        html_fields.push_str(&format!(
+            r#"<div class="field"><span class="field-label">{}:</span> <span class="field-value">{}</span></div>"#,
+            escape_html(label),
+            escape_html(value)
+        ));
+        text_fields.push_str(&format!("\n{}: {}", label, value));
+    }
+    let html_error = payload
+        .error_message
+        .as_ref()
+        .map(|e| {
+            format!(
+                r#"<div class="error"><strong>Error:</strong> {}</div>"#,
+                escape_html(e)
+            )
+        })
+        .unwrap_or_default();
+    let text_error = payload
+        .error_message
+        .as_ref()
+        .map(|e| format!("\nError: {}", e))
+        .unwrap_or_default();
+
+    let html_body = format!(
+        r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
+                    .container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+                    .header {{ background-color: {color}; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; }}
+                    .field {{ margin-bottom: 15px; }}
+                    .field-label {{ font-weight: bold; color: #666; }}
+                    .field-value {{ color: #333; }}
+                    .error {{ background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 10px; margin-top: 15px; }}
+                    .footer {{ padding: 15px; text-align: center; color: #888; font-size: 12px; border-top: 1px solid #eee; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>{title}</h1>
+                    </div>
+                    <div class="content">
+                        <p>{message}</p>
+                        <div class="field">
+                            <span class="field-label">{label}:</span>
+                            <span class="field-value">{name}</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-label">Status:</span>
+                            <span class="field-value">{status}</span>
+                        </div>
+                        {html_fields}
+                        {html_error}
+                    </div>
+                    <div class="footer">
+                        Rivetr Deployment Engine
+                    </div>
+                </div>
+            </body>
+            </html>
+            "#,
+        color = payload.color(),
+        title = escape_html(&payload.title()),
+        message = escape_html(&payload.message),
+        label = payload.subject_label(),
+        name = escape_html(&payload.app_name),
+        status = escape_html(&payload.status),
+    );
+
+    let text_body = format!(
+        "{}\n\n{}\n\n{}: {}\nStatus: {}{}{}\n\n---\nRivetr Deployment Engine",
+        payload.title(),
+        payload.message,
+        payload.subject_label(),
+        payload.app_name,
+        payload.status,
+        text_fields,
+        text_error,
+    );
+
+    (html_body, text_body)
+}
+
+/// JSON body for a generic webhook channel, following its payload template.
+pub(crate) fn build_webhook_body(
+    config: &WebhookConfig,
+    payload: &NotificationPayload,
+) -> serde_json::Value {
+    let details: serde_json::Map<String, serde_json::Value> = payload
+        .detail_fields()
+        .iter()
+        .map(|(k, v)| (k.clone(), json!(v)))
+        .collect();
+    match config.payload_template.as_str() {
+        "slack" => json!({
+            "attachments": [{
+                "color": payload.color(),
+                "title": payload.title(),
+                "text": &payload.message,
+                "fields": slack_fields(payload),
+                "footer": "Rivetr Deployment Engine",
+                "ts": chrono::Utc::now().timestamp()
+            }]
+        }),
+        "discord" => {
+            let color_hex = payload.color().trim_start_matches('#');
+            json!({
+                "embeds": [{
+                    "color": i32::from_str_radix(color_hex, 16).unwrap_or(0x6c757d),
+                    "title": payload.title(),
+                    "description": &payload.message,
+                    "fields": discord_fields(payload),
+                    "footer": { "text": "Rivetr Deployment Engine" },
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }]
+            })
+        }
+        "custom" => {
+            if let Some(ref template) = config.custom_template {
+                let detail = |label: &str| {
+                    payload
+                        .detail_fields()
+                        .iter()
+                        .find(|(k, _)| k == label)
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default()
+                };
+                let result = template
+                    .replace("{{app_name}}", &payload.app_name)
+                    .replace("{{metric_type}}", &payload.status)
+                    .replace("{{value}}", &payload.status)
+                    .replace("{{threshold}}", "")
+                    .replace("{{timestamp}}", &payload.timestamp)
+                    .replace("{{severity}}", &payload.status)
+                    .replace("{{message}}", &payload.message)
+                    .replace("{{event_type}}", &payload.event_type.to_string())
+                    .replace(
+                        "{{resource_type}}",
+                        payload.extras.resource_type.as_deref().unwrap_or(""),
+                    )
+                    .replace(
+                        "{{resource_id}}",
+                        payload.extras.resource_id.as_deref().unwrap_or(""),
+                    )
+                    .replace("{{size}}", &detail("Size"))
+                    .replace("{{duration}}", &detail("Duration"))
+                    .replace("{{destination}}", &detail("Destination"))
+                    .replace("{{error}}", payload.error_message.as_deref().unwrap_or(""));
+
+                // Try to parse as JSON, if it fails, wrap in a message object
+                serde_json::from_str(&result).unwrap_or_else(|_| json!({"message": result}))
+            } else {
+                json!({
+                    "app_name": &payload.app_name,
+                    "event_type": payload.event_type.to_string(),
+                    "status": &payload.status,
+                    "message": &payload.message,
+                    "timestamp": &payload.timestamp
+                })
+            }
+        }
+        _ => {
+            let mut body = json!({
+                "app_name": &payload.app_name,
+                "app_id": &payload.app_id,
+                "deployment_id": &payload.deployment_id,
+                "event_type": payload.event_type.to_string(),
+                "status": &payload.status,
+                "message": &payload.message,
+                "error_message": &payload.error_message,
+                "timestamp": &payload.timestamp
+            });
+            if payload.event_type.is_backup_event() {
+                body["resource_type"] = json!(payload.extras.resource_type);
+                body["resource_id"] = json!(payload.extras.resource_id);
+                body["details"] = serde_json::Value::Object(details);
+            }
+            body
+        }
+    }
+}
+
+/// Backup payloads shared by the channel formatter tests.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::time::Duration;
+
+    use super::NotificationPayload;
+    use crate::engine::backup_jobs::notify::{BackupEvent, BackupOutcome, BackupResourceKind};
+
+    /// One payload per backup event: succeeded (database to S3), failed (volume),
+    /// missed (instance).
+    pub fn backup_payloads() -> Vec<NotificationPayload> {
+        vec![
+            BackupEvent::new(
+                BackupOutcome::Succeeded,
+                BackupResourceKind::Database,
+                "orders-db",
+            )
+            .resource_id("db-1")
+            .trigger("scheduled")
+            .size(Some(3 * 1024 * 1024))
+            .duration(Some(Duration::from_secs(12)))
+            .destination("S3 (offsite)")
+            .to_payload(),
+            BackupEvent::new(BackupOutcome::Failed, BackupResourceKind::Volume, "uploads")
+                .resource_id("vol-1")
+                .trigger("manual")
+                .destination("local")
+                .error("tar: write error")
+                .to_payload(),
+            BackupEvent::new(
+                BackupOutcome::Missed,
+                BackupResourceKind::Instance,
+                "Rivetr instance",
+            )
+            .trigger("scheduled")
+            .expected_at("2026-11-05T02:00:00Z")
+            .to_payload(),
+        ]
+    }
+
+    /// Assert a rendered message carries what the backup payload says.
+    pub fn assert_backup_rendered(rendered: &str, payload: &NotificationPayload) {
+        assert!(rendered.contains(&payload.app_name), "{rendered}");
+        assert!(rendered.contains(&payload.subject_label()), "{rendered}");
+        for (label, value) in payload.detail_fields() {
+            assert!(
+                rendered.contains(label.as_str()),
+                "missing {label}: {rendered}"
+            );
+            assert!(
+                rendered.contains(value.as_str()),
+                "missing {value}: {rendered}"
+            );
+        }
+        if let Some(ref error) = payload.error_message {
+            assert!(
+                rendered.contains(error.as_str()),
+                "missing error: {rendered}"
+            );
+        }
+        assert!(!rendered.contains("Application"), "{rendered}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{assert_backup_rendered, backup_payloads};
+    use super::*;
+
+    #[test]
+    fn backup_titles_colors_and_labels() {
+        let p = backup_payloads();
+        assert_eq!(p[0].title(), "Backup Succeeded: orders-db");
+        assert_eq!(p[0].color(), "#2ecc71");
+        assert_eq!(p[0].emoji(), ":floppy_disk:");
+        assert_eq!(p[1].title(), "Backup Failed: uploads");
+        assert_eq!(p[1].color(), "#e74c3c");
+        assert_eq!(p[2].title(), "Backup Missed: Rivetr instance");
+        assert_eq!(p[2].subject_label(), "Instance");
+        assert!(p[1].detail_text_lines().contains("\nTrigger: manual"));
+        assert!(p[0].detail_html_rows().contains("S3 (offsite)"));
+    }
+
+    #[test]
+    fn slack_and_discord_render_backup_events() {
+        for payload in backup_payloads() {
+            assert_backup_rendered(&build_slack_message(&payload).to_string(), &payload);
+            assert_backup_rendered(&build_discord_message(&payload).to_string(), &payload);
+        }
+    }
+
+    #[test]
+    fn email_renders_backup_events() {
+        for payload in backup_payloads() {
+            let (html, text) = build_email_bodies(&payload);
+            assert_backup_rendered(&html, &payload);
+            assert_backup_rendered(&text, &payload);
+            assert!(html.contains(&payload.title()));
+        }
+    }
+
+    #[test]
+    fn webhook_renders_backup_events_in_every_template() {
+        for template in ["json", "slack", "discord"] {
+            let config = WebhookConfig {
+                url: "https://example.com/hook".into(),
+                headers: Default::default(),
+                payload_template: template.into(),
+                custom_template: None,
+                webhook_secret: None,
+            };
+            for payload in backup_payloads() {
+                let body = build_webhook_body(&config, &payload).to_string();
+                if template == "json" {
+                    assert!(body.contains(&payload.event_type.to_string()));
+                    assert!(body.contains("\"resource_type\""));
+                    for (_, value) in payload.detail_fields() {
+                        assert!(body.contains(value.as_str()), "{body}");
+                    }
+                } else {
+                    assert_backup_rendered(&body, &payload);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn webhook_custom_template_has_backup_variables() {
+        let config = WebhookConfig {
+            url: "https://example.com/hook".into(),
+            headers: Default::default(),
+            payload_template: "custom".into(),
+            custom_template: Some(
+                r#"{"e":"{{event_type}}","r":"{{resource_type}}","s":"{{size}}","d":"{{destination}}","err":"{{error}}"}"#
+                    .into(),
+            ),
+            webhook_secret: None,
+        };
+        let payloads = backup_payloads();
+        let body = build_webhook_body(&config, &payloads[0]);
+        assert_eq!(body["e"], "backup_succeeded");
+        assert_eq!(body["r"], "database");
+        assert_eq!(body["s"], "3.0 MB");
+        assert_eq!(body["d"], "S3 (offsite)");
+        let body = build_webhook_body(&config, &payloads[1]);
+        assert_eq!(body["err"], "tar: write error");
+    }
+
+    #[test]
+    fn deployment_payloads_keep_application_label() {
+        let p = NotificationPayload::app_event(
+            NotificationEventType::AppStarted,
+            "a".into(),
+            "web".into(),
+            "started".into(),
+        );
+        assert_eq!(p.subject_label(), "Application");
+        assert!(build_slack_message(&p).to_string().contains("Application"));
+    }
+
+    #[tokio::test]
+    async fn backup_subscriptions_match_by_resource() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init(dir.path()).await.unwrap();
+        // Migration 133 is idempotent: a second init keeps the rebuilt table.
+        pool.close().await;
+        let pool = crate::db::init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO notification_channels (id, name, channel_type, config) \
+             VALUES ('c1', 'ops', 'slack', '{\"webhook_url\":\"https://example.com\"}')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO notification_subscriptions (id, channel_id, event_type, resource_type, resource_id) VALUES \
+             ('all', 'c1', 'backup_failed', NULL, NULL), \
+             ('dbs', 'c1', 'backup_failed', 'database', NULL), \
+             ('one', 'c1', 'backup_failed', 'database', 'db-1'), \
+             ('other', 'c1', 'backup_failed', 'database', 'db-2'), \
+             ('vols', 'c1', 'backup_failed', 'volume', NULL), \
+             ('deploy', 'c1', 'deployment_failed', NULL, NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let service = NotificationService::new(pool.clone());
+        let failed_db = test_support::backup_payloads()
+            .into_iter()
+            .find(|p| p.extras.resource_type.as_deref() == Some("database"))
+            .map(|mut p| {
+                p.event_type = NotificationEventType::BackupFailed;
+                p
+            })
+            .unwrap();
+        let mut ids: Vec<String> = service
+            .get_matching_subscriptions(&failed_db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec!["all", "dbs", "one"]);
+
+        // Deployment events still match subscriptions without resource filters only.
+        let deploy = NotificationPayload::app_event(
+            NotificationEventType::DeploymentFailed,
+            "app-1".into(),
+            "web".into(),
+            "failed".into(),
+        );
+        let ids: Vec<String> = service
+            .get_matching_subscriptions(&deploy)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, vec!["deploy"]);
     }
 }

@@ -85,10 +85,14 @@ export const s3Api = {
   restoreBackup: (id: string, token?: string) =>
     apiRequest<{
       message: string;
-      database_restored: boolean;
-      config_restored: boolean;
-      certs_restored: boolean;
-      warnings: string[];
+      /** Instance restores: what was restored, and the local safety backup taken first */
+      safety_backup?: string;
+      database_restored?: boolean;
+      config_restored?: boolean;
+      certs_restored?: boolean;
+      warnings?: string[];
+      /** Database and volume restores run as a background job */
+      job?: import("@/types/backups").RestoreJob;
     }>(`/s3/backups/${id}/restore`, {
       method: "POST",
     }, token),

@@ -111,9 +111,17 @@ pub async fn create_backup(
     );
 
     // Run the backup
-    let backup = backup_task
+    let result = backup_task
         .backup_database(&database, BackupType::Manual)
-        .await
+        .await;
+    crate::engine::backup_jobs::database::notify_database_backup(
+        &state.db,
+        &database,
+        "manual",
+        result.as_ref().map_err(|e| e.to_string()),
+        "local".to_string(),
+    );
+    let backup = result
         .map_err(|e| ApiError::new(ErrorCode::InternalError, format!("Backup failed: {}", e)))?;
 
     Ok(Json(backup.into()))
@@ -270,9 +278,22 @@ pub async fn get_schedule(
 /// Create or update backup schedule
 pub async fn upsert_schedule(
     State(state): State<Arc<AppState>>,
+    user: crate::db::User,
     Path(database_id): Path<String>,
     Json(req): Json<CreateBackupScheduleRequest>,
 ) -> Result<Json<DatabaseBackupScheduleResponse>, ApiError> {
+    // An S3 destination must be a storage config the caller may use.
+    if let Some(id) = req.s3_config_id.as_deref().filter(|s| !s.is_empty()) {
+        let team_id: Option<Option<String>> =
+            sqlx::query_scalar("SELECT team_id FROM s3_storage_configs WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?;
+        let team_id = team_id
+            .ok_or_else(|| ApiError::new(ErrorCode::NotFound, "S3 storage config not found"))?;
+        super::authz::authorize_team_assignment(&state, &user, team_id.as_deref()).await?;
+    }
+
     // Verify database exists
     let _database: ManagedDatabase = sqlx::query_as("SELECT * FROM databases WHERE id = ?")
         .bind(&database_id)
@@ -308,6 +329,11 @@ pub async fn upsert_schedule(
         let schedule_hour = req.schedule_hour.unwrap_or(existing.schedule_hour);
         let schedule_day = req.schedule_day.or(existing.schedule_day);
         let retention_count = req.retention_count.unwrap_or(existing.retention_count);
+        let s3_config_id = match req.s3_config_id.as_deref() {
+            None => existing.s3_config_id.clone(),
+            Some("") => None,
+            Some(id) => Some(id.to_string()),
+        };
         let next_run = DatabaseBackupSchedule::calculate_next_run(
             &schedule_type,
             schedule_hour,
@@ -319,7 +345,7 @@ pub async fn upsert_schedule(
             r#"
             UPDATE database_backup_schedules
             SET enabled = ?, schedule_type = ?, schedule_hour = ?, schedule_day = ?,
-                retention_count = ?, next_run_at = ?, updated_at = ?
+                retention_count = ?, next_run_at = ?, updated_at = ?, s3_config_id = ?
             WHERE database_id = ?
             "#,
         )
@@ -330,6 +356,7 @@ pub async fn upsert_schedule(
         .bind(retention_count)
         .bind(next_run.to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(&s3_config_id)
         .bind(&database_id)
         .execute(&state.db)
         .await?;
@@ -349,6 +376,7 @@ pub async fn upsert_schedule(
         let schedule_hour = req.schedule_hour.unwrap_or(2);
         let schedule_day = req.schedule_day;
         let retention_count = req.retention_count.unwrap_or(5);
+        let s3_config_id = req.s3_config_id.clone().filter(|s| !s.is_empty());
         let next_run = DatabaseBackupSchedule::calculate_next_run(
             &schedule_type,
             schedule_hour,
@@ -360,8 +388,8 @@ pub async fn upsert_schedule(
             r#"
             INSERT INTO database_backup_schedules
             (id, database_id, enabled, schedule_type, schedule_hour, schedule_day,
-             retention_count, next_run_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             retention_count, next_run_at, created_at, updated_at, s3_config_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&schedule.id)
@@ -374,6 +402,7 @@ pub async fn upsert_schedule(
         .bind(next_run.to_rfc3339())
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
+        .bind(&s3_config_id)
         .execute(&state.db)
         .await?;
 

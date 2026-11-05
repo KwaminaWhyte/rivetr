@@ -111,6 +111,9 @@ pub struct S3Backup {
     pub error_message: Option<String>,
     pub team_id: Option<String>,
     pub created_at: String,
+    /// Hex SHA-256 of the uploaded object, checked again on restore
+    #[sqlx(default)]
+    pub checksum_sha256: Option<String>,
 }
 
 /// Response DTO for S3 backup
@@ -128,6 +131,7 @@ pub struct S3BackupResponse {
     pub error_message: Option<String>,
     pub team_id: Option<String>,
     pub created_at: String,
+    pub checksum_sha256: Option<String>,
 }
 
 impl S3Backup {
@@ -145,6 +149,7 @@ impl S3Backup {
             error_message: self.error_message.clone(),
             team_id: self.team_id.clone(),
             created_at: self.created_at.clone(),
+            checksum_sha256: self.checksum_sha256.clone(),
         }
     }
 }
@@ -172,7 +177,7 @@ pub struct S3Object {
     pub last_modified: Option<String>,
 }
 
-fn format_bytes(bytes: i64) -> String {
+pub fn format_bytes(bytes: i64) -> String {
     const KB: i64 = 1024;
     const MB: i64 = KB * 1024;
     const GB: i64 = MB * 1024;

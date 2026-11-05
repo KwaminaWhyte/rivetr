@@ -1,6 +1,6 @@
 import { QueryError } from "@/components/query-error";
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -37,7 +37,10 @@ import type {
   NotificationChannelType,
   NotificationSubscription,
   NotificationEventType,
+  BackupResourceType,
   App,
+  ManagedDatabase,
+  Volume,
   SlackConfig,
   DiscordConfig,
   EmailConfig,
@@ -150,7 +153,36 @@ const EVENT_TYPES: { value: NotificationEventType; label: string }[] = [
   { value: "app_stopped", label: "App Stopped" },
   { value: "container_crash", label: "Container Crashed" },
   { value: "container_restarted", label: "Container Restarted" },
+  { value: "backup_succeeded", label: "Backup Succeeded" },
+  { value: "backup_failed", label: "Backup Failed" },
+  { value: "backup_missed", label: "Backup Missed (scheduled run did not happen)" },
 ];
+
+const isBackupEvent = (event: NotificationEventType | "") =>
+  event === "backup_succeeded" || event === "backup_failed" || event === "backup_missed";
+
+/** Encode a backup resource filter as one select value: "all", "kind:<type>" or "<type>:<id>". */
+function parseBackupScope(value: string): { resource_type?: BackupResourceType; resource_id?: string } {
+  if (value === "all") return {};
+  const [type, id] = value.split(":");
+  if (type === "kind") return { resource_type: id as BackupResourceType };
+  return { resource_type: type as BackupResourceType, resource_id: id };
+}
+
+function describeSubscriptionScope(sub: NotificationSubscription): string {
+  if (sub.resource_type) {
+    const kind =
+      sub.resource_type === "database"
+        ? "Database"
+        : sub.resource_type === "volume"
+          ? "Volume"
+          : "Instance";
+    if (sub.resource_id) return `${kind}: ${sub.resource_name ?? sub.resource_id}`;
+    return sub.resource_type === "instance" ? "Instance backups" : `All ${kind.toLowerCase()}s`;
+  }
+  if (sub.app_name) return sub.app_name;
+  return isBackupEvent(sub.event_type) ? "All backups" : "All Apps";
+}
 
 export function meta() {
   return [
@@ -207,6 +239,7 @@ export default function SettingsNotificationsPage() {
   // Subscription form state
   const [subEventType, setSubEventType] = useState<NotificationEventType | "">("");
   const [subAppId, setSubAppId] = useState<string>("__all__");
+  const [subBackupScope, setSubBackupScope] = useState<string>("all");
 
   const { data: channels = [], isLoading: channelsLoading, error: channelsError, refetch: refetchChannels } = useQuery<NotificationChannel[]>({
     queryKey: ["notification-channels"],
@@ -218,6 +251,29 @@ export default function SettingsNotificationsPage() {
     queryFn: () => api.getApps({ teamId: currentTeamId ?? undefined }),
     enabled: currentTeamId !== null,
   });
+
+  // Backup targets, loaded only while picking a backup subscription
+  const pickingBackupScope = showSubscriptionsDialog && isBackupEvent(subEventType);
+  const { data: databases = [] } = useQuery<ManagedDatabase[]>({
+    queryKey: ["databases", currentTeamId],
+    queryFn: () => api.getDatabases({ teamId: currentTeamId ?? undefined }),
+    enabled: pickingBackupScope,
+  });
+  const volumeQueries = useQueries({
+    queries: apps
+      .filter((app) => app.id)
+      .map((app) => ({
+        queryKey: ["volumes", app.id],
+        queryFn: () => api.getVolumes(app.id),
+        enabled: pickingBackupScope,
+      })),
+  });
+  const backupVolumes: { volume: Volume; appName: string }[] = volumeQueries.flatMap((q, i) =>
+    (q.data ?? []).map((volume: Volume) => ({
+      volume,
+      appName: apps.filter((app) => app.id)[i]?.name ?? "",
+    })),
+  );
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -353,14 +409,20 @@ export default function SettingsNotificationsPage() {
       channelId,
       eventType,
       appId,
+      resourceType,
+      resourceId,
     }: {
       channelId: string;
       eventType: NotificationEventType;
       appId?: string;
+      resourceType?: BackupResourceType;
+      resourceId?: string;
     }) =>
       api.createNotificationSubscription(channelId, {
         event_type: eventType,
         app_id: appId,
+        resource_type: resourceType,
+        resource_id: resourceId,
       }),
     onSuccess: () => {
       toast.success("Subscription added");
@@ -561,13 +623,18 @@ export default function SettingsNotificationsPage() {
       toast.error("Event type is required");
       return;
     }
+    const backup = isBackupEvent(subEventType);
+    const scope = backup ? parseBackupScope(subBackupScope) : {};
     addSubscriptionMutation.mutate({
       channelId: selectedChannel.id,
       eventType: subEventType as NotificationEventType,
-      appId: subAppId !== "__all__" ? subAppId : undefined,
+      appId: !backup && subAppId !== "__all__" ? subAppId : undefined,
+      resourceType: scope.resource_type,
+      resourceId: scope.resource_id,
     });
     setSubEventType("");
     setSubAppId("__all__");
+    setSubBackupScope("all");
   };
 
   const isSubmitting =
@@ -1004,6 +1071,32 @@ export default function SettingsNotificationsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {isBackupEvent(subEventType) ? (
+              <div className="flex-1 space-y-2">
+                <Label>Backups of (optional)</Label>
+                <Select value={subBackupScope} onValueChange={setSubBackupScope}>
+                  <SelectTrigger aria-label="Backup resource">
+                    <SelectValue placeholder="All backups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All backups</SelectItem>
+                    <SelectItem value="kind:database">All databases</SelectItem>
+                    <SelectItem value="kind:volume">All volumes</SelectItem>
+                    <SelectItem value="kind:instance">Instance backups</SelectItem>
+                    {databases.map((db) => (
+                      <SelectItem key={db.id} value={`database:${db.id}`}>
+                        Database: {db.name}
+                      </SelectItem>
+                    ))}
+                    {backupVolumes.map(({ volume, appName }) => (
+                      <SelectItem key={volume.id} value={`volume:${volume.id}`}>
+                        Volume: {appName} / {volume.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              ) : (
               <div className="flex-1 space-y-2">
                 <Label>App (optional)</Label>
                 <Select value={subAppId} onValueChange={setSubAppId}>
@@ -1020,6 +1113,7 @@ export default function SettingsNotificationsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
               <Button type="submit" disabled={addSubscriptionMutation.isPending}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add
@@ -1041,7 +1135,7 @@ export default function SettingsNotificationsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Event Type</TableHead>
-                      <TableHead>App</TableHead>
+                      <TableHead>Scope</TableHead>
                       <TableHead className="w-24">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1052,7 +1146,7 @@ export default function SettingsNotificationsPage() {
                           {EVENT_TYPES.find((e) => e.value === sub.event_type)?.label ||
                             sub.event_type}
                         </TableCell>
-                        <TableCell>{sub.app_name || "All Apps"}</TableCell>
+                        <TableCell>{describeSubscriptionScope(sub)}</TableCell>
                         <TableCell>
                           <Button aria-label="Delete subscription"
                             variant="destructive"
