@@ -14,7 +14,7 @@ Impact H/M/L. Effort S (days), M (1 to 2 weeks), L (weeks).
 | 6 | One-click restore of DB and volume backups from S3 | H | M | Coolify, Dokploy, Easypanel | returns 501, `src/api/s3.rs:654` |
 | 7 | Scheduled volume backups to S3 with restore | H | M | Dokploy 0.24, Coolify 4.3 | manual only, `src/api/volumes.rs:249` |
 | 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | HTTP-01 only, `src/proxy/acme.rs:3` |
-| 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | missing |
+| 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | **Done**: `secret://<connection>/<path>#<key>` references and path imports resolved at deploy/restart/service start, `src/secret_managers/`, API `src/api/secret_managers.rs`, migration 135, UI `/integrations/secrets`; see `docs/reference/secret-managers.md` |
 | 10 | Granular RBAC ability presets | H | M | Coolify 4.6, Dokploy Enterprise | 4 fixed roles (`src/db/models/team.rs:9`) plus overrides (migration 089) |
 | 11 | ~~One app across several servers behind the proxy~~ Done | H | L | Coolify, CapRover, Dokploy (Swarm) | Done: placement list per app (migration 136, `app_server_placements`), rolling multi-server rollout with per-target health checks and threshold rollback in `src/engine/multi_server/`, upstream pools with round robin, least connections, passive health and sticky cookie in `src/proxy/balancer.rs` |
 | 12 | Published OpenAPI spec | M | S | Coolify, Dokploy, Render | none; hand-written `docs/reference/api.md` |
