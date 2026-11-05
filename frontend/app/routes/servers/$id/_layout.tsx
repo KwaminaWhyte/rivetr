@@ -72,14 +72,14 @@ export default function ServerLayout() {
         <div className="space-y-1">
           <Link
             to="/servers"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:hidden"
           >
             <ArrowLeft className="h-3 w-3" />
             Servers
           </Link>
           <div className="flex items-center gap-3">
             <Container className="h-6 w-6 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">{name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
             {summary && <ServerStatusPill status={summary.status} />}
           </div>
           <p className="text-sm text-muted-foreground">

@@ -64,8 +64,12 @@ export function useResourceInfo(match: ResourceMatch | null): ResourceInfo {
         projectId: service.data?.project_id,
       };
     case "server": {
+      if (id === "localhost") return { name: "localhost", status: "online" };
       const server = servers.data?.find((s) => s.id === id);
-      return { name: server?.name, status: server?.status };
+      return {
+        name: server?.name ?? (servers.isLoading ? undefined : "Unknown server"),
+        status: server?.status,
+      };
     }
     default:
       return {};
