@@ -7,6 +7,7 @@ pub mod database_backups;
 pub mod database_config;
 pub mod deployment_snapshots;
 mod disk_monitor;
+pub mod freeze;
 pub mod multi_server;
 pub mod nixpacks;
 pub mod pack_builder;

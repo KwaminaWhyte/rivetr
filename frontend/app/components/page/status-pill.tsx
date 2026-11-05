@@ -17,6 +17,8 @@ const WARN = new Set([
   "queued",
   "scheduled",
   "unknown",
+  "skipped",
+  "frozen",
 ]);
 const BAD = new Set(["failed", "error", "unhealthy", "offline", "unreachable", "crashed", "exited", "dead"]);
 const ACTIVE = new Set(["pending", "cloning", "building", "starting", "checking", "pulling", "deploying", "restarting", "queued"]);

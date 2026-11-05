@@ -1755,6 +1755,52 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 137: scheduled restart runs, community template review, freeze
+    // windows for every deploy trigger
+    execute_sql(pool, include_str!("../../migrations/137_wire_claims.sql")).await?;
+    for (table, column, ddl) in [
+        (
+            "deployment_freeze_windows",
+            "include_previews",
+            "ALTER TABLE deployment_freeze_windows ADD COLUMN include_previews INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "community_template_submissions",
+            "env_schema",
+            "ALTER TABLE community_template_submissions ADD COLUMN env_schema TEXT",
+        ),
+        (
+            "community_template_submissions",
+            "rejection_reason",
+            "ALTER TABLE community_template_submissions ADD COLUMN rejection_reason TEXT",
+        ),
+        (
+            "community_template_submissions",
+            "approved_template_id",
+            "ALTER TABLE community_template_submissions ADD COLUMN approved_template_id TEXT",
+        ),
+        (
+            "service_templates",
+            "is_community",
+            "ALTER TABLE service_templates ADD COLUMN is_community INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "service_templates",
+            "submission_id",
+            "ALTER TABLE service_templates ADD COLUMN submission_id TEXT",
+        ),
+    ] {
+        let exists: Option<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info(?) WHERE name = ?")
+                .bind(table)
+                .bind(column)
+                .fetch_optional(pool)
+                .await?;
+        if exists.is_none() {
+            sqlx::query(ddl).execute(pool).await?;
+        }
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

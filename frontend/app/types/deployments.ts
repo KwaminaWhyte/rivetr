@@ -101,7 +101,9 @@ export type DeploymentStatus =
   | "failed"
   | "stopped"
   | "replaced"
-  | "cancelled";
+  | "cancelled"
+  /** Blocked by a deployment freeze window (reason in error_message) */
+  | "skipped";
 
 export interface DeploymentLog {
   id: string;
@@ -125,6 +127,8 @@ export interface DeploymentFreezeWindow {
   days_of_week: string;
   is_active: boolean;
   created_at: string;
+  /** 1 when the window also blocks preview deployments (exempt by default) */
+  include_previews?: number | boolean;
 }
 
 /** Request body for creating a freeze window */
@@ -135,6 +139,10 @@ export interface CreateFreezeWindowRequest {
   days_of_week: string;
   app_id?: string;
   team_id?: string;
+  /** Also block preview deployments (default false) */
+  include_previews?: boolean;
+  /** Apply to every app and compose service of the app's team */
+  team_wide?: boolean;
 }
 
 /** Request body for rejecting a deployment */

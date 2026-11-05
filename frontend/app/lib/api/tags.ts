@@ -38,7 +38,7 @@ export interface TagDeployResult {
   resource_type: TaggableKind;
   id: string;
   name: string;
-  status: "queued" | "pending_approval" | "scheduled" | "skipped" | "failed";
+  status: "queued" | "pending_approval" | "scheduled" | "skipped" | "frozen" | "failed";
   message: string | null;
   deployment_id: string | null;
 }

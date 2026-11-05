@@ -47,6 +47,8 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
     end_time: "06:00",
     days_of_week: "0,1,2,3,4,5,6",
     app_id: app.id,
+    include_previews: false,
+    team_wide: false,
   });
   const [isSavingFreezeWindow, setIsSavingFreezeWindow] = useState(false);
 
@@ -105,6 +107,8 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
         end_time: "06:00",
         days_of_week: "0,1,2,3,4,5,6",
         app_id: app.id,
+        include_previews: false,
+        team_wide: false,
       });
       refetchFreezeWindows();
     } catch (err) {
@@ -237,6 +241,9 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
             </CardTitle>
             <CardDescription>
               Block deployments during specific time windows (e.g., business hours, weekends).
+              Applies to every trigger: the Deploy button, API, Git and Docker Hub webhooks,
+              scheduled deployments and deploy-by-tag. Blocked webhook deploys show up as
+              skipped deployments. Preview deployments are exempt unless a window includes them.
             </CardDescription>
           </div>
           <Button
@@ -268,6 +275,12 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
                       ) : (
                         <Badge variant="outline" className="text-xs text-muted-foreground">Inactive</Badge>
                       )}
+                      {!fw.app_id && (
+                        <Badge variant="outline" className="text-xs">Team-wide</Badge>
+                      )}
+                      {fw.include_previews ? (
+                        <Badge variant="outline" className="text-xs">Includes previews</Badge>
+                      ) : null}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {fw.start_time} to {fw.end_time} UTC
@@ -376,6 +389,8 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
               end_time: "06:00",
               days_of_week: "0,1,2,3,4,5,6",
               app_id: app.id,
+              include_previews: false,
+              team_wide: false,
             });
           }
         }}
@@ -446,6 +461,38 @@ export function DeploymentControlSettings({ app, show }: { app: App; show: "depl
                 Comma-separated: 0=Sunday, 1=Monday, ... 6=Saturday. Leave blank for all days.
               </p>
             </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="fw-previews">Include preview deployments</Label>
+                <p className="text-xs text-muted-foreground">
+                  Previews are exempt by default.
+                </p>
+              </div>
+              <Switch
+                id="fw-previews"
+                checked={freezeWindowForm.include_previews ?? false}
+                onCheckedChange={(checked) =>
+                  setFreezeWindowForm({ ...freezeWindowForm, include_previews: checked })
+                }
+              />
+            </div>
+            {app.team_id && (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="fw-team">Whole team</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Freeze every app and compose service in this team, not just this app.
+                  </p>
+                </div>
+                <Switch
+                  id="fw-team"
+                  checked={freezeWindowForm.team_wide ?? false}
+                  onCheckedChange={(checked) =>
+                    setFreezeWindowForm({ ...freezeWindowForm, team_wide: checked })
+                  }
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

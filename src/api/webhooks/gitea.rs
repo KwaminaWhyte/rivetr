@@ -10,9 +10,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, log_wh_event,
-    should_deploy_for_changed_files, verify_gitea_signature, ChangedFiles,
+    collect_changed_files, event_outcome, freeze_gate, handle_generic_preview_cleanup,
+    incr_webhooks, log_wh_event, preview_freeze_gate, should_deploy_for_changed_files,
+    verify_gitea_signature, ChangedFiles,
 };
+use crate::engine::freeze::DeployTrigger;
 use crate::crypto;
 use crate::db::App;
 use crate::engine::preview::{
@@ -202,6 +204,8 @@ async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCo
     let changed_files = collect_changed_files(payload.commits.iter());
     let first_commit_sha = payload.commits.first().map(|c| c.id.as_str());
     let apps_count = apps.len() as i64;
+    let mut frozen: Vec<String> = Vec::new();
+    let mut queued = 0usize;
 
     for app in apps {
         if !should_deploy_for_changed_files(&app, &changed_files) {
@@ -212,6 +216,19 @@ async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCo
         let deployment_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let commit = payload.commits.first();
+
+        if let Some(note) = freeze_gate(
+            &state,
+            &app,
+            DeployTrigger::GitWebhook,
+            commit.map(|c| c.id.as_str()),
+            commit.map(|c| c.message.as_str()),
+        )
+        .await
+        {
+            frozen.push(note);
+            continue;
+        }
 
         sqlx::query(
             r#"
@@ -231,8 +248,14 @@ async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCo
         if let Err(e) = state.deploy_tx.send((deployment_id, app.clone())).await {
             tracing::error!("Failed to queue deployment: {}", e);
         }
+        queued += 1;
     }
 
+    let (status, note) = if apps_count > 0 {
+        event_outcome(queued, &frozen)
+    } else {
+        ("ignored", None)
+    };
     log_wh_event(
         &state.db,
         "gitea",
@@ -242,12 +265,8 @@ async fn handle_gitea_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusCo
         first_commit_sha,
         body.len(),
         apps_count,
-        if apps_count > 0 {
-            "processed"
-        } else {
-            "ignored"
-        },
-        None,
+        status,
+        note.as_deref(),
         None,
     )
     .await;
@@ -328,6 +347,19 @@ async fn handle_gitea_pr_deploy(
         provider_type: "gitea".to_string(),
         repo_full_name: payload.repository.full_name.clone(),
     };
+
+    if preview_freeze_gate(
+        state,
+        app,
+        "gitea",
+        &payload.repository.full_name,
+        &payload.pull_request.head.branch,
+        Some(&payload.pull_request.head.sha),
+    )
+    .await
+    {
+        return Ok(());
+    }
 
     let preview = find_or_create_preview(&state.db, app, &info, &base_domain)
         .await

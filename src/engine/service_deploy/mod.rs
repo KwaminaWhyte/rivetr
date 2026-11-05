@@ -834,6 +834,42 @@ pub async fn queue_push_deploys(
     let env = Arc::new(DeployEnv::from_state(state));
     let mut queued = 0;
     for id in ids {
+        // Team-wide freeze windows block compose auto-deploys; the skip is
+        // recorded in the service's deployment history.
+        let team_id: Option<String> =
+            sqlx::query_scalar::<_, Option<String>>("SELECT team_id FROM services WHERE id = ?")
+                .bind(&id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+        match crate::engine::freeze::check_team(
+            &state.db,
+            team_id.as_deref(),
+            crate::engine::freeze::DeployTrigger::ComposeAutoDeploy,
+        )
+        .await
+        {
+            Ok(Some(hit)) => {
+                if let Err(e) = crate::engine::freeze::record_skipped_service_deployment(
+                    &state.db,
+                    &id,
+                    commit_sha.as_deref(),
+                    commit_message.as_deref(),
+                    &hit,
+                )
+                .await
+                {
+                    tracing::warn!(service = %id, "Failed to record frozen service deployment: {}", e);
+                }
+                tracing::info!(service = %id, "Push deploy skipped: {}", hit.reason());
+                continue;
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(service = %id, "Freeze window check failed, allowing deploy: {}", e),
+        }
+
         let req = DeployRequest {
             trigger: crate::db::service_deployment_trigger::WEBHOOK.to_string(),
             user_name: Some("push webhook".to_string()),

@@ -40,7 +40,7 @@ import { RefreshCw, Webhook } from "lucide-react";
 import { PaginationControls } from "@/components/pagination-controls";
 
 const PROVIDERS = ["github", "gitlab", "gitea", "bitbucket", "dockerhub"] as const;
-const STATUSES = ["processed", "ignored", "error"] as const;
+const STATUSES = ["processed", "ignored", "frozen", "error"] as const;
 const PER_PAGE = 50;
 
 function formatDate(dateStr: string): string {
@@ -77,6 +77,8 @@ function getStatusVariant(
       return "secondary";
     case "error":
       return "destructive";
+    case "frozen":
+      return "outline";
     default:
       return "outline";
   }

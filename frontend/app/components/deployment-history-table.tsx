@@ -42,7 +42,14 @@ import { isString, useLocalPreference, usePersistedState } from "@/lib/persisted
 
 const ACTIVE: DeploymentStatus[] = ["pending", "cloning", "building", "starting", "checking"];
 
-type StatusFilter = "all" | "running" | "active" | "failed" | "replaced" | "cancelled";
+type StatusFilter =
+  | "all"
+  | "running"
+  | "active"
+  | "failed"
+  | "replaced"
+  | "cancelled"
+  | "skipped";
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "All statuses" },
@@ -51,6 +58,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "failed", label: "Failed" },
   { value: "replaced", label: "Replaced or stopped" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "skipped", label: "Skipped (frozen)" },
 ];
 
 const SOURCE_LABEL: Record<string, string> = {

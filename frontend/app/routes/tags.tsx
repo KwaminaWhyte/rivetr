@@ -72,6 +72,7 @@ const DEPLOY_LABEL: Record<TagDeployResult["status"], string> = {
   pending_approval: "Waiting for approval",
   scheduled: "Scheduled",
   skipped: "Skipped",
+  frozen: "Frozen",
   failed: "Failed",
 };
 

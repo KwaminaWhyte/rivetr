@@ -702,6 +702,17 @@ resource_tag_handlers!(
 // Deploy everything with a tag
 // ---------------------------------------------------------------------------
 
+fn frozen(r: &TaggedResource, hit: &crate::engine::freeze::FreezeHit) -> DeployResult {
+    DeployResult {
+        resource_type: r.resource_type,
+        id: r.id.clone(),
+        name: r.name.clone(),
+        status: "frozen".into(),
+        message: Some(hit.reason()),
+        deployment_id: None,
+    }
+}
+
 fn failed(r: &TaggedResource, message: impl Into<String>) -> DeployResult {
     DeployResult {
         resource_type: r.resource_type,
@@ -733,6 +744,25 @@ pub async fn deploy_by_tag(
             TaggableKind::App => {
                 if let Err(e) = authz::authorize_app_write(&state, &user, &r.id).await {
                     results.push(failed(r, e.message()));
+                    continue;
+                }
+                let team_id: Option<String> =
+                    sqlx::query_scalar::<_, Option<String>>("SELECT team_id FROM apps WHERE id = ?")
+                        .bind(&r.id)
+                        .fetch_optional(&state.db)
+                        .await?
+                        .flatten();
+                if let Some(hit) = crate::engine::freeze::check_app_at(
+                    &state.db,
+                    &r.id,
+                    team_id.as_deref(),
+                    crate::engine::freeze::DeployTrigger::Tag,
+                    chrono::Utc::now(),
+                )
+                .await
+                .map_err(|e| ApiError::internal(format!("Freeze window check failed: {e}")))?
+                {
+                    results.push(frozen(r, &hit));
                     continue;
                 }
                 match super::deployments::trigger_deploy(
@@ -767,6 +797,24 @@ pub async fn deploy_by_tag(
             TaggableKind::Service => {
                 if let Err(e) = authz::authorize_service_write(&state, &user, &r.id).await {
                     results.push(failed(r, e.message()));
+                    continue;
+                }
+                let team_id: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT team_id FROM services WHERE id = ?",
+                )
+                .bind(&r.id)
+                .fetch_optional(&state.db)
+                .await?
+                .flatten();
+                if let Some(hit) = crate::engine::freeze::check_team(
+                    &state.db,
+                    team_id.as_deref(),
+                    crate::engine::freeze::DeployTrigger::Tag,
+                )
+                .await
+                .map_err(|e| ApiError::internal(format!("Freeze window check failed: {e}")))?
+                {
+                    results.push(frozen(r, &hit));
                     continue;
                 }
                 match super::services::deploy_service(

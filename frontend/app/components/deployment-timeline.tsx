@@ -124,6 +124,13 @@ const statusConfig: Record<
     icon: XCircle,
     label: "Cancelled",
   },
+  skipped: {
+    color: "text-amber-600",
+    bgColor: "bg-amber-100 dark:bg-amber-900/30",
+    borderColor: "border-amber-500",
+    icon: XCircle,
+    label: "Skipped (frozen)",
+  },
 };
 
 // Active statuses that show animation

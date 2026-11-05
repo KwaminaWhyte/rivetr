@@ -128,4 +128,9 @@ pub struct DeploymentFreezeWindow {
     #[serde(default)]
     pub is_active: i32,
     pub created_at: String,
+    /// When 1, the window also blocks preview deployments (migration 137).
+    /// Previews are exempt by default.
+    #[sqlx(default)]
+    #[serde(default)]
+    pub include_previews: i32,
 }

@@ -27,6 +27,7 @@ use sha2::Sha256;
 use std::sync::Arc;
 
 use crate::db::{App, PreviewDeployment};
+use crate::engine::freeze;
 use crate::engine::preview::cleanup_preview;
 use crate::AppState;
 
@@ -164,6 +165,73 @@ pub(super) trait ChangedFiles {
     fn removed_files(&self) -> &[String];
 }
 
+/// Freeze window gate for a webhook deploy of `app`. When a window blocks it,
+/// records a `skipped` deployment with the reason (shown in the app's
+/// deployment history) and returns a short note for the webhook event log.
+pub(super) async fn freeze_gate(
+    state: &AppState,
+    app: &App,
+    trigger: freeze::DeployTrigger,
+    commit_sha: Option<&str>,
+    commit_message: Option<&str>,
+) -> Option<String> {
+    let hit = freeze::check_app_or_open(&state.db, app, trigger).await?;
+    if let Err(e) =
+        freeze::record_skipped_deployment(&state.db, &app.id, trigger, commit_sha, commit_message, &hit)
+            .await
+    {
+        tracing::warn!(app = %app.name, "Failed to record frozen deployment: {}", e);
+    }
+    Some(format!("{}: {}", app.name, hit.reason()))
+}
+
+/// Freeze gate for a preview deployment. Previews are exempt unless the
+/// window has `include_previews`; a blocked preview is logged as a webhook
+/// event with status `frozen`.
+pub(super) async fn preview_freeze_gate(
+    state: &AppState,
+    app: &App,
+    provider: &str,
+    repo: &str,
+    branch: &str,
+    commit_sha: Option<&str>,
+) -> bool {
+    let Some(hit) = freeze::check_app_or_open(&state.db, app, freeze::DeployTrigger::Preview).await
+    else {
+        return false;
+    };
+    log_wh_event(
+        &state.db,
+        provider,
+        "pull_request",
+        Some(repo),
+        Some(branch),
+        commit_sha,
+        0,
+        0,
+        FROZEN,
+        Some(&format!("{}: preview skipped. {}", app.name, hit.reason())),
+        None,
+    )
+    .await;
+    true
+}
+
+/// Webhook event status when every deploy of the event was frozen.
+pub(super) const FROZEN: &str = "frozen";
+
+/// Status and note for a webhook event: `frozen` when nothing was queued
+/// because of freeze windows, otherwise `processed` with any frozen apps noted.
+pub(super) fn event_outcome(queued: usize, frozen: &[String]) -> (&'static str, Option<String>) {
+    if frozen.is_empty() {
+        ("processed", None)
+    } else if queued == 0 {
+        (FROZEN, Some(frozen.join("; ")))
+    } else {
+        ("processed", Some(frozen.join("; ")))
+    }
+}
+
 /// Generic preview cleanup shared between GitLab and Gitea handlers
 pub(super) async fn handle_generic_preview_cleanup(
     state: &Arc<AppState>,
@@ -213,6 +281,20 @@ pub(super) async fn handle_generic_preview_cleanup(
 #[cfg(test)]
 mod tests {
     use super::commit_skips_deploy;
+
+    #[test]
+    fn webhook_event_outcome_reports_frozen_deploys() {
+        assert_eq!(super::event_outcome(2, &[]), ("processed", None));
+        let frozen = vec!["web: frozen".to_string()];
+        assert_eq!(
+            super::event_outcome(0, &frozen),
+            ("frozen", Some("web: frozen".to_string()))
+        );
+        assert_eq!(
+            super::event_outcome(1, &frozen),
+            ("processed", Some("web: frozen".to_string()))
+        );
+    }
 
     #[test]
     fn skip_markers_are_detected_case_insensitively() {

@@ -216,7 +216,9 @@ export type ServiceDeploymentStatus =
   | "building"
   | "deploying"
   | "succeeded"
-  | "failed";
+  | "failed"
+  /** Blocked by a team-wide deployment freeze window */
+  | "skipped";
 
 export type ServiceDeploymentTrigger = "manual" | "webhook" | "rollback" | "api";
 
