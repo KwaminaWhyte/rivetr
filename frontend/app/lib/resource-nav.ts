@@ -42,6 +42,7 @@ import {
   Upload,
   Variable,
   Wrench,
+  ChartNoAxesCombined,
 } from "lucide-react";
 
 export type ResourceKind = "app" | "database" | "service" | "server";
@@ -146,6 +147,7 @@ const APP_SECTIONS: { label?: string; items: Def[] }[] = [
       { id: "metrics", title: "Metrics", path: "/metrics", icon: BarChart3, description: "CPU, memory, network and request metrics over time." },
       { id: "terminal", title: "Terminal", path: "/terminal", icon: SquareTerminal, description: "A shell inside the running container." },
       files,
+      { id: "analytics", title: "Analytics", path: "/analytics", icon: ChartNoAxesCombined, description: "Requests, status codes, latency and visitors from the proxy." },
     ],
   },
   {
@@ -252,6 +254,7 @@ function serverSectionDefs(base: string): { label?: string; items: Def[] }[] {
         ...(isLocal
           ? []
           : [{ id: "files", title: "Files", path: "/files", icon: FolderOpen, description: "Browse files on the host over SSH." }]),
+        { id: "analytics", title: "Analytics", path: "/analytics", icon: ChartNoAxesCombined, description: "Traffic through the proxy on this server." },
       ],
     },
   ];

@@ -1708,6 +1708,19 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 126: resource tags (CREATE IF NOT EXISTS + orphan sweep, idempotent)
+    execute_sql(pool, include_str!("../../migrations/126_resource_tags.sql")).await?;
+
+    // Migration 127: passkeys + WebAuthn challenge state (idempotent)
+    execute_sql(pool, include_str!("../../migrations/127_passkeys.sql")).await?;
+
+    // Migration 128: traffic analytics rollups (idempotent)
+    execute_sql(
+        pool,
+        include_str!("../../migrations/128_traffic_analytics.sql"),
+    )
+    .await?;
+
     // Migration 129: per-user UI preferences (theme JSON)
     execute_sql(
         pool,

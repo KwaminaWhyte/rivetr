@@ -82,6 +82,11 @@ hmac = "0.13"
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }  # v10+ needs an explicit crypto backend
 subtle = "2.6"  # Constant-time comparison for security-sensitive operations
 totp-rs = { version = "6", features = ["otpauth", "qr", "gen_secret"] }
+# Passkeys (WebAuthn). Uses openssl, vendored through git2's openssl-sys feature.
+webauthn-rs = { version = "0.6", features = ["danger-allow-state-serialisation", "conditional-ui"] }
+
+# Optional GeoIP for traffic analytics (user-supplied .mmdb, nothing bundled)
+maxminddb = "0.32"
 
 # Metrics
 metrics = "0.24"

@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { instanceSettingsApi } from "@/lib/api/instance-settings";
+import { AnalyticsSettingsSection } from "@/components/analytics/analytics-settings-section";
 import type { AdvancedSettings, ConfirmationMode } from "@/types/instance-settings";
 
 export function meta() {
@@ -39,6 +40,7 @@ interface FormState {
   dns_servers: string;
   outbound_allowed_targets: string;
   outbound_allow_localhost: boolean;
+  passkeys_enabled: boolean;
 }
 
 function toForm(s: AdvancedSettings): FormState {
@@ -274,6 +276,23 @@ export default function AdvancedSettingsPage() {
           </SettingsSection>
 
           <SettingsSection
+            title="Passkeys"
+            description="Let users register passkeys under Account security and sign in with them. A passkey sign in also satisfies two-factor authentication."
+          >
+            <FormGrid>
+              <BoolSelect
+                id="passkeys"
+                label="Passkeys"
+                value={form.passkeys_enabled}
+                onChange={(v) => set("passkeys_enabled", v)}
+                on="Enabled"
+                off="Disabled"
+                hint="Passkeys are bound to the instance domain. Set it in Settings > General before users register one."
+              />
+            </FormGrid>
+          </SettingsSection>
+
+          <SettingsSection
             title="MCP server"
             description="Model Context Protocol endpoint at /mcp for AI assistants. Requires an API token."
           >
@@ -340,6 +359,9 @@ export default function AdvancedSettingsPage() {
           <button type="submit" hidden aria-hidden tabIndex={-1} />
         </form>
       )}
+
+      {/* Traffic analytics (E3) saves on its own */}
+      {form && <AnalyticsSettingsSection />}
 
       <UnsavedChangesBar
         visible={dirty}

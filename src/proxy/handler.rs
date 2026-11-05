@@ -59,6 +59,46 @@ struct LogMeta {
     user_agent: String,
 }
 
+/// Request fields captured for traffic analytics (only when analytics is active).
+struct AnalyticsMeta {
+    path: String,
+    client_ip: String,
+    user_agent: String,
+    referrer: String,
+    bytes_in: u64,
+}
+
+fn content_length(headers: &hyper::HeaderMap) -> u64 {
+    headers
+        .get(hyper::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Hand a finished request to the analytics aggregator (non-blocking).
+fn record_analytics(
+    meta: Option<AnalyticsMeta>,
+    host: Option<&str>,
+    status: u16,
+    ms: u64,
+    bytes_out: u64,
+) {
+    if let (Some(m), Some(host)) = (meta, host) {
+        super::analytics::record(super::analytics::TrafficEvent {
+            host: host.to_string(),
+            path: m.path,
+            status,
+            latency_ms: ms,
+            bytes_in: m.bytes_in,
+            bytes_out,
+            client_ip: m.client_ip,
+            user_agent: m.user_agent,
+            referrer: m.referrer,
+        });
+    }
+}
+
 /// Handle used by request tasks to enqueue access-log entries for the writer task.
 #[derive(Clone)]
 struct ProxyLogSender {
@@ -429,6 +469,35 @@ impl ProxyHandler {
                 .to_string(),
         });
 
+        // Analytics fields, independent of the per-app access log switch.
+        let analytics_meta = super::analytics::active().then(|| AnalyticsMeta {
+            path: path.to_string(),
+            client_ip: log_meta
+                .as_ref()
+                .map(|m| m.client_ip.clone())
+                .unwrap_or_else(|| {
+                    req.headers()
+                        .get("X-Forwarded-For")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| remote_addr.ip().to_string())
+                }),
+            user_agent: req
+                .headers()
+                .get(hyper::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+            referrer: req
+                .headers()
+                .get(hyper::header::REFERER)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string(),
+            bytes_in: content_length(req.headers()),
+        });
+
         let response = match backend {
             Some(backend) if backend.healthy => {
                 // If this backend is a www-redirect proxy, redirect (301 or 302 per domain)
@@ -463,6 +532,13 @@ impl ProxyHandler {
                                     "Basic auth required but not provided or invalid"
                                 );
                                 let ms = start.elapsed().as_millis() as u64;
+                                record_analytics(
+                                    analytics_meta,
+                                    host.as_deref(),
+                                    response.status().as_u16(),
+                                    ms,
+                                    content_length(response.headers()),
+                                );
                                 self.log_request(
                                     log_meta,
                                     host.as_deref(),
@@ -480,6 +556,13 @@ impl ProxyHandler {
                             self.apply_redirect_rules(path, &backend.redirect_rules)
                         {
                             let ms = start.elapsed().as_millis() as u64;
+                            record_analytics(
+                                analytics_meta,
+                                host.as_deref(),
+                                redirect_response.status().as_u16(),
+                                ms,
+                                0,
+                            );
                             self.log_request(
                                 log_meta,
                                 host.as_deref(),
@@ -543,6 +626,13 @@ impl ProxyHandler {
 
         let ms = start.elapsed().as_millis() as u64;
         let status = response.status().as_u16();
+        record_analytics(
+            analytics_meta,
+            host.as_deref(),
+            status,
+            ms,
+            content_length(response.headers()),
+        );
         self.log_request(log_meta, host.as_deref(), status, ms);
         Ok(response)
     }

@@ -55,6 +55,7 @@ export const navAreas: NavArea[] = [
       { title: "Overview", url: "/monitoring", index: true },
       { title: "Costs", url: "/monitoring/costs" },
       { title: "Proxy logs", url: "/monitoring/proxy-logs" },
+      { title: "Analytics", url: "/monitoring/analytics" },
     ]),
   },
   {

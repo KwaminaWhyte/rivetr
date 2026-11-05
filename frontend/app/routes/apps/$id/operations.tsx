@@ -1,6 +1,7 @@
 import { useOutletContext } from "react-router";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { CloneResourceCard } from "@/components/clone-resource-card";
+import { ResourceTagsCard } from "@/components/tags/resource-tags-card";
 import type { App } from "@/types/api";
 
 export function meta() {
@@ -14,6 +15,7 @@ export default function AppOperationsSection() {
   const { app } = useOutletContext<{ app: App }>();
   return (
     <div className="space-y-6">
+      <ResourceTagsCard kind="app" resourceId={app.id} teamId={app.team_id} />
       <MoveToProjectCard
         resourceKind="app"
         resourceId={app.id}

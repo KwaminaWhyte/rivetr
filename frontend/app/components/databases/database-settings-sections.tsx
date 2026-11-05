@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { CloneResourceCard } from "@/components/clone-resource-card";
+import { ResourceTagsCard } from "@/components/tags/resource-tags-card";
 import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
 import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { api } from "@/lib/api";
@@ -212,6 +213,7 @@ export function DatabaseSettingsSections({
     <div className="space-y-6 pb-24">
       {has("operations") && (
       <>
+      <ResourceTagsCard kind="database" resourceId={database.id} teamId={database.team_id} />
       <MoveToProjectCard
         resourceKind="database"
         resourceId={database.id}

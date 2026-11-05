@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { CloneResourceCard } from "@/components/clone-resource-card";
+import { ResourceTagsCard } from "@/components/tags/resource-tags-card";
 import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
 import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { Label } from "@/components/ui/label";
@@ -275,6 +276,7 @@ export function ServiceSettingsSections({
     <div className="space-y-6 pb-24">
       {has("operations") && (
       <>
+      <ResourceTagsCard kind="service" resourceId={service.id} teamId={service.team_id} />
       <MoveToProjectCard
         resourceKind="service"
         resourceId={service.id}

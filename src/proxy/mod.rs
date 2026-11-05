@@ -4,6 +4,7 @@
 // to containers based on the Host header.
 
 pub mod acme;
+pub mod analytics;
 mod handler;
 mod health_checker;
 pub mod inflight;

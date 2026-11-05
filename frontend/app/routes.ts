@@ -43,12 +43,14 @@ export default [
     ]),
 
     route("templates", "routes/templates.tsx"),
+    route("tags", "routes/tags.tsx"),
 
     // Monitoring
     ...prefix("monitoring", [
       index("routes/monitoring/_index.tsx"),
       route("costs", "routes/monitoring/costs.tsx"),
       route("proxy-logs", "routes/monitoring/proxy-logs.tsx"),
+      route("analytics", "routes/monitoring/analytics.tsx"),
     ]),
 
     // Applications
@@ -71,6 +73,7 @@ export default [
       route("logs", "routes/apps/$id/logs.tsx"),
       route("metrics", "routes/apps/$id/metrics.tsx"),
       route("terminal", "routes/apps/$id/terminal.tsx"),
+      route("analytics", "routes/apps/$id/analytics.tsx"),
       route("files", "routes/apps/$id/files.tsx"),
       // Automate
       route("jobs", "routes/apps/$id/jobs.tsx"),
@@ -126,6 +129,7 @@ export default [
         route("docker-cleanup", "routes/servers/$id/docker-cleanup.tsx"),
         route("security", "routes/servers/$id/security.tsx"),
         route("files", "routes/servers/$id/files.tsx"),
+        route("analytics", "routes/servers/$id/analytics.tsx"),
       ]),
     ]),
 

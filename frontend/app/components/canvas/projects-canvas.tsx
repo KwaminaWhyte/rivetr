@@ -46,6 +46,9 @@ import { useServers } from "@/lib/resource-queries";
 import { useTeamContext } from "@/lib/team-context";
 import { isString, readPersisted, usePersistedState, writePersisted } from "@/lib/persisted-state";
 import { cn } from "@/lib/utils";
+import { TagFilter } from "@/components/tags/tag-filter";
+import { useTagAssignments, useTags } from "@/components/tags/use-tags";
+import type { TagWithCount } from "@/lib/api/tags";
 import { KIND_ICON, KIND_LABEL, nodeTypes, type ResourceNodeData } from "./canvas-nodes";
 import { layoutCanvas, layoutEdges } from "./layout";
 import {
@@ -70,6 +73,9 @@ function Toolbar({
   onProjectFilter,
   onEnvFilter,
   onListView,
+  tags,
+  tagFilter,
+  onTagFilter,
 }: {
   projects: CanvasProject[];
   projectFilter: string;
@@ -78,6 +84,9 @@ function Toolbar({
   onProjectFilter: (v: string) => void;
   onEnvFilter: (v: string) => void;
   onListView?: () => void;
+  tags: TagWithCount[];
+  tagFilter: string | null;
+  onTagFilter: (v: string | null) => void;
 }) {
   const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
   return (
@@ -137,6 +146,13 @@ function Toolbar({
             ))}
           </SelectContent>
         </Select>
+        <TagFilter
+          tags={tags}
+          value={tagFilter}
+          onChange={onTagFilter}
+          size="sm"
+          className="w-36 border-0 bg-transparent"
+        />
         <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
         {onListView && (
           <Button variant="ghost" size="sm" onClick={onListView}>
@@ -294,6 +310,9 @@ function CanvasInner({
     (_: unknown, viewport: SavedViewport) => writePersisted(`${scope}:viewport`, viewport),
     [scope]
   );
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const { data: tags = [] } = useTags(currentTeamId);
+  const { hasTag } = useTagAssignments(currentTeamId, tags.length > 0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Wrap rows to the container so narrow screens stack projects vertically.
@@ -330,8 +349,22 @@ function CanvasInner({
             ? p
             : { ...p, environments: p.environments.filter((e) => e.name === envFilter) }
         )
-        .filter((p) => envFilter === ALL || p.environments.length > 0),
-    [projects, projectFilter, envFilter]
+        .filter((p) => envFilter === ALL || p.environments.length > 0)
+        .map((p) =>
+          tagFilter === null
+            ? p
+            : {
+                ...p,
+                environments: p.environments
+                  .map((e) => ({
+                    ...e,
+                    resources: e.resources.filter((r) => hasTag(r.kind, r.id, tagFilter)),
+                  }))
+                  .filter((e) => e.resources.length > 0),
+              }
+        )
+        .filter((p) => tagFilter === null || p.environments.length > 0),
+    [projects, projectFilter, envFilter, tagFilter, hasTag]
   );
 
   const { nodes, ids } = useMemo(
@@ -451,6 +484,9 @@ function CanvasInner({
           onProjectFilter={setProjectFilter}
           onEnvFilter={setEnvFilter}
           onListView={onListView}
+          tags={tags}
+          tagFilter={tagFilter}
+          onTagFilter={setTagFilter}
         />
       )}
       <ResourceDrawer

@@ -36,6 +36,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { twoFactorApi } from "@/lib/api/two-factor";
+import { PasskeysCard } from "@/components/passkeys/passkeys-card";
 import { apiRequest } from "@/lib/api/core";
 import type {
   TwoFactorSetupResponse,
@@ -288,6 +289,8 @@ export default function SecuritySettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <PasskeysCard />
 
       {/* 2FA Status Card */}
       <Card>

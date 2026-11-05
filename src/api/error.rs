@@ -157,6 +157,11 @@ impl ApiError {
     // -------------------------------------------------------------------------
 
     /// Bad request error (400)
+    /// The human-readable message (used when collecting per-item errors).
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::BadRequest, message)
     }

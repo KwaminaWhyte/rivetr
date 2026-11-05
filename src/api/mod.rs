@@ -41,6 +41,7 @@ mod monitoring;
 mod notifications;
 pub mod oauth;
 mod optional_json;
+pub(crate) mod passkeys;
 mod patches;
 mod previews;
 mod projects;
@@ -66,7 +67,9 @@ pub(crate) mod state_cookie;
 mod swarm;
 mod swarm_spec;
 pub mod system;
+pub(crate) mod tags;
 mod teams;
+mod traffic_analytics;
 mod two_factor;
 mod user_preferences;
 mod validation;
@@ -147,6 +150,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // 2FA validation (semi-authenticated - uses temporary session token)
         .route("/2fa/validate", post(two_factor::validate_2fa))
+        // Passkey sign in (E2)
+        .route("/passkey/login/start", post(passkeys::login_start))
+        .route("/passkey/login/finish", post(passkeys::login_finish))
         // Apply auth-tier rate limiting (stricter limits for auth endpoints)
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -161,6 +167,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/setup-status", get(auth::setup_status))
         .route("/registration", get(auth::registration_status))
         .route("/oauth/providers", get(oauth::list_enabled_providers))
+        .route("/passkeys/status", get(passkeys::passkey_status))
         // Team invitation validation (public - validate before login)
         .route("/invitations/{token}", get(teams::validate_invitation))
         // Apply API-tier rate limiting (more lenient, suitable for frequent polling)
@@ -1282,6 +1289,55 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // AI compose generation (never deploys; returns YAML for review)
         .route("/ai/status", get(ai_compose::ai_status))
         .route("/ai/compose/generate", post(ai_compose::generate_compose))
+        // Traffic analytics (E3)
+        .route("/analytics", get(traffic_analytics::team_analytics))
+        .route(
+            "/analytics/settings",
+            get(traffic_analytics::get_settings).put(traffic_analytics::update_settings),
+        )
+        .route(
+            "/apps/{id}/analytics",
+            get(traffic_analytics::app_analytics),
+        )
+        .route(
+            "/servers/{id}/analytics",
+            get(traffic_analytics::server_analytics).put(traffic_analytics::set_server_analytics),
+        )
+        // Passkeys of the signed-in user (E2)
+        .route("/passkeys", get(passkeys::list_passkeys))
+        .route("/passkeys/register/start", post(passkeys::register_start))
+        .route("/passkeys/register/finish", post(passkeys::register_finish))
+        .route(
+            "/passkeys/{id}",
+            put(passkeys::rename_passkey).delete(passkeys::delete_passkey),
+        )
+        // Resource tags (E1). `GET /apps/{id}/tags` stays the git tag list.
+        .route("/tags", get(tags::list_tags).post(tags::create_tag))
+        .route("/tags/assignments", get(tags::list_assignments))
+        .route("/tags/{id}", put(tags::update_tag).delete(tags::delete_tag))
+        .route("/tags/{id}/resources", get(tags::list_tag_resources))
+        .route("/tags/{id}/deploy", post(tags::deploy_by_tag))
+        .route(
+            "/apps/{id}/tags",
+            post(tags::attach_app_tag).put(tags::set_app_tags),
+        )
+        .route("/apps/{id}/tags/{tag_id}", delete(tags::detach_app_tag))
+        .route(
+            "/databases/{id}/tags",
+            post(tags::attach_database_tag).put(tags::set_database_tags),
+        )
+        .route(
+            "/databases/{id}/tags/{tag_id}",
+            delete(tags::detach_database_tag),
+        )
+        .route(
+            "/services/{id}/tags",
+            post(tags::attach_service_tag).put(tags::set_service_tags),
+        )
+        .route(
+            "/services/{id}/tags/{tag_id}",
+            delete(tags::detach_service_tag),
+        )
         // SEC-C3: resource-level authorization. Added before the auth layer so it
         // sits *inside* it — runs after the token is validated, before handlers.
         // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.

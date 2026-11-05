@@ -57,9 +57,9 @@ Batch D notes: shared blocks live in `frontend/app/components/page/` (PageHeader
 
 ## Batch E: larger features
 
-- [ ] **E1 Resource tags** (migration 126): tags on apps, databases, services; tag manager page `/tags`; filter lists/canvas by tag; "deploy all with tag" action.
-- [ ] **E2 Passkeys** (migration 127): WebAuthn register/login via `webauthn-rs`, RP ID from instance domain; manage passkeys under security settings; toggle in Advanced settings.
-- [ ] **E3 Traffic analytics** (migration 128): aggregate proxy access logs into per-minute rollups per app (requests, status classes, bytes, p50/p95 latency, top paths, top referrers); optional GeoIP country via a user-supplied MMDB path (no bundled database); per-app Analytics tab and per-server Analytics page; enable toggle per server.
+- [x] **E1 Resource tags** (migration 126): tags on apps, databases, services; tag manager page `/tags`; filter lists/canvas by tag; "deploy all with tag" action.
+- [x] **E2 Passkeys** (migration 127): WebAuthn register/login via `webauthn-rs`, RP ID from instance domain; manage passkeys under security settings; toggle in Advanced settings.
+- [x] **E3 Traffic analytics** (migration 128): aggregate proxy access logs into per-minute rollups per app (requests, status classes, bytes, p50/p95 latency, top paths, top referrers); optional GeoIP country via a user-supplied MMDB path (no bundled database); per-app Analytics tab and per-server Analytics page; enable toggle per server.
 
 ## Out of scope
 
