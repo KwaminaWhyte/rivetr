@@ -393,7 +393,8 @@ impl ProxyServer {
     }
 
     /// Start the proxy server (HTTP), with optional HTTPS redirect.
-    /// `redirect_enabled` is an Arc<AtomicBool> — set it to true once TLS cert is confirmed.
+    /// `redirect_enabled` turns the redirect on; with a cert store it applies only to
+    /// hosts that have a certificate.
     /// `listener` is an already-bound TcpListener; if None a fresh bind is performed.
     pub async fn run_with_options(
         self,

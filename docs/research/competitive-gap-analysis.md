@@ -7,13 +7,13 @@ Impact H/M/L. Effort S (days), M (1 to 2 weeks), L (weeks).
 | # | Gap | Impact | Effort | Who has it | Rivetr evidence |
 |---|-----|--------|--------|-----------|-----------------|
 | 1 | Backup success/failure/missed-run notifications | H | S | Coolify 4.3/4.4 | `NotificationEventType` has no backup events (`src/db/models/notification.rs`) |
-| 2 | HTTP/2 on proxy listeners | H | S | Traefik, Caddy, nginx, kamal-proxy | `http1::Builder` only, `src/proxy/handler.rs:318,341` |
+| 2 | HTTP/2 on proxy listeners | H | S | Traefik, Caddy, nginx, kamal-proxy | Done: ALPN h2/http1.1 on TLS and h2c on plain HTTP via `hyper_util` auto builder, `src/proxy/handler.rs` `serve`; tests `src/proxy/http2_tests.rs` |
 | 3 | Scoped API tokens (read/deploy/write/delete), pause and roll | H | M | Coolify 4.6 | no scope column, `migrations/070` |
-| 4 | Per-domain certs via SNI resolver, remove 100-SAN cap | H | M | Coolify, Dokploy, Kamal | one SAN cert, `src/proxy/acme.rs:434,959`; `with_single_cert` in `src/proxy/tls.rs:31` |
-| 5 | Custom certificate upload per domain | H | S | Dokploy, kamal-proxy | missing |
+| 4 | Per-domain certs via SNI resolver, remove 100-SAN cap | H | M | Coolify, Dokploy, Kamal | Done: `ResolvesServerCert` store `src/proxy/certs/store.rs`, per-domain orders with jittered renewal and backoff `src/proxy/certs/manager.rs`, migration 132 |
+| 5 | Custom certificate upload per domain | H | S | Dokploy, kamal-proxy | Done: `POST /api/{apps,services}/{id}/certificates/{domain}/custom`, `src/api/certificates.rs`; Certificates card on Domains and service Network |
 | 6 | One-click restore of DB and volume backups from S3 | H | M | Coolify, Dokploy, Easypanel | returns 501, `src/api/s3.rs:654` |
 | 7 | Scheduled volume backups to S3 with restore | H | M | Dokploy 0.24, Coolify 4.3 | manual only, `src/api/volumes.rs:249` |
-| 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | HTTP-01 only, `src/proxy/acme.rs:3` |
+| 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | Done: Cloudflare, Route 53, Hetzner, DigitalOcean in `src/proxy/certs/dns.rs`; `/integrations/dns` with instance wildcard |
 | 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | missing |
 | 10 | Granular RBAC ability presets | H | M | Coolify 4.6, Dokploy Enterprise | 4 fixed roles (`src/db/models/team.rs:9`) plus overrides (migration 089) |
 | 11 | One app across several servers behind the proxy | H | L | Coolify, CapRover, Dokploy (Swarm) | single `server_id`, `src/db/models/app.rs:108`; Swarm only |

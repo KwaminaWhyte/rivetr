@@ -393,6 +393,24 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 | DELETE | `/api/routes/:domain` | Remove a route. |
 | PUT | `/api/routes/:domain/health` | Update route health. |
 
+## TLS certificates and DNS providers
+
+`:resource` is `apps` or `services`; the domain must belong to that resource.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/:resource/:id/certificates` | Certificate status per domain (mode, status, issuer, expiry, last error). |
+| PUT | `/api/:resource/:id/certificates/:domain` | Set mode: `{"mode":"auto"}` or `{"mode":"dns","dns_provider_id":"..."}`. |
+| POST | `/api/:resource/:id/certificates/:domain/custom` | Upload `{"certificate":"PEM chain","private_key":"PEM key"}`. |
+| DELETE | `/api/:resource/:id/certificates/:domain/custom` | Remove the upload; automatic issuance resumes. |
+| GET | `/api/dns-providers` | List DNS providers (no secrets). |
+| POST | `/api/dns-providers` | Add a provider (admin): `{"name","provider":"cloudflare\|route53\|hetzner\|digitalocean","credentials":{...}}`. |
+| PUT | `/api/dns-providers/:id` | Rename or replace credentials (admin). |
+| DELETE | `/api/dns-providers/:id` | Delete an unused provider (admin). |
+| POST | `/api/dns-providers/:id/verify` | Test the stored credentials (admin). |
+| GET | `/api/certificates/wildcard` | Wildcard instance domain setting and status (admin). |
+| PUT | `/api/certificates/wildcard` | Set `{"domain":"*.apps.example.com","dns_provider_id":"..."}`; empty domain turns it off (admin). |
+
 ## SSH keys
 
 | Method | Path | Purpose |

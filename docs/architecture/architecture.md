@@ -64,7 +64,8 @@ Webhook / dashboard / API -> API -> Engine (MPSC queue) -> Runtime (Docker/Podma
 ### Reverse proxy (`src/proxy/`)
 
 - Hyper-based HTTP/HTTPS proxy. The `RouteTable` (`proxy/mod.rs`) sits behind `ArcSwap` for lock-free route swaps without restarts.
-- ACME (Let's Encrypt) via `instant-acme` with hot-reloaded certificates and auto renewal.
+- HTTPS listener speaks HTTP/2 and HTTP/1.1 (ALPN); the plain listener also accepts h2c. Backends get HTTP/1.1.
+- Per-domain certificates through a rustls SNI resolver (`proxy/certs/store.rs`): custom uploads, then ACME per-domain certificates, then the legacy shared certificate. `proxy/certs/manager.rs` orders and renews them one domain at a time (HTTP-01, or DNS-01 through `proxy/certs/dns.rs` for wildcards) with per-domain backoff; the ACME client is `proxy/acme.rs`.
 - WebSocket tunnelling, basic auth, health-aware routing, access logs and traffic analytics.
 
 ### Database (`src/db/`)
@@ -120,7 +121,7 @@ Principles: battle-tested crates, few dependencies, async everywhere on Tokio, n
 | Web | axum, tower-http | Tokio-native, extractors, built-in WebSocket |
 | Database | sqlx + SQLite (WAL) | No external database, single-file state |
 | Containers | bollard (Docker), Podman CLI | Async Docker API with streamed build output; Podman needs no daemon |
-| Proxy | hyper, rustls, instant-acme | Full control over proxying, already an axum dependency |
+| Proxy | hyper, rustls, own ACME client | Full control over proxying, already an axum dependency |
 | State | arc-swap, dashmap, parking_lot | Lock-free route swaps, concurrent maps |
 | Crypto and auth | aes-gcm, argon2, webauthn-rs | Secrets at rest, password hashing, passkeys |
 | CLI and TUI | clap, ratatui | |
