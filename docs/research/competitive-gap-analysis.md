@@ -16,7 +16,7 @@ Impact H/M/L. Effort S (days), M (1 to 2 weeks), L (weeks).
 | 8 | Wildcard certs via DNS-01 plus DNS provider APIs (Cloudflare, Route53) | H | M | Dokploy 0.30, Coolify 4.6 | HTTP-01 only, `src/proxy/acme.rs:3` |
 | 9 | External secret managers at deploy time (Vault/OpenBao, Infisical, Doppler, AWS SM) | H | M | Coolify, Dokploy 0.30, Kamal | missing |
 | 10 | Granular RBAC ability presets | H | M | Coolify 4.6, Dokploy Enterprise | 4 fixed roles (`src/db/models/team.rs:9`) plus overrides (migration 089) |
-| 11 | One app across several servers behind the proxy | H | L | Coolify, CapRover, Dokploy (Swarm) | single `server_id`, `src/db/models/app.rs:108`; Swarm only |
+| 11 | ~~One app across several servers behind the proxy~~ Done | H | L | Coolify, CapRover, Dokploy (Swarm) | Done: placement list per app (migration 136, `app_server_placements`), rolling multi-server rollout with per-target health checks and threshold rollback in `src/engine/multi_server/`, upstream pools with round robin, least connections, passive health and sticky cookie in `src/proxy/balancer.rs` |
 | 12 | Published OpenAPI spec | M | S | Coolify, Dokploy, Render | none; hand-written `docs/reference/api.md` |
 | 13 | Per-app proxy rate limiting and IP allow/deny | M | S | Traefik middlewares | API-only limiter `src/api/rate_limit.rs` |
 | 14 | Proxy compression and custom headers | M | S | Traefik middlewares | missing |
