@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/select";
 import {
   certificatesApi,
+  DNS_PROVIDER_LABELS,
+  dnsProvidersApi,
   type CertificateResource,
   type DomainCertificate,
 } from "@/lib/api/certificates";
@@ -76,6 +78,10 @@ export function CertificatesCard({ resource, resourceId, version }: Props) {
     refetchInterval: (q) =>
       q.state.data?.some((c) => c.status === "pending") ? 15_000 : false,
   });
+  const { data: providers = [] } = useQuery({
+    queryKey: ["dns-providers"],
+    queryFn: () => dnsProvidersApi.list(),
+  });
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [certPem, setCertPem] = useState("");
   const [keyPem, setKeyPem] = useState("");
@@ -108,14 +114,33 @@ export function CertificatesCard({ resource, resourceId, version }: Props) {
     onError,
   });
 
+  const setMode = useMutation({
+    mutationFn: ({ domain, providerId }: { domain: string; providerId: string | null }) =>
+      certificatesApi.setMode(
+        resource,
+        resourceId,
+        domain,
+        providerId ? "dns" : "auto",
+        providerId ?? undefined,
+      ),
+    onSuccess: () => {
+      toast.success("Certificate setting saved; issuance starts shortly");
+      refresh();
+    },
+    onError,
+  });
+
+  /** Select values: "auto", "custom" or "dns:<provider id>". */
+  const modeValue = (cert: DomainCertificate) =>
+    cert.mode === "dns" && cert.dns_provider_id ? `dns:${cert.dns_provider_id}` : cert.mode;
+
   const changeMode = (cert: DomainCertificate, value: string) => {
     if (value === "custom") {
       setUploadFor(cert.domain);
       return;
     }
-    if (cert.mode === "custom") {
-      removeCustom.mutate(cert.domain);
-    }
+    const providerId = value.startsWith("dns:") ? value.slice(4) : null;
+    setMode.mutate({ domain: cert.domain, providerId });
   };
 
   const readFile = async (file: File | undefined, set: (v: string) => void) => {
@@ -130,8 +155,9 @@ export function CertificatesCard({ resource, resourceId, version }: Props) {
           Certificates
         </CardTitle>
         <CardDescription>
-          Each domain gets its own TLS certificate. Choose automatic Let's Encrypt
-          issuance or upload your own certificate.
+          Each domain gets its own TLS certificate. Choose automatic Let's Encrypt issuance, a
+          wildcard for the domain and its subdomains through a DNS provider (set up under
+          Integrations, DNS providers), or upload your own certificate.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -171,12 +197,21 @@ export function CertificatesCard({ resource, resourceId, version }: Props) {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Select value={cert.mode} onValueChange={(v) => changeMode(cert, v)}>
-                <SelectTrigger aria-label={`Certificate for ${cert.domain}`} className="w-56">
+              <Select
+                value={modeValue(cert)}
+                onValueChange={(v) => changeMode(cert, v)}
+                disabled={setMode.isPending}
+              >
+                <SelectTrigger aria-label={`Certificate for ${cert.domain}`} className="w-64 max-w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="auto">Automatic (HTTP-01)</SelectItem>
+                  {providers.map((p) => (
+                    <SelectItem key={p.id} value={`dns:${p.id}`}>
+                      Wildcard via {p.name} ({DNS_PROVIDER_LABELS[p.provider] ?? p.provider})
+                    </SelectItem>
+                  ))}
                   <SelectItem value="custom">Custom upload</SelectItem>
                 </SelectContent>
               </Select>

@@ -26,6 +26,7 @@ pub mod database_links;
 mod databases;
 mod deployments;
 mod destinations;
+mod dns_providers;
 mod domains;
 mod env_vars;
 pub mod environments;
@@ -556,6 +557,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/services/{id}/certificates/{domain}/custom",
             post(certificates::upload_service_certificate)
                 .delete(certificates::delete_service_certificate),
+        )
+        // DNS providers for wildcard certificates (DNS-01) and the instance wildcard
+        .route(
+            "/dns-providers",
+            get(dns_providers::list_providers).post(dns_providers::create_provider),
+        )
+        .route(
+            "/dns-providers/{id}",
+            put(dns_providers::update_provider).delete(dns_providers::delete_provider),
+        )
+        .route(
+            "/dns-providers/{id}/verify",
+            post(dns_providers::verify_provider),
+        )
+        .route(
+            "/certificates/wildcard",
+            get(dns_providers::get_wildcard).put(dns_providers::update_wildcard),
         )
         .route("/apps/{id}/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/{id}/basic-auth", put(basic_auth::update_basic_auth))

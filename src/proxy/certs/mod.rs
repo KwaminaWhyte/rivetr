@@ -14,6 +14,7 @@
 #[cfg(test)]
 mod acme_tests;
 pub mod db;
+pub mod dns;
 pub mod launch;
 pub mod manager;
 pub mod store;

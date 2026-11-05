@@ -228,10 +228,12 @@ async fn update_mode(
     let provider: Option<String> = match req.mode.as_str() {
         certdb::MODE_AUTO => None,
         certdb::MODE_DNS => {
-            let _ = req.dns_provider_id;
-            return Err(ApiError::bad_request(
-                "DNS-01 issuance is not available yet",
-            ));
+            let pid = req
+                .dns_provider_id
+                .filter(|p| !p.is_empty())
+                .ok_or_else(|| ApiError::bad_request("Choose a DNS provider"))?;
+            super::dns_providers::require_provider(&state.db, &pid).await?;
+            Some(pid)
         }
         certdb::MODE_CUSTOM => {
             return Err(ApiError::bad_request(

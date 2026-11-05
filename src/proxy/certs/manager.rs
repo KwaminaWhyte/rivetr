@@ -303,9 +303,10 @@ pub async fn load_wildcard_setting(db: &SqlitePool) -> Option<WildcardSetting> {
 }
 
 async fn dns_solver(
-    _db: &SqlitePool,
-    _runtime: &CertRuntime,
-    _provider_id: &str,
+    db: &SqlitePool,
+    runtime: &CertRuntime,
+    provider_id: &str,
 ) -> Result<Box<dyn crate::proxy::acme::Dns01Solver>> {
-    anyhow::bail!("DNS-01 issuance is not available")
+    let solver = super::dns::solver_for(db, runtime.encryption_key(), provider_id).await?;
+    Ok(Box::new(solver))
 }
