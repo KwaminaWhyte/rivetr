@@ -13,6 +13,7 @@ mod basic_auth;
 mod build_servers;
 mod bulk;
 mod ca_certificates;
+mod certificates;
 mod clone;
 mod cloudflare_tunnels;
 mod container_files;
@@ -530,6 +531,32 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // App Costs
         .route("/apps/{id}/costs", get(costs::get_app_costs))
         // HTTP Basic Auth
+        // Per-domain TLS certificates (status, mode, custom upload)
+        .route(
+            "/apps/{id}/certificates",
+            get(certificates::list_app_certificates),
+        )
+        .route(
+            "/apps/{id}/certificates/{domain}",
+            put(certificates::update_app_certificate),
+        )
+        .route(
+            "/apps/{id}/certificates/{domain}/custom",
+            post(certificates::upload_app_certificate).delete(certificates::delete_app_certificate),
+        )
+        .route(
+            "/services/{id}/certificates",
+            get(certificates::list_service_certificates),
+        )
+        .route(
+            "/services/{id}/certificates/{domain}",
+            put(certificates::update_service_certificate),
+        )
+        .route(
+            "/services/{id}/certificates/{domain}/custom",
+            post(certificates::upload_service_certificate)
+                .delete(certificates::delete_service_certificate),
+        )
         .route("/apps/{id}/basic-auth", get(basic_auth::get_basic_auth))
         .route("/apps/{id}/basic-auth", put(basic_auth::update_basic_auth))
         .route(

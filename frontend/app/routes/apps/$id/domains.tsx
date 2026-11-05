@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DomainManagementCard } from "@/components/domain-management-card";
+import { CertificatesCard } from "@/components/certificates-card";
 import { NetworkConfigCard } from "@/components/network-config-card";
 import { ContainerLabelsCard } from "@/components/container-labels-card";
 import {
@@ -177,6 +178,7 @@ export default function AppDomainsSection() {
   return (
     <div className="space-y-6 pb-24">
       <DomainManagementCard app={app} onSave={handleSaveDomainConfig} isSaving={isSavingDomains} />
+      <CertificatesCard resource="apps" resourceId={app.id} version={app.updated_at} />
       <NetworkConfigCard app={app} onSave={handleSaveNetworkConfig} isSaving={isSavingNetwork} />
 
       {/* Strip URL Prefix */}
