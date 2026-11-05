@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -44,6 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { useServers } from "@/lib/resource-queries";
 import { useTeamContext } from "@/lib/team-context";
+import { isString, readPersisted, usePersistedState, writePersisted } from "@/lib/persisted-state";
 import { cn } from "@/lib/utils";
 import { KIND_ICON, KIND_LABEL, nodeTypes, type ResourceNodeData } from "./canvas-nodes";
 import { layoutCanvas, layoutEdges } from "./layout";
@@ -257,19 +258,42 @@ function ResourceDrawer({
   );
 }
 
+interface SavedViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+const isViewport = (v: unknown): v is SavedViewport =>
+  !!v &&
+  typeof v === "object" &&
+  ["x", "y", "zoom"].every((k) => Number.isFinite((v as Record<string, unknown>)[k]));
+
 function CanvasInner({
   className,
   onListView,
+  storageKey,
 }: {
   className?: string;
   onListView?: () => void;
+  storageKey?: string;
 }) {
   const { currentTeamId } = useTeamContext();
+  const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const { projects, edges: links, isLoading, error, refetch } = useCanvasData(currentTeamId);
   const { fitView } = useReactFlow();
-  const [projectFilter, setProjectFilter] = useState(ALL);
-  const [envFilter, setEnvFilter] = useState(ALL);
+
+  // Zoom, pan and filters are remembered per page and team (rivetr:ui:canvas:*).
+  const scope = `canvas:${storageKey ?? pathname}:${currentTeamId ?? "personal"}`;
+  const [storedProjectFilter, setProjectFilter] = usePersistedState<string>(`${scope}:project`, ALL, { validate: isString });
+  const [storedEnvFilter, setEnvFilter] = usePersistedState<string>(`${scope}:env`, ALL, { validate: isString });
+  const [savedViewport] = useState(() => readPersisted<SavedViewport | null>(`${scope}:viewport`, null, { validate: isViewport }));
+  const restoredViewport = useRef(savedViewport !== null);
+  const onMoveEnd = useCallback(
+    (_: unknown, viewport: SavedViewport) => writePersisted(`${scope}:viewport`, viewport),
+    [scope]
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Wrap rows to the container so narrow screens stack projects vertically.
@@ -284,11 +308,18 @@ function CanvasInner({
   }, []);
   const rowMaxWidth = Math.max(700, Math.round(containerWidth * 1.6));
 
+  // A saved filter can point at a project or environment that no longer exists.
+  const projectFilter =
+    storedProjectFilter === ALL || isLoading || projects.some((p) => p.id === storedProjectFilter)
+      ? storedProjectFilter
+      : ALL;
+
   const envNames = useMemo(() => {
     const names = new Set<string>();
     for (const p of projects) for (const e of p.environments) if (e.id !== SHARED_ENV_ID && p.real) names.add(e.name);
     return [...names].sort();
   }, [projects]);
+  const envFilter = storedEnvFilter === ALL || isLoading || envNames.includes(storedEnvFilter) ? storedEnvFilter : ALL;
 
   const visibleProjects = useMemo(
     () =>
@@ -315,6 +346,11 @@ function CanvasInner({
     .join("|");
   useEffect(() => {
     if (!layoutKey) return;
+    // Keep the saved zoom and pan on first load; refit on later filter changes.
+    if (restoredViewport.current) {
+      restoredViewport.current = false;
+      return;
+    }
     const t = setTimeout(() => fitView({ padding: 0.15, maxZoom: 1, duration: 200 }), 150);
     return () => clearTimeout(t);
   }, [layoutKey, fitView]);
@@ -394,8 +430,10 @@ function CanvasInner({
           nodesDraggable={false}
           nodesConnectable
           elementsSelectable
-          fitView
+          fitView={savedViewport === null}
           fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+          defaultViewport={savedViewport ?? undefined}
+          onMoveEnd={onMoveEnd}
           minZoom={0.2}
           maxZoom={1.75}
           panOnScroll
@@ -429,7 +467,12 @@ function CanvasInner({
  * Projects canvas: project boxes containing environment boxes containing
  * resource cards, with pan/zoom, filters and a details drawer.
  */
-export function ProjectsCanvas(props: { className?: string; onListView?: () => void }) {
+export function ProjectsCanvas(props: {
+  className?: string;
+  onListView?: () => void;
+  /** Key for the saved zoom, pan and filters; defaults to the current path. */
+  storageKey?: string;
+}) {
   return (
     <ReactFlowProvider>
       <CanvasInner {...props} />
