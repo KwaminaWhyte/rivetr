@@ -34,7 +34,7 @@ function Card({
           "text-card-foreground overflow-hidden text-sm group/card flex flex-col",
           sectioned
             ? "bg-frame gap-0 rounded-xl border p-1"
-            : "ring-foreground/[0.08] shadow-xs bg-card gap-4 rounded-xl py-4 ring-1 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+            : "ring-foreground/[0.08] shadow-xs bg-card gap-4 rounded-xl py-(--density-card-p) ring-1 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
           className
         )}
         {...props}
@@ -54,7 +54,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
         "group/card-header @container/card-header grid auto-rows-min items-start has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto]",
         sectioned
           ? "gap-0.5 px-3 pt-1.5 pb-2"
-          : "gap-1 rounded-t-xl px-4 group-data-[size=sm]/card:px-3 [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+          : "gap-1 rounded-t-xl px-(--density-card-p) group-data-[size=sm]/card:px-3 [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
         className
       )}
       {...props}
@@ -109,8 +109,8 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="card-content"
       className={cn(
         sectioned
-          ? "bg-card rounded-lg border p-4 shadow-xs sm:p-5"
-          : "px-4 group-data-[size=sm]/card:px-3",
+          ? "bg-card rounded-lg border p-(--density-card-p) shadow-xs sm:p-[calc(var(--density-card-p)*1.25)]"
+          : "px-(--density-card-p) group-data-[size=sm]/card:px-3",
         className
       )}
       {...props}

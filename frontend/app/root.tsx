@@ -9,7 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { Route } from "./+types/root";
-import { ThemeProvider } from "@/components/providers/theme-provider";
+import { ThemeProvider, THEME_PREPAINT_SCRIPT } from "@/lib/theme";
 import { Toaster } from "@/components/ui/sonner";
 import { WhiteLabelProvider } from "@/lib/white-label-context";
 import { DeployPanelProvider } from "@/lib/deploy-panel-context";
@@ -25,15 +25,9 @@ const queryClient = new QueryClient({
   },
 });
 
-// Blocking script to set theme before React hydrates to prevent flicker
-const themeScript = `
-(function() {
-  const stored = localStorage.getItem('rivetr_theme');
-  const theme = stored === 'light' || stored === 'dark' ? stored :
-    (stored === 'system' || !stored) && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  if (theme === 'dark') document.documentElement.classList.add('dark');
-})();
-`;
+// The theme pre-paint script (see lib/theme/storage.ts) applies the cached
+// theme before the first frame so there is no flash of the default look.
+const themeScript = THEME_PREPAINT_SCRIPT;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

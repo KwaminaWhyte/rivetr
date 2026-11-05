@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { matchResource } from "@/lib/resource-nav";
 import { useWhiteLabel } from "@/lib/white-label-context";
+import { useTheme } from "@/lib/theme";
 
 function Brand() {
   const { config } = useWhiteLabel();
@@ -75,9 +76,12 @@ export function AppSidebar({
 }: React.ComponentProps<typeof Sidebar> & { onOpenSearch?: () => void }) {
   const { pathname } = useLocation();
   const resource = matchResource(pathname);
+  const { settings } = useTheme();
+  const variant =
+    settings.sidebar === "inset" ? "inset" : settings.sidebar === "floating" ? "floating" : "sidebar";
 
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar collapsible="icon" variant={variant} {...props}>
       <SidebarHeader className="gap-2 pb-1">
         <Brand />
         {onOpenSearch && <SearchButton onOpenSearch={onOpenSearch} />}

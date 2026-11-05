@@ -70,7 +70,7 @@ export function SectionCard({
       <div
         className={cn(
           "rounded-lg border bg-card text-card-foreground shadow-xs",
-          !flush && "p-4 sm:p-5",
+          !flush && "p-(--density-card-p) sm:p-[calc(var(--density-card-p)*1.25)]",
           flush && "overflow-hidden",
           bodyClassName
         )}

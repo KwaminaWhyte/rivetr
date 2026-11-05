@@ -72,7 +72,7 @@ export function DataTable<T>({
                   key={col.id}
                   scope="col"
                   className={cn(
-                    "h-9 whitespace-nowrap px-4 text-left align-middle text-xs font-medium text-muted-foreground",
+                    "h-[calc(var(--density-head-h)-0.25rem)] whitespace-nowrap px-4 text-left align-middle text-xs font-medium text-muted-foreground",
                     col.showFrom && SHOW_FROM[col.showFrom],
                     col.headerClassName
                   )}
@@ -89,7 +89,7 @@ export function DataTable<T>({
                   {columns.map((col) => (
                     <td
                       key={col.id}
-                      className={cn("px-4 py-3.5", col.showFrom && SHOW_FROM[col.showFrom])}
+                      className={cn("px-4 py-(--density-row-py)", col.showFrom && SHOW_FROM[col.showFrom])}
                     >
                       <Skeleton className="h-4 w-full max-w-40" />
                     </td>
@@ -121,7 +121,7 @@ export function DataTable<T>({
                     <td
                       key={col.id}
                       className={cn(
-                        "px-4 py-3 align-middle",
+                        "px-4 py-(--density-row-py) align-middle",
                         col.showFrom && SHOW_FROM[col.showFrom],
                         col.className
                       )}
