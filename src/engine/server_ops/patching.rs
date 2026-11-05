@@ -20,6 +20,16 @@ pub struct PackageUpdate {
     pub security: bool,
     /// Updating it restarts the Docker daemon and with it every container.
     pub restarts_docker: bool,
+    /// Pinned on the host (`apt-mark hold`): the package manager will not upgrade it.
+    #[serde(default)]
+    pub held: bool,
+}
+
+impl PatchState {
+    /// Updates that can actually be applied (held packages excluded).
+    pub fn actionable_count(&self) -> usize {
+        self.packages.iter().filter(|p| !p.held).count()
+    }
 }
 
 /// Result of a package check, cached in `server_maintenance_settings.patch_state`.
@@ -80,6 +90,8 @@ pub(crate) const CHECK_SCRIPT: &str = r#"if command -v apt-get >/dev/null 2>&1; 
   $SUDO apt-get -qq update >/dev/null 2>&1 || true
   echo "---PACKAGES---"
   apt list --upgradable 2>/dev/null | grep -v '^Listing' || true
+  echo "---HELD---"
+  apt-mark showhold 2>/dev/null || true
 elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
   if command -v dnf >/dev/null 2>&1; then P=dnf; else P=yum; fi
   echo "PKG_MANAGER:$P"
@@ -168,6 +180,7 @@ fn make(
         repository: repo,
         security,
         restarts_docker: restarts_docker(name),
+        held: false,
     }
 }
 
@@ -355,6 +368,11 @@ pub fn parse_check_output(output: &str) -> PatchState {
         "zypper" => parse_zypper(packages_lines, section(&secs, "SECURITY")),
         _ => Vec::new(),
     };
+    let held: std::collections::HashSet<&str> =
+        section(&secs, "HELD").iter().map(|l| l.trim()).collect();
+    for p in &mut packages {
+        p.held = held.contains(p.name.as_str());
+    }
     packages.sort_by(|a, b| a.name.cmp(&b.name));
     packages.dedup_by(|a, b| a.name == b.name);
     let reboot_required = parse_reboot_required(section(&secs, "REBOOT"));
@@ -878,7 +896,7 @@ async fn recheck_into(db: &DbPool, server_id: &str, target: &HostTarget, log: &m
             log,
             format!(
                 "Re-checked: {} package update(s) left{}",
-                state.packages.len(),
+                state.actionable_count(),
                 if state.reboot_required {
                     ", reboot required"
                 } else {
@@ -913,7 +931,7 @@ async fn execute_job(
                         &mut log,
                         format!(
                             "Found {} package update(s) via {}{}",
-                            state.packages.len(),
+                            state.actionable_count(),
                             state.package_manager,
                             if state.reboot_required {
                                 ", reboot required"
@@ -929,6 +947,21 @@ async fn execute_job(
                 }
                 Err(e) => (false, format!("Check failed: {e}")),
             };
+        }
+        PatchJobKind::UpdatePackage(p)
+            if super::load_settings(db, server_id)
+                .await
+                .ok()
+                .and_then(|s| s.patch_state())
+                .is_some_and(|s| s.packages.iter().any(|x| &x.name == p && x.held)) =>
+        {
+            return (
+                false,
+                format!(
+                    "{p} is held on the server (apt-mark hold), so it is not upgraded. \
+                     Run `sudo apt-mark unhold {p}` on the server to allow it."
+                ),
+            );
         }
         PatchJobKind::UpdatePackage(p) => match update_command(&pm, Some(p)) {
             Some(c) => c,
@@ -1088,6 +1121,24 @@ mod tests {
             assert!(repair < upgrade);
         }
         assert!(!update_command("dnf", None).unwrap().contains("dpkg"));
+    }
+
+    #[test]
+    fn marks_held_packages() {
+        let out = "PKG_MANAGER:apt\n---PACKAGES---\n\
+            cloud-init/noble-updates 25.2-0ubuntu1 all [upgradable from: 24.1.3-0ubuntu3]\n\
+            tmux/noble-updates 3.4-1ubuntu0.2 amd64 [upgradable from: 3.4-1ubuntu0.1]\n\
+            ---HELD---\ncloud-init\n---REBOOT---\nno\n";
+        let s = parse_check_output(out);
+        assert!(
+            s.packages
+                .iter()
+                .find(|p| p.name == "cloud-init")
+                .unwrap()
+                .held
+        );
+        assert!(!s.packages.iter().find(|p| p.name == "tmux").unwrap().held);
+        assert_eq!(s.actionable_count(), 1);
     }
 
     #[test]

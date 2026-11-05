@@ -65,6 +65,8 @@ export interface PackageUpdate {
   repository: string | null;
   security: boolean;
   restarts_docker: boolean;
+  /** Pinned with `apt-mark hold`; the package manager will not upgrade it. */
+  held?: boolean;
 }
 
 export interface PatchState {

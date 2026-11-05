@@ -362,6 +362,11 @@ export default function ServerSecurityPage() {
                             Security
                           </Badge>
                         )}
+                        {p.held && (
+                          <Badge variant="outline" className="text-[10px]" title={`Held with apt-mark hold. Run "sudo apt-mark unhold ${p.name}" on the server to allow updates.`}>
+                            Held
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         {p.current_version && <span>Current: {p.current_version}</span>}
@@ -376,7 +381,8 @@ export default function ServerSecurityPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={busy}
+                      disabled={busy || p.held}
+                      title={p.held ? "Held on the server; unhold it to allow updates" : undefined}
                       onClick={() =>
                         p.restarts_docker
                           ? setConfirm({ kind: "update", pkg: p })

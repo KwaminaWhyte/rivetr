@@ -468,11 +468,11 @@ pub async fn servers_summary(
             name: "localhost".to_string(),
             host: "This Rivetr instance".to_string(),
             resource_count: count,
-            update_count: ps.packages.len(),
+            update_count: ps.actionable_count(),
             security_update_count: ps.security_count(),
             reboot_required: ps.reboot_required,
             last_patch_check_at: settings.last_patch_check_at.clone(),
-            status: summary_status("online", ps.packages.len(), ps.reboot_required).to_string(),
+            status: summary_status("online", ps.actionable_count(), ps.reboot_required).to_string(),
         });
     }
 
@@ -495,11 +495,12 @@ pub async fn servers_summary(
             name: s.name.clone(),
             host: s.host.clone(),
             resource_count: count,
-            update_count: ps.packages.len(),
+            update_count: ps.actionable_count(),
             security_update_count: ps.security_count(),
             reboot_required: ps.reboot_required,
             last_patch_check_at: settings.last_patch_check_at.clone(),
-            status: summary_status(&s.status, ps.packages.len(), ps.reboot_required).to_string(),
+            status: summary_status(&s.status, ps.actionable_count(), ps.reboot_required)
+                .to_string(),
         });
     }
     Ok(Json(out))
