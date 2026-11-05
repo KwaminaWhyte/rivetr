@@ -94,7 +94,7 @@ function ProjectTile({
         </div>
         <div className="relative z-10 flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
           <Button variant="ghost" size="icon-sm" asChild>
-            <Link to={`/projects/${project.id}/apps/new`} aria-label={`Add a resource to ${project.name}`} title="Add resource">
+            <Link to={`/projects/${project.id}/new`} aria-label={`Add a resource to ${project.name}`} title="Add resource">
               <Plus />
             </Link>
           </Button>

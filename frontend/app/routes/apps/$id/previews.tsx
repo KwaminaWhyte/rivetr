@@ -127,7 +127,7 @@ export default function AppPreviewsTab() {
             <div>
               <p className="font-medium">Enable PR Previews</p>
               <p className="text-sm text-muted-foreground">
-                Go to Settings &gt; Build to enable automatic preview deployments for pull requests.
+                Go to Source and build to enable automatic preview deployments for pull requests.
               </p>
             </div>
           </div>

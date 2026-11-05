@@ -5,7 +5,8 @@ import { tabsForPath } from "@/lib/nav";
 
 /**
  * Tab strip shared by pages that live under one sidebar entry
- * (Monitoring | Costs, and Servers | Build Servers | SSH Keys | Swarm | Tunnels).
+ * (the areas in lib/nav.ts with layout "tabs": Monitoring, Servers, Integrations,
+ * Team, Notifications, Keys and tokens).
  * Mounted once in the dashboard layout; renders nothing on other pages.
  * Mobile only: from md up the sidebar submenus cover the same links.
  */

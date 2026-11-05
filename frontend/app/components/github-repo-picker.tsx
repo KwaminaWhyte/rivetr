@@ -204,7 +204,7 @@ export function GitHubRepoPicker({
       }
     } else {
       // Start the GitHub App creation flow
-      window.location.href = "/git-providers?tab=github&action=create";
+      window.location.href = "/integrations/git?tab=github&action=create";
     }
   };
 

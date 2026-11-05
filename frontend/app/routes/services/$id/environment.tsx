@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { Service, ServiceDeployConfig, ServiceEnvVar } from "@/types/api";
+import { ServiceSettingsSections } from "@/components/services/service-settings-sections";
 import { Eye, EyeOff, FileUp, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 
 export function meta() {
@@ -363,6 +364,7 @@ export default function ServiceEnvironmentTab() {
         />
       )}
       {importing && <ImportDialog service={service} onClose={() => setImporting(false)} />}
+      <ServiceSettingsSections service={service} sections={["variables"]} />
     </div>
   );
 }

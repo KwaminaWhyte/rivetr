@@ -236,13 +236,13 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
               </Link>
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link to={`/projects/${project.id}/env-vars`}>
+              <Link to={`/projects/${project.id}/variables`}>
                 <Settings2 className="mr-2 h-4 w-4" />
                 Shared Variables
               </Link>
             </Button>
             <Button asChild>
-              <Link to={`/projects/${project.id}/apps/new`}>
+              <Link to={`/projects/${project.id}/new`}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create New App
               </Link>
@@ -423,7 +423,7 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                   No unassigned apps available.
                 </p>
                 <Button asChild>
-                  <Link to={`/projects/${project.id}/apps/new`}>
+                  <Link to={`/projects/${project.id}/new`}>
                     Create New App
                   </Link>
                 </Button>

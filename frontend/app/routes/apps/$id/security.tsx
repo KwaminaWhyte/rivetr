@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BasicAuthCard } from "@/components/basic-auth-card";
 import { useParams } from "react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import { Shield, ShieldCheck, Sparkles, RefreshCw, AlertTriangle, Info } from "l
 
 export function meta() {
   return [
-    { title: "Security Scan - Rivetr" },
-    { name: "description", content: "AI-powered security and compliance scan for this application" },
+    { title: "Security - Rivetr" },
+    { name: "description", content: "Basic auth and vulnerability scans for this application" },
   ];
 }
 
@@ -59,7 +60,7 @@ function severityLabel(severity: Severity): string {
   return severity.charAt(0).toUpperCase() + severity.slice(1);
 }
 
-export default function AppSecurityPage() {
+export default function AppSecuritySection() {
   const { id: appId } = useParams<{ id: string }>();
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -98,13 +99,15 @@ export default function AppSecurityPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {appId && <BasicAuthCard appId={appId} />}
+
+      {/* Vulnerability scan */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h3 className="text-base font-semibold flex items-center gap-2">
             <Shield className="h-5 w-5 text-blue-500" />
-            Security &amp; Compliance
-          </h2>
+            Vulnerability scan
+          </h3>
           <p className="text-sm text-muted-foreground">
             AI-powered security scan to identify vulnerabilities and compliance issues.
           </p>

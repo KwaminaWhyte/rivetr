@@ -1,10 +1,10 @@
 import { QueryError } from "@/components/query-error";
 import { useState, useEffect } from "react";
-import { Link, Outlet, useLocation, useParams, useNavigate } from "react-router";
+import { Outlet, useParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ResourceSection } from "@/components/shell/resource-section";
 import { Badge } from "@/components/ui/badge";
 import { HeaderSkeleton, PageHeader, ResourceStatus, SectionSkeleton } from "@/components/page";
 import { TopBarPortal } from "@/components/shell/top-bar-slot";
@@ -22,21 +22,9 @@ export function meta() {
 }
 
 
-const tabs = [
-  { id: "general", label: "General", path: "" },
-  { id: "deployments", label: "Deployments", path: "/deployments" },
-  { id: "build", label: "Build & Hooks", path: "/build" },
-  { id: "containers", label: "Containers", path: "/containers" },
-  { id: "environment", label: "Environment", path: "/environment" },
-  { id: "network", label: "Network", path: "/network" },
-  { id: "logs", label: "Logs", path: "/logs" },
-  { id: "files", label: "Files", path: "/files" },
-  { id: "settings", label: "Settings", path: "/settings" },
-];
 
 export default function ServiceDetailLayout() {
   const { id } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { show: showDeployPanel } = useDeployPanel();
@@ -156,13 +144,6 @@ export default function ServiceDetailLayout() {
 
   // Determine active tab from path
   const basePath = `/services/${serviceId}`;
-  const currentPath = location.pathname;
-  const activeTab = tabs.find((tab) => {
-    if (tab.path === "") {
-      return currentPath === basePath || currentPath === basePath + "/";
-    }
-    return currentPath.startsWith(basePath + tab.path);
-  })?.id || "general";
 
   if (isLoading) {
     return (
@@ -265,18 +246,9 @@ export default function ServiceDetailLayout() {
         )}
       </TopBarPortal>
 
-      {/* Tabs Navigation: the contextual sidebar replaces it from md up */}
-      <Tabs value={activeTab} className="w-full overflow-x-auto md:hidden">
-        <TabsList className="w-max justify-start">
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} asChild>
-              <Link to={`${basePath}${tab.path}`}>{tab.label}</Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <ResourceSection match={{ kind: "service", id: serviceId, base: basePath }} />
 
-      {/* Tab Content via Outlet */}
+      {/* Section content */}
       <Outlet context={{ service }} />
     </div>
   );

@@ -219,7 +219,7 @@ function ResourceDrawer({
                 </DetailRow>
                 <DetailRow label="Server">
                   {server ? (
-                    <Link to={`/servers/${server.id}/files`} className="hover:underline">
+                    <Link to={`/servers/${server.id}`} className="hover:underline">
                       {server.name}
                     </Link>
                   ) : (

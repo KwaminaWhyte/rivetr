@@ -168,7 +168,7 @@ export default function ProjectDetailPage() {
                   Edit Project
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to={`/projects/${project.id}/env-vars`}>
+                  <Link to={`/projects/${project.id}/variables`}>
                     <Variable className="mr-2 h-4 w-4" />
                     Shared variables
                   </Link>

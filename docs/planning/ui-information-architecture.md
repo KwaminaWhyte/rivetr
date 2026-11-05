@@ -132,3 +132,33 @@ sort and filters per table, log viewer options (follow, wrap, timestamps, lines,
 terminal font size, collapsed cards, last selected tab inside a page, date range on metrics,
 command palette recent items. Theme settings are per user (server) with a local cache to avoid
 a flash on load.
+
+## Implementation notes (2026-11-05)
+
+Implemented on `feat/ui-ia`. Where the build differs from the target above, and why:
+
+- **Breadcrumbs come from two central maps, not `handle.crumb`.** `lib/nav.ts` lists every
+  page area (monitoring, servers, integrations, team, notifications, keys, account, settings)
+  and `lib/resource-nav.ts` lists every app, database, service and server section. The same
+  lists drive the sidebar, sub-navs, mobile menus, command palette and section headers, so a
+  per-route `handle` would duplicate them. The dashboard 404 route and the layout error
+  boundary render inside the shell with a "Page not found" / error crumb.
+- **Old URLs** are listed in `lib/redirects.ts` and served by `routes/redirects.tsx`.
+- **App General** keeps name and environment (editable); repository, branch and port moved to
+  Source and build. The app "Security" group is labelled "Manage" because it also holds
+  Operations and Danger zone.
+- **Databases and services also get `/resources`** (CPU and memory limits) so "Resources"
+  means the same thing for every kind. Database credentials stay on General.
+- **Service `/compose`** also hosts raw compose mode; generated variables sit on
+  Environment variables; the database dump import sits on Operations.
+- **Not built yet** (no backing feature, nothing to move): database metrics and terminal,
+  service storage, metrics and terminal (per container terminals live on Containers), app and
+  server analytics, server terminal, `/integrations/registries` (registries are set per app or
+  service), `/monitoring/analytics`, `/tags`, `/settings/authentication` SAML.
+- **Team**: `/team/permissions` is not a separate page; resource permissions are edited per
+  member on `/team/members`. `/team/variables` was added for team shared variables (mirrors
+  `/projects/:id/variables`). `/team/audit` is the team's activity; the instance-wide audit log
+  stays at `/settings/audit`. Team pages follow the team chosen in the team switcher;
+  `/teams/:id` switches to that team and redirects to `/team`.
+- **Appearance**: `/account/preferences` still has its theme card until the theme work lands
+  on `/account/appearance`; drop it from preferences then.

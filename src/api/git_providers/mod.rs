@@ -450,9 +450,9 @@ pub async fn oauth_callback(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Redirect to settings page with success message
+    // Back to the dashboard Git sources page with success message
     Ok(axum::response::Redirect::to(
-        "/git-providers?connected=true",
+        "/integrations/git?connected=true",
     ))
 }
 

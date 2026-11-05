@@ -7,9 +7,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { NavIconTile } from "@/components/nav-main";
@@ -28,9 +25,9 @@ import { useResourceInfo } from "@/lib/resource-queries";
  */
 export function NavResource({ match }: { match: ResourceMatch }) {
   const { pathname } = useLocation();
-  const { isMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const info = useResourceInfo(match);
-  const sections = resourceSections(match);
+  const sections = resourceSections(match, { dbType: info.variant });
   const KindIcon = RESOURCE_ICON[match.kind];
   const backHref =
     match.kind === "server" ? "/servers" : info.projectId ? `/projects/${info.projectId}` : "/";
@@ -76,13 +73,12 @@ export function NavResource({ match }: { match: ResourceMatch }) {
           <SidebarMenu className="gap-0.5">
             {section.items.map((item) => {
               const active = isResourceLinkActive(pathname, item.url, item.exact);
-              const showChildren = item.children && active && state !== "collapsed";
               return (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     asChild
                     tooltip={item.title}
-                    isActive={active && !showChildren}
+                    isActive={active}
                     className="h-8 gap-2.5 px-1.5 group-data-[collapsible=icon]:p-1!"
                   >
                     <Link to={item.url} onClick={closeMobile}>
@@ -90,23 +86,6 @@ export function NavResource({ match }: { match: ResourceMatch }) {
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
-                  {showChildren && (
-                    <SidebarMenuSub className="ml-[1.1rem] mr-0 mt-0.5">
-                      {item.children!.map((child) => (
-                        <SidebarMenuSubItem key={child.url}>
-                          <SidebarMenuSubButton
-                            asChild
-                            size="sm"
-                            isActive={isResourceLinkActive(pathname, child.url, child.exact)}
-                          >
-                            <Link to={child.url} onClick={closeMobile}>
-                              <span>{child.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  )}
                 </SidebarMenuItem>
               );
             })}

@@ -69,6 +69,18 @@ function storeTeamId(teamId: string | null): void {
   }
 }
 
+/**
+ * Make `teamId` the current team before the dashboard mounts (e.g. right after
+ * accepting an invitation), so /team opens on it.
+ */
+export function rememberCurrentTeam(teamId: string): void {
+  try {
+    storeTeamId(teamId);
+  } catch {
+    // Storage blocked: the provider falls back to the first team.
+  }
+}
+
 interface TeamProviderProps {
   children: ReactNode;
 }

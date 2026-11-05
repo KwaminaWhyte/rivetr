@@ -3,19 +3,17 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Link,
   Outlet,
-  useLocation,
   useParams,
   useNavigate,
 } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { api } from "@/lib/api";
-import { cn, getPrimaryDomain } from "@/lib/utils";
-import { APP_TAB_GROUPS, resolveActiveAppTab } from "@/lib/app-tabs";
+import { getPrimaryDomain } from "@/lib/utils";
+import { ResourceSection } from "@/components/shell/resource-section";
 import { bulkApi } from "@/lib/api/bulk";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { useDeployPanel } from "@/lib/deploy-panel-context";
@@ -79,7 +77,6 @@ function isActiveDeployment(status: DeploymentStatus): boolean {
 
 export default function AppDetailLayout() {
   const { id } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { show: showDeployPanel } = useDeployPanel();
@@ -361,11 +358,6 @@ export default function AppDetailLayout() {
 
   // Determine active tab from path
   const basePath = `/apps/${id}`;
-  const currentPath = location.pathname;
-  const { group: activeGroup, item: activeItem } = resolveActiveAppTab(
-    location.pathname,
-    basePath
-  );
 
   if (appLoading) {
     return (
@@ -620,64 +612,12 @@ export default function AppDetailLayout() {
         );
       })()}
 
-      {/* Tabs Navigation: the contextual sidebar replaces it from md up */}
-      <div className="space-y-2 md:hidden">
-        <Tabs value={activeGroup.id} className="w-full overflow-x-auto">
-          <TabsList className="w-full justify-start">
-            {APP_TAB_GROUPS.map((group) => (
-              <TabsTrigger key={group.id} value={group.id} asChild>
-                <Link
-                  to={`${basePath}${group.items[0].path}`}
-                  className="gap-1.5"
-                >
-                  {group.label}
-                  {group.id === "deployments" && pendingApprovalCount > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="h-4 min-w-4 px-1 text-[10px] rounded-full"
-                    >
-                      {pendingApprovalCount}
-                    </Badge>
-                  )}
-                </Link>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      <ResourceSection
+        match={{ kind: "app", id: id!, base: basePath }}
+        badges={{ deployments: pendingApprovalCount }}
+      />
 
-        {activeGroup.items.length > 1 && (
-          <nav
-            aria-label={`${activeGroup.label} sections`}
-            className="flex items-center gap-1 overflow-x-auto"
-          >
-            {activeGroup.items.map((item) => (
-              <Link
-                key={item.id}
-                to={`${basePath}${item.path}`}
-                aria-current={item.id === activeItem.id ? "page" : undefined}
-                className={cn(
-                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm transition-colors",
-                  item.id === activeItem.id
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                )}
-              >
-                {item.label}
-                {item.id === "deployments" && pendingApprovalCount > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="h-4 min-w-4 px-1 text-[10px] rounded-full"
-                  >
-                    {pendingApprovalCount}
-                  </Badge>
-                )}
-              </Link>
-            ))}
-          </nav>
-        )}
-      </div>
-
-      {/* Tab Content via Outlet */}
+      {/* Section content */}
       <Outlet context={{ app, deployments, deploymentsData }} />
 
       {/* Upload Deploy Dialog */}

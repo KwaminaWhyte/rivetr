@@ -21,6 +21,8 @@ export interface ResourceInfo {
   status?: string;
   projectId?: string | null;
   environmentId?: string | null;
+  /** Database engine (databases only), e.g. "postgres". */
+  variant?: string;
 }
 
 export function useResourceInfo(match: ResourceMatch | null): ResourceInfo {
@@ -56,6 +58,7 @@ export function useResourceInfo(match: ResourceMatch | null): ResourceInfo {
         name: database.data?.name,
         status: database.data?.status,
         projectId: database.data?.project_id,
+        variant: database.data?.db_type,
       };
     case "service":
       return {

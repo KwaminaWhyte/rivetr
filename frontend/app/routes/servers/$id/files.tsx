@@ -32,7 +32,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useSetBreadcrumbs } from "@/lib/breadcrumb-context";
 import type { FileEntry } from "@/lib/api/filesystem";
 
 export function meta() {
@@ -61,11 +60,6 @@ function formatDate(dateStr: string | null): string {
 export default function ServerFilesPage() {
   const { id: serverId } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
-
-  useSetBreadcrumbs([
-    { label: "Servers", href: "/servers" },
-    { label: "File Browser" },
-  ]);
 
   const [currentPath, setCurrentPath] = useState("/");
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
