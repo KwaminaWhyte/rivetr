@@ -265,7 +265,7 @@ export default function SettingsAlertDefaultsPage() {
               <h4 className="font-medium">How Alert Defaults Work</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                 <li>These thresholds apply to all apps that don't have custom alert configurations</li>
-                <li>Apps with custom configs (set in App Settings &gt; Alerts) will use their own thresholds</li>
+                <li>Apps with custom configs (set in the app's Alerts section) will use their own thresholds</li>
                 <li>Alerts are triggered after resource usage exceeds the threshold for 2 consecutive checks</li>
                 <li>Notifications are sent via configured team notification channels</li>
               </ul>

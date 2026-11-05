@@ -47,7 +47,7 @@ export function meta() {
 
 export default function NewAppPage() {
   const navigate = useNavigate();
-  const { projectId } = useParams();
+  const { id: projectId } = useParams();
   const queryClient = useQueryClient();
   const { currentTeamId } = useTeamContext();
   const [deploymentSource, setDeploymentSource] = useState<"git" | "registry" | "upload">("git");

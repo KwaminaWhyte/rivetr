@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { isSettingsPath, pathMatches, visibleSettingsGroups } from "@/lib/nav";
+import { activeAreaItem, areaForPath, visibleGroups, type NavArea } from "@/lib/nav";
 import { useIsInstanceAdmin } from "@/lib/auth";
 import {
   Select,
@@ -14,33 +14,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function isItemActive(pathname: string, url: string): boolean {
-  // /settings is the General page; do not match every /settings/* child
-  if (url === "/settings") return pathname.replace(/\/+$/, "") === "/settings";
-  return pathMatches(pathname, url);
-}
-
-function SettingsNav() {
+function AreaNav({ area }: { area: NavArea }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const settingsGroups = visibleSettingsGroups(useIsInstanceAdmin());
-
-  const current = settingsGroups
-    .flatMap((g) => g.items)
-    .find((i) => isItemActive(pathname, i.url));
+  const groups = visibleGroups(area, useIsInstanceAdmin());
+  const current = activeAreaItem(area, pathname);
 
   return (
     <>
       {/* Narrow screens: compact select */}
       <div className="lg:hidden">
         <Select value={current?.url} onValueChange={(url) => navigate(url)}>
-          <SelectTrigger className="w-full" aria-label="Settings section">
-            <SelectValue placeholder="Settings" />
+          <SelectTrigger className="w-full" aria-label={`${area.title} section`}>
+            <SelectValue placeholder={area.title} />
           </SelectTrigger>
           <SelectContent>
-            {settingsGroups.map((group) => (
-              <SelectGroup key={group.title}>
-                <SelectLabel>{group.title}</SelectLabel>
+            {groups.map((group) => (
+              <SelectGroup key={group.title || area.id}>
+                {group.title && <SelectLabel>{group.title}</SelectLabel>}
                 {group.items.map((item) => (
                   <SelectItem key={item.url} value={item.url}>
                     {item.title}
@@ -53,14 +44,14 @@ function SettingsNav() {
       </div>
 
       {/* md and up: grouped left sub-nav */}
-      <nav aria-label="Settings" className="hidden lg:flex lg:flex-col lg:gap-5">
-        {settingsGroups.map((group) => (
-          <div key={group.title} className="flex flex-col gap-0.5">
+      <nav aria-label={area.title} className="hidden lg:flex lg:flex-col lg:gap-5">
+        {groups.map((group) => (
+          <div key={group.title || area.id} className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground/80">
-              {group.title}
+              {group.title || area.title}
             </div>
             {group.items.map((item) => {
-              const active = isItemActive(pathname, item.url);
+              const active = current?.url === item.url;
               return (
                 <Link
                   key={item.url}
@@ -85,17 +76,19 @@ function SettingsNav() {
 }
 
 /**
- * Wraps the page content with the grouped settings sub-nav when the current
- * route belongs to the settings area; otherwise renders children untouched.
+ * Wraps the page content with a grouped left sub-nav when the current route
+ * belongs to an area with layout "subnav" (instance settings, account);
+ * otherwise renders children untouched.
  */
-export function SettingsShell({ children }: { children: ReactNode }) {
+export function AreaShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  if (!isSettingsPath(pathname)) return <>{children}</>;
+  const area = areaForPath(pathname);
+  if (!area || area.layout !== "subnav") return <>{children}</>;
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:gap-8">
       <aside className="lg:w-52 lg:shrink-0">
-        <SettingsNav />
+        <AreaNav area={area} />
       </aside>
       <div className="min-w-0 flex-1">{children}</div>
     </div>

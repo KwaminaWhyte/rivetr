@@ -92,7 +92,7 @@ export function CostSummaryCard({ className }: { className?: string } = {}) {
             <CardTitle>Cost overview</CardTitle>
           </div>
           <Button variant="ghost" size="sm" asChild className="text-xs">
-            <Link to="/costs">
+            <Link to="/monitoring/costs">
               View Details
               <ArrowRight className="ml-1 h-3 w-3" />
             </Link>

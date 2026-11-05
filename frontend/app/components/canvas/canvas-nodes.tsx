@@ -54,7 +54,7 @@ function ProjectNodeView({ data }: NodeProps<ProjectNode>) {
         {project.real && (
           <div className="nodrag nopan flex shrink-0 items-center gap-1">
             <Link
-              to={`/projects/${project.id}/apps/new`}
+              to={`/projects/${project.id}/new`}
               title="Add a resource"
               aria-label={`Add a resource to ${project.name}`}
               className="inline-flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground shadow-xs hover:text-foreground"

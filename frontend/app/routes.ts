@@ -1,3 +1,10 @@
+/**
+ * Dashboard URL tree. The file layout under routes/ mirrors these URLs.
+ * Target structure and naming: docs/planning/ui-information-architecture.md.
+ * Breadcrumb titles for every URL come from lib/nav.ts (pages) and
+ * lib/resource-nav.ts (app, database, service and server sections).
+ * Old URLs are kept alive by routes/redirects.tsx (see lib/redirects.ts).
+ */
 import {
   type RouteConfig,
   index,
@@ -5,6 +12,7 @@ import {
   layout,
   prefix,
 } from "@react-router/dev/routes";
+import { LEGACY_REDIRECT_PATHS } from "./lib/redirects";
 
 export default [
   // Public routes (no auth required)
@@ -16,6 +24,11 @@ export default [
   route("register", "routes/register.tsx"),
   route("invitations/accept", "routes/invitations/accept.tsx"),
 
+  // Old URLs: one redirect module serves them all (ids and query strings kept)
+  ...LEGACY_REDIRECT_PATHS.map((path, i) =>
+    route(path, "routes/redirects.tsx", { id: `redirect-${i}` })
+  ),
+
   // Protected routes with dashboard layout
   layout("routes/_layout.tsx", [
     index("routes/_index.tsx"),
@@ -25,120 +38,151 @@ export default [
       index("routes/projects/_index.tsx"),
       route(":id", "routes/projects/$id.tsx"),
       route(":id/environments", "routes/projects/$id.environments.tsx"),
-      route(":id/env-vars", "routes/projects/$id.env-vars.tsx"),
-      route(":projectId/apps/new", "routes/projects/$project-id.apps.new.tsx"),
+      route(":id/variables", "routes/projects/$id.variables.tsx"),
+      route(":id/new", "routes/projects/$id.new.tsx"),
     ]),
 
-    // Apps (nested layout with tabs)
+    route("templates", "routes/templates.tsx"),
+
+    // Monitoring
+    ...prefix("monitoring", [
+      index("routes/monitoring/_index.tsx"),
+      route("costs", "routes/monitoring/costs.tsx"),
+      route("proxy-logs", "routes/monitoring/proxy-logs.tsx"),
+    ]),
+
+    // Applications
     route("apps/:id", "routes/apps/$id/_layout.tsx", [
       index("routes/apps/$id/_index.tsx"),
-      route("network", "routes/apps/$id/network.tsx"),
-      route("env-vars", "routes/apps/$id/env-vars.tsx"),
-      route("settings", "routes/apps/$id/settings/_layout.tsx", [
-        index("routes/apps/$id/settings/_index.tsx"),
-        route("build", "routes/apps/$id/settings/build.tsx"),
-        route("network", "routes/apps/$id/settings/network.tsx"),
-        route("storage", "routes/apps/$id/settings/storage.tsx"),
-        route("alerts", "routes/apps/$id/settings/alerts.tsx"),
-        route("security", "routes/apps/$id/settings/security.tsx"),
-        route("deployment", "routes/apps/$id/settings/deployment.tsx"),
-        route("replicas", "routes/apps/$id/settings/replicas.tsx"),
-        route("snapshots", "routes/apps/$id/settings/snapshots.tsx"),
-        route("sharing", "routes/apps/$id/settings/sharing.tsx"),
-        route("docker", "routes/apps/$id/settings/docker.tsx"),
-        route("patches", "routes/apps/$id/settings/patches.tsx"),
-        route("healthcheck", "routes/apps/$id/settings/healthcheck.tsx"),
-      ]),
+      // Configuration
+      route("build", "routes/apps/$id/build.tsx"),
+      route("domains", "routes/apps/$id/domains.tsx"),
+      route("environment", "routes/apps/$id/environment.tsx"),
+      route("storage", "routes/apps/$id/storage.tsx"),
+      route("healthcheck", "routes/apps/$id/healthcheck.tsx"),
+      route("resources", "routes/apps/$id/resources.tsx"),
+      route("advanced", "routes/apps/$id/advanced.tsx"),
+      // Deploy
       route("deployments", "routes/apps/$id/deployments.tsx"),
       route("deployments/:deploymentId", "routes/apps/$id/deployment-detail.tsx"),
       route("previews", "routes/apps/$id/previews.tsx"),
-      route("jobs", "routes/apps/$id/jobs.tsx"),
+      route("rollback", "routes/apps/$id/rollback.tsx"),
+      // Observe
       route("logs", "routes/apps/$id/logs.tsx"),
-      route("log-drains", "routes/apps/$id/log-drains.tsx"),
-      route("monitoring", "routes/apps/$id/monitoring.tsx"),
+      route("metrics", "routes/apps/$id/metrics.tsx"),
       route("terminal", "routes/apps/$id/terminal.tsx"),
       route("files", "routes/apps/$id/files.tsx"),
+      // Automate
+      route("jobs", "routes/apps/$id/jobs.tsx"),
+      route("alerts", "routes/apps/$id/alerts.tsx"),
+      route("log-drains", "routes/apps/$id/log-drains.tsx"),
+      // Security and lifecycle
       route("security", "routes/apps/$id/security.tsx"),
+      route("sharing", "routes/apps/$id/sharing.tsx"),
+      route("operations", "routes/apps/$id/operations.tsx"),
+      route("danger", "routes/apps/$id/danger.tsx"),
     ]),
 
-    // Databases (nested layout with tabs)
+    // Databases
     route("databases/:id", "routes/databases/$id/_layout.tsx", [
       index("routes/databases/$id/_index.tsx"),
-      route("extensions", "routes/databases/$id/extensions.tsx"),
+      route("configuration", "routes/databases/$id/configuration.tsx"),
       route("network", "routes/databases/$id/network.tsx"),
       route("storage", "routes/databases/$id/storage.tsx"),
+      route("resources", "routes/databases/$id/resources.tsx"),
+      route("extensions", "routes/databases/$id/extensions.tsx"),
       route("backups", "routes/databases/$id/backups.tsx"),
       route("import", "routes/databases/$id/import.tsx"),
       route("logs", "routes/databases/$id/logs.tsx"),
       route("files", "routes/databases/$id/files.tsx"),
-      route("settings", "routes/databases/$id/settings.tsx"),
+      route("operations", "routes/databases/$id/operations.tsx"),
+      route("danger", "routes/databases/$id/danger.tsx"),
     ]),
 
-    // Services (nested layout with tabs)
+    // Services (Docker Compose stacks)
     route("services/:id", "routes/services/$id/_layout.tsx", [
       index("routes/services/$id/_index.tsx"),
-      route("deployments", "routes/services/$id/deployments.tsx"),
+      route("compose", "routes/services/$id/compose.tsx"),
       route("build", "routes/services/$id/build.tsx"),
-      route("containers", "routes/services/$id/containers.tsx"),
       route("environment", "routes/services/$id/environment.tsx"),
       route("network", "routes/services/$id/network.tsx"),
+      route("resources", "routes/services/$id/resources.tsx"),
+      route("deployments", "routes/services/$id/deployments.tsx"),
+      route("containers", "routes/services/$id/containers.tsx"),
       route("logs", "routes/services/$id/logs.tsx"),
       route("files", "routes/services/$id/files.tsx"),
-      route("settings", "routes/services/$id/settings.tsx"),
+      route("operations", "routes/services/$id/operations.tsx"),
+      route("danger", "routes/services/$id/danger.tsx"),
     ]),
 
-    // Service Templates (browse templates for reference)
-    route("templates", "routes/templates.tsx"),
-
-    // Server detail pages (":id" is a server id or "localhost" for the local runtime)
-    route("servers/:id", "routes/servers/$id/_layout.tsx", [
-      index("routes/servers/$id/_index.tsx"),
-      route("images", "routes/servers/$id/images.tsx"),
-      route("docker-cleanup", "routes/servers/$id/docker-cleanup.tsx"),
-      route("security", "routes/servers/$id/security.tsx"),
-      route("files", "routes/servers/$id/files.tsx"),
+    // Infrastructure: servers (":id" is a server id or "localhost")
+    ...prefix("servers", [
+      index("routes/servers/_index.tsx"),
+      route("build", "routes/servers/build.tsx"),
+      route("swarm", "routes/servers/swarm.tsx"),
+      route(":id", "routes/servers/$id/_layout.tsx", [
+        index("routes/servers/$id/_index.tsx"),
+        route("images", "routes/servers/$id/images.tsx"),
+        route("docker-cleanup", "routes/servers/$id/docker-cleanup.tsx"),
+        route("security", "routes/servers/$id/security.tsx"),
+        route("files", "routes/servers/$id/files.tsx"),
+      ]),
     ]),
 
-    // Monitoring
-    route("monitoring", "routes/monitoring.tsx"),
+    // Infrastructure: integrations shared by every project
+    ...prefix("integrations", [
+      route("git", "routes/integrations/git.tsx"),
+      route("s3", "routes/integrations/s3.tsx"),
+      route("destinations", "routes/integrations/destinations.tsx"),
+      route("tunnels", "routes/integrations/tunnels.tsx"),
+      route("webhooks", "routes/integrations/webhooks.tsx"),
+      route("webhook-events", "routes/integrations/webhook-events.tsx"),
+    ]),
 
-    // Costs
-    route("costs", "routes/costs.tsx"),
+    // Manage: the current team
+    ...prefix("team", [
+      index("routes/team/_index.tsx"),
+      route("members", "routes/team/members.tsx"),
+      route("variables", "routes/team/variables.tsx"),
+      route("audit", "routes/team/audit.tsx"),
+    ]),
+    route("teams", "routes/teams.tsx"),
 
-    // Infrastructure (top-level, no /settings/ prefix)
-    route("servers", "routes/settings/servers.tsx"),
-    route("build-servers", "routes/settings/build-servers.tsx"),
-    route("ssh-keys", "routes/settings/ssh-keys.tsx"),
-    route("swarm", "routes/settings/swarm.tsx"),
-    route("tunnels", "routes/settings/tunnels.tsx"),
+    // Manage: notifications
+    ...prefix("notifications", [
+      index("routes/notifications/_index.tsx"),
+      route("alerts", "routes/notifications/alerts.tsx"),
+    ]),
 
-    // Access (top-level, no /settings/ prefix)
-    route("teams", "routes/settings/teams.tsx"),
-    route("teams/:id", "routes/settings/teams/$id.tsx"),
-    route("git-providers", "routes/settings/git-providers.tsx"),
-    route("webhooks", "routes/settings/webhooks.tsx"),
-    route("webhook-events", "routes/settings/webhook-events.tsx"),
-    route("tokens", "routes/settings/tokens.tsx"),
+    // Manage: keys and tokens
+    ...prefix("keys", [
+      route("ssh", "routes/keys/ssh.tsx"),
+      route("api-tokens", "routes/keys/api-tokens.tsx"),
+      route("ca-certificates", "routes/keys/ca-certificates.tsx"),
+    ]),
 
-    // Settings
+    // Personal account (user menu)
+    ...prefix("account", [
+      index("routes/account/_index.tsx"),
+      route("security", "routes/account/security.tsx"),
+      route("appearance", "routes/account/appearance.tsx"),
+      route("preferences", "routes/account/preferences.tsx"),
+    ]),
+
+    // Instance settings (admin)
     ...prefix("settings", [
       index("routes/settings/_index.tsx"),
-      route("white-label", "routes/settings/white-label.tsx"),
-      route("notifications", "routes/settings/notifications.tsx"),
-      route("audit", "routes/settings/audit.tsx"),
-      route("ca-certificates", "routes/settings/ca-certificates.tsx"),
-      route("destinations", "routes/settings/destinations.tsx"),
-      route("alert-defaults", "routes/settings/alert-defaults.tsx"),
-      route("auto-update", "routes/settings/auto-update.tsx"),
       route("advanced", "routes/settings/advanced.tsx"),
+      route("updates", "routes/settings/updates.tsx"),
       route("email", "routes/settings/email.tsx"),
+      route("authentication", "routes/settings/authentication.tsx"),
       route("backup", "routes/settings/backup.tsx"),
-      route("s3", "routes/settings/s3.tsx"),
-      route("security", "routes/settings/security.tsx"),
-      route("oauth", "routes/settings/oauth.tsx"),
-      route("sso", "routes/settings/sso.tsx"),
-      route("preferences", "routes/settings/preferences.tsx"),
-      route("proxy-logs", "routes/settings/proxy-logs.tsx"),
+      route("branding", "routes/settings/branding.tsx"),
+      route("ai", "routes/settings/ai.tsx"),
+      route("audit", "routes/settings/audit.tsx"),
     ]),
+
+    // Anything else: a 404 page inside the dashboard shell, with breadcrumbs
+    route("*", "routes/not-found.tsx"),
   ]),
 ] satisfies RouteConfig;

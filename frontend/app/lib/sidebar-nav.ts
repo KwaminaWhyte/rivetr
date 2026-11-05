@@ -1,8 +1,8 @@
 /**
  * Sidebar structure (grouped like Coolify): a top block, then
  * "Infrastructure" and "Manage" sections. Items with `children` render as a
- * collapsible submenu. Add new pages here so the sidebar picks them up; the
- * settings sub-nav and the command palette still read `lib/nav.ts`.
+ * collapsible submenu. Submenu links come from the areas in `lib/nav.ts`, so
+ * add new pages there; the account area is reached from the user menu.
  */
 import type { LucideIcon } from "lucide-react";
 import {
@@ -17,7 +17,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { pathMatches } from "@/lib/nav";
+import { navAreas, pathMatches } from "@/lib/nav";
 
 export interface SidebarLink {
   title: string;
@@ -40,6 +40,16 @@ export interface SidebarSection {
   items: SidebarItem[];
 }
 
+function areaLinks(id: string): SidebarLink[] {
+  const area = navAreas.find((a) => a.id === id);
+  if (!area) return [];
+  return area.groups.flatMap((g) => g.items).map((i) => ({
+    title: i.title,
+    url: i.url,
+    adminOnly: i.adminOnly,
+  }));
+}
+
 export const sidebarSections: SidebarSection[] = [
   {
     items: [
@@ -55,11 +65,7 @@ export const sidebarSections: SidebarSection[] = [
         title: "Monitoring",
         icon: Activity,
         url: "/monitoring",
-        children: [
-          { title: "Metrics", url: "/monitoring" },
-          { title: "Costs", url: "/costs" },
-          { title: "Proxy logs", url: "/settings/proxy-logs" },
-        ],
+        children: areaLinks("monitoring"),
       },
     ],
   },
@@ -70,25 +76,13 @@ export const sidebarSections: SidebarSection[] = [
         title: "Servers",
         icon: Server,
         url: "/servers",
-        children: [
-          { title: "Servers", url: "/servers" },
-          { title: "Build servers", url: "/build-servers" },
-          { title: "Swarm", url: "/swarm" },
-          { title: "Tunnels", url: "/tunnels" },
-        ],
+        children: areaLinks("servers"),
       },
       {
         title: "Integrations",
         icon: Blocks,
-        url: "/git-providers",
-        children: [
-          { title: "Sources", url: "/git-providers" },
-          { title: "Destinations", url: "/settings/destinations" },
-          { title: "S3 storage", url: "/settings/s3" },
-          { title: "CA certificates", url: "/settings/ca-certificates" },
-          { title: "Webhooks", url: "/webhooks" },
-          { title: "Webhook events", url: "/webhook-events" },
-        ],
+        url: "/integrations/git",
+        children: areaLinks("integrations"),
       },
     ],
   },
@@ -98,29 +92,20 @@ export const sidebarSections: SidebarSection[] = [
       {
         title: "Team",
         icon: Users,
-        url: "/teams",
-        children: [
-          { title: "Teams", url: "/teams" },
-          { title: "Audit log", url: "/settings/audit" },
-        ],
+        url: "/team",
+        children: areaLinks("team"),
       },
       {
         title: "Notifications",
         icon: Bell,
-        url: "/settings/notifications",
-        children: [
-          { title: "Channels", url: "/settings/notifications" },
-          { title: "Alert defaults", url: "/settings/alert-defaults" },
-        ],
+        url: "/notifications",
+        children: areaLinks("notifications"),
       },
       {
-        title: "Keys & Tokens",
+        title: "Keys and tokens",
         icon: KeyRound,
-        url: "/ssh-keys",
-        children: [
-          { title: "Private keys", url: "/ssh-keys" },
-          { title: "API tokens", url: "/tokens" },
-        ],
+        url: "/keys/ssh",
+        children: areaLinks("keys"),
       },
       { title: "Settings", icon: Settings, url: "/settings" },
     ],
@@ -133,7 +118,7 @@ function itemUrls(item: SidebarItem): string[] {
 
 /**
  * The longest URL across the whole sidebar that matches the pathname wins, so
- * "/settings/audit" lights up Team > Audit log rather than Settings.
+ * "/team/members" lights up Team > Members rather than Team > General.
  */
 export function activeSidebarUrl(pathname: string): string | null {
   let best: string | null = null;
