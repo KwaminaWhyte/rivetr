@@ -167,9 +167,9 @@ export default function ServerFilesPage() {
   }
 
   return (
-    <div className="container py-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">File Browser</h1>
+        <h2 className="text-lg font-semibold">File Browser</h2>
         <Button
           variant="outline"
           size="sm"
