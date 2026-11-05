@@ -188,6 +188,9 @@ static RULES: &[Rule] = &[
     r(Any, "/auth/**", Fixed(Admin)),
     r(Any, "/passkeys/**", Fixed(Admin)),
     r(Any, "/backups/**", Fixed(Admin)),
+    // DNS provider credentials and the instance wildcard certificate (admin only in the API too)
+    r(Any, "/dns-providers/**", Fixed(Admin)),
+    r(Any, "/certificates/**", Fixed(Admin)),
     r(Any, "/invitations/**", Fixed(Admin)),
     r(Any, "/analytics/settings", Fixed(Admin)),
     r(Mutating, "/white-label", Fixed(Admin)),

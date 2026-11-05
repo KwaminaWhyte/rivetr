@@ -24,8 +24,8 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 pub use acme::{AcmeChallenges, AcmeClient, AcmeConfig, CertificateResult};
-pub use certs::CertStore;
 pub use balancer::{LbPolicy, Selection, UpstreamPool, STICKY_COOKIE};
+pub use certs::CertStore;
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
