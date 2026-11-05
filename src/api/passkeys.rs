@@ -31,9 +31,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use webauthn_rs::prelude::{
-    CreationChallengeResponse, DiscoverableAuthentication, DiscoverableKey, Passkey,
-    PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
-    RequestChallengeResponse, Url, Uuid, Webauthn, WebauthnBuilder,
+    DiscoverableAuthentication, DiscoverableKey, Passkey, PasskeyRegistration, PublicKeyCredential,
+    RegisterPublicKeyCredential, RequestChallengeResponse, Url, Uuid, Webauthn, WebauthnBuilder,
 };
 
 use crate::db::{actions, resource_types, InstanceSettings, LoginResponse, User, UserResponse};
@@ -305,7 +304,8 @@ pub struct PasskeyStatus {
 #[derive(Debug, Serialize)]
 pub struct RegisterStartResponse {
     pub challenge_id: String,
-    pub options: CreationChallengeResponse,
+    /// `CreationChallengeResponse` as JSON, adjusted by [`require_discoverable`].
+    pub options: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -535,6 +535,8 @@ pub async fn register_start(
             (!exclude.is_empty()).then_some(exclude),
         )
         .map_err(webauthn_error)?;
+    let mut options = serde_json::to_value(&options).map_err(json_err)?;
+    require_discoverable(&mut options);
     let state_json = serde_json::to_string(&(handle.to_string(), reg_state)).map_err(json_err)?;
     let challenge_id = store_challenge(
         &state.db,
@@ -548,6 +550,23 @@ pub async fn register_start(
         challenge_id,
         options,
     }))
+}
+
+/// Sign in uses discoverable (usernameless) authentication, so the credential must
+/// live on the authenticator. webauthn-rs defaults passkey registration to
+/// "resident key discouraged", which security keys and some platforms honour by
+/// creating a credential the login step can never find.
+fn require_discoverable(options: &mut serde_json::Value) {
+    let Some(public_key) = options.get_mut("publicKey").and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+    let sel = public_key
+        .entry("authenticatorSelection")
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(sel) = sel.as_object_mut() {
+        sel.insert("residentKey".into(), "required".into());
+        sel.insert("requireResidentKey".into(), true.into());
+    }
 }
 
 /// POST /api/passkeys/register/finish
@@ -803,9 +822,17 @@ mod tests {
             .allow_any_port(true)
             .build()
             .unwrap();
-        let (_, reg) = webauthn
+        let (ccr, reg) = webauthn
             .start_passkey_registration(Uuid::new_v4(), "a@b.c", "A", None)
             .unwrap();
+        let mut options = serde_json::to_value(&ccr).unwrap();
+        require_discoverable(&mut options);
+        let sel = &options["publicKey"]["authenticatorSelection"];
+        assert_eq!(sel["residentKey"], "required");
+        assert_eq!(sel["requireResidentKey"], true);
+        // The browser-facing JSON must still parse back into the webauthn-rs type.
+        let _: webauthn_rs::prelude::CreationChallengeResponse =
+            serde_json::from_value(options).unwrap();
         let json = serde_json::to_string(&("h".to_string(), reg)).unwrap();
         let _: (String, PasskeyRegistration) = serde_json::from_str(&json).unwrap();
 
