@@ -1708,6 +1708,13 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 130: advanced Swarm service spec per app
+    execute_sql(
+        pool,
+        include_str!("../../migrations/130_app_swarm_specs.sql"),
+    )
+    .await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

@@ -63,6 +63,7 @@ pub mod ssrf;
 pub mod start_logs;
 pub(crate) mod state_cookie;
 mod swarm;
+mod swarm_spec;
 pub mod system;
 mod teams;
 mod two_factor;
@@ -1217,6 +1218,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/swarm/services/{id}", delete(swarm::delete_service))
         .route("/swarm/services/{id}/scale", post(swarm::scale_service))
         .route("/swarm/services/{id}/logs", get(swarm::get_service_logs))
+        .route(
+            "/apps/{id}/swarm-spec",
+            get(swarm_spec::get_app_swarm_spec).put(swarm_spec::update_app_swarm_spec),
+        )
         // Bulk operations
         .route("/bulk/start", post(bulk::bulk_start))
         .route("/bulk/stop", post(bulk::bulk_stop))
