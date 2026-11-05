@@ -2,7 +2,7 @@ mod advanced_settings;
 mod ai_compose;
 mod ai_features;
 mod alerts;
-mod api_tokens;
+pub mod api_tokens;
 pub(crate) mod app_healthcheck;
 mod apps;
 mod audit;
@@ -52,6 +52,7 @@ mod replicas;
 mod resource_clone;
 mod routes;
 mod s3;
+pub mod scopes;
 mod sdk;
 mod server_network;
 mod server_ops;
@@ -196,7 +197,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/services/{id}/containers/{container}/terminal",
             get(services::service_container_terminal_ws),
-        );
+        )
+        // API token scopes for the WebSocket routes (they do their own auth, so
+        // the middleware resolves `rvt_` tokens itself). See api/scopes.rs.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            scopes::token_scope_middleware,
+        ));
 
     // Protected API routes
     let api_routes = Router::new()
@@ -791,7 +798,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // API Tokens
         .route("/tokens", get(api_tokens::list_tokens))
         .route("/tokens", post(api_tokens::create_token))
-        .route("/tokens/{id}", delete(api_tokens::delete_token))
+        .route(
+            "/tokens/{id}",
+            delete(api_tokens::delete_token).patch(api_tokens::update_token),
+        )
+        .route("/tokens/{id}/pause", post(api_tokens::pause_token))
+        .route("/tokens/{id}/resume", post(api_tokens::resume_token))
+        .route("/tokens/{id}/roll", post(api_tokens::roll_token))
         // CA Certificates
         .route(
             "/ca-certificates",
@@ -1344,6 +1357,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             authz::resource_authz_middleware,
+        ))
+        // API token scopes and team/resource restrictions: every route above is
+        // classified in the single table in api/scopes.rs (method + matched path
+        // -> read/deploy/write/delete/secrets/admin). Runs after auth (which
+        // resolves the token) and before resource authorization.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            scopes::token_scope_middleware,
         ))
         // Protected by auth
         .layer(middleware::from_fn_with_state(

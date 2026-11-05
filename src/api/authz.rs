@@ -777,7 +777,7 @@ async fn authorize_s3_backup(state: &Arc<AppState>, user: &User, id: &str) -> Re
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ResourceKind {
+pub(crate) enum ResourceKind {
     App,
     Server,
     Database,
@@ -802,7 +802,7 @@ enum ResourceKind {
 
 /// Extract `(kind, id)` from a request path when it targets a specific resource.
 /// Returns `None` for collection paths, non-resource paths, or non-UUID segments.
-fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
+pub(crate) fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
     let rest = path.strip_prefix("/api/")?;
     let mut segs = rest.split('/');
     // Set when the first id-like segment was already consumed to pick the kind.
@@ -851,6 +851,262 @@ fn parse_resource_target(path: &str) -> Option<(ResourceKind, &str)> {
     } else {
         None
     }
+}
+
+/// The token on a request (`Authorization`, `X-API-Key` or `?token=`), as the
+/// auth middleware reads it.
+pub(crate) fn request_token(request: &Request<Body>) -> Option<String> {
+    extract_request_token(request)
+}
+
+/// May `user` restrict an API token to `team_id`? Instance admins may pick any
+/// team; everyone else must be a member.
+pub async fn authorize_token_team(
+    state: &Arc<AppState>,
+    user: &User,
+    team_id: &str,
+) -> Result<(), ApiError> {
+    if is_privileged(user) {
+        return Ok(());
+    }
+    if !is_team_member(state, &user.id, team_id).await? {
+        return Err(ApiError::forbidden(
+            "You can only restrict a token to a team you belong to",
+        ));
+    }
+    Ok(())
+}
+
+/// Owning team, project and app of a resource addressed by a request path.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct ResourceOwner {
+    pub team_id: Option<String>,
+    pub project_id: Option<String>,
+    pub app_id: Option<String>,
+}
+
+/// SQL returning `(team_id, project_id, app_id)` for a resource kind.
+fn owner_sql(kind: ResourceKind) -> Option<&'static str> {
+    Some(match kind {
+        ResourceKind::App => "SELECT team_id, project_id, id FROM apps WHERE id = ?",
+        ResourceKind::Database => "SELECT team_id, project_id, NULL FROM databases WHERE id = ?",
+        ResourceKind::Service => "SELECT team_id, project_id, NULL FROM services WHERE id = ?",
+        ResourceKind::Project => "SELECT team_id, id, NULL FROM projects WHERE id = ?",
+        ResourceKind::Deployment => {
+            "SELECT a.team_id, a.project_id, a.id FROM deployments d \
+             JOIN apps a ON a.id = d.app_id WHERE d.id = ?"
+        }
+        ResourceKind::Volume => {
+            "SELECT a.team_id, a.project_id, a.id FROM volumes v \
+             JOIN apps a ON a.id = v.app_id WHERE v.id = ?"
+        }
+        ResourceKind::Preview => {
+            "SELECT a.team_id, a.project_id, a.id FROM preview_deployments p \
+             JOIN apps a ON a.id = p.app_id WHERE p.id = ?"
+        }
+        ResourceKind::Environment => {
+            "SELECT p.team_id, p.id, NULL FROM environments e \
+             JOIN projects p ON p.id = e.project_id WHERE e.id = ?"
+        }
+        _ => return None,
+    })
+}
+
+/// Resolve who owns a resource. `None` when the row does not exist.
+pub(crate) async fn resource_owner(
+    db: &SqlitePool,
+    kind: ResourceKind,
+    id: &str,
+) -> Result<Option<ResourceOwner>, ApiError> {
+    let err = |e: sqlx::Error| ApiError::internal(format!("authz lookup failed: {e}"));
+    if let Some(sql) = owner_sql(kind) {
+        let row: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(sql)
+            .bind(id)
+            .fetch_optional(db)
+            .await
+            .map_err(err)?;
+        return Ok(row.map(|(team_id, project_id, app_id)| ResourceOwner {
+            team_id,
+            project_id,
+            app_id,
+        }));
+    }
+    let Some(sql) = team_sql(kind) else {
+        return Ok(Some(ResourceOwner::default()));
+    };
+    let row: Option<Option<String>> = sqlx::query_scalar(sql)
+        .bind(id)
+        .fetch_optional(db)
+        .await
+        .map_err(err)?;
+    Ok(row.map(|team_id| ResourceOwner {
+        team_id,
+        ..Default::default()
+    }))
+}
+
+/// Is the addressed resource inside a token's resource list? A listed project
+/// covers its apps, databases, services and environments; a listed app covers
+/// its deployments, volumes and previews.
+pub(crate) fn resource_listed(
+    list: &[super::api_tokens::TokenResource],
+    kind: ResourceKind,
+    id: &str,
+    owner: &ResourceOwner,
+) -> bool {
+    let own_type = match kind {
+        ResourceKind::App => Some("app"),
+        ResourceKind::Database => Some("database"),
+        ResourceKind::Service => Some("service"),
+        ResourceKind::Project => Some("project"),
+        _ => None,
+    };
+    list.iter().any(|r| {
+        (own_type == Some(r.kind.as_str()) && r.id == id)
+            || (r.kind == "app" && owner.app_id.as_deref() == Some(r.id.as_str()))
+            || (r.kind == "project" && owner.project_id.as_deref() == Some(r.id.as_str()))
+    })
+}
+
+/// Enforce an API token's team and resource restrictions on one request.
+///
+/// - Restricted tokens never reach administration routes.
+/// - A route that addresses a resource by id must target a resource owned by
+///   the token's team and, with a resource list, one of the listed resources
+///   (or a child of one).
+/// - Team routes (`/api/teams/:id/...`) must name the token's team.
+/// - With a resource list, routes that address no resource are refused.
+/// - With only a team restriction, collection reads get `team_id` forced into
+///   the query string, and other non-resource writes must carry the token's
+///   `team_id` in their JSON body.
+///
+/// Returns the (possibly rewritten) request or the rejection to send.
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
+pub(crate) async fn check_token_restrictions(
+    state: &Arc<AppState>,
+    ctx: &super::api_tokens::TokenContext,
+    action: super::scopes::ActionKind,
+    request: Request<Body>,
+) -> Result<Request<Body>, Response> {
+    use super::scopes::ActionKind;
+    let deny = |m: &str| ApiError::forbidden(m.to_string()).into_response();
+
+    if action == ActionKind::Admin {
+        return Err(deny(
+            "Team or resource restricted API tokens cannot call administration routes",
+        ));
+    }
+    let path = request
+        .extensions()
+        .get::<OriginalUri>()
+        .map(|o| o.0.path().to_string())
+        .unwrap_or_else(|| request.uri().path().to_string());
+
+    if let Some((kind, id)) = parse_resource_target(&path) {
+        let owner = resource_owner(&state.db, kind, id)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        // A missing row is left to the handler's own 404.
+        let Some(owner) = owner else {
+            return Ok(request);
+        };
+        if let Some(tid) = &ctx.team_id {
+            if owner.team_id.as_deref() != Some(tid.as_str()) {
+                return Err(deny("This API token is restricted to another team"));
+            }
+        }
+        if !ctx.resources.is_empty() && !resource_listed(&ctx.resources, kind, id, &owner) {
+            return Err(deny(
+                "This API token is not allowed to access this resource",
+            ));
+        }
+        return Ok(request);
+    }
+
+    if !ctx.resources.is_empty() {
+        return Err(deny(
+            "This API token is restricted to specific resources; call a route that addresses one of them by id",
+        ));
+    }
+    let Some(tid) = ctx.team_id.clone() else {
+        return Ok(request);
+    };
+
+    // `/api/teams/:id/...` must be the token's own team.
+    if let Some(rest) = path.strip_prefix("/api/teams/") {
+        let team = rest.split('/').next().unwrap_or("");
+        if !team.is_empty() {
+            return if team == tid {
+                Ok(request)
+            } else {
+                Err(deny("This API token is restricted to another team"))
+            };
+        }
+    }
+
+    if matches!(action, ActionKind::Read | ActionKind::Secrets) {
+        return force_team_query(request, &tid).map_err(|m| deny(&m));
+    }
+    require_team_in_body(request, &tid).await
+}
+
+/// Make a collection read filter by the token's team: reject a different
+/// `team_id`, add it when missing.
+fn force_team_query(mut request: Request<Body>, team_id: &str) -> Result<Request<Body>, String> {
+    let query = request.uri().query().unwrap_or("").to_string();
+    let existing = query.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        (k == "team_id").then(|| v.to_string())
+    });
+    match existing {
+        Some(v) if v == team_id => Ok(request),
+        Some(_) => Err("This API token is restricted to another team".into()),
+        None => {
+            let new_query = if query.is_empty() {
+                format!("team_id={team_id}")
+            } else {
+                format!("{query}&team_id={team_id}")
+            };
+            let pq = format!("{}?{}", request.uri().path(), new_query);
+            let mut parts = request.uri().clone().into_parts();
+            parts.path_and_query = pq.parse().ok();
+            if let Ok(uri) = axum::http::Uri::from_parts(parts) {
+                *request.uri_mut() = uri;
+            }
+            Ok(request)
+        }
+    }
+}
+
+/// Non-resource writes by a team restricted token must name its team in a JSON
+/// body (`{"team_id": ...}`); anything else could act outside the team.
+#[allow(clippy::result_large_err)] // Err carries the ready-to-send rejection response
+async fn require_team_in_body(
+    request: Request<Body>,
+    team_id: &str,
+) -> Result<Request<Body>, Response> {
+    let deny = |m: &str| ApiError::forbidden(m.to_string()).into_response();
+    let is_json = request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    if !is_json {
+        return Err(deny(
+            "A team restricted API token can only create resources with a JSON body that sets team_id",
+        ));
+    }
+    let (parts, body) = request.into_parts();
+    let bytes = axum::body::to_bytes(body, 1024 * 1024)
+        .await
+        .map_err(|_| deny("Request body too large for a team restricted API token"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+    if value.get("team_id").and_then(|v| v.as_str()) != Some(team_id) {
+        return Err(deny(
+            "This API token is restricted to one team; set team_id to that team in the request body",
+        ));
+    }
+    Ok(Request::from_parts(parts, Body::from(bytes)))
 }
 
 /// Extract the bearer token from a request the same way `auth_middleware` does:
@@ -1224,6 +1480,100 @@ mod tests {
                 .status(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    #[test]
+    fn token_resource_lists_cover_children() {
+        use crate::api::api_tokens::TokenResource;
+        let list = vec![
+            TokenResource {
+                kind: "project".into(),
+                id: "p1".into(),
+            },
+            TokenResource {
+                kind: "app".into(),
+                id: "a9".into(),
+            },
+        ];
+        let in_p1 = ResourceOwner {
+            team_id: Some("t".into()),
+            project_id: Some("p1".into()),
+            app_id: Some("a1".into()),
+        };
+        let elsewhere = ResourceOwner {
+            team_id: Some("t".into()),
+            project_id: Some("p2".into()),
+            app_id: Some("a2".into()),
+        };
+        // An app, a deployment and a database inside a listed project.
+        assert!(resource_listed(&list, ResourceKind::App, "a1", &in_p1));
+        assert!(resource_listed(
+            &list,
+            ResourceKind::Deployment,
+            "d1",
+            &in_p1
+        ));
+        assert!(resource_listed(&list, ResourceKind::Project, "p1", &in_p1));
+        // A listed app outside the project, and its deployments.
+        let a9 = ResourceOwner {
+            app_id: Some("a9".into()),
+            ..elsewhere.clone()
+        };
+        assert!(resource_listed(&list, ResourceKind::App, "a9", &a9));
+        assert!(resource_listed(&list, ResourceKind::Deployment, "d9", &a9));
+        // Anything else is refused.
+        assert!(!resource_listed(&list, ResourceKind::App, "a2", &elsewhere));
+        assert!(!resource_listed(
+            &list,
+            ResourceKind::Server,
+            "s1",
+            &ResourceOwner::default()
+        ));
+    }
+
+    #[test]
+    fn team_restricted_reads_get_the_team_filter() {
+        let req = |uri: &str| Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let r = force_team_query(req("/api/apps"), "t1").unwrap();
+        assert_eq!(r.uri().to_string(), "/api/apps?team_id=t1");
+        let r = force_team_query(req("/api/apps?limit=5"), "t1").unwrap();
+        assert_eq!(r.uri().query(), Some("limit=5&team_id=t1"));
+        assert!(force_team_query(req("/api/apps?team_id=t1"), "t1").is_ok());
+        assert!(force_team_query(req("/api/apps?team_id=t2"), "t1").is_err());
+    }
+
+    #[tokio::test]
+    async fn team_restricted_writes_need_the_team_in_the_body() {
+        let req = |body: &str, ct: &str| {
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/apps")
+                .header("content-type", ct)
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        };
+        let ok = require_team_in_body(
+            req(r#"{"name":"x","team_id":"t1"}"#, "application/json"),
+            "t1",
+        )
+        .await
+        .unwrap();
+        // The body is passed on intact.
+        let bytes = axum::body::to_bytes(ok.into_body(), 1024).await.unwrap();
+        assert_eq!(&bytes[..], br#"{"name":"x","team_id":"t1"}"#);
+        assert!(
+            require_team_in_body(req(r#"{"team_id":"t2"}"#, "application/json"), "t1")
+                .await
+                .is_err()
+        );
+        assert!(
+            require_team_in_body(req(r#"{"name":"x"}"#, "application/json"), "t1")
+                .await
+                .is_err()
+        );
+        assert!(require_team_in_body(req("x", "multipart/form-data"), "t1")
+            .await
+            .is_err());
     }
 
     #[test]

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Scoped API tokens**: scopes `read`, `deploy`, `write`, `delete`, `secrets` and `admin`, enforced for every `/api` route from one table (`src/api/scopes.rs`, with a test that fails when a route is unmapped). Optional restriction to one team and to projects or resources, optional expiry, pause and resume, roll with a configurable grace period for the old secret, last used time and IP. MCP tools respect token scopes. New endpoints `PATCH /api/tokens/:id`, `POST /api/tokens/:id/{pause,resume,roll}`; the API tokens page has scope selection, restrictions, pause, roll and last use (migration 134).
+
+### Breaking
+- Existing API tokens keep full access. Tokens restricted to a team or resources cannot call admin routes or the MCP server. `GET /api/tokens` returns the extra fields.
+
 ## [1.0.0] - 2026-11-05
 
 First stable release. Everything below the highlights was previously listed as unreleased.

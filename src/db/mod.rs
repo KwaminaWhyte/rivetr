@@ -1748,6 +1748,19 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
+    // Migration 134: scoped API tokens (column guard) and granular team RBAC
+    let has_token_scopes: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('api_tokens') WHERE name = 'scopes'")
+            .fetch_optional(pool)
+            .await?;
+    if has_token_scopes.is_none() {
+        execute_sql(
+            pool,
+            include_str!("../../migrations/134_scoped_tokens_columns.sql"),
+        )
+        .await?;
+    }
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 
@@ -1782,6 +1795,38 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(row, (1, 0));
+    }
+
+    /// Migration 134: tokens from before scopes keep full access, and re-running
+    /// the migrations is a no-op.
+    #[tokio::test]
+    async fn migration_134_gives_existing_tokens_full_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, email, password_hash, name, role) \
+             VALUES ('u1', 'a@b.c', 'x', 'A', 'admin')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO api_tokens (id, name, token_hash, user_id) VALUES ('t1', 'old', 'h', 'u1')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+
+        let pool = init(dir.path()).await.unwrap();
+        let row: (String, i64, Option<String>) =
+            sqlx::query_as("SELECT scopes, disabled, team_id FROM api_tokens WHERE id = 't1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(row.0, "read,deploy,write,delete,secrets,admin");
+        assert_eq!(row.1, 0);
+        assert!(row.2.is_none());
     }
 
     /// Migration 125 moves the legacy single healthcheck path into the structured

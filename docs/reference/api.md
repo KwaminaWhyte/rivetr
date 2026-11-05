@@ -12,6 +12,32 @@ Authorization: Bearer <admin_token>
 
 The token is `auth.admin_token` from `rivetr.toml`, or a token created via `POST /api/tokens`. Auth-flow, webhook, SSO, and a few public endpoints do **not** require a token (called out below). WebSocket endpoints authenticate via a query parameter rather than the header.
 
+The admin token from the config has full access but, like API tokens, is subject to the API access policy (Settings > Advanced: on/off and IP allowlist). Dashboard sessions are not.
+
+### API token scopes
+
+Tokens created with `POST /api/tokens` (prefix `rvt_`) carry one or more scopes. Every route is classified once, by method and path, in the table in `src/api/scopes.rs` (a unit test fails when a route under `/api` has no entry; at runtime an unmapped route is refused to tokens).
+
+| Scope | Allows |
+|-------|--------|
+| `read` | GET requests that do not reveal secrets. |
+| `deploy` | Deploy, start, stop, restart, roll back, cancel, approve or reject a deployment, run a job, bulk and tag deploys. |
+| `write` | Create and change resources (POST/PUT/PATCH), container terminals. |
+| `delete` | DELETE requests. |
+| `secrets` | Reveal secret values: `?reveal=true`, resolved and linked env vars, generated service vars, container file reads, database backup downloads, project and DB exports. |
+| `admin` | Instance and team administration (`/settings`, `/system`, `/sso`, `/audit`, `/swarm`, `/tokens`, team members, invitations and roles, 2FA and passkeys), host access (server files and terminal, reboot, patching, Docker install and cleanup). Implies every other scope. |
+
+Scopes do not imply each other (except `admin`): a CI token usually needs `read,deploy`. A token never grants more than its owner's account and team role allow; the RBAC check runs after the scope check. Insufficient scope returns `403` with `{"error":{"code":"insufficient_scope", ...}}`.
+
+Restrictions (optional, combined with scopes):
+- **Team** (`team_id`): routes that address a resource by id must target that team's resources; `/api/teams/:id/...` must be that team; collection reads get `team_id` forced into the query string; other non-resource writes need a JSON body with that `team_id`.
+- **Resources** (`resources`, list of `{"type": "project|app|database|service", "id"}`): only routes that address a listed resource (or, for a project, its apps, databases, services and environments; for an app, its deployments, volumes and previews) by id. Collection routes are refused.
+- Restricted tokens cannot call `admin` routes and cannot use the MCP server.
+
+Lifecycle: optional expiry (`expires_at`), pause/resume (a paused token gets `401`), roll (new secret shown once; the previous secret keeps working for `grace_minutes`, default 60, max 10080, 0 revokes it at once). Last use time and client IP are recorded. Tokens created before scopes existed have every scope; `POST /api/tokens` without `scopes` also creates a full-scope token, for compatibility.
+
+MCP (`POST /mcp`): read-only tools need `read`, `deploy_app` and `restart_app` need `deploy`. `tools/list` only lists the tools the token may call.
+
 ## Rate-limiting tiers
 
 - **Auth tier** (strict, default 20/min): login/register/2FA/OAuth flows.
@@ -480,9 +506,15 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/tokens` | List API tokens. |
-| POST | `/api/tokens` | Create an API token. |
+| GET | `/api/tokens` | List your API tokens (scopes, restrictions, status, last use time and IP). |
+| POST | `/api/tokens` | Create a token: `name`, `scopes`, optional `expires_at`, `team_id`, `resources`. The secret is returned once. |
+| PATCH | `/api/tokens/:id` | Change name, scopes, expiry (`""` clears), team (`""` clears) or resources (`[]` clears). |
+| POST | `/api/tokens/:id/pause` | Pause: the token is rejected until resumed. |
+| POST | `/api/tokens/:id/resume` | Resume a paused token. |
+| POST | `/api/tokens/:id/roll` | New secret (returned once); body `{"grace_minutes": 60}` keeps the old one valid that long. |
 | DELETE | `/api/tokens/:id` | Delete an API token. |
+
+All `/api/tokens` routes need the `admin` scope when called with an API token.
 
 ## CA certificates
 
