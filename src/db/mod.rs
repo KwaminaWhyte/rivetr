@@ -1708,6 +1708,9 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     )
     .await?;
 
+    // Migration 126: resource tags (CREATE IF NOT EXISTS + orphan sweep, idempotent)
+    execute_sql(pool, include_str!("../../migrations/126_resource_tags.sql")).await?;
+
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
 

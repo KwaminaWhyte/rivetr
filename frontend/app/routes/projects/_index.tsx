@@ -6,6 +6,8 @@ import { Link, useNavigate } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { PageHeader, EmptyState, CardGridSkeleton, DataTable, ResourceStatus, ViewToggle, useStoredPreference, type DataColumn, type ViewOption } from "@/components/page";
 import { ProjectsCanvas } from "@/components/canvas/projects-canvas";
+import { TagFilter } from "@/components/tags/tag-filter";
+import { useTagAssignments, useTags } from "@/components/tags/use-tags";
 import { api } from "@/lib/api";
 import { useTeamContext } from "@/lib/team-context";
 import { Button } from "@/components/ui/button";
@@ -152,6 +154,7 @@ export default function ProjectsPage() {
   const { currentTeamId } = useTeamContext();
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("attention");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -241,6 +244,9 @@ export default function ProjectsPage() {
     return statuses;
   }, [databases]);
 
+  const { data: tags = [] } = useTags(currentTeamId);
+  const { hasTag } = useTagAssignments(currentTeamId, tags.length > 0);
+
   // Filter by tab and search text, then sort (problems first by default)
   const filteredProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -260,6 +266,13 @@ export default function ProjectsPage() {
           activeTab === "all" || getProjectHealth(p, appStatuses, databaseStatuses) === activeTab
       )
       .filter(matchesSearch)
+      .filter(
+        (p) =>
+          tagFilter === null ||
+          p.apps.some((a) => hasTag("app", a.id, tagFilter)) ||
+          (p.databases || []).some((d) => hasTag("database", d.id, tagFilter)) ||
+          (p.services || []).some((s) => hasTag("service", s.id, tagFilter))
+      )
       .sort((a, b) => {
         if (sort === "name") return a.name.localeCompare(b.name);
         if (sort === "newest") return b.created_at.localeCompare(a.created_at);
@@ -268,7 +281,7 @@ export default function ProjectsPage() {
           HEALTH_RANK[getProjectHealth(b, appStatuses, databaseStatuses)];
         return byHealth !== 0 ? byHealth : a.name.localeCompare(b.name);
       });
-  }, [projects, activeTab, search, sort, appStatuses, databaseStatuses]);
+  }, [projects, activeTab, search, sort, appStatuses, databaseStatuses, tagFilter, hasTag]);
 
   // "4 projects · 12 apps · 6 databases" subtitle
   const totals = useMemo(() => {
@@ -486,6 +499,7 @@ export default function ProjectsPage() {
                 </SelectContent>
               </Select>
             )}
+            <TagFilter tags={tags} value={tagFilter} onChange={setTagFilter} />
             <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
               <SelectTrigger aria-label="Sort projects" className="w-40">
                 <SelectValue />

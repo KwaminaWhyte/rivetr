@@ -90,6 +90,9 @@ export default [
     // Service Templates (browse templates for reference)
     route("templates", "routes/templates.tsx"),
 
+    // Tags (E1)
+    route("tags", "routes/tags.tsx"),
+
     // Server detail pages (":id" is a server id or "localhost" for the local runtime)
     route("servers/:id", "routes/servers/$id/_layout.tsx", [
       index("routes/servers/$id/_index.tsx"),

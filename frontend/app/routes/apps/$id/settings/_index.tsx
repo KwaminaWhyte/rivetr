@@ -17,6 +17,7 @@ import { GitHubSourceCard } from "@/components/github-source-card";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { AppSharingCard } from "@/components/app-sharing-card";
 import { CloneResourceCard } from "@/components/clone-resource-card";
+import { ResourceTagsCard } from "@/components/tags/resource-tags-card";
 import { UnsavedChangesBar } from "@/components/unsaved-changes-bar";
 import { useDirtyForm } from "@/hooks/use-dirty-form";
 import { Zap, Copy, Check } from "lucide-react";
@@ -180,6 +181,7 @@ export default function AppSettingsGeneral() {
     <div className="space-y-6 pb-24">
       <GitHubSourceCard app={app} />
       <WebhookSetupCard app={app} />
+      <ResourceTagsCard kind="app" resourceId={app.id} teamId={app.team_id} />
       <MoveToProjectCard
         resourceKind="app"
         resourceId={app.id}

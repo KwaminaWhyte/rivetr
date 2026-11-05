@@ -63,6 +63,7 @@ pub mod start_logs;
 pub(crate) mod state_cookie;
 mod swarm;
 pub mod system;
+pub(crate) mod tags;
 mod teams;
 mod two_factor;
 mod validation;
@@ -1258,6 +1259,33 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(ai_features::scan_app_security),
         )
         .route("/security/scan", get(ai_features::scan_all_security))
+        // Resource tags (E1). `GET /apps/{id}/tags` stays the git tag list.
+        .route("/tags", get(tags::list_tags).post(tags::create_tag))
+        .route("/tags/assignments", get(tags::list_assignments))
+        .route("/tags/{id}", put(tags::update_tag).delete(tags::delete_tag))
+        .route("/tags/{id}/resources", get(tags::list_tag_resources))
+        .route("/tags/{id}/deploy", post(tags::deploy_by_tag))
+        .route(
+            "/apps/{id}/tags",
+            post(tags::attach_app_tag).put(tags::set_app_tags),
+        )
+        .route("/apps/{id}/tags/{tag_id}", delete(tags::detach_app_tag))
+        .route(
+            "/databases/{id}/tags",
+            post(tags::attach_database_tag).put(tags::set_database_tags),
+        )
+        .route(
+            "/databases/{id}/tags/{tag_id}",
+            delete(tags::detach_database_tag),
+        )
+        .route(
+            "/services/{id}/tags",
+            post(tags::attach_service_tag).put(tags::set_service_tags),
+        )
+        .route(
+            "/services/{id}/tags/{tag_id}",
+            delete(tags::detach_service_tag),
+        )
         // SEC-C3: resource-level authorization. Added before the auth layer so it
         // sits *inside* it — runs after the token is validated, before handlers.
         // Covers every /api/{apps,servers,databases,services,deployments}/:id/* route.

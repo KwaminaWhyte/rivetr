@@ -95,6 +95,12 @@ pub mod actions {
     pub const SERVICE_START: &str = "service.start";
     pub const SERVICE_STOP: &str = "service.stop";
     pub const SERVICE_DEPLOY: &str = "service.deploy";
+
+    // Tag actions
+    pub const TAG_CREATE: &str = "tag.create";
+    pub const TAG_UPDATE: &str = "tag.update";
+    pub const TAG_DELETE: &str = "tag.delete";
+    pub const TAG_DEPLOY: &str = "tag.deploy";
     pub const SERVICE_ROLLBACK: &str = "service.rollback";
     pub const SERVICE_CONTAINER_RESTART: &str = "service.container_restart";
 

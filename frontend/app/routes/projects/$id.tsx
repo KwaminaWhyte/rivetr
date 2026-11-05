@@ -1,5 +1,5 @@
 import { QueryError } from "@/components/query-error";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBreadcrumb } from "@/lib/breadcrumb-context";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
@@ -41,6 +41,8 @@ import type { ProjectWithApps, UpdateProjectRequest } from "@/types/api";
 import { AppsTab } from "@/components/projects/apps-tab";
 import { DatabasesTab } from "@/components/projects/databases-tab";
 import { ServicesTab } from "@/components/projects/services-tab";
+import { TagFilter } from "@/components/tags/tag-filter";
+import { useTagAssignments, useTags } from "@/components/tags/use-tags";
 
 export function meta() {
   return [
@@ -57,6 +59,7 @@ export default function ProjectDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editData, setEditData] = useState<UpdateProjectRequest>({});
 
@@ -72,6 +75,33 @@ export default function ProjectDetailPage() {
       setItems([{ label: "Projects", href: "/projects" }, { label: project.name }]);
     }
   }, [project, setItems]);
+
+  const { data: allTags = [] } = useTags(project?.team_id ?? null);
+  const { hasTag } = useTagAssignments(project?.team_id ?? null, allTags.length > 0);
+  // Only offer tags that are on something in this project.
+  const projectTags = useMemo(
+    () =>
+      allTags.filter(
+        (t) =>
+          !!project &&
+          (project.apps.some((a) => hasTag("app", a.id, t.id)) ||
+            (project.databases ?? []).some((d) => hasTag("database", d.id, t.id)) ||
+            (project.services ?? []).some((s) => hasTag("service", s.id, t.id)))
+      ),
+    [allTags, project, hasTag]
+  );
+  const visibleProject = useMemo<ProjectWithApps | undefined>(
+    () =>
+      project && tagFilter
+        ? {
+            ...project,
+            apps: project.apps.filter((a) => hasTag("app", a.id, tagFilter)),
+            databases: (project.databases ?? []).filter((d) => hasTag("database", d.id, tagFilter)),
+            services: (project.services ?? []).filter((s) => hasTag("service", s.id, tagFilter)),
+          }
+        : project,
+    [project, tagFilter, hasTag]
+  );
 
   const openEditDialog = () => {
     if (project) {
@@ -187,14 +217,20 @@ export default function ProjectDetailPage() {
         }
       />
 
+      {projectTags.length > 0 && (
+        <div className="flex justify-end">
+          <TagFilter tags={projectTags} value={tagFilter} onChange={setTagFilter} />
+        </div>
+      )}
+
       {/* Applications */}
-      <AppsTab project={project} projectId={id!} />
+      <AppsTab project={visibleProject ?? project} projectId={id!} />
 
       {/* Databases */}
-      <DatabasesTab project={project} projectId={id!} />
+      <DatabasesTab project={visibleProject ?? project} projectId={id!} />
 
       {/* Services */}
-      <ServicesTab project={project} projectId={id!} />
+      <ServicesTab project={visibleProject ?? project} projectId={id!} />
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

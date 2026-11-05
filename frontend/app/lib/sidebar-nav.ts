@@ -15,6 +15,7 @@ import {
   LayoutTemplate,
   Server,
   Settings,
+  Tags,
   Users,
 } from "lucide-react";
 import { pathMatches } from "@/lib/nav";
@@ -51,6 +52,7 @@ export const sidebarSections: SidebarSection[] = [
         match: ["/projects", "/apps", "/databases", "/services"],
       },
       { title: "Templates", icon: LayoutTemplate, url: "/templates" },
+      { title: "Tags", icon: Tags, url: "/tags" },
       {
         title: "Monitoring",
         icon: Activity,
