@@ -71,6 +71,9 @@ import {
   Sparkles,
   DollarSign,
 } from "lucide-react";
+import { useLocalPreference } from "@/lib/persisted-state";
+
+const UPTIME_PERIODS = ["24h", "7d", "30d"] as const;
 
 // ---------------------------------------------------------------------------
 // Cron presets for scheduled restarts
@@ -300,7 +303,7 @@ function escapeRegex(str: string) {
 // ---------------------------------------------------------------------------
 
 function UptimeSection({ appId }: { appId: string }) {
-  const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
+  const [period, setPeriod] = useLocalPreference<"24h" | "7d" | "30d">("metrics:uptime-period", "24h", UPTIME_PERIODS);
 
   const { data: uptimeSummary, isLoading: summaryLoading, error: uptimeError, refetch: refetchUptime } = useQuery<UptimeSummary>({
     queryKey: ["uptime", appId, period],

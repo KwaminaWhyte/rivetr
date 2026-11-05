@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery } from "@tanstack/react-query";
+import { useLocalPreference } from "@/lib/persisted-state";
 
 interface DataPoint {
   time: string;
@@ -139,7 +140,12 @@ export function ResourceChart({
   height = 240,
   className,
 }: ResourceChartProps) {
-  const [timeRange, setTimeRange] = useState("24");
+  // The chosen range is shared by every resource chart and remembered per browser.
+  const [timeRange, setTimeRange] = useLocalPreference<string>(
+    "metrics:range",
+    "24",
+    TIME_RANGES.map((r) => r.value)
+  );
 
   const { data: historyData } = useQuery({
     queryKey: ["statsHistory", timeRange],
