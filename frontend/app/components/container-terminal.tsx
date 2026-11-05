@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { usePersistedState } from "@/lib/persisted-state";
+import { buildTerminalTheme, terminalFontFamily, useTerminalTheme } from "@/lib/theme/terminal-theme";
+import { useTheme } from "@/lib/theme";
 
 const MIN_FONT = 10;
 const MAX_FONT = 24;
@@ -15,6 +17,8 @@ interface TerminalMessage {
   message?: string;
   container_id?: string;
   app_id?: string;
+  /** Sent by the server SSH terminal instead of a container id. */
+  host?: string;
 }
 
 interface ContainerTerminalProps {
@@ -22,9 +26,19 @@ interface ContainerTerminalProps {
   token?: string;
   /** Build the WebSocket URL for another target (e.g. one service container). */
   wsUrlFor?: (token: string) => string;
+  /** Label in the title bar. */
+  title?: string;
+  /** First line written before connecting. */
+  intro?: string;
 }
 
-export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: ContainerTerminalProps) {
+export function ContainerTerminal({
+  appId,
+  token: propToken,
+  wsUrlFor,
+  title = "Container Terminal",
+  intro = "Connecting to container...",
+}: ContainerTerminalProps) {
   // Get token from props or localStorage
   const token = propToken || getAuthToken() || "";
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -41,6 +55,12 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [ended, setEnded] = useState(false);
+  // Colours follow the dashboard theme (mode, neutral base, accent) and update live.
+  const { resolvedMode } = useTheme();
+  const resolvedModeRef = useRef(resolvedMode);
+  resolvedModeRef.current = resolvedMode;
+  const terminalTheme = useTerminalTheme();
 
   useEffect(() => {
     // Prevent re-initialization if already initialized with same appId
@@ -89,32 +109,10 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
         term = new Terminal({
           cursorBlink: true,
           cursorStyle: "block",
-          fontFamily: '"Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
+          fontFamily: terminalFontFamily(),
           fontSize: fontSizeRef.current,
           lineHeight: 1.2,
-          theme: {
-            background: "#1a1a2e",
-            foreground: "#e0e0e0",
-            cursor: "#e0e0e0",
-            cursorAccent: "#1a1a2e",
-            selectionBackground: "#3b3b5c",
-            black: "#1a1a2e",
-            red: "#ff6b6b",
-            green: "#4ecdc4",
-            yellow: "#ffd93d",
-            blue: "#6c5ce7",
-            magenta: "#a29bfe",
-            cyan: "#74b9ff",
-            white: "#e0e0e0",
-            brightBlack: "#545478",
-            brightRed: "#ff8787",
-            brightGreen: "#7dede4",
-            brightYellow: "#ffe066",
-            brightBlue: "#9d8eff",
-            brightMagenta: "#c4b9ff",
-            brightCyan: "#a3d9ff",
-            brightWhite: "#ffffff",
-          },
+          theme: buildTerminalTheme(resolvedModeRef.current),
         });
 
         const fit = new FitAddon();
@@ -127,7 +125,7 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
         setIsLoading(false);
 
         // Display welcome message
-        term.writeln("\x1b[1;34m[Rivetr Terminal]\x1b[0m Connecting to container...");
+        term.writeln(`\x1b[1;34m[Rivetr Terminal]\x1b[0m ${intro}`);
 
         // Connect to WebSocket
         const wsUrl = wsUrlFor ? wsUrlFor(token) : api.getTerminalWsUrl(appId ?? "", token);
@@ -145,7 +143,9 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
           try {
             const msg: TerminalMessage = JSON.parse(event.data);
             if (msg.type === "connected") {
-              term.writeln(`\x1b[1;32m[Connected]\x1b[0m Container: ${msg.container_id?.slice(0, 12)}`);
+              term.writeln(
+                `\x1b[1;32m[Connected]\x1b[0m ${msg.host ?? `Container: ${msg.container_id?.slice(0, 12)}`}`
+              );
               term.writeln("");
             } else if (msg.type === "data" && msg.data) {
               term.write(msg.data);
@@ -157,6 +157,7 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
               term.writeln("");
               term.writeln(`\x1b[1;33m[Session Ended]\x1b[0m ${msg.message || "Connection closed"}`);
               setConnected(false);
+              setEnded(true);
             }
           } catch {
             // If not JSON, treat as raw data
@@ -228,22 +229,29 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
     }
   }, [fontSize]);
 
+  // Repaint an open terminal when the theme changes.
+  useEffect(() => {
+    if (terminalTheme && terminalInstance.current) {
+      terminalInstance.current.options.theme = terminalTheme;
+    }
+  }, [terminalTheme]);
+
   return (
-    <div className="flex flex-col" style={{ height: "450px" }}>
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg flex-shrink-0">
+    <div className="flex flex-col overflow-hidden rounded-lg border bg-card" style={{ height: "450px" }}>
+      <div className="flex items-center justify-between px-4 py-2 bg-muted/60 border-b flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-red-500" />
             <div className="w-3 h-3 rounded-full bg-yellow-500" />
             <div className="w-3 h-3 rounded-full bg-green-500" />
           </div>
-          <span className="text-sm text-gray-400 ml-2">Container Terminal</span>
+          <span className="text-sm text-muted-foreground ml-2">{title}</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded border border-gray-700 text-gray-400">
+          <div className="flex items-center rounded border text-muted-foreground">
             <button
               type="button"
-              className="px-1.5 py-1 hover:text-gray-100 disabled:opacity-40"
+              className="px-1.5 py-1 hover:text-foreground disabled:opacity-40"
               onClick={() => setFontSize((s) => Math.max(MIN_FONT, s - 1))}
               disabled={fontSize <= MIN_FONT}
               aria-label="Smaller terminal font"
@@ -256,7 +264,7 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
             </span>
             <button
               type="button"
-              className="px-1.5 py-1 hover:text-gray-100 disabled:opacity-40"
+              className="px-1.5 py-1 hover:text-foreground disabled:opacity-40"
               onClick={() => setFontSize((s) => Math.min(MAX_FONT, s + 1))}
               disabled={fontSize >= MAX_FONT}
               aria-label="Larger terminal font"
@@ -268,27 +276,35 @@ export function ContainerTerminal({ appId, token: propToken, wsUrlFor }: Contain
           <span
             className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
               connected
-                ? "bg-green-900/50 text-green-400"
+                ? "bg-green-500/15 text-green-700 dark:text-green-400"
                 : error
-                ? "bg-red-900/50 text-red-400"
-                : "bg-gray-700 text-gray-400"
+                ? "bg-destructive/15 text-destructive"
+                : "bg-muted text-muted-foreground"
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full mr-1.5 ${
-                connected ? "bg-green-400" : error ? "bg-red-400" : "bg-gray-400"
+                connected ? "bg-green-500" : error ? "bg-destructive" : "bg-muted-foreground"
               }`}
             />
-            {connected ? "Connected" : error ? "Error" : isLoading ? "Loading..." : "Connecting..."}
+            {connected
+              ? "Connected"
+              : error
+                ? "Error"
+                : ended
+                  ? "Disconnected"
+                  : isLoading
+                    ? "Loading..."
+                    : "Connecting..."}
           </span>
         </div>
       </div>
       <div
         ref={terminalRef}
-        className="flex-1 bg-[#1a1a2e] rounded-b-lg p-2 overflow-hidden"
+        className="flex-1 bg-card p-2 overflow-hidden"
       >
         {isLoading && (
-          <div className="flex items-center justify-center h-full text-gray-400">
+          <div className="flex items-center justify-center h-full text-muted-foreground">
             <div className="animate-pulse">Loading terminal...</div>
           </div>
         )}

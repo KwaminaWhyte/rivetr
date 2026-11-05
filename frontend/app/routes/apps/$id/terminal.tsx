@@ -49,11 +49,11 @@ export default function AppTerminalTab() {
           {runningDeployment ? (
             <ContainerTerminal appId={app.id} />
           ) : (
-            <div className="bg-gray-900 rounded-lg p-6 text-center">
-              <div className="text-gray-400 mb-4">
-                <TerminalIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">No running container</p>
-                <p className="text-sm text-gray-500 mt-2">
+            <div className="rounded-lg border border-dashed bg-muted/40 p-6 text-center">
+              <div className="text-muted-foreground mb-4">
+                <TerminalIcon className="h-12 w-12 mx-auto mb-4 opacity-60" />
+                <p className="text-base font-medium text-foreground">No running container</p>
+                <p className="text-sm mt-2">
                   Deploy your application to access the terminal.
                 </p>
               </div>

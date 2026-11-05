@@ -89,7 +89,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import { isNumber, readPersisted } from "@/lib/persisted-state";
 
 export function meta() {
   return [
@@ -179,207 +178,16 @@ function ServerTerminal({ server }: ServerTerminalProps) {
   // We pass a synthetic "appId"-style prop by piggybacking on the existing
   // ContainerTerminal component's URL builder, instead we inline a minimal
   // version that accepts an explicit wsUrl.
-  return <ServerTerminalInner wsUrl={wsUrl} label={`SSH: ${server.username}@${server.host}`} />;
-}
-
-interface ServerTerminalInnerProps {
-  wsUrl: string;
-  label: string;
-}
-
-function ServerTerminalInner({ wsUrl, label }: ServerTerminalInnerProps) {
-  // Delegate to ContainerTerminal with a hack: pass the full WS URL via a
-  // custom prop. Since ContainerTerminal builds the URL from appId, we instead
-  // create a thin wrapper that overrides the ws URL via a ref.
-  // For simplicity we just use ContainerTerminal with a server-flavoured appId
-  // sentinel and intercept via the exported wsUrl.
-  // The cleanest approach: re-export the terminal UI with a wsUrl prop.
-  // We implement it inline here.
-  const terminalRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const terminalInstance = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fitAddonRef = useRef<any>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const isInitializedRef = useRef(false);
-  const [connected, setConnected] = useState(false);
-  const [disconnected, setDisconnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (isInitializedRef.current || !terminalRef.current || typeof window === "undefined") return;
-    isInitializedRef.current = true;
-
-    let ws: WebSocket | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-
-    const sendResize = () => {
-      if (wsRef.current?.readyState === WebSocket.OPEN && terminalInstance.current) {
-        const { cols, rows } = terminalInstance.current;
-        wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
-      }
-    };
-
-    const handleResize = () => {
-      if (fitAddonRef.current && terminalInstance.current) {
-        fitAddonRef.current.fit();
-        sendResize();
-      }
-    };
-
-    const initTerminal = async () => {
-      try {
-        const [xtermModule, fitAddonModule] = await Promise.all([
-          import("@xterm/xterm"),
-          import("@xterm/addon-fit"),
-        ]);
-        await import("@xterm/xterm/css/xterm.css");
-
-        const Terminal = xtermModule.Terminal;
-        const FitAddon = fitAddonModule.FitAddon;
-
-        const term = new Terminal({
-          cursorBlink: true,
-          cursorStyle: "block",
-          fontFamily: '"Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
-          fontSize: readPersisted("terminal:font-size", 14, { validate: isNumber }),
-          lineHeight: 1.2,
-          theme: {
-            background: "#1a1a2e",
-            foreground: "#e0e0e0",
-            cursor: "#e0e0e0",
-            cursorAccent: "#1a1a2e",
-            selectionBackground: "#3b3b5c",
-          },
-        });
-
-        const fit = new FitAddon();
-        term.loadAddon(fit);
-        term.open(terminalRef.current!);
-        fit.fit();
-        terminalInstance.current = term;
-        fitAddonRef.current = fit;
-        setIsLoading(false);
-
-        term.writeln(`\x1b[1;34m[Rivetr SSH Terminal]\x1b[0m Connecting to ${label}...`);
-
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          setConnected(true);
-          setError(null);
-          setTimeout(sendResize, 100);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            if (msg.type === "connected") {
-              term.writeln(`\x1b[1;32m[Connected]\x1b[0m ${msg.host}`);
-              term.writeln("");
-            } else if (msg.type === "data" && msg.data) {
-              term.write(msg.data);
-            } else if (msg.type === "error") {
-              term.writeln(`\x1b[1;31m[Error]\x1b[0m ${msg.message}`);
-              setError(msg.message || "Unknown error");
-              setConnected(false);
-            } else if (msg.type === "end") {
-              term.writeln("");
-              term.writeln(`\x1b[1;33m[Session Ended]\x1b[0m ${msg.message || ""}`);
-              setConnected(false);
-              setDisconnected(true);
-            }
-          } catch {
-            term.write(event.data);
-          }
-        };
-
-        ws.onerror = () => {
-          setError("WebSocket connection error");
-          setConnected(false);
-          term.writeln("\x1b[1;31m[Error]\x1b[0m Failed to connect to server");
-        };
-
-        ws.onclose = () => {
-          setConnected(false);
-          setDisconnected(true);
-          term.writeln("");
-          term.writeln("\x1b[1;33m[Disconnected]\x1b[0m SSH session closed");
-        };
-
-        term.onData((data: string) => {
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "data", data }));
-          }
-        });
-
-        resizeObserver = new ResizeObserver(() => handleResize());
-        resizeObserver.observe(terminalRef.current!);
-        window.addEventListener("resize", handleResize);
-      } catch (err) {
-        console.error("Failed to initialize terminal:", err);
-        setError("Failed to load terminal");
-        setIsLoading(false);
-      }
-    };
-
-    initTerminal();
-
-    return () => {
-      isInitializedRef.current = false;
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", handleResize);
-      ws?.close();
-      terminalInstance.current?.dispose();
-      terminalInstance.current = null;
-      fitAddonRef.current = null;
-      wsRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsUrl]);
-
+  const label = `SSH: ${server.username}@${server.host}`;
   return (
-    <div className="flex flex-col" style={{ height: "450px" }}>
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-lg flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-red-500" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500" />
-            <div className="w-3 h-3 rounded-full bg-green-500" />
-          </div>
-          <span className="text-sm text-gray-400 ml-2">{label}</span>
-        </div>
-        <span
-          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
-            connected
-              ? "bg-green-900/50 text-green-400"
-              : error
-              ? "bg-red-900/50 text-red-400"
-              : disconnected
-              ? "bg-yellow-900/50 text-yellow-400"
-              : "bg-gray-700 text-gray-400"
-          }`}
-        >
-          <span
-            className={`w-2 h-2 rounded-full mr-1.5 ${
-              connected ? "bg-green-400" : error ? "bg-red-400" : disconnected ? "bg-yellow-400" : "bg-gray-400"
-            }`}
-          />
-          {connected ? "Connected" : error ? "Error" : disconnected ? "Disconnected" : isLoading ? "Loading..." : "Connecting..."}
-        </span>
-      </div>
-      <div ref={terminalRef} className="flex-1 bg-[#1a1a2e] rounded-b-lg p-2 overflow-hidden">
-        {isLoading && (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="animate-pulse">Loading terminal...</div>
-          </div>
-        )}
-      </div>
-    </div>
+    <ContainerTerminal
+      wsUrlFor={() => wsUrl}
+      title={label}
+      intro={`Connecting to ${label}...`}
+    />
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Main page component
