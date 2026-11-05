@@ -448,6 +448,9 @@ fn html_escape(s: &str) -> String {
 
 /// Capitalize role for display
 fn capitalize_role(role: &str) -> String {
+    if role.starts_with(crate::db::rbac::CUSTOM_ROLE_PREFIX) {
+        return "Custom role".to_string();
+    }
     let mut chars = role.chars();
     match chars.next() {
         None => String::new(),

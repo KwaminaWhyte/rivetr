@@ -5,8 +5,12 @@ mod crud;
 mod invitations;
 mod members;
 mod permissions;
+mod roles;
 
-use crate::db::{CreateTeamRequest, TeamMember, TeamRole, UpdateTeamRequest};
+use crate::db::{CreateTeamRequest, TeamMember, UpdateTeamRequest};
+
+// Team routes check abilities through the central helpers in `authz.rs`.
+use super::authz::{can_manage_role, require_team_ability, validate_role_value};
 
 use super::error::{ApiError, ValidationErrorBuilder};
 
@@ -21,6 +25,7 @@ pub use invitations::{
 };
 pub use members::{invite_member, list_members, remove_member, update_member_role};
 pub use permissions::{delete_member_permission, list_member_permissions, set_member_permissions};
+pub use roles::{create_role, delete_role, list_roles, update_role};
 
 /// Query parameters for listing audit logs
 #[derive(Debug, serde::Deserialize)]
@@ -103,12 +108,6 @@ fn validate_team_slug(slug: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate a team role string
-fn validate_team_role(role: &str) -> Result<TeamRole, String> {
-    role.parse::<TeamRole>()
-        .map_err(|_| "Invalid role. Must be one of: owner, admin, developer, viewer".to_string())
-}
-
 /// Validate a CreateTeamRequest
 fn validate_create_request(req: &CreateTeamRequest) -> Result<(), ApiError> {
     let mut errors = ValidationErrorBuilder::new();
@@ -156,38 +155,4 @@ async fn get_user_team_membership(
         .bind(user_id)
         .fetch_optional(pool)
         .await
-}
-
-/// Require that the current user has at least the specified role in the team.
-/// The synthetic "system" user (admin API token) is treated as an owner of every team.
-async fn require_team_role(
-    pool: &sqlx::SqlitePool,
-    team_id: &str,
-    user_id: &str,
-    required_role: TeamRole,
-) -> Result<TeamMember, ApiError> {
-    // Admin API token ("system") has owner-level access to every team
-    if user_id == "system" {
-        return Ok(TeamMember {
-            id: "system".to_string(),
-            team_id: team_id.to_string(),
-            user_id: "system".to_string(),
-            role: "owner".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        });
-    }
-
-    let membership = get_user_team_membership(pool, team_id, user_id)
-        .await?
-        .ok_or_else(|| ApiError::forbidden("You are not a member of this team"))?;
-
-    let user_role = membership.role_enum();
-    if !user_role.has_at_least(required_role) {
-        return Err(ApiError::forbidden(format!(
-            "This action requires {} role or higher",
-            required_role
-        )));
-    }
-
-    Ok(membership)
 }

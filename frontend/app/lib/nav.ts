@@ -94,6 +94,7 @@ export const navAreas: NavArea[] = [
     groups: single([
       { title: "General", url: "/team", index: true },
       { title: "Members", url: "/team/members" },
+      { title: "Roles", url: "/team/roles" },
       { title: "Variables", url: "/team/variables" },
       { title: "Audit log", url: "/team/audit" },
       { title: "All teams", url: "/teams" },

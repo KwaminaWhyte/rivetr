@@ -26,6 +26,8 @@ pub enum ErrorCode {
     UnprocessableEntity,
     TooManyRequests,
     ValidationError,
+    /// The team requires two-factor authentication and the user has none.
+    TwoFactorRequired,
 
     // Server errors (5xx)
     InternalError,
@@ -48,6 +50,7 @@ impl ErrorCode {
             ErrorCode::UnprocessableEntity => StatusCode::UNPROCESSABLE_ENTITY,
             ErrorCode::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             ErrorCode::ValidationError => StatusCode::BAD_REQUEST,
+            ErrorCode::TwoFactorRequired => StatusCode::FORBIDDEN,
             ErrorCode::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             ErrorCode::DatabaseError => StatusCode::INTERNAL_SERVER_ERROR,
@@ -68,6 +71,7 @@ impl ErrorCode {
             ErrorCode::UnprocessableEntity => "unprocessable_entity",
             ErrorCode::TooManyRequests => "too_many_requests",
             ErrorCode::ValidationError => "validation_error",
+            ErrorCode::TwoFactorRequired => "two_factor_required",
             ErrorCode::InternalError => "internal_error",
             ErrorCode::ServiceUnavailable => "service_unavailable",
             ErrorCode::DatabaseError => "database_error",

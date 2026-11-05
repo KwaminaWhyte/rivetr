@@ -14,6 +14,7 @@ import { BreadcrumbProvider, type BreadcrumbItem } from "@/lib/breadcrumb-contex
 import { EmptyState } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { TeamProvider } from "@/lib/team-context";
+import { TwoFactorBanner } from "@/components/teams/two-factor-banner";
 import { cn } from "@/lib/utils";
 
 /** Pages that use the whole content width (canvas views). */
@@ -59,6 +60,7 @@ function DashboardLayoutInner({
               isFullBleed(location.pathname, location.search) ? "max-w-[1600px]" : "max-w-7xl"
             )}
           >
+            <TwoFactorBanner />
             <SectionTabs />
             <AreaShell>{children ?? <Outlet />}</AreaShell>
           </div>

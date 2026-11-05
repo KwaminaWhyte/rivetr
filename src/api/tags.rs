@@ -731,7 +731,7 @@ pub async fn deploy_by_tag(
     for r in &resources {
         match r.resource_type {
             TaggableKind::App => {
-                if let Err(e) = authz::authorize_app_write(&state, &user, &r.id).await {
+                if let Err(e) = authz::authorize_app_deploy(&state, &user, &r.id).await {
                     results.push(failed(r, e.message()));
                     continue;
                 }
@@ -765,7 +765,7 @@ pub async fn deploy_by_tag(
                 }
             }
             TaggableKind::Service => {
-                if let Err(e) = authz::authorize_service_write(&state, &user, &r.id).await {
+                if let Err(e) = authz::authorize_service_deploy(&state, &user, &r.id).await {
                     results.push(failed(r, e.message()));
                     continue;
                 }

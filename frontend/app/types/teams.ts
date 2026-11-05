@@ -2,8 +2,11 @@
 // Team types
 // -------------------------------------------------------------------------
 
-/** Team roles with hierarchical permissions */
-export type TeamRole = "owner" | "admin" | "developer" | "viewer";
+/** Built-in role presets */
+export type PresetRole = "owner" | "admin" | "developer" | "deployer" | "viewer";
+
+/** A member's role: a preset or a custom role of the team (`custom:<id>`) */
+export type TeamRole = PresetRole | `custom:${string}`;
 
 /** Team entity */
 export interface Team {
@@ -28,6 +31,8 @@ export interface TeamWithMemberCount {
   member_count: number;
   /** Current user's role in this team (if applicable) */
   user_role: TeamRole | null;
+  /** The team requires 2FA and the user has none: its resources are blocked */
+  two_factor_blocked?: boolean;
 }
 
 /** Team member entity */
@@ -62,6 +67,10 @@ export interface TeamDetail {
   members: TeamMemberWithUser[];
   /** Current user's role in this team */
   user_role: TeamRole | null;
+  /** Abilities the current user's role grants in this team */
+  user_abilities?: string[];
+  /** The team requires 2FA and the user has none: its resources are blocked */
+  two_factor_blocked?: boolean;
 }
 
 /** Request to create a new team */
@@ -230,6 +239,54 @@ export interface SetResourcePermissionsRequest {
 }
 
 // -------------------------------------------------------------------------
+// Granular RBAC: abilities, presets and custom roles
+// -------------------------------------------------------------------------
+
+/** One fine-grained ability (e.g. `apps.deploy`) */
+export interface AbilityInfo {
+  key: string;
+  area: string;
+  label: string;
+  description: string;
+}
+
+/** A built-in role preset */
+export interface RolePreset {
+  key: PresetRole;
+  name: string;
+  description: string;
+  abilities: string[];
+}
+
+/** A custom role of a team */
+export interface CustomRole {
+  id: string;
+  /** Value to assign to a member: `custom:<id>` */
+  key: `custom:${string}`;
+  team_id: string;
+  name: string;
+  description: string | null;
+  abilities: string[];
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /api/teams/:id/roles */
+export interface TeamRolesResponse {
+  presets: RolePreset[];
+  custom: CustomRole[];
+  abilities: AbilityInfo[];
+}
+
+/** Create / update a custom role */
+export interface CustomRoleRequest {
+  name: string;
+  description?: string | null;
+  abilities: string[];
+}
+
+// -------------------------------------------------------------------------
 // Team Role Helper Functions
 // -------------------------------------------------------------------------
 
@@ -239,7 +296,7 @@ export function hasRoleAtLeast(
   requiredRole: TeamRole,
 ): boolean {
   if (!userRole) return false;
-  const roleOrder: TeamRole[] = ["viewer", "developer", "admin", "owner"];
+  const roleOrder: TeamRole[] = ["viewer", "deployer", "developer", "admin", "owner"];
   return roleOrder.indexOf(userRole) >= roleOrder.indexOf(requiredRole);
 }
 

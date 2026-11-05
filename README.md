@@ -74,7 +74,10 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 ### Team Collaboration
 
 - Teams, with apps, databases, services, projects and servers scoped to a team
-- Roles: owner, admin, developer, viewer
+- Role presets owner, admin, developer, deployer and viewer, built from 24 fine-grained abilities (for example `apps.deploy`, `env.read_secrets`, `team.manage`)
+- Custom roles per team, built from those abilities (no one can grant abilities their own role lacks)
+- Per-member resource overrides on apps, databases, services and projects: deny removes access, allow grants read, deploy and edit; deny wins over allow
+- Per-team 2FA requirement: members without TOTP or a passkey are refused the team's resources (`two_factor_required`) until they set one up
 - Team invitations via email with 7-day expiry
 - Audit log of user and team actions
 - App sharing between teams (view-only shares cannot write)
@@ -87,7 +90,8 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 - TOTP-based 2FA with recovery codes
 - Passkey sign-in
 - AES-256-GCM encryption for secrets and SSH keys at rest
-- Named personal API tokens for CI/CD and scripts, with optional expiry; a token acts with its owner's permissions (prefixed `rvt_`, stored as SHA-256 hashes)
+- Personal API tokens for CI/CD and scripts (prefixed `rvt_`, stored as SHA-256 hashes): scopes `read`, `deploy`, `write`, `delete`, `secrets`, `admin` enforced on every API route and MCP tool, optional restriction to a team or projects, optional expiry, pause and resume, roll with a grace period, last use time and IP. A token never exceeds its owner's permissions.
+- API access policy for tokens (on/off and IP allowlist)
 - Rate limiting on API, webhook, and auth endpoints
 - Strict input validation and security headers
 

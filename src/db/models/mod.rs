@@ -30,6 +30,7 @@ pub mod patch;
 pub mod placement;
 pub mod preview_deployment;
 pub mod project;
+pub mod rbac;
 pub mod redirect_rule;
 pub mod replica;
 pub mod resource_metric;

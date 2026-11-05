@@ -152,6 +152,10 @@ pub mod actions {
     // API token actions
     pub const TOKEN_CREATE: &str = "token.create";
     pub const TOKEN_DELETE: &str = "token.delete";
+    pub const TOKEN_UPDATE: &str = "token.update";
+    pub const TOKEN_PAUSE: &str = "token.pause";
+    pub const TOKEN_RESUME: &str = "token.resume";
+    pub const TOKEN_ROLL: &str = "token.roll";
 
     // Domain actions
     pub const DOMAIN_ADD: &str = "domain.add";

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::db::{
     CreateInvitationRequest, Team, TeamAuditAction, TeamAuditResourceType, TeamInvitation,
-    TeamInvitationResponse, TeamMemberWithUser, TeamRole, User,
+    TeamInvitationResponse, TeamMemberWithUser, User,
 };
 use crate::notifications::SystemEmailService;
 use crate::AppState;
@@ -19,7 +19,8 @@ use crate::AppState;
 use super::super::error::{ApiError, ValidationErrorBuilder};
 use super::super::validation::validate_uuid;
 use super::audit::log_team_audit;
-use super::{get_user_team_membership, require_team_role, validate_team_role};
+use super::{can_manage_role, get_user_team_membership, require_team_ability, validate_role_value};
+use crate::db::rbac::Ability;
 
 /// Generate a secure random token for invitations
 fn generate_invitation_token() -> String {
@@ -59,7 +60,7 @@ pub async fn list_invitations(
     }
 
     // Check user has admin+ role to view invitations
-    require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Get all pending invitations (not accepted)
     let invitations = sqlx::query_as::<_, TeamInvitation>(
@@ -108,16 +109,15 @@ pub async fn create_invitation(
     }
     errors.finish()?;
 
-    // Validate role
-    let target_role =
-        validate_team_role(&req.role).map_err(|e| ApiError::validation_field("role", e))?;
+    // Validate role (preset or custom role of this team)
+    let target_role = validate_role_value(&state.db, &id, &req.role).await?;
 
-    // Check user has admin+ role to create invitations
-    let membership = require_team_role(&state.db, &id, &user.id, TeamRole::Admin).await?;
-    let user_role = membership.role_enum();
+    // Check user may manage members to create invitations
+    let membership =
+        require_team_ability(&state.db, &id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Check user can assign the target role
-    if !user_role.can_manage_member_role(target_role) {
+    if !can_manage_role(&state.db, &id, &membership.role, &target_role).await? {
         return Err(ApiError::forbidden(
             "You don't have permission to assign this role",
         ));
@@ -178,7 +178,7 @@ pub async fn create_invitation(
     .bind(&inv_id)
     .bind(&id)
     .bind(&req.email)
-    .bind(&req.role)
+    .bind(&target_role)
     .bind(&token)
     .bind(expires_at.to_rfc3339())
     .bind(&user.id)
@@ -194,7 +194,7 @@ pub async fn create_invitation(
         id: inv_id,
         team_id: id.clone(),
         email: req.email.clone(),
-        role: req.role.clone(),
+        role: target_role.clone(),
         expires_at: expires_at.to_rfc3339(),
         accepted_at: None,
         created_by: user.id.clone(),
@@ -214,7 +214,7 @@ pub async fn create_invitation(
         Some(&response.id),
         Some(serde_json::json!({
             "email": &req.email,
-            "role": &req.role,
+            "role": &target_role,
             "invited_by": &user.email
         })),
     )
@@ -241,7 +241,7 @@ pub async fn create_invitation(
             .send_invitation_email(
                 &req.email,
                 &team.name,
-                &req.role,
+                &target_role,
                 &user.name,
                 &accept_url,
                 7, // 7 days expiry
@@ -289,7 +289,7 @@ pub async fn delete_invitation(
     }
 
     // Check user has admin+ role
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Get invitation details for audit log before deleting
     let invitation: Option<TeamInvitation> =
@@ -351,7 +351,7 @@ pub async fn resend_invitation(
     }
 
     // Check user has admin+ role
-    require_team_role(&state.db, &team_id, &user.id, TeamRole::Admin).await?;
+    require_team_ability(&state.db, &team_id, &user.id, Some(Ability::TeamManage)).await?;
 
     // Get the invitation
     let invitation = sqlx::query_as::<_, TeamInvitation>(

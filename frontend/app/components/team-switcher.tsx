@@ -113,7 +113,7 @@ export function TeamSwitcher({
                       variant={getRoleBadgeVariant(team.user_role)}
                       className="h-5 px-1.5 text-[10px] capitalize"
                     >
-                      {team.user_role}
+                      {team.user_role.startsWith("custom:") ? "custom" : team.user_role}
                     </Badge>
                   )}
                 </div>

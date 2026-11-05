@@ -5,8 +5,46 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::api::api_tokens::TokenContext;
+use crate::api::scopes::{scope_allows, TokenScope};
 use crate::api::tags::{tag_names_by_resource, TaggableKind};
 use crate::AppState;
+
+/// API token scope each MCP tool needs. Read-only tools need `read`; tools that
+/// enqueue a deployment need `deploy`. A tool missing here is unknown.
+pub fn tool_scope(name: &str) -> Option<TokenScope> {
+    Some(match name {
+        "list_apps"
+        | "list_tags"
+        | "get_app_status"
+        | "get_deployment_logs"
+        | "list_deployments"
+        | "get_deployment_status"
+        | "list_services"
+        | "list_databases"
+        | "list_projects" => TokenScope::Read,
+        "deploy_app" | "restart_app" => TokenScope::Deploy,
+        _ => return None,
+    })
+}
+
+/// Why an API token may not call `tool`, if it may not. Sessions and the admin
+/// token (no `TokenContext`) may call everything.
+pub fn tool_denied(token: Option<&TokenContext>, tool: &str) -> Option<String> {
+    let ctx = token?;
+    if ctx.is_restricted() {
+        return Some(
+            "MCP tools are not available to team or resource restricted API tokens".into(),
+        );
+    }
+    let needed = tool_scope(tool)?;
+    (!scope_allows(&ctx.scopes, needed)).then(|| {
+        format!(
+            "This API token needs the `{}` scope for {tool}",
+            needed.as_str()
+        )
+    })
+}
 
 /// Add a `tags` array (tag names) to each listed resource and, when the tool
 /// input has a `tag`, keep only resources carrying that tag (case-insensitive).
@@ -51,11 +89,17 @@ pub struct McpResponse {
 
 pub async fn mcp_handler(
     State(state): State<Arc<AppState>>,
+    token: Option<axum::Extension<TokenContext>>,
     Json(req): Json<McpRequest>,
 ) -> Result<Json<McpResponse>, StatusCode> {
+    let token = token.map(|axum::Extension(t)| t);
     match req.method.as_str() {
         "tools/list" => {
-            let tools = super::tools::get_tools();
+            // Only list the tools this caller's token may call.
+            let tools: Vec<_> = super::tools::get_tools()
+                .into_iter()
+                .filter(|t| tool_denied(token.as_ref(), &t.name).is_none())
+                .collect();
             Ok(Json(McpResponse {
                 result: Some(serde_json::json!({"tools": tools})),
                 error: None,
@@ -65,6 +109,12 @@ pub async fn mcp_handler(
             let params = req.params.unwrap_or_default();
             let tool_name = params["name"].as_str().unwrap_or("").to_string();
             let input = &params["input"];
+            if let Some(message) = tool_denied(token.as_ref(), &tool_name) {
+                return Ok(Json(McpResponse {
+                    result: None,
+                    error: Some(message),
+                }));
+            }
 
             match tool_name.as_str() {
                 "list_apps" => {
@@ -388,5 +438,51 @@ pub async fn mcp_handler(
             result: None,
             error: Some(format!("Unknown method: {}", req.method)),
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::scopes::parse_scopes;
+
+    fn ctx(scopes: &str) -> TokenContext {
+        TokenContext {
+            token_id: "t".into(),
+            user_id: "u".into(),
+            scopes: parse_scopes(scopes),
+            team_id: None,
+            resources: vec![],
+        }
+    }
+
+    #[test]
+    fn every_tool_has_a_scope() {
+        for tool in super::super::tools::get_tools() {
+            assert!(
+                tool_scope(&tool.name).is_some(),
+                "{} has no scope",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn tools_respect_token_scopes() {
+        let read = ctx("read");
+        assert!(tool_denied(Some(&read), "list_apps").is_none());
+        assert!(tool_denied(Some(&read), "get_deployment_logs").is_none());
+        assert!(tool_denied(Some(&read), "restart_app").is_some());
+        assert!(tool_denied(Some(&read), "deploy_app").is_some());
+        let deploy = ctx("deploy");
+        assert!(tool_denied(Some(&deploy), "restart_app").is_none());
+        assert!(tool_denied(Some(&deploy), "list_apps").is_some());
+        assert!(tool_denied(Some(&ctx("admin")), "restart_app").is_none());
+        // Sessions / admin token.
+        assert!(tool_denied(None, "restart_app").is_none());
+        // Restricted tokens cannot use MCP.
+        let mut restricted = ctx("admin");
+        restricted.team_id = Some("team".into());
+        assert!(tool_denied(Some(&restricted), "list_apps").is_some());
     }
 }

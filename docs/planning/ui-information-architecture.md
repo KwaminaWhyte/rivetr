@@ -57,6 +57,7 @@ and links in emails/notifications do not break.
 |-----|------|
 | `/team` | Current team general |
 | `/team/members` | Members and invitations |
+| `/team/roles` | Role presets and custom roles |
 | `/team/permissions` | Resource permissions |
 | `/team/audit` | Audit log |
 | `/teams` | All my teams (switch, create) |

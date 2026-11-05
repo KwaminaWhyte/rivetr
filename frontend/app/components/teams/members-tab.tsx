@@ -1,13 +1,5 @@
-import {
-  Crown,
-  Shield,
-  Code,
-  Eye,
-  Trash2,
-  Users,
-  UserPlus,
-  Settings2,
-} from "lucide-react";
+import { Link } from "react-router";
+import { Trash2, Users, UserPlus, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,15 +20,17 @@ import {
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { TeamMemberWithUser, TeamRole } from "@/types/api";
+import type { TeamMemberWithUser, TeamRole, TeamRolesResponse } from "@/types/api";
+import { RoleIcon, RoleSelectItems, roleBadgeVariant, roleName } from "@/components/teams/role-utils";
 
 interface MembersTabProps {
   members: TeamMemberWithUser[];
   currentUserRole: TeamRole | null;
+  /** Roles of the team (presets and custom roles). */
+  roles?: TeamRolesResponse;
   canManage: boolean;
   isUpdatingRole: boolean;
   onShowInviteDialog: () => void;
@@ -49,44 +43,10 @@ function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function getRoleBadgeVariant(role: TeamRole): "default" | "secondary" | "outline" {
-  switch (role) {
-    case "owner":
-      return "default";
-    case "admin":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
-
-function formatRole(role: TeamRole): string {
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
-function getRoleIcon(role: TeamRole) {
-  switch (role) {
-    case "owner":
-      return <Crown className="h-4 w-4" />;
-    case "admin":
-      return <Shield className="h-4 w-4" />;
-    case "developer":
-      return <Code className="h-4 w-4" />;
-    case "viewer":
-      return <Eye className="h-4 w-4" />;
-  }
-}
-
-const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] = [
-  { value: "owner", label: "Owner", description: "Full access, can delete team" },
-  { value: "admin", label: "Admin", description: "Manage apps, projects, and members" },
-  { value: "developer", label: "Developer", description: "Create/edit apps, deploy, view logs" },
-  { value: "viewer", label: "Viewer", description: "Read-only access" },
-];
-
 export function MembersTab({
   members,
   currentUserRole,
+  roles,
   canManage,
   isUpdatingRole,
   onShowInviteDialog,
@@ -94,11 +54,16 @@ export function MembersTab({
   onRemoveMember,
   onManagePermissions,
 }: MembersTabProps) {
+  // Only owners touch owners; the backend also refuses roles with abilities
+  // the caller does not have.
+  const canEdit = (member: TeamMemberWithUser) =>
+    canManage && (currentUserRole === "owner" || member.role !== "owner");
+
   return (
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
@@ -116,7 +81,7 @@ export function MembersTab({
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -139,9 +104,9 @@ export function MembersTab({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {getRoleIcon(member.role as TeamRole)}
-                      <Badge variant={getRoleBadgeVariant(member.role as TeamRole)}>
-                        {formatRole(member.role as TeamRole)}
+                      <RoleIcon role={member.role} />
+                      <Badge variant={roleBadgeVariant(member.role)}>
+                        {roleName(member.role, roles)}
                       </Badge>
                     </div>
                   </TableCell>
@@ -149,29 +114,17 @@ export function MembersTab({
                   {canManage && (
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {(currentUserRole === "owner" && member.role !== "owner") ||
-                        (currentUserRole === "admin" &&
-                          (member.role === "developer" || member.role === "viewer")) ? (
+                        {canEdit(member) ? (
                           <Select
                             value={member.role}
-                            onValueChange={(value) =>
-                              onRoleChange(member, value as TeamRole)
-                            }
+                            onValueChange={(value) => onRoleChange(member, value as TeamRole)}
                             disabled={isUpdatingRole}
                           >
-                            <SelectTrigger aria-label="Member role" className="w-28 h-8">
-                              <SelectValue />
+                            <SelectTrigger aria-label="Member role" className="w-36 h-8">
+                              <SelectValue>{roleName(member.role, roles)}</SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                              {ROLE_OPTIONS.filter((r) =>
-                                currentUserRole === "owner"
-                                  ? true
-                                  : r.value !== "owner" && r.value !== "admin"
-                              ).map((role) => (
-                                <SelectItem key={role.value} value={role.value}>
-                                  {role.label}
-                                </SelectItem>
-                              ))}
+                              <RoleSelectItems roles={roles} currentUserRole={currentUserRole} />
                             </SelectContent>
                           </Select>
                         ) : null}
@@ -185,9 +138,7 @@ export function MembersTab({
                             <Settings2 className="h-4 w-4" />
                           </Button>
                         )}
-                        {(currentUserRole === "owner" ||
-                          (currentUserRole === "admin" &&
-                            (member.role === "developer" || member.role === "viewer"))) && (
+                        {canEdit(member) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -210,21 +161,29 @@ export function MembersTab({
       {/* Role Legend */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Role Permissions</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Roles</CardTitle>
+              <CardDescription>
+                Built-in presets. Resource overrides (the gear icon) adjust a member's access to
+                single resources.
+              </CardDescription>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/team/roles">Custom roles</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {ROLE_OPTIONS.map((role) => (
-              <div
-                key={role.value}
-                className="flex items-start gap-3 p-3 rounded-lg border"
-              >
-                <div className="mt-0.5">{getRoleIcon(role.value)}</div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(roles?.presets ?? []).map((role) => (
+              <div key={role.key} className="flex items-start gap-3 p-3 rounded-lg border">
+                <div className="mt-0.5">
+                  <RoleIcon role={role.key} />
+                </div>
                 <div>
-                  <div className="font-medium">{role.label}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {role.description}
-                  </div>
+                  <div className="font-medium">{role.name}</div>
+                  <div className="text-sm text-muted-foreground">{role.description}</div>
                 </div>
               </div>
             ))}

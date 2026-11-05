@@ -56,6 +56,7 @@ import type {
   TeamInvitation,
 } from "@/types/api";
 import { canManageMembers, canDeleteTeam } from "@/types/api";
+import { RoleSelectItems, roleName, useTeamRoles } from "@/components/teams/role-utils";
 import {
   Users,
   Mail,
@@ -67,21 +68,15 @@ import { SharedEnvVarsTable } from "@/components/shared-env-vars-table";
 import { MembersTab } from "@/components/teams/members-tab";
 import { InvitationsTab } from "@/components/teams/invitations-tab";
 import { AuditTab } from "@/components/teams/audit-tab";
+import { RolesPanel } from "@/components/teams/roles-panel";
 import { ResourcePermissionsDialog } from "@/components/teams/resource-permissions-dialog";
 import { isString, usePersistedState } from "@/lib/persisted-state";
-
-const ROLE_OPTIONS: { value: TeamRole; label: string; description: string }[] = [
-  { value: "owner", label: "Owner", description: "Full access, can delete team" },
-  { value: "admin", label: "Admin", description: "Manage apps, projects, and members" },
-  { value: "developer", label: "Developer", description: "Create/edit apps, deploy, view logs" },
-  { value: "viewer", label: "Viewer", description: "Read-only access" },
-];
 
 function isExpired(dateStr: string): boolean {
   return new Date(dateStr) < new Date();
 }
 
-export type TeamSection = "general" | "members" | "variables" | "audit";
+export type TeamSection = "general" | "members" | "variables" | "audit" | "roles";
 
 /**
  * The current team's pages (/team, /team/members, /team/variables,
@@ -241,9 +236,16 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
     },
   });
 
+  const { data: roles } = useTeamRoles(id);
   const currentUserRole: TeamRole | null = team?.user_role ?? null;
-  const canManage = canManageMembers(currentUserRole);
-  const canDelete = canDeleteTeam(currentUserRole);
+  // Prefer the abilities the server resolved (they cover custom roles).
+  const abilities = team?.user_abilities;
+  const can = (ability: string, fallback: boolean) =>
+    abilities ? abilities.includes(ability) : fallback;
+  const canManage = can("team.manage", canManageMembers(currentUserRole));
+  const canEditSettings = can("settings.manage", canManageMembers(currentUserRole));
+  const canSeeAudit = can("team.audit", canManageMembers(currentUserRole));
+  const canDelete = can("team.delete", canDeleteTeam(currentUserRole));
 
   const isSubmitting =
     updateTeamMutation.isPending ||
@@ -340,6 +342,7 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
     members: { title: "Members", description: `People in ${team.name}, their roles and pending invitations.` },
     variables: { title: "Variables", description: `Shared variables inherited by every app in ${team.name}.` },
     audit: { title: "Audit log", description: `Recent activity in ${team.name}.` },
+    roles: { title: "Roles", description: `Role presets and custom roles in ${team.name}.` },
   };
   const header = sectionTitle[section];
 
@@ -359,7 +362,7 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
       />
 
       {/* Team Settings Card */}
-      {section === "general" && canManage && (
+      {section === "general" && canEditSettings && (
         <Card>
           <CardHeader>
             <CardTitle>Team Settings</CardTitle>
@@ -391,7 +394,7 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
       )}
 
       {/* Notification Channels */}
-      {section === "general" && canManage && <TeamNotificationChannelsCard teamId={id} />}
+      {section === "general" && canEditSettings && <TeamNotificationChannelsCard teamId={id} />}
 
       {section === "members" && (
         <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -412,6 +415,7 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
             <MembersTab
               members={team.members}
               currentUserRole={currentUserRole}
+              roles={roles}
               canManage={canManage}
               isUpdatingRole={updateRoleMutation.isPending}
               onShowInviteDialog={() => setShowInviteDialog(true)}
@@ -432,6 +436,7 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
               <InvitationsTab
                 pendingInvitations={pendingInvitations}
                 currentUserRole={currentUserRole}
+                roles={roles}
                 isLoadingInvitations={isLoadingInvitations}
                 isResending={resendInvitationMutation.isPending}
                 isRevoking={revokeInvitationMutation.isPending}
@@ -451,15 +456,24 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
       )}
 
       {section === "audit" &&
-        (canManage ? (
+        (canSeeAudit ? (
           <AuditTab teamId={id} isActiveTab />
         ) : (
           <EmptyState
             bordered
-            title="Only team owners and admins can see the audit log"
-            description="Ask an owner or admin of this team for access."
+            title="Your role does not include the audit log"
+            description="Ask an owner or admin of this team for the team.audit ability."
           />
         ))}
+
+      {section === "roles" && (
+        <RolesPanel
+          teamId={id}
+          canManage={canManage}
+          currentUserRole={currentUserRole}
+          userAbilities={abilities ?? []}
+        />
+      )}
 
       {section === "variables" && (
         <SharedEnvVarsTable
@@ -498,21 +512,10 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
                   onValueChange={(value) => setInviteRole(value as TeamRole)}
                 >
                   <SelectTrigger aria-label="Invitation role">
-                    <SelectValue />
+                    <SelectValue>{roleName(inviteRole, roles)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLE_OPTIONS.filter((r) =>
-                      currentUserRole === "owner" ? true : r.value !== "owner"
-                    ).map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        <div className="flex flex-col">
-                          <span>{role.label}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {role.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    <RoleSelectItems roles={roles} currentUserRole={currentUserRole} />
                   </SelectContent>
                 </Select>
               </div>
@@ -580,8 +583,14 @@ function TeamDetail({ id, section }: { id: string; name?: string; section: TeamS
             <AlertDialogTitle>Change Member Role</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to change {pendingRoleChange?.member.user_name}'s role from{" "}
-              <span className="font-medium capitalize">{pendingRoleChange?.member.role}</span> to{" "}
-              <span className="font-medium capitalize">{pendingRoleChange?.newRole}</span>?
+              <span className="font-medium">
+                {pendingRoleChange ? roleName(pendingRoleChange.member.role, roles) : ""}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium">
+                {pendingRoleChange ? roleName(pendingRoleChange.newRole, roles) : ""}
+              </span>
+              ?
               {pendingRoleChange?.newRole === "owner" && (
                 <span className="block mt-2 text-yellow-600">
                   Warning: This will give them full control over the team, including the ability
