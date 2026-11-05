@@ -101,7 +101,10 @@ pub fn cmd_args_for_version(config: &DatabaseTypeConfig, version: &str) -> Vec<&
 fn mysql_accepts_skip_ssl(version: &str) -> bool {
     let mut parts = version.split('.');
     let major = parts.next().and_then(|p| p.parse::<u32>().ok());
-    let minor = parts.next().and_then(|p| p.parse::<u32>().ok()).unwrap_or(0);
+    let minor = parts
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .unwrap_or(0);
     match major {
         Some(m) if m < 8 => true,
         Some(8) => minor < 4,
