@@ -33,6 +33,9 @@ import {
   SquareTerminal,
   Upload,
   Variable,
+  Info,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { APP_SETTINGS_TABS, APP_TAB_GROUPS } from "@/lib/app-tabs";
 
@@ -169,11 +172,26 @@ function serviceSections(base: string): ResourceNavSection[] {
 }
 
 function serverSections(base: string): ResourceNavSection[] {
+  const isLocal = base.endsWith("/localhost");
   return [
     {
       items: [
         { title: "All servers", url: "/servers", icon: Server, exact: true },
-        { title: "Files", url: `${base}/files`, icon: FileText },
+        { title: "General", url: base, icon: Info, exact: true },
+      ],
+    },
+    {
+      label: "Docker",
+      items: [
+        { title: "Images", url: `${base}/images`, icon: Layers },
+        { title: "Docker cleanup", url: `${base}/docker-cleanup`, icon: Sparkles },
+      ],
+    },
+    {
+      label: "Host",
+      items: [
+        { title: "Security", url: `${base}/security`, icon: ShieldCheck },
+        ...(isLocal ? [] : [{ title: "Files", url: `${base}/files`, icon: FolderOpen }]),
       ],
     },
   ];

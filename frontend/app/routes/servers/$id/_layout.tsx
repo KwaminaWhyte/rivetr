@@ -89,7 +89,7 @@ export default function ServerLayout() {
       </div>
 
       <div className="flex flex-col gap-6 md:flex-row">
-        <nav className="shrink-0 md:w-52" aria-label="Server sections">
+        <nav className="shrink-0 md:hidden" aria-label="Server sections">
           <div className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
             {NAV_GROUPS.map((group, gi) => (
               <div key={gi} className="flex gap-1 md:flex-col md:pb-3">
