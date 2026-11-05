@@ -1,14 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useOutletContext, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export function meta() {
-  return [
-    { title: "Service Settings - Rivetr" },
-    { name: "description", content: "Configure service settings and environment variables" },
-  ];
-}
 import { Button } from "@/components/ui/button";
 import { MoveToProjectCard } from "@/components/move-to-project-card";
 import { CloneResourceCard } from "@/components/clone-resource-card";
@@ -41,9 +35,6 @@ import { api } from "@/lib/api";
 import type { Service } from "@/types/api";
 import { Trash2, AlertTriangle, Code, Globe, Pencil, X, Save, AlertCircle, Database, Upload, Download, Network, Eye, Copy, Key } from "lucide-react";
 
-interface OutletContext {
-  service: Service;
-}
 
 /** Parse image names from a docker-compose YAML string */
 function parseComposeImages(composeContent: string): string[] {
@@ -79,8 +70,27 @@ function hasDatabaseService(composeContent: string): boolean {
   return images.some((img) => DB_KEYWORDS.some((kw) => img.includes(kw)));
 }
 
-export default function ServiceSettingsTab() {
-  const { service } = useOutletContext<OutletContext>();
+export type ServiceSettingsSection =
+  | "operations"
+  | "network"
+  | "resources"
+  | "compose"
+  | "variables"
+  | "dump"
+  | "danger";
+
+/**
+ * Editable service settings, split across the service's sections: each
+ * section page renders only the cards it lists in `sections`.
+ */
+export function ServiceSettingsSections({
+  service,
+  sections,
+}: {
+  service: Service;
+  sections: ServiceSettingsSection[];
+}) {
+  const has = (section: ServiceSettingsSection) => sections.includes(section);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
@@ -263,6 +273,8 @@ export default function ServiceSettingsTab() {
 
   return (
     <div className="space-y-6 pb-24">
+      {has("operations") && (
+      <>
       <MoveToProjectCard
         resourceKind="service"
         resourceId={service.id}
@@ -274,7 +286,11 @@ export default function ServiceSettingsTab() {
         resourceName={service.name}
         currentProjectId={service.project_id ?? null}
       />
+      </>
+      )}
       {/* Domain Configuration */}
+      {has("network") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -355,8 +371,12 @@ export default function ServiceSettingsTab() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Resource Limits */}
+      {has("resources") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Resource Limits</CardTitle>
@@ -390,8 +410,12 @@ export default function ServiceSettingsTab() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Raw Compose Mode */}
+      {has("compose") && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -519,8 +543,12 @@ export default function ServiceSettingsTab() {
           </form>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Auto-Generated Magic Variables, shown only if there are any */}
+      {has("variables") && (
+      <>
       {generatedVars.length > 0 && (
         <Card>
           <CardHeader>
@@ -561,8 +589,12 @@ export default function ServiceSettingsTab() {
           </CardContent>
         </Card>
       )}
+      </>
+      )}
 
       {/* Database Import/Export, only shown for services with database containers */}
+      {has("dump") && (
+      <>
       {showImportSection && (
         <Card>
           <CardHeader>
@@ -667,8 +699,12 @@ export default function ServiceSettingsTab() {
           </CardContent>
         </Card>
       )}
+      </>
+      )}
 
       {/* Danger Zone */}
+      {has("danger") && (
+      <>
       <Card className="border-destructive">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
@@ -732,6 +768,8 @@ export default function ServiceSettingsTab() {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Preview Compose Dialog */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
