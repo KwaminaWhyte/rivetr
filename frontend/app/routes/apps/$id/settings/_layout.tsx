@@ -1,18 +1,6 @@
 import { useOutletContext, Outlet, Link, useLocation, useParams } from "react-router";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Settings,
-  Hammer,
-  Network,
-  HardDrive,
-  Bell,
-  Shield,
-  Rocket,
-  Copy,
-  Camera,
-  Container,
-  FileDiff,
-} from "lucide-react";
+import { APP_SETTINGS_TABS as SETTINGS_TABS } from "@/lib/app-tabs";
 import type { App } from "@/types/api";
 
 export function meta() {
@@ -26,19 +14,6 @@ interface ParentContext {
   app: App;
 }
 
-const SETTINGS_TABS = [
-  { id: "general", label: "General", path: "", icon: Settings },
-  { id: "build", label: "Build", path: "/build", icon: Hammer },
-  { id: "network", label: "Network", path: "/network", icon: Network },
-  { id: "storage", label: "Storage", path: "/storage", icon: HardDrive },
-  { id: "alerts", label: "Alerts", path: "/alerts", icon: Bell },
-  { id: "security", label: "Security", path: "/security", icon: Shield },
-  { id: "deployment", label: "Deploy", path: "/deployment", icon: Rocket },
-  { id: "replicas", label: "Replicas", path: "/replicas", icon: Copy },
-  { id: "snapshots", label: "Snapshots", path: "/snapshots", icon: Camera },
-  { id: "docker", label: "Docker", path: "/docker", icon: Container },
-  { id: "patches", label: "Patches", path: "/patches", icon: FileDiff },
-];
 
 export default function AppSettingsLayout() {
   const { app } = useOutletContext<ParentContext>();

@@ -3,6 +3,20 @@
  * Child routes are unchanged; groups only decide how the tab strip is
  * rendered, so every existing URL keeps resolving to the same content.
  */
+import type { LucideIcon } from "lucide-react";
+import {
+  Settings,
+  Hammer,
+  Network,
+  HardDrive,
+  Bell,
+  Shield,
+  Rocket,
+  Copy,
+  Camera,
+  Container,
+  FileDiff,
+} from "lucide-react";
 
 export interface AppTabItem {
   id: string;
@@ -92,3 +106,26 @@ export function resolveActiveAppTab(
   const overview = APP_TAB_GROUPS[0];
   return { group: overview, item: overview.items[0] };
 }
+
+export interface AppSettingsTab {
+  id: string;
+  label: string;
+  /** Path relative to /apps/:id/settings ("" is the General page). */
+  path: string;
+  icon: LucideIcon;
+}
+
+/** Sub-pages of /apps/:id/settings. Shared by the settings tab strip and the contextual sidebar. */
+export const APP_SETTINGS_TABS: AppSettingsTab[] = [
+  { id: "general", label: "General", path: "", icon: Settings },
+  { id: "build", label: "Build", path: "/build", icon: Hammer },
+  { id: "network", label: "Network", path: "/network", icon: Network },
+  { id: "storage", label: "Storage", path: "/storage", icon: HardDrive },
+  { id: "alerts", label: "Alerts", path: "/alerts", icon: Bell },
+  { id: "security", label: "Security", path: "/security", icon: Shield },
+  { id: "deployment", label: "Deploy", path: "/deployment", icon: Rocket },
+  { id: "replicas", label: "Replicas", path: "/replicas", icon: Copy },
+  { id: "snapshots", label: "Snapshots", path: "/snapshots", icon: Camera },
+  { id: "docker", label: "Docker", path: "/docker", icon: Container },
+  { id: "patches", label: "Patches", path: "/patches", icon: FileDiff },
+];
