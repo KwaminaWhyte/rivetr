@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getAuthToken } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { LogLevelSelect, LogViewToggles, logLineWrapClass, useLogLevelFilter, useLogViewPrefs } from "@/components/logs/log-view-options";
 
 export interface LogEntry {
   id: string | number;
@@ -53,7 +54,8 @@ export function DeploymentLogs({
   const [ended, setEnded] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const { follow: autoScroll, setFollow: setAutoScroll, wrap, setWrap, timestamps, setTimestamps } = useLogViewPrefs();
+  const [level, setLevel] = useLogLevelFilter("build");
 
   // Scroll to bottom when new logs arrive (if autoScroll enabled)
   useEffect(() => {
@@ -212,7 +214,9 @@ export function DeploymentLogs({
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <LogLevelSelect value={level} onChange={setLevel} />
+            <LogViewToggles wrap={wrap} onWrapChange={setWrap} timestamps={timestamps} onTimestampsChange={setTimestamps} />
             <Button
               variant="ghost"
               size="sm"
@@ -230,18 +234,22 @@ export function DeploymentLogs({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="bg-gray-900 rounded-lg p-4 max-h-96 overflow-y-auto font-mono text-sm">
+        <div className="bg-gray-900 rounded-lg p-4 max-h-96 overflow-auto font-mono text-sm">
           {logs.length === 0 ? (
             <div className="text-gray-500 text-center py-4">
               {connected ? "Waiting for logs..." : "No logs yet"}
             </div>
           ) : (
             <div className="space-y-1">
-              {logs.map((log) => (
+              {logs
+                .filter((log) => level === "all" || log.level === level)
+                .map((log) => (
                 <div key={log.id} className="flex gap-2 text-gray-300">
-                  <span className="text-gray-500 flex-shrink-0">
-                    {formatTimestamp(log.timestamp)}
-                  </span>
+                  {timestamps && (
+                    <span className="text-gray-500 flex-shrink-0">
+                      {formatTimestamp(log.timestamp)}
+                    </span>
+                  )}
                   <span
                     className={`px-1.5 py-0.5 rounded text-xs text-white flex-shrink-0 ${
                       levelColors[log.level] || "bg-gray-500"
@@ -249,7 +257,7 @@ export function DeploymentLogs({
                   >
                     {log.level.toUpperCase()}
                   </span>
-                  <span className="whitespace-pre-wrap break-all">
+                  <span className={logLineWrapClass(wrap)}>
                     {stripAnsi(log.message)}
                   </span>
                 </div>

@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RefreshCw, Download, Terminal, AlertCircle } from "lucide-react";
+import { isBoolean, isNumber, usePersistedState } from "@/lib/persisted-state";
+import { useLogViewPrefs } from "@/components/logs/log-view-options";
 
 export function meta() {
   return [
@@ -37,9 +39,10 @@ interface OutletContext {
 
 export default function DatabaseLogsTab() {
   const { database } = useOutletContext<OutletContext>();
-  const [lines, setLines] = useState(100);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  // Viewer options are remembered per browser (rivetr:ui:logs:*).
+  const [lines, setLines] = usePersistedState<number>("logs:database:lines", 100, { validate: isNumber });
+  const { follow: autoScroll, setFollow: setAutoScroll } = useLogViewPrefs();
+  const [autoRefresh, setAutoRefresh] = usePersistedState("logs:database:auto-refresh", true, { validate: isBoolean });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isClient, setIsClient] = useState(false);
 

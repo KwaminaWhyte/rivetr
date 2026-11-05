@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
+import { LogViewToggles, logLineWrapClass, useLogViewPrefs } from "@/components/logs/log-view-options";
 
 interface LogMessage {
   type: "log" | "connected" | "end" | "error";
@@ -26,7 +27,7 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const { follow: autoScroll, setFollow: setAutoScroll, wrap, setWrap, timestamps, setTimestamps } = useLogViewPrefs();
   const eventSourceRef = useRef<EventSource | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -207,7 +208,8 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
             {connected ? "Live" : reconnecting ? "Reconnecting..." : "Disconnected"}
           </Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <LogViewToggles wrap={wrap} onWrapChange={setWrap} timestamps={timestamps} onTimestampsChange={setTimestamps} />
           <Button
             variant="outline"
             size="sm"
@@ -231,7 +233,7 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
               logs.map((log, i) => (
                 <div
                   key={i}
-                  className={`whitespace-pre-wrap break-all ${
+                  className={`${logLineWrapClass(wrap)} ${
                     log.stream === "stderr"
                       ? "text-red-400"
                       : log.type === "connected" || log.type === "end"
@@ -239,7 +241,7 @@ export function RuntimeLogs({ appId, token: propToken }: RuntimeLogsProps) {
                       : "text-gray-100"
                   }`}
                 >
-                  {log.timestamp && (
+                  {timestamps && log.timestamp && (
                     <span className="text-gray-500">
                       [{new Date(log.timestamp).toLocaleTimeString()}]{" "}
                     </span>
