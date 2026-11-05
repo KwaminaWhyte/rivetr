@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocalPreference } from "@/lib/persisted-state";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,8 @@ import type {
   ResolvedEnvVar,
   EnvVarSource,
 } from "@/types/api";
+
+const ENV_VIEW_MODES = ["normal", "developer", "resolved"] as const;
 
 // Parse .env file content into key-value pairs
 function parseEnvContent(content: string): { key: string; value: string }[] {
@@ -150,7 +153,11 @@ function sourceBadgeClass(source: EnvVarSource): string {
 
 export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
   const queryClient = useQueryClient();
-  const [viewMode, setViewMode] = useState<"normal" | "developer" | "resolved">("normal");
+  const [viewMode, setViewMode] = useLocalPreference<"normal" | "developer" | "resolved">(
+    "env-vars:view",
+    "normal",
+    ENV_VIEW_MODES
+  );
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);

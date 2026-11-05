@@ -1,4 +1,5 @@
 import { QueryError } from "@/components/query-error";
+import { useLocalPreference } from "@/lib/persisted-state";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -59,7 +60,9 @@ export function meta() {
   ];
 }
 
-type Period = "7d" | "30d" | "90d";
+const PERIODS = ["7d", "30d", "90d"] as const;
+type Period = (typeof PERIODS)[number];
+const COST_VIEWS = ["teams", "projects"] as const;
 
 /** Format currency value */
 function formatCurrency(value: number): string {
@@ -443,10 +446,10 @@ function ProjectCostRow({
 }
 
 export default function CostsPage() {
-  const [period, setPeriod] = useState<Period>("30d");
+  const [period, setPeriod] = useLocalPreference<Period>("costs:period", "30d", PERIODS);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"teams" | "projects">("teams");
+  const [viewMode, setViewMode] = useLocalPreference<"teams" | "projects">("costs:view", "teams", COST_VIEWS);
 
   // Fetch dashboard costs (system-wide summary)
   const { data: dashboardCosts, isLoading: costsLoading, error: costsError, refetch } = useQuery<DashboardCostResponse | null>({

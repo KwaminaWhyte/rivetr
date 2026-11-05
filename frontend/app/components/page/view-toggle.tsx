@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
+import { readPersisted, UI_STATE_PREFIX, useLocalPreference } from "@/lib/persisted-state";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -59,43 +60,33 @@ export function ViewToggle<V extends string>({
   );
 }
 
-function readStored(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
 /**
- * A per-viewer preference kept in localStorage. Reads after mount so server
- * and client render the same first frame; storage failures (private mode,
- * blocked site data) fall back to the default silently.
+ * A per-viewer choice from a fixed list, kept with the other UI state under
+ * `rivetr:ui:view:<key>`. Older raw keys (e.g. "rivetr_projects_view") are
+ * migrated on first read.
  */
 export function useStoredPreference<V extends string>(
   key: string,
   defaultValue: V,
   allowed: readonly V[]
 ): [V, (value: V) => void] {
-  const [value, setValue] = useState<V>(defaultValue);
+  const name = `view:${key.replace(/^rivetr_/, "")}`;
+  const [value, setValue] = useLocalPreference<V>(name, defaultValue, allowed);
 
   useEffect(() => {
-    const stored = readStored(key);
-    if (stored && (allowed as readonly string[]).includes(stored)) setValue(stored as V);
+    if (key.startsWith(UI_STATE_PREFIX)) return;
+    try {
+      const legacy = window.localStorage.getItem(key);
+      if (legacy === null) return;
+      window.localStorage.removeItem(key);
+      if ((allowed as readonly string[]).includes(legacy) && readPersisted<string | null>(name, null) === null) {
+        setValue(legacy as V);
+      }
+    } catch {
+      // Storage unavailable: nothing to migrate.
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const update = useCallback(
-    (next: V) => {
-      setValue(next);
-      try {
-        window.localStorage.setItem(key, next);
-      } catch {
-        // Storage unavailable: keep the in-memory choice only.
-      }
-    },
-    [key]
-  );
-
-  return [value, update];
+  return [value, setValue];
 }
