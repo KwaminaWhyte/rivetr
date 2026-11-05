@@ -11,7 +11,7 @@
  * - Tabs stay in sync through the `storage` event; hooks in the same tab
  *   sharing a key update together.
  */
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 export const UI_STATE_PREFIX = "rivetr:ui:";
 
@@ -85,22 +85,27 @@ function installStorageListener() {
   });
 }
 
-function decode<T>(raw: string | null, fallback: T, version: number, validate?: (v: unknown) => v is T): T {
-  if (raw === null) return fallback;
+/** Snapshot for "nothing valid stored": the hook substitutes the current default. */
+const MISSING: unique symbol = Symbol("missing");
+type Snapshot<T> = T | typeof MISSING;
+
+function decode<T>(raw: string | null, version: number, validate?: (v: unknown) => v is T): Snapshot<T> {
+  if (raw === null) return MISSING;
   try {
     const parsed = JSON.parse(raw) as { v?: unknown; d?: unknown };
-    if (!parsed || typeof parsed !== "object" || parsed.v !== version || !("d" in parsed)) return fallback;
-    if (validate && !validate(parsed.d)) return fallback;
+    if (!parsed || typeof parsed !== "object" || parsed.v !== version || !("d" in parsed)) return MISSING;
+    if (validate && !validate(parsed.d)) return MISSING;
     return parsed.d as T;
   } catch {
-    return fallback;
+    return MISSING;
   }
 }
 
 /** Read a persisted value outside React (e.g. in an event handler). */
 export function readPersisted<T>(key: string, fallback: T, options: PersistedStateOptions<T> = {}): T {
   const { storage = "local", version = 1, validate } = options;
-  return decode(readRaw(storage, UI_STATE_PREFIX + key), fallback, version, validate);
+  const value = decode(readRaw(storage, UI_STATE_PREFIX + key), version, validate);
+  return value === MISSING ? fallback : value;
 }
 
 /** Write a persisted value outside React. Hooks using the key re-render. */
@@ -165,27 +170,32 @@ export function usePersistedState<T>(
     [fullKey]
   );
 
-  const getSnapshot = useCallback((): T => {
+  const getSnapshot = useCallback((): Snapshot<T> => {
     const memo = cache.get(fullKey);
     if (memo?.raw === MEMORY) return memo.value as T;
     const raw = readRaw(storage, fullKey);
-    if (memo && memo.raw === raw) return memo.value as T;
-    const value = decode(raw, defaultValue, version, validate);
+    if (memo && memo.raw === raw) return memo.value as Snapshot<T>;
+    const value = decode(raw, version, validate);
     cache.set(fullKey, { raw, value });
     return value;
-    // defaultValue / validate are read on the first parse only; callers pass literals.
+    // validate is read when the stored text changes; callers pass stable guards.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullKey, storage, version]);
 
-  const getServerSnapshot = useCallback(() => defaultValue, [defaultValue]);
+  const getServerSnapshot = useCallback((): Snapshot<T> => MISSING, []);
 
-  const value = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const value = snapshot === MISSING ? defaultValue : snapshot;
+
+  const defaultRef = useRef(defaultValue);
+  defaultRef.current = defaultValue;
 
   const setValue = useCallback(
     (next: T | ((prev: T) => T)) => {
-      const prev = getSnapshot();
+      const current = getSnapshot();
+      const prev = current === MISSING ? defaultRef.current : current;
       const resolved = typeof next === "function" ? (next as (p: T) => T)(prev) : next;
-      if (Object.is(resolved, prev)) return;
+      if (current !== MISSING && Object.is(resolved, prev)) return;
       writePersisted(key, resolved, { storage, version });
     },
     [getSnapshot, key, storage, version]
