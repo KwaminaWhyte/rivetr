@@ -9,7 +9,6 @@ import {
   Moon,
   Palette,
   Check,
-  SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
@@ -182,7 +181,7 @@ export function NavUser() {
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link to="/settings/preferences">
+                    <Link to="/account/appearance">
                       <SlidersHorizontal className="size-4" />
                       More appearance options
                     </Link>

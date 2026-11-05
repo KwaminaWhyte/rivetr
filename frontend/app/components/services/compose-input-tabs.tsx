@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { aiApi, type GeneratedCompose } from "@/lib/api/ai";
 
 /** Where the AI provider is configured (instance settings). */
-export const AI_SETTINGS_PATH = "/settings";
+export const AI_SETTINGS_PATH = "/settings/ai";
 
 interface ComposeInputTabsProps {
   value: string;

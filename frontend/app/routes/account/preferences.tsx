@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AppearanceSettings } from "@/components/appearance";
+import { Link } from "react-router";
 
 export function meta() {
   return [
@@ -81,11 +81,10 @@ export default function SettingsPreferencesPage() {
         </h1>
         <p className="text-muted-foreground mt-1">
           Customize your personal dashboard experience. Changes are saved
-          instantly. Appearance follows your account; the rest stays in this browser.
+          instantly in this browser. Theme and colours are under{" "}
+          <Link to="/account/appearance" className="underline underline-offset-2">Appearance</Link>.
         </p>
       </div>
-
-      <AppearanceSettings />
 
       {/* Date/time format */}
       <Card>
