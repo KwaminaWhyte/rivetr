@@ -42,6 +42,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { serversApi } from "@/lib/api/servers";
+import { serverOpsApi, LOCALHOST_SERVER_ID } from "@/lib/api/server-ops";
+import type { ServerSummary } from "@/lib/api/server-ops";
+import { ServerStatusPill } from "@/components/servers/server-status-pill";
 import type {
   Server,
   ServerHealthResponse,
@@ -131,6 +134,32 @@ function StatusBadge({ status }: { status: Server["status"] }) {
       <StatusDot status={status} />
       {status}
     </Badge>
+  );
+}
+
+/** Patch chips for the servers list: "N updates" and "Reboot required". */
+function PatchChips({ summary }: { summary: ServerSummary }) {
+  if (!summary.last_patch_check_at) {
+    return (
+      <Link
+        to={`/servers/${summary.server_id}/security`}
+        className="text-xs text-muted-foreground hover:underline"
+      >
+        Not checked
+      </Link>
+    );
+  }
+  return (
+    <Link to={`/servers/${summary.server_id}/security`} className="flex flex-wrap items-center gap-1">
+      <Badge variant="outline" className="text-xs">
+        {summary.update_count} update{summary.update_count === 1 ? "" : "s"}
+      </Badge>
+      {summary.reboot_required && (
+        <Badge variant="destructive" className="text-xs">
+          Reboot required
+        </Badge>
+      )}
+    </Link>
   );
 }
 
@@ -656,6 +685,14 @@ export default function ServersPage() {
     queryFn: () => serversApi.list(),
   });
 
+  // Resource counts, cached patch info and status (includes "localhost" for admins)
+  const { data: summaries = [] } = useQuery<ServerSummary[]>({
+    queryKey: ["server-ops-summary"],
+    queryFn: () => serverOpsApi.summary(),
+  });
+  const summaryById = new Map(summaries.map((s) => [s.server_id, s]));
+  const localSummary = summaryById.get(LOCALHOST_SERVER_ID);
+
   const createMutation = useMutation({
     mutationFn: (data: CreateServerRequest) => serversApi.create(data),
     onSuccess: () => {
@@ -845,7 +882,7 @@ export default function ServersPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : servers.length === 0 ? (
+          ) : servers.length === 0 && !localSummary ? (
             <div className="text-center py-12 space-y-4">
               <ServerIcon className="h-12 w-12 mx-auto text-muted-foreground/50" />
               <div>
@@ -863,25 +900,56 @@ export default function ServersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Server</TableHead>
                   <TableHead>Resources</TableHead>
-                  <TableHead>Last Seen</TableHead>
+                  <TableHead>Patches</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="w-[160px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {localSummary && (
+                  <TableRow>
+                    <TableCell>
+                      <Link
+                        to={`/servers/${LOCALHOST_SERVER_ID}`}
+                        className="font-medium hover:underline"
+                      >
+                        localhost
+                      </Link>
+                      <p className="text-xs text-muted-foreground">{localSummary.host}</p>
+                    </TableCell>
+                    <TableCell className="text-sm">{localSummary.resource_count}</TableCell>
+                    <TableCell>
+                      <PatchChips summary={localSummary} />
+                    </TableCell>
+                    <TableCell>
+                      <ServerStatusPill status={localSummary.status} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="outline" size="sm" asChild className="gap-1.5">
+                          <Link to={`/servers/${LOCALHOST_SERVER_ID}`}>
+                            <Settings className="h-3 w-3" />
+                            Manage
+                          </Link>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
                 {servers.map((server) => (
                   <TableRow key={server.id}>
-                    <TableCell className="font-medium">{server.name}</TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-sm">
-                      {server.host}:{server.port}
+                    <TableCell>
+                      <Link to={`/servers/${server.id}`} className="font-medium hover:underline">
+                        {server.name}
+                      </Link>
+                      <p className="text-muted-foreground font-mono text-xs">
+                        {server.host}:{server.port}
+                      </p>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={server.status} />
-                    </TableCell>
-                    <TableCell>
+                      <p className="text-sm">{summaryById.get(server.id)?.resource_count ?? "-"}</p>
                       {server.status === "online" ? (
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           {server.cpu_usage != null && (
@@ -912,8 +980,22 @@ export default function ServersPage() {
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {server.last_seen_at ? formatDate(server.last_seen_at) : "Never"}
+                    <TableCell>
+                      {summaryById.get(server.id) ? (
+                        <PatchChips summary={summaryById.get(server.id)!} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {summaryById.get(server.id) ? (
+                        <ServerStatusPill status={summaryById.get(server.id)!.status} />
+                      ) : (
+                        <StatusBadge status={server.status} />
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {server.last_seen_at ? `Seen ${formatDate(server.last_seen_at)}` : "Never seen"}
+                      </p>
                     </TableCell>
                     <TableCell>
                       {/* Docker status badges (shown after a health check) */}
@@ -977,6 +1059,12 @@ export default function ServersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem asChild>
+                              <Link to={`/servers/${server.id}`}>
+                                <ServerIcon className="h-3.5 w-3.5 mr-2" />
+                                Manage server
+                              </Link>
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEditServer(server)}>
                               <Settings className="h-3.5 w-3.5 mr-2" />
                               Edit settings

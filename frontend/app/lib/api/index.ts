@@ -35,6 +35,7 @@ export { monitoringApi } from "./monitoring";
 export { sharedEnvVarsApi } from "./shared-env-vars";
 export { serversApi } from "./servers";
 export type { Server, CreateServerRequest, UpdateServerRequest, ServerHealthResponse, InstallDockerResponse, ServerDetails } from "./servers";
+export { serverOpsApi, LOCALHOST_SERVER_ID } from "./server-ops";
 export { caCertificatesApi } from "./ca-certificates";
 export type { CaCertificate, CreateCaCertificateRequest } from "./ca-certificates";
 export { destinationsApi } from "./destinations";

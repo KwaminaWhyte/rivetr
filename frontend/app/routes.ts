@@ -86,8 +86,14 @@ export default [
     // Service Templates (browse templates for reference)
     route("templates", "routes/templates.tsx"),
 
-    // Remote server filesystem browser
-    route("servers/:id/files", "routes/servers/$id/files.tsx"),
+    // Server detail pages (":id" is a server id or "localhost" for the local runtime)
+    route("servers/:id", "routes/servers/$id/_layout.tsx", [
+      index("routes/servers/$id/_index.tsx"),
+      route("images", "routes/servers/$id/images.tsx"),
+      route("docker-cleanup", "routes/servers/$id/docker-cleanup.tsx"),
+      route("security", "routes/servers/$id/security.tsx"),
+      route("files", "routes/servers/$id/files.tsx"),
+    ]),
 
     // Monitoring
     route("monitoring", "routes/monitoring.tsx"),
