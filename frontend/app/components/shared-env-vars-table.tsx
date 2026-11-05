@@ -4,6 +4,11 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  FromSecretManagerButton,
+  SecretRefChip,
+  isSecretRefValue,
+} from "@/components/secret-managers/secret-picker";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -318,10 +323,22 @@ export function SharedEnvVarsTable({
               <CardTitle>{cardTitle}</CardTitle>
               <CardDescription>{cardDesc}</CardDescription>
             </div>
-            <Button onClick={handleAdd} size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              Add Variable
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {scope === "project" && (
+                <FromSecretManagerButton
+                  ownerType="project"
+                  ownerId={scopeId}
+                  createVariable={(key, value) =>
+                    sharedEnvVarsApi.createProjectEnvVar(scopeId, { key, value, is_secret: false })
+                  }
+                  invalidate={[queryKey]}
+                />
+              )}
+              <Button onClick={handleAdd} size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Variable
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -349,7 +366,13 @@ export function SharedEnvVarsTable({
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm truncate max-w-[250px]">
-                          {revealedIds.has(v.id) ? v.value : "••••••••"}
+                          {isSecretRefValue(v.value) ? (
+                            <SecretRefChip value={v.value} />
+                          ) : revealedIds.has(v.id) ? (
+                            v.value
+                          ) : (
+                            "••••••••"
+                          )}
                         </span>
                         <Button
                           variant="ghost"

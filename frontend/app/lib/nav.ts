@@ -79,6 +79,7 @@ export const navAreas: NavArea[] = [
     groups: single([
       { title: "Git sources", url: "/integrations/git" },
       { title: "S3 storage", url: "/integrations/s3" },
+      { title: "Secret managers", url: "/integrations/secrets" },
       { title: "Destinations", url: "/integrations/destinations" },
       { title: "Tunnels", url: "/integrations/tunnels" },
       { title: "Webhooks", url: "/integrations/webhooks" },

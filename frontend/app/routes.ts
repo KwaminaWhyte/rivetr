@@ -137,6 +137,7 @@ export default [
     ...prefix("integrations", [
       route("git", "routes/integrations/git.tsx"),
       route("s3", "routes/integrations/s3.tsx"),
+      route("secrets", "routes/integrations/secrets.tsx"),
       route("destinations", "routes/integrations/destinations.tsx"),
       route("tunnels", "routes/integrations/tunnels.tsx"),
       route("webhooks", "routes/integrations/webhooks.tsx"),

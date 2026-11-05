@@ -1,5 +1,10 @@
 import { useState } from "react";
 import { useLocalPreference } from "@/lib/persisted-state";
+import {
+  FromSecretManagerButton,
+  SecretRefChip,
+  isSecretRefValue,
+} from "@/components/secret-managers/secret-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -525,7 +530,15 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
         {viewMode === "normal" ? (
           // Normal View - Table with individual vars
           <>
-            <div className="flex justify-end mb-4">
+            <div className="flex flex-wrap justify-end gap-2 mb-4">
+              <FromSecretManagerButton
+                ownerType="app"
+                ownerId={appId}
+                createVariable={(key, value) =>
+                  api.createEnvVar(appId, { key, value, is_secret: false }, token)
+                }
+                invalidate={[["env-vars", appId]]}
+              />
               <Button onClick={handleAdd} size="sm">
                 <Plus className="h-4 w-4 mr-1" />
                 Add Variable
@@ -554,37 +567,41 @@ export function EnvVarsTab({ appId, token }: EnvVarsTabProps) {
                         {envVar.key}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`font-mono text-sm ${
-                              !revealedKeys.has(envVar.key)
-                                ? "text-muted-foreground"
-                                : ""
-                            } ${revealedKeys.has(envVar.key) && isMultiline(envVar.value) ? "whitespace-pre-wrap" : "truncate max-w-[300px]"}`}
-                          >
-                            {revealedKeys.has(envVar.key)
-                              ? envVar.value
-                              : "••••••••"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleReveal(envVar)}
-                            disabled={revealMutation.isPending}
-                            className="h-6 w-6 p-0"
-                            title={
-                              revealedKeys.has(envVar.key)
-                                ? "Hide value"
-                                : "Reveal value"
-                            }
-                          >
-                            {revealedKeys.has(envVar.key) ? (
-                              <EyeOff className="h-3 w-3" />
-                            ) : (
-                              <Eye className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
+                        {isSecretRefValue(envVar.value) ? (
+                          <SecretRefChip value={envVar.value} />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-mono text-sm ${
+                                !revealedKeys.has(envVar.key)
+                                  ? "text-muted-foreground"
+                                  : ""
+                              } ${revealedKeys.has(envVar.key) && isMultiline(envVar.value) ? "whitespace-pre-wrap" : "truncate max-w-[300px]"}`}
+                            >
+                              {revealedKeys.has(envVar.key)
+                                ? envVar.value
+                                : "••••••••"}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleToggleReveal(envVar)}
+                              disabled={revealMutation.isPending}
+                              className="h-6 w-6 p-0"
+                              title={
+                                revealedKeys.has(envVar.key)
+                                  ? "Hide value"
+                                  : "Reveal value"
+                              }
+                            >
+                              {revealedKeys.has(envVar.key) ? (
+                                <EyeOff className="h-3 w-3" />
+                              ) : (
+                                <Eye className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         {envVar.is_secret ? (

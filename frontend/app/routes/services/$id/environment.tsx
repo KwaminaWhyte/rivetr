@@ -28,6 +28,12 @@ import {
 import { api } from "@/lib/api";
 import type { Service, ServiceDeployConfig, ServiceEnvVar } from "@/types/api";
 import { ServiceSettingsSections } from "@/components/services/service-settings-sections";
+import {
+  FromSecretManagerButton,
+  SecretRefChip,
+  isSecretRefValue,
+} from "@/components/secret-managers/secret-picker";
+import { SecretManagerSection } from "@/components/secret-managers/secret-manager-section";
 import { Eye, EyeOff, FileUp, KeyRound, Pencil, Plus, Trash2 } from "lucide-react";
 
 export function meta() {
@@ -249,6 +255,14 @@ export default function ServiceEnvironmentTab() {
                 <FileUp className="h-4 w-4" />
                 Import .env
               </Button>
+              <FromSecretManagerButton
+                ownerType="service"
+                ownerId={service.id}
+                createVariable={(key, value) =>
+                  api.createServiceEnvVar(service.id, { key, value, is_secret: false })
+                }
+                invalidate={[["service-env", service.id]]}
+              />
               <Button size="sm" className="gap-2" onClick={() => setEditing("new")}>
                 <Plus className="h-4 w-4" />
                 Add
@@ -283,7 +297,7 @@ export default function ServiceEnvironmentTab() {
                         )}
                       </TableCell>
                       <TableCell className="max-w-md break-all font-mono text-xs">
-                        {v.value}
+                        {isSecretRefValue(v.value) ? <SecretRefChip value={v.value} /> : v.value}
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
@@ -315,6 +329,8 @@ export default function ServiceEnvironmentTab() {
           )}
         </CardContent>
       </Card>
+
+      <SecretManagerSection ownerType="service" ownerId={service.id} />
 
       <Card>
         <CardHeader>
