@@ -1,6 +1,6 @@
 # Rivetr Deployment Guide
 
-Production deployment, configuration reference, upgrading, multi-server setup, backup, and troubleshooting.
+Production install, upgrading, multi-server setup, backup, and troubleshooting.
 
 ## Quick Install
 
@@ -178,118 +178,9 @@ sudo journalctl -u rivetr -f
 sudo journalctl -u rivetr -n 100 --no-pager
 ```
 
-## Configuration Reference
+## Configuration
 
-The full annotated reference is [`rivetr.example.toml`](rivetr.example.toml). Below is a summary of every section.
-
-### `[server]`
-
-| Key | Default | Description |
-|---|---|---|
-| `host` | `0.0.0.0` | Bind address |
-| `api_port` | `8080` | API and dashboard port |
-| `proxy_port` | `80` | HTTP proxy port |
-| `proxy_https_port` | `443` | HTTPS proxy port |
-| `data_dir` | `./data` | SQLite database, certs, volumes |
-| `external_url` | - | Public URL for OAuth callbacks (required when behind a tunnel) |
-
-### `[auth]`
-
-| Key | Default | Description |
-|---|---|---|
-| `admin_token` | (required) | API token for programmatic access |
-| `encryption_key` | - | AES-256-GCM key for encrypting env vars at rest (recommended) |
-
-### `[runtime]`
-
-| Key | Default | Description |
-|---|---|---|
-| `runtime_type` | `auto` | `docker`, `podman`, or `auto` |
-| `docker_socket` | `/var/run/docker.sock` | Docker socket path |
-| `build_cpu_limit` | `2` | CPU limit for builds |
-| `build_memory_limit` | `2g` | Memory limit for builds |
-
-### `[proxy]`
-
-| Key | Default | Description |
-|---|---|---|
-| `acme_enabled` | `false` | Enable Let's Encrypt |
-| `acme_email` | - | Email for ACME account (required if enabled) |
-| `acme_staging` | `true` | Use Let's Encrypt staging (set false for production) |
-| `acme_cache_dir` | `./data/acme` | Directory for certs and account key |
-| `base_domain` | - | Base domain for `app.base_domain` auto-subdomains |
-| `auto_subdomain_enabled` | `false` | Auto-generate subdomains for new apps |
-| `sslip_enabled` | `true` | Generate `hash.ip.sslip.io` domains per app |
-| `server_ip` | - | Public IP for sslip.io domain generation |
-| `health_check_interval` | `30` | Proxy health check interval (seconds) |
-| `health_check_timeout` | `5` | Health check timeout (seconds) |
-
-### `[logging]`
-
-| Key | Default | Description |
-|---|---|---|
-| `level` | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
-
-### `[webhooks]`
-
-| Key | Description |
-|---|---|
-| `github_secret` | HMAC-SHA256 secret for `X-Hub-Signature-256` verification |
-| `gitlab_token` | Token matched against `X-Gitlab-Token` |
-| `gitea_secret` | HMAC-SHA256 secret for `X-Gitea-Signature` verification |
-
-### `[rate_limit]`
-
-| Key | Default | Description |
-|---|---|---|
-| `enabled` | `true` | Enable rate limiting |
-| `api_requests_per_window` | `100` | General API limit |
-| `webhook_requests_per_window` | `500` | Webhook endpoint limit |
-| `auth_requests_per_window` | `20` | Auth endpoint limit (brute-force protection) |
-| `window_seconds` | `60` | Rolling window duration |
-| `trusted_proxies` | `[]` | IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted (loopback always is). See [configuration reference](docs/reference/configuration.md#rate_limit) |
-
-### `[cleanup]`
-
-| Key | Default | Description |
-|---|---|---|
-| `enabled` | `true` | Automatically prune old deployments |
-| `max_deployments_per_app` | `10` | Deployments retained per app |
-| `cleanup_interval_seconds` | `3600` | How often cleanup runs |
-| `prune_images` | `true` | Prune dangling Docker images after cleanup |
-
-### `[disk_monitor]`
-
-| Key | Default | Description |
-|---|---|---|
-| `enabled` | `true` | Monitor data directory disk usage |
-| `check_interval_seconds` | `300` | Check frequency |
-| `warning_threshold` | `80` | Warn at this disk usage % |
-| `critical_threshold` | `90` | Log critical at this disk usage % |
-
-### `[container_monitor]`
-
-| Key | Default | Description |
-|---|---|---|
-| `enabled` | `true` | Monitor and auto-restart crashed containers |
-| `check_interval_secs` | `30` | Check frequency |
-| `max_restart_attempts` | `5` | Restarts before marking deployment failed |
-| `initial_backoff_secs` | `5` | Initial delay after crash |
-| `max_backoff_secs` | `300` | Maximum backoff delay |
-| `stable_duration_secs` | `120` | Runtime required to reset restart counter |
-
-### `[email]`
-
-| Key | Default | Description |
-|---|---|---|
-| `enabled` | `false` | Enable SMTP email |
-| `smtp_host` | - | SMTP server hostname |
-| `smtp_port` | `587` | SMTP port |
-| `smtp_username` | - | SMTP auth username |
-| `smtp_password` | - | SMTP auth password |
-| `smtp_tls` | `true` | Use TLS for SMTP |
-| `from_address` | - | Sender email address |
-| `from_name` | `Rivetr` | Sender display name |
+The installer writes `/opt/rivetr/rivetr.toml`. Every section and key is documented in [docs/reference/configuration.md](docs/reference/configuration.md); [`rivetr.example.toml`](rivetr.example.toml) is a copyable starter. Restart the service after editing it. Instance settings changed from the dashboard are stored in the database and override the matching keys in the file.
 
 ## Upgrading
 

@@ -191,158 +191,32 @@ Data refreshes automatically every 5 seconds. The status bar shows the connected
 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
 ```
 
-The install script:
-1. Installs Docker if not already present (Ubuntu, Debian, Fedora, CentOS, RHEL)
-2. Downloads and installs the Rivetr binary from GitHub Releases
-3. Installs build tools: Git, Nixpacks, Railpack, Pack CLI
-4. Creates a `rivetr` system user with Docker access
-5. Writes a config file at `/opt/rivetr/rivetr.toml` with a generated admin token
-6. Registers a systemd service with auto-restart
-7. Opens firewall ports 80, 443, and 8080
+It installs Docker if needed, the Rivetr binary, build tools (Nixpacks, Railpack, Pack), a systemd service and a config with a generated admin token. Then open `http://your-server-ip:8080` and create your admin account.
 
-After installation:
-
-```
-Dashboard:      http://your-server-ip:8080
-Config:         /opt/rivetr/rivetr.toml
-Data:           /var/lib/rivetr
-Logs:           sudo journalctl -u rivetr -f
-```
-
-Create your admin account on the first visit to the dashboard.
-
-**Install a specific version:**
-
-```bash
-RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/rivetr/main/install.sh | sudo bash
-```
-
-### Service Management
-
-```bash
-sudo systemctl status rivetr
-sudo systemctl restart rivetr
-sudo journalctl -u rivetr -f
-```
+Manual install, upgrades, backups and troubleshooting: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ### Development Setup
 
-**Prerequisites:** Rust 1.95+, Node.js 20+, Docker or Podman
-
-```bash
-git clone https://github.com/KwaminaWhyte/rivetr.git
-cd rivetr
-
-# Run the backend (auto-reloads on file changes)
-cargo install cargo-watch   # once
-cargo watch -x "run -- --config rivetr.example.toml"
-
-# Run the frontend dev server (separate terminal)
-cd frontend
-npm install
-npm run dev
-```
-
-The backend listens on `http://localhost:8080`. The frontend dev server proxies API calls to it.
-
-**Manual build:**
-
-```bash
-cargo build --release
-./target/release/rivetr --config rivetr.example.toml
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md#development-setup). Prerequisites: Rust 1.95+, Node.js 20+, Docker or Podman.
 
 ## Configuration
 
-### `rivetr.toml`: Server Configuration
+Server settings live in `rivetr.toml`. A minimal production file:
 
 ```toml
 [server]
-host = "0.0.0.0"
 api_port = 8080
-proxy_port = 80
-proxy_https_port = 443
 data_dir = "/var/lib/rivetr"
-# Required for GitHub App callbacks when behind a tunnel (ngrok, etc.)
-# external_url = "https://your-tunnel.example.com"
 
 [auth]
 admin_token = "change-me-in-production"
-# AES-256-GCM key for encrypting env vars at rest (optional, recommended)
-# encryption_key = "your-32-char-minimum-key-here"
-
-[runtime]
-runtime_type = "auto"   # "docker", "podman", or "auto"
-build_cpu_limit = "2"
-build_memory_limit = "2g"
 
 [proxy]
-acme_enabled = true
 acme_email = "admin@example.com"
-acme_staging = false    # set true for testing (avoids Let's Encrypt rate limits)
-acme_cache_dir = "./data/acme"
 # base_domain = "apps.example.com"  # enables *.apps.example.com subdomains
-sslip_enabled = true    # auto-generates sslip.io domains per app
-
-[logging]
-level = "info"   # trace | debug | info | warn | error
-
-[webhooks]
-# github_secret = "your-hmac-secret"
-# gitlab_token  = "your-token"
-# gitea_secret  = "your-hmac-secret"
-
-[rate_limit]
-enabled = true
-api_requests_per_window = 100
-webhook_requests_per_window = 500
-auth_requests_per_window = 20
-window_seconds = 60
-
-[cleanup]
-enabled = true
-max_deployments_per_app = 10
-cleanup_interval_seconds = 3600
-prune_images = true
-
-[container_monitor]
-enabled = true
-check_interval_secs = 30
-max_restart_attempts = 5
-initial_backoff_secs = 5
-max_backoff_secs = 300
-stable_duration_secs = 120
-
-[email]
-# enabled = true
-# smtp_host = "smtp.example.com"
-# smtp_port = 587
-# smtp_username = "apikey"
-# smtp_password = "your-smtp-password"
-# from_address = "noreply@example.com"
 ```
 
-See [`rivetr.example.toml`](rivetr.example.toml) for the full reference with all options documented.
-
-### `deploy.toml`: Per-App Configuration
-
-Place this file in your repository root:
-
-```toml
-app = "my-api"
-port = 3000
-
-[build]
-dockerfile = "./Dockerfile"
-
-[deploy]
-healthcheck = "/health"
-healthcheck_timeout = 30
-
-[resources]
-memory = "256mb"
-cpu = "0.5"
-```
+Every key is documented in [docs/reference/configuration.md](docs/reference/configuration.md); [`rivetr.example.toml`](rivetr.example.toml) is a copyable starter. Per-app settings (build type, health check, resources, domains, env vars) are managed from the dashboard or API.
 
 ## CLI Reference
 
