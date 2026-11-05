@@ -72,7 +72,7 @@ npm run build         # ensure production build compiles
 
 ## Code Organization
 
-The backend follows a **subdirectory module pattern** documented in [`docs/architecture/code-organization.md`](docs/architecture/code-organization.md). Any file that grows beyond ~1000 lines is split into a subdirectory:
+Any file that grows beyond ~1000 lines is split into a **subdirectory module**. `mod.rs` holds only module declarations, re-exports and route registration; logic lives in focused submodules:
 
 ```
 src/api/apps.rs   →   src/api/apps/
@@ -113,7 +113,14 @@ frontend/app/
 └── lib/          # API client, React Query hooks, and utilities
 ```
 
-See [docs/architecture/code-organization.md](docs/architecture/code-organization.md) for the complete split log and rules for new files.
+### Rules for new files
+
+1. **Backend**: a new handler file expected to pass ~500 lines starts as a subdirectory module.
+2. **Frontend**: a route file over ~600 lines extracts its tab or section panels into components.
+3. **No deep relative imports**: submodules import from `crate::`, never `super::super::`.
+4. **Re-export the public surface**: `mod.rs` re-exports every type and function used outside the module.
+
+To split an existing Rust file: create the directory, move the code into submodules, add `mod.rs`, delete the old file, then run `cargo check` and `cargo test`.
 
 ## Adding New Features
 
