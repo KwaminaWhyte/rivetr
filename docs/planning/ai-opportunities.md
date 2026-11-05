@@ -199,7 +199,7 @@ After a deployment that included a significant stack change, a notification card
 Medium, the patch suggestion depends on recognizing patterns in commit diffs, which is something large language models do well. The integration point (the existing `app_patches` table and patch application flow) is already built.
 
 **Implementation Notes**
-- Only analyze diffs for files that are relevant to the Rivetr configuration: `Dockerfile`, `package.json`, `Cargo.toml`, `requirements.txt`, `deploy.toml`, and similar.
+- Only analyze diffs for files that are relevant to the Rivetr configuration: `Dockerfile`, `package.json`, `Cargo.toml`, `requirements.txt`, `nixpacks.toml`, and similar.
 - Keep the diff snippet sent to the AI small (changed lines only, not the full file) to minimize token usage.
 - Record dismissed suggestions in a `dismissed_patch_suggestions` table keyed by a hash of the suggestion content so they are not re-surfaced.
 

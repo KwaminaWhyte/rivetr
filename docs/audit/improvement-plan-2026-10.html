@@ -201,7 +201,7 @@ ul.tight{margin:6px 0;padding-left:20px} ul.tight li{margin:3px 0}
 
 <section class="panel" id="p-features">
   <h2>Pending features</h2>
-  <p class="lead">Roadmap says 599/599, but several things are still genuinely open, and <code>docs/planning/tasks.md</code> has about 40 unticked boxes that look stale (features that shipped, per the changelog). Reconcile that file so it stops lying.</p>
+  <p class="lead">Roadmap says 599/599, but several things are still genuinely open, and the old phase task tracker had about 40 stale unticked boxes. Update 2026-11-05: that tracker was deleted; open work now lives in <code>ROADMAP.md</code>.</p>
   <div class="filters" data-for="features"></div>
   <div id="list-features"></div>
   <div class="note">Parked on purpose: the host resource safety-net (512MB default cap, label-scoped prune) is on hold per your saved note until the new droplet. Changelog 0.10.23 already shipped part of it (default limits, log rotation, critical-disk reclaim); only the remaining pieces are waiting.</div>
@@ -301,7 +301,7 @@ const ITEMS = [
 {id:"F-5",area:"features",sev:"medium",eff:"M",st:"open",t:"Docker networks management UI",w:"Dokploy shipped in v0.30.0",f:"Rivetr creates per-app networks but exposes no UI."},
 {id:"F-6",area:"features",sev:"medium",eff:"M",st:"open",t:"Full-coverage CLI beyond the TUI",w:"Dokploy v0.29 ships CLI plus MCP",f:"Generate from the API route list, same as the SDK."},
 {id:"F-7",area:"features",sev:"medium",eff:"M",st:"open",t:"AI: compose generation from a prompt",w:"competitive-gap #5; src/ai.rs exists",f:"Extend the diagnose infrastructure."},
-{id:"F-8",area:"features",sev:"low",eff:"S",st:"open",t:"Reconcile docs/planning/tasks.md (about 40 stale unticked boxes)",w:"T1.x, T3.4.x, T5.2.x, T6.x, T7.x sections",f:"Tick what shipped, delete what was dropped."},
+{id:"F-8",area:"features",sev:"low",eff:"S",st:"open",t:"Reconcile the phase task tracker (done 2026-11-05: file deleted, open work in ROADMAP.md)",w:"T1.x, T3.4.x, T5.2.x, T6.x, T7.x sections",f:"Tick what shipped, delete what was dropped."},
 {id:"F-9",area:"features",sev:"low",eff:"L",st:"open",t:"SAML 2.0",w:"ROADMAP v0.6.x",f:"Only on real demand."},
 {id:"F-10",area:"features",sev:"low",eff:"M",st:"open",t:"Swarm: rolling updates, overlay networking, advanced service spec; full remote build execution",w:"ROADMAP future items; competitive-gap #10",f:"Low demand signal so far."},
 {id:"F-11",area:"features",sev:"low",eff:"M",st:"open",t:"Unfinished AI items: uptime anomaly detection, deploy risk score, alert troubleshooting guide, NL app config",w:"docs/planning/ai-opportunities.md items 4, 5, 9, 10",f:"Pick one; deploy risk score pairs well with F-1."},

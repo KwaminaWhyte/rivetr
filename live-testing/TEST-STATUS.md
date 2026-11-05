@@ -144,7 +144,7 @@ Track which feature areas have been fully tested. Update after each testing sess
 - **Server:** rivetr-vm (10.211.55.5, Parallels Ubuntu 24.04 ARM64)
 - **Tester:** claude (sub-agent VM sweep + 5-agent parallel fix sprint + inline validation)
 - **Areas Covered:** Installation, auth, app create/general/env-vars/domain/network, Nixpacks deploy, deployment controls + history, monitoring, live logs, managed databases (Postgres/Redis/MySQL/MariaDB) including backups + settings, Compose services (Uptime-Kuma) create/start/proxy, webhook events, SSH keys, API tokens, alert defaults, dashboard, monitoring page, deployment cancellation, container monitor (services), Coolify-style deploy log side panel, MariaDB end-to-end.
-- **Findings:** 27 bugs (B1–B27), 10 UX issues (U1–U10), 6 perf notes, 15 improvement ideas. See `live-testing/VM-SWEEP-2026-05-02.md`.
+- **Findings:** 27 bugs (B1-B27), 10 UX issues (U1-U10), 6 perf notes, 15 improvement ideas. Fixes are listed under 0.10.20 and 0.10.21 in `CHANGELOG.md`.
 - **Sprint outcome (5 parallel sub-agents):**
   - `feat/deploy-side-panel`, Coolify-style side panel (DB ✓ live; app/service surfaces ⏸ need browser).
   - `feat/mariadb-support`, frontend wiring + tests merged; live PASS via 11 screenshots.
@@ -152,7 +152,7 @@ Track which feature areas have been fully tested. Update after each testing sess
   - `fix/vm-sweep-backend`, B5/B7/B9/B10/B11/B12/B13/B14/B15/B17/B26/B27 fixes (B8 staged but unwired).
   - `fix/vm-sweep-frontend`, B1/B2/B16/B18/B19/B21/B22/B23/B24/U2/U4/U10 fixes.
 - **B28** newly discovered + fixed during validation: Docker network "endpoint already exists" 403 swallowed.
-- **Live validation:** see `live-testing/VM-VALIDATION-2026-05-02-backend.md` (13/15 PASS, 1 FAIL, 2 ⏸) and `live-testing/VM-VALIDATION-2026-05-02-frontend.md` (4/12 confirmed via static analysis, 8 ⏸ Playwright).
+- **Live validation:** backend 13/15 PASS, 1 FAIL, 2 ⏸; frontend (4/12 confirmed via static analysis, 8 ⏸ Playwright).
 - **Critical Fixes Shipped in v0.10.20:** B3 (AI 503→404), B4 (container monitor SELECT), B28 (network reconnect noise).
 - **Open for v0.10.21:** B6 (MySQL 8 SSL), B8 (audit ip_address wiring), B12/B13 (live rollback test), B20 (disk path), B25 (DB→app env injection UI).
 

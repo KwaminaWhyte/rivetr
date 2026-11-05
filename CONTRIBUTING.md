@@ -191,8 +191,7 @@ See [`SECURITY.md`](SECURITY.md) for the full vulnerability disclosure policy.
 ## Getting Help
 
 - Search [existing issues](https://github.com/KwaminaWhyte/rivetr/issues) before opening a new one.
-- For architecture questions, see [docs/architecture/architecture.md](docs/architecture/architecture.md).
-- For tech stack decisions, see [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md).
+- For architecture and tech stack questions, see [docs/architecture/architecture.md](docs/architecture/architecture.md).
 
 ## License
 

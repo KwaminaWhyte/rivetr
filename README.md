@@ -267,15 +267,15 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | Document | Description |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code style, PR process |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Production install, configuration, backup, troubleshooting |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Production install, upgrades, backup, troubleshooting |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
-| [ROADMAP.md](ROADMAP.md) | Planned features and future direction |
-| [docs/architecture/architecture.md](docs/architecture/architecture.md) | System design and component breakdown |
-| [docs/architecture/tech-stack.md](docs/architecture/tech-stack.md) | Technology choices and crate selection |
+| [ROADMAP.md](ROADMAP.md) | Open work and where it is tracked |
+| [docs/architecture/architecture.md](docs/architecture/architecture.md) | System design, source layout and tech stack |
+| [docs/reference/configuration.md](docs/reference/configuration.md) | Every `rivetr.toml` key |
+| [docs/reference/remote-servers.md](docs/reference/remote-servers.md) | Remote servers: adding, non-root sudo, Tailscale |
 | [docs/reference/service-templates.md](docs/reference/service-templates.md) | Catalogue of all 273 service templates by category |
 | [docs/reference/service-deployments.md](docs/reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
 | [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Feature comparison with Coolify and Dokploy |
-| [docs/architecture/code-organization.md](docs/architecture/code-organization.md) | Code organization and module splitting guide |
 | [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
 | [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |
 
