@@ -144,14 +144,18 @@ pub async fn delete_provider(
     client_ip: ClientIp,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // SEC-C3: only the connection's owner (or an instance admin) may disconnect it.
-    let owner: Option<String> = sqlx::query_scalar("SELECT user_id FROM git_providers WHERE id = ?")
-        .bind(&id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let owner: Option<String> =
+        sqlx::query_scalar("SELECT user_id FROM git_providers WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if let Some(owner) = owner {
         if !owns_provider(&user, &owner) {
-            return Err((StatusCode::FORBIDDEN, "Not your Git provider connection".to_string()));
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Not your Git provider connection".to_string(),
+            ));
         }
     }
 

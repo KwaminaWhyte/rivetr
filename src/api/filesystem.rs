@@ -46,7 +46,10 @@ fn validate_remote_path(path: &str) -> Result<(), ApiError> {
     if path.is_empty() {
         return Err(ApiError::bad_request("Path cannot be empty"));
     }
-    if let Some(c) = path.chars().find(|c| FORBIDDEN_PATH_CHARS.contains(c) || c.is_control()) {
+    if let Some(c) = path
+        .chars()
+        .find(|c| FORBIDDEN_PATH_CHARS.contains(c) || c.is_control())
+    {
         return Err(ApiError::bad_request(format!(
             "Path contains a forbidden character: {:?}",
             c

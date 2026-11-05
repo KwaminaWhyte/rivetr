@@ -15,8 +15,7 @@ use super::error::ApiError;
 /// Validate that a user-supplied URL is safe to fetch (not internal). Async
 /// because it performs DNS resolution for hostnames.
 pub async fn validate_external_url(raw: &str) -> Result<(), ApiError> {
-    let url = reqwest::Url::parse(raw)
-        .map_err(|_| ApiError::bad_request("Invalid URL"))?;
+    let url = reqwest::Url::parse(raw).map_err(|_| ApiError::bad_request("Invalid URL"))?;
 
     match url.scheme() {
         "http" | "https" => {}
@@ -104,21 +103,30 @@ mod tests {
             "0.0.0.0",
             "100.64.0.1",
         ] {
-            assert!(is_blocked_ip(&ip.parse().unwrap()), "{ip} should be blocked");
+            assert!(
+                is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be blocked"
+            );
         }
     }
 
     #[test]
     fn allows_public_v4() {
         for ip in ["1.1.1.1", "8.8.8.8", "93.184.216.34"] {
-            assert!(!is_blocked_ip(&ip.parse().unwrap()), "{ip} should be allowed");
+            assert!(
+                !is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be allowed"
+            );
         }
     }
 
     #[test]
     fn blocks_internal_v6() {
         for ip in ["::1", "::", "fc00::1", "fe80::1", "::ffff:127.0.0.1"] {
-            assert!(is_blocked_ip(&ip.parse().unwrap()), "{ip} should be blocked");
+            assert!(
+                is_blocked_ip(&ip.parse().unwrap()),
+                "{ip} should be blocked"
+            );
         }
     }
 }
