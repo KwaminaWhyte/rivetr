@@ -5,6 +5,7 @@
 
 pub mod acme;
 pub mod analytics;
+pub mod balancer;
 mod handler;
 mod health_checker;
 pub mod inflight;
@@ -22,6 +23,7 @@ use tracing::{error, info};
 pub use acme::{
     AcmeChallenges, AcmeClient, AcmeConfig, CertificateRenewalManager, CertificateResult,
 };
+pub use balancer::{LbPolicy, Selection, UpstreamPool, STICKY_COOKIE};
 pub use handler::ProxyHandler;
 pub use health_checker::{HealthChecker, HealthCheckerConfig};
 pub use service::ProxyService;
@@ -209,6 +211,16 @@ pub struct RouteTable {
     routes: DashMap<String, Backend>,
     /// Multi-backend routes for round-robin load balancing
     multi_routes: DashMap<String, RoundRobinBackend>,
+    /// Multi-server upstream pools (policy, passive health, sticky sessions)
+    pools: DashMap<String, Arc<UpstreamPool>>,
+}
+
+/// A backend chosen for one request, plus the sticky cookie to set, if any.
+#[derive(Debug, Clone)]
+pub struct RoutedBackend {
+    pub backend: Backend,
+    /// Upstream address to pin the client to with the sticky cookie.
+    pub sticky_addr: Option<String>,
 }
 
 impl RouteTable {
@@ -216,6 +228,7 @@ impl RouteTable {
         Self {
             routes: DashMap::new(),
             multi_routes: DashMap::new(),
+            pools: DashMap::new(),
         }
     }
 
@@ -224,12 +237,14 @@ impl RouteTable {
         info!(domain = %domain, backend = ?backend.addr(), "Adding proxy route");
         // Remove any multi-backend route for this domain (single takes precedence)
         self.multi_routes.remove(&domain);
+        self.pools.remove(&domain);
         self.routes.insert(domain, backend);
     }
 
     /// Add multiple backends for a domain with round-robin load balancing.
     /// If only one backend is provided, falls back to single-backend route.
     pub fn add_backends(&self, domain: String, backends: Vec<String>, primary_backend: Backend) {
+        self.pools.remove(&domain);
         if backends.len() <= 1 {
             // Single backend: use normal route
             self.routes.insert(domain, primary_backend);
@@ -248,10 +263,99 @@ impl RouteTable {
         info!(domain = %domain, "Removing proxy route");
         self.routes.remove(domain);
         self.multi_routes.remove(domain);
+        self.pools.remove(domain);
     }
 
-    /// Get the backend for a domain, using round-robin if multiple backends are registered
+    /// Route a domain to a multi-server upstream pool. `primary` carries the
+    /// per-domain settings (auth, redirects, health path) shared by every upstream.
+    pub fn add_pool(&self, domain: String, pool: Arc<UpstreamPool>, primary: Backend) {
+        info!(domain = %domain, upstreams = pool.len(), policy = ?pool.policy(), sticky = pool.sticky(), "Adding upstream pool for proxy route");
+        self.multi_routes.remove(&domain);
+        self.routes.insert(domain.clone(), primary);
+        self.pools.insert(domain, pool);
+    }
+
+    /// The upstream pool of a domain, if it has one.
+    pub fn pool(&self, domain: &str) -> Option<Arc<UpstreamPool>> {
+        self.pools.get(domain).map(|p| p.clone())
+    }
+
+    /// Passive health: take `addr` out of the domain's pool for a cool-down after a
+    /// connection error. No-op for domains without a pool.
+    pub fn mark_upstream_failed(&self, domain: &str, addr: &str) {
+        let host = domain.split(':').next().unwrap_or(domain);
+        for d in [domain, host] {
+            if let Some(pool) = self.pools.get(d) {
+                pool.mark_down(addr);
+                return;
+            }
+        }
+    }
+
+    /// Pick the backend for a request. For pooled domains this applies the pool's
+    /// policy, passive health and the sticky cookie value (`sticky_cookie`).
+    pub fn select_backend(
+        &self,
+        domain: &str,
+        sticky_cookie: Option<&str>,
+    ) -> Option<RoutedBackend> {
+        let lookup = |d: &str| -> Option<RoutedBackend> {
+            if let Some(pool) = self.pools.get(d) {
+                let primary = self.routes.get(d)?.clone();
+                let primary_addr = primary.addr();
+                let primary_healthy = primary.healthy;
+                let picked = pool.select(
+                    sticky_cookie,
+                    |addr| primary_healthy || addr != primary_addr,
+                    inflight::in_flight,
+                );
+                return Some(match picked {
+                    Some(sel) => {
+                        let mut backend = primary;
+                        if let Some((host, port)) = sel.addr.rsplit_once(':') {
+                            backend.host = host.to_string();
+                            backend.port = port.parse().unwrap_or(backend.port);
+                        }
+                        backend.healthy = true;
+                        RoutedBackend {
+                            backend,
+                            sticky_addr: sel.set_cookie.then_some(sel.addr),
+                        }
+                    }
+                    // Every upstream is down: report the domain unhealthy (503).
+                    None => {
+                        let mut backend = primary;
+                        backend.healthy = false;
+                        RoutedBackend {
+                            backend,
+                            sticky_addr: None,
+                        }
+                    }
+                });
+            }
+            self.get_backend_unpooled(d).map(|backend| RoutedBackend {
+                backend,
+                sticky_addr: None,
+            })
+        };
+        if let Some(found) = lookup(domain) {
+            return Some(found);
+        }
+        let host = domain.split(':').next()?;
+        if host != domain {
+            return lookup(host);
+        }
+        None
+    }
+
+    /// Get the backend for a domain, using the upstream pool or round-robin when
+    /// several backends are registered
     pub fn get_backend(&self, domain: &str) -> Option<Backend> {
+        self.select_backend(domain, None).map(|r| r.backend)
+    }
+
+    /// Backend lookup for domains without an upstream pool (single or round-robin).
+    fn get_backend_unpooled(&self, domain: &str) -> Option<Backend> {
         // Check if there is a round-robin multi-backend route
         let lookup_domain = |d: &str| -> Option<Backend> {
             if let Some(rr) = self.multi_routes.get(d) {
@@ -717,5 +821,94 @@ mod tests {
         table.remove_route("app.example.com");
 
         assert!(table.get_backend("app.example.com").is_none());
+    }
+
+    fn pooled_table(policy: LbPolicy, sticky: bool) -> RouteTable {
+        let table = RouteTable::new();
+        let primary = Backend::new("app".into(), "127.0.0.1".into(), 3000)
+            .with_healthcheck(Some("/health".into()))
+            .with_basic_auth("u".into(), "hash".into());
+        let pool = Arc::new(UpstreamPool::new(
+            vec![
+                "127.0.0.1:3000".into(),
+                "10.0.0.2:41000".into(),
+                "100.64.0.3:41001".into(),
+            ],
+            policy,
+            sticky,
+        ));
+        table.add_pool("app.example.com".into(), pool, primary);
+        table
+    }
+
+    #[test]
+    fn pool_round_robins_across_servers_and_keeps_primary_settings() {
+        let table = pooled_table(LbPolicy::RoundRobin, false);
+        let addrs: Vec<String> = (0..3)
+            .map(|_| table.get_backend("app.example.com").unwrap().addr())
+            .collect();
+        assert_eq!(
+            addrs,
+            ["127.0.0.1:3000", "10.0.0.2:41000", "100.64.0.3:41001"]
+        );
+        let b = table.get_backend("app.example.com:443").unwrap();
+        assert!(b.basic_auth.enabled);
+        assert_eq!(b.healthcheck_path.as_deref(), Some("/health"));
+    }
+
+    #[test]
+    fn pool_passive_failure_skips_upstream() {
+        let table = pooled_table(LbPolicy::RoundRobin, false);
+        table.mark_upstream_failed("app.example.com", "10.0.0.2:41000");
+        for _ in 0..6 {
+            assert_ne!(
+                table.get_backend("app.example.com").unwrap().addr(),
+                "10.0.0.2:41000"
+            );
+        }
+    }
+
+    #[test]
+    fn pool_excludes_actively_unhealthy_primary_and_503s_when_all_down() {
+        let table = pooled_table(LbPolicy::RoundRobin, false);
+        table.set_health("app.example.com", false);
+        for _ in 0..6 {
+            let b = table.get_backend("app.example.com").unwrap();
+            assert!(b.healthy);
+            assert_ne!(b.addr(), "127.0.0.1:3000");
+        }
+        table.mark_upstream_failed("app.example.com", "10.0.0.2:41000");
+        table.mark_upstream_failed("app.example.com", "100.64.0.3:41001");
+        assert!(!table.get_backend("app.example.com").unwrap().healthy);
+    }
+
+    #[test]
+    fn pool_sticky_cookie_is_reported_and_honoured() {
+        let table = pooled_table(LbPolicy::LeastConn, true);
+        let first = table.select_backend("app.example.com", None).unwrap();
+        let addr = first
+            .sticky_addr
+            .clone()
+            .expect("sticky pool sets a cookie");
+        let token = balancer::sticky_token(&addr);
+        for _ in 0..4 {
+            let r = table
+                .select_backend("app.example.com", Some(&token))
+                .unwrap();
+            assert_eq!(r.backend.addr(), addr);
+            assert!(r.sticky_addr.is_none());
+        }
+    }
+
+    #[test]
+    fn single_route_replaces_pool() {
+        let table = pooled_table(LbPolicy::RoundRobin, false);
+        assert!(table.pool("app.example.com").is_some());
+        table.add_route(
+            "app.example.com".into(),
+            Backend::new("c".into(), "127.0.0.1".into(), 4000),
+        );
+        assert!(table.pool("app.example.com").is_none());
+        assert_eq!(table.get_backend("app.example.com").unwrap().port, 4000);
     }
 }
