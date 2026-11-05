@@ -5,6 +5,18 @@ patching, security checks, Docker cleanup, the server terminal and remote build
 servers. This page covers connecting as a non-root user and reaching servers
 over Tailscale.
 
+## Adding a server
+
+1. Open **Servers** in the dashboard and click **Add Server**.
+2. Enter a name, host or IP, SSH port and username, and either an SSH private
+   key or a password. Keys and passwords are stored encrypted (AES-256-GCM).
+3. Rivetr tests the connection and checks that Docker is available.
+
+Once registered, apps can be assigned to the server. A deploy builds on the
+local host or a build server, pushes the image to the configured registry,
+pulls it on the target server, starts the container and updates the proxy
+route. **Servers > [server] > Terminal** opens a browser SSH session.
+
 ## Connecting as a non-root user (passwordless sudo)
 
 Rivetr can connect as any SSH user. When that user is not `root`, every

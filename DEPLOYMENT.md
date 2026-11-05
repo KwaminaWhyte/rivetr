@@ -229,29 +229,7 @@ RIVETR_VERSION=v0.2.6 curl -fsSL https://raw.githubusercontent.com/KwaminaWhyte/
 
 ## Multi-Server Setup
 
-Rivetr can manage deployments on remote servers via SSH.
-
-### Register a Remote Server
-
-1. Open the dashboard, go to **Settings → Servers**.
-2. Click **Add Server** and provide:
-   - Server name and hostname/IP
-   - SSH port and username
-   - SSH private key (Rivetr encrypts and stores this with AES-256-GCM)
-3. Rivetr tests the connection and verifies Docker is available on the remote.
-
-### Using a Remote Server
-
-Once registered, you can assign apps to deploy to any registered server. The deployment workflow is:
-
-1. Clone and build on the build server (local or dedicated remote)
-2. Push the image to the configured container registry
-3. Pull the image on the target server and start the container
-4. Update the proxy route on the target server
-
-### Browser-Based Terminal
-
-From the dashboard, open **Servers → [server name] → Terminal** for a browser-based SSH session to any registered remote server.
+Rivetr deploys to remote servers over SSH. Adding a server, non-root users with passwordless sudo, and Tailscale are covered in [docs/reference/remote-servers.md](docs/reference/remote-servers.md).
 
 ## Backup and Restore
 
