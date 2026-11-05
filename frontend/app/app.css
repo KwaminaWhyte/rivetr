@@ -157,6 +157,9 @@
 .rivetr-canvas .react-flow__pane.dragging {
   cursor: grabbing;
 }
+.rivetr-canvas .react-flow__background circle {
+  fill: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+}
 .rivetr-canvas .react-flow__node {
   font-family: var(--font-sans);
 }
@@ -171,5 +174,7 @@
   stroke-width: 1.5;
 }
 .rivetr-canvas .react-flow__attribution {
-  display: none;
+  background: transparent;
+  opacity: 0.6;
+  font-size: 9px;
 }
