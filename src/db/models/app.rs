@@ -693,6 +693,13 @@ impl App {
             image.clone()
         };
 
+        // "nginx:alpine" or "app@sha256:..." already name a version; appending the
+        // tag field would give "nginx:alpine:latest", which Docker rejects. Only the
+        // last path segment counts, so a registry port ("host:5000/app") is not a tag.
+        if image_has_tag_or_digest(&full_image) {
+            return Some(full_image);
+        }
+
         Some(format!("{}:{}", full_image, tag))
     }
 
@@ -1117,4 +1124,31 @@ pub struct AppWithSharing {
     pub is_shared: bool,
     /// The team that owns this app (when is_shared is true)
     pub owner_team_name: Option<String>,
+}
+
+/// Whether an image reference already carries a tag or digest.
+fn image_has_tag_or_digest(image: &str) -> bool {
+    if image.contains('@') {
+        return true;
+    }
+    image
+        .rsplit('/')
+        .next()
+        .is_some_and(|last| last.contains(':'))
+}
+
+#[cfg(test)]
+mod image_reference_tests {
+    use super::image_has_tag_or_digest;
+
+    #[test]
+    fn detects_tags_in_the_last_segment_only() {
+        assert!(image_has_tag_or_digest("nginx:alpine"));
+        assert!(image_has_tag_or_digest("ghcr.io/acme/app:1.2.3"));
+        assert!(image_has_tag_or_digest("localhost:5000/app:dev"));
+        assert!(image_has_tag_or_digest("app@sha256:abc"));
+        assert!(!image_has_tag_or_digest("nginx"));
+        assert!(!image_has_tag_or_digest("localhost:5000/app"));
+        assert!(!image_has_tag_or_digest("ghcr.io/acme/app"));
+    }
 }

@@ -632,12 +632,22 @@ impl DeploymentEngine {
                                 increment_deployments_total(&app.name, "failed");
                                 observe_deployment_duration(&app.name, duration_secs);
 
-                                tracing::error!("Deployment {} failed: {}", deployment_id, e);
+                                // `{:#}` keeps the cause chain ("Failed to start container:
+                                // port is already allocated"), not just the outer context.
+                                let reason = format!("{:#}", e);
+                                tracing::error!("Deployment {} failed: {}", deployment_id, reason);
                                 let _ = update_deployment_status(
                                     &db,
                                     &deployment_id,
                                     "failed",
-                                    Some(&e.to_string()),
+                                    Some(&reason),
+                                )
+                                .await;
+                                let _ = add_deployment_log(
+                                    &db,
+                                    &deployment_id,
+                                    "error",
+                                    &format!("Deployment failed: {}", reason),
                                 )
                                 .await;
 
