@@ -162,10 +162,9 @@ pub async fn github_webhook(
         .encryption_key
         .as_ref()
         .map(|s| crypto::derive_key(s));
-    if let Ok(stored) =
-        sqlx::query_scalar::<_, String>("SELECT webhook_secret FROM github_apps")
-            .fetch_all(&state.db)
-            .await
+    if let Ok(stored) = sqlx::query_scalar::<_, String>("SELECT webhook_secret FROM github_apps")
+        .fetch_all(&state.db)
+        .await
     {
         for enc in stored {
             if let Ok(dec) = crypto::decrypt_if_encrypted(&enc, enc_key.as_ref()) {
@@ -195,7 +194,9 @@ pub async fn github_webhook(
         .iter()
         .any(|secret| verify_github_signature(secret, signature, &body))
     {
-        tracing::warn!("GitHub webhook signature verification failed (no candidate secret matched)");
+        tracing::warn!(
+            "GitHub webhook signature verification failed (no candidate secret matched)"
+        );
         return Err(StatusCode::UNAUTHORIZED);
     }
     tracing::debug!("GitHub webhook signature verified");

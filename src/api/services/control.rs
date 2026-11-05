@@ -596,9 +596,11 @@ pub async fn restart_service(
     // Run docker compose restart, streaming each line to the live panel.
     let stream_handle = state.start_log_streams.clone();
     let stream_key_for_restart = resource_key.clone();
-    state
-        .start_log_streams
-        .info(&resource_key, "starting", "Running docker compose up -d --force-recreate");
+    state.start_log_streams.info(
+        &resource_key,
+        "starting",
+        "Running docker compose up -d --force-recreate",
+    );
     // Use `up -d --force-recreate` rather than `compose restart`: a plain restart
     // only restarts the existing container processes and does NOT re-read the
     // compose file, so config changes made since the last start (resource limits,
@@ -784,18 +786,17 @@ pub async fn restart_service_internal(state: &Arc<AppState>, id: &str) -> Result
     };
 
     // Inject per-service CPU/memory limits unless raw mode / no limits configured.
-    let compose_to_write = if !raw_mode
-        && (service.cpu_limit.is_some() || service.memory_limit.is_some())
-    {
-        inject_resource_limits(
-            &compose_to_write,
-            service.cpu_limit.as_deref(),
-            service.memory_limit.as_deref(),
-        )
-        .unwrap_or(compose_to_write)
-    } else {
-        compose_to_write
-    };
+    let compose_to_write =
+        if !raw_mode && (service.cpu_limit.is_some() || service.memory_limit.is_some()) {
+            inject_resource_limits(
+                &compose_to_write,
+                service.cpu_limit.as_deref(),
+                service.memory_limit.as_deref(),
+            )
+            .unwrap_or(compose_to_write)
+        } else {
+            compose_to_write
+        };
 
     write_compose_file_with_options(
         data_dir,
