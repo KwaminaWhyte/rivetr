@@ -8,7 +8,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use super::audit::{audit_log, ClientIp};
 use super::authz;
+use crate::config::Config;
 use crate::crypto;
 use crate::db::{
     actions, resource_types, GitHubApp, GitHubAppInstallation, GitHubAppInstallationResponse,
@@ -39,6 +40,41 @@ const DEFAULT_PERMISSIONS: &str = r#"{
 /// Default events to subscribe to
 const DEFAULT_EVENTS: &[&str] = &["push", "pull_request", "create", "delete"];
 
+/// Public base URL for GitHub callbacks and webhooks.
+///
+/// A configured `server.external_url` wins. Otherwise use the host the request
+/// actually arrived on, preferring the proxy's forwarded headers. Deriving from
+/// the bind address (`0.0.0.0`) produced URLs GitHub rejects and cannot call,
+/// which broke GitHub App creation on a fresh install.
+fn public_base_url(config: &Config, headers: &HeaderMap) -> String {
+    if let Some(url) = config
+        .server
+        .external_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+    {
+        return url.trim_end_matches('/').to_string();
+    }
+
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    };
+    let scheme = header("x-forwarded-proto").unwrap_or("http");
+    match header("x-forwarded-host").or_else(|| header("host")) {
+        Some(host) if !host.starts_with("0.0.0.0") && !host.starts_with("[::]") => {
+            format!("{scheme}://{host}")
+        }
+        // Never publish the bind address: it is not a host GitHub can reach.
+        _ => format!("http://localhost:{}", config.server.api_port),
+    }
+}
+
 /// POST /api/github-apps/manifest - Initiate GitHub App manifest registration
 ///
 /// Returns the manifest JSON and form action URL for the frontend to POST to GitHub.
@@ -46,6 +82,7 @@ const DEFAULT_EVENTS: &[&str] = &["push", "pull_request", "create", "delete"];
 pub async fn create_manifest(
     State(state): State<Arc<AppState>>,
     user: User,
+    headers: HeaderMap,
     Json(request): Json<ManifestRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // The app is registered under this team, so the caller must belong to it.
@@ -62,13 +99,8 @@ pub async fn create_manifest(
     let state_param = uuid::Uuid::new_v4().to_string();
 
     // Build the callback URL (where GitHub will redirect after registration)
-    // Use external_url if configured (for ngrok/tunnels), otherwise build from host:port
-    let api_host = state.config.server.external_url.clone().unwrap_or_else(|| {
-        format!(
-            "http://{}:{}",
-            state.config.server.host, state.config.server.api_port
-        )
-    });
+    // from the configured external URL or the host this request arrived on.
+    let api_host = public_base_url(&state.config, &headers);
     let callback_url = format!("{}/api/auth/github-apps/callback", api_host);
     let setup_url = format!("{}/api/auth/github-apps/installation/callback", api_host);
 
@@ -758,6 +790,7 @@ pub async fn list_installation_repos(
 /// Uses the app's JWT to call PATCH /app on the GitHub API.
 pub async fn sync_webhook_url(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(app_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let app: GitHubApp = sqlx::query_as("SELECT * FROM github_apps WHERE id = ?")
@@ -767,13 +800,9 @@ pub async fn sync_webhook_url(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "GitHub App not found".to_string()))?;
 
-    // Build the correct webhook URL using the current external_url
-    let api_host = state.config.server.external_url.clone().unwrap_or_else(|| {
-        format!(
-            "http://{}:{}",
-            state.config.server.host, state.config.server.api_port
-        )
-    });
+    // Build the correct webhook URL using the configured external URL or the
+    // host this request arrived on.
+    let api_host = public_base_url(&state.config, &headers);
     let new_webhook_url = format!("{}/webhooks/github", api_host);
 
     // Decrypt the private key
@@ -876,4 +905,78 @@ fn default_page() -> u32 {
 
 fn default_per_page() -> u32 {
     30
+}
+
+#[cfg(test)]
+mod public_base_url_tests {
+    use super::public_base_url;
+    use crate::config::Config;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn header_map(pairs: &[(&str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.insert(
+                name.parse::<axum::http::HeaderName>().unwrap(),
+                HeaderValue::from_str(value).unwrap(),
+            );
+        }
+        map
+    }
+
+    #[test]
+    fn external_url_wins_and_loses_the_trailing_slash() {
+        let mut config = Config::default();
+        config.server.external_url = Some("https://deploy.example.com/".into());
+        let headers = header_map(&[("host", "203.0.113.10:8000")]);
+        assert_eq!(
+            public_base_url(&config, &headers),
+            "https://deploy.example.com"
+        );
+    }
+
+    #[test]
+    fn derives_the_url_from_the_proxy_forwarded_headers() {
+        let config = Config::default();
+        let headers = header_map(&[
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-host", "rivetr.example.com"),
+            ("host", "127.0.0.1:8000"),
+        ]);
+        assert_eq!(
+            public_base_url(&config, &headers),
+            "https://rivetr.example.com"
+        );
+    }
+
+    #[test]
+    fn derives_the_url_from_the_host_the_browser_used() {
+        let config = Config::default();
+        let headers = header_map(&[("host", "203.0.113.10:8000")]);
+        assert_eq!(
+            public_base_url(&config, &headers),
+            "http://203.0.113.10:8000"
+        );
+    }
+
+    #[test]
+    fn first_forwarded_value_wins() {
+        let config = Config::default();
+        let headers = header_map(&[
+            ("x-forwarded-proto", "https, http"),
+            ("x-forwarded-host", "first.example.com, second.example.com"),
+        ]);
+        assert_eq!(
+            public_base_url(&config, &headers),
+            "https://first.example.com"
+        );
+    }
+
+    #[test]
+    fn never_publishes_the_bind_address() {
+        let config = Config::default();
+        let headers = header_map(&[("host", "0.0.0.0:8000")]);
+        let url = public_base_url(&config, &headers);
+        assert_eq!(url, format!("http://localhost:{}", config.server.api_port));
+    }
 }
