@@ -994,13 +994,32 @@ impl Config {
             info!("Loading configuration from {}", path.display());
             let content = std::fs::read_to_string(path)
                 .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-            let config: Config =
-                toml::from_str(&content).with_context(|| "Failed to parse configuration file")?;
-            Ok(config)
+            Self::from_toml(&content).with_context(|| "Failed to parse configuration file")
         } else {
             info!("No config file found, using defaults");
             Ok(Config::default())
         }
+    }
+
+    /// Parse a configuration file.
+    ///
+    /// Field defaults cannot refer to other fields, so defaults that depend on
+    /// `data_dir` are resolved here. The certificate cache defaults to
+    /// `<data_dir>/acme`: the old `./data/acme` resolves against the working
+    /// directory, which the shipped systemd unit mounts read-only, so ACME
+    /// could never create its account on a fresh install.
+    fn from_toml(content: &str) -> Result<Self> {
+        let mut config: Config = toml::from_str(content)?;
+        let raw = toml::from_str::<toml::Value>(content).ok();
+        let cache_dir_set = raw
+            .as_ref()
+            .and_then(|value| value.get("proxy"))
+            .and_then(|proxy| proxy.get("acme_cache_dir"))
+            .is_some();
+        if !cache_dir_set {
+            config.proxy.acme_cache_dir = config.server.data_dir.join("acme");
+        }
+        Ok(config)
     }
 
     #[allow(clippy::should_implement_trait)]
@@ -1024,5 +1043,50 @@ impl Config {
             auto_update: AutoUpdateConfig::default(),
             ai: AiConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod acme_cache_dir_tests {
+    use super::Config;
+    use std::path::PathBuf;
+
+    #[test]
+    fn certificate_cache_defaults_under_the_data_directory() {
+        let config = Config::from_toml(
+            r#"
+            [server]
+            data_dir = "/var/lib/rivetr"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.proxy.acme_cache_dir,
+            PathBuf::from("/var/lib/rivetr/acme")
+        );
+    }
+
+    #[test]
+    fn explicit_certificate_cache_directory_is_kept() {
+        let config = Config::from_toml(
+            r#"
+            [server]
+            data_dir = "/var/lib/rivetr"
+
+            [proxy]
+            acme_cache_dir = "/srv/certs"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(config.proxy.acme_cache_dir, PathBuf::from("/srv/certs"));
+    }
+
+    #[test]
+    fn defaults_follow_the_default_data_directory() {
+        let config = Config::from_toml("").unwrap();
+        assert_eq!(
+            config.proxy.acme_cache_dir,
+            PathBuf::from("./data").join("acme")
+        );
     }
 }
