@@ -51,7 +51,10 @@ pub fn html_csp(html: &str, host: Option<&str>) -> String {
         "media-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'self'",
-        "form-action 'self'",
+        // GitHub App setup POSTs a manifest form to github.com; without that
+        // origin here the browser blocks the redirect and the dialog hangs on
+        // "Redirecting..." forever.
+        "form-action 'self' https://github.com",
         "frame-ancestors 'none'",
     ]
     .join("; ")
@@ -156,6 +159,7 @@ mod tests {
         assert!(csp.contains("frame-ancestors 'none'"));
         assert!(csp.contains("object-src 'none'"));
         assert!(csp.contains("base-uri 'self'"));
+        assert!(csp.contains("form-action 'self' https://github.com"));
         assert!(csp.contains("style-src 'self' 'unsafe-inline'"));
         assert!(csp.contains("img-src 'self' data: blob: https:"));
         assert!(csp.contains(
