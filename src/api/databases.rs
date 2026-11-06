@@ -714,6 +714,41 @@ pub async fn get_database_logs(
     Ok(Json(logs))
 }
 
+/// Pick a host port for a database's public endpoint.
+///
+/// The port is bound explicitly on the container so it survives restarts.
+/// A dynamic binding (host port 0) makes Docker assign a fresh port on every
+/// start, which silently invalidates the stored `external_port` and every
+/// connection URL built from it.
+async fn allocate_host_port(db: &crate::DbPool) -> anyhow::Result<u16> {
+    for _ in 0..32 {
+        let listener = std::net::TcpListener::bind(("0.0.0.0", 0))?;
+        let port = listener.local_addr()?.port();
+        drop(listener);
+
+        // Skip ports already claimed by a started database or service.
+        let taken: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM databases WHERE external_port = ? AND public_access = 1 LIMIT 1",
+        )
+        .bind(port as i32)
+        .fetch_optional(db)
+        .await?;
+        if taken.is_some() {
+            continue;
+        }
+        let taken: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM services WHERE external_port = ? AND public_access = 1 LIMIT 1",
+        )
+        .bind(port as i32)
+        .fetch_optional(db)
+        .await?;
+        if taken.is_none() {
+            return Ok(port);
+        }
+    }
+    anyhow::bail!("no free host port available for the database")
+}
+
 /// Internal function to start a database container.
 ///
 /// Emits live "start log" events through `state.start_log_streams` so the
@@ -815,14 +850,15 @@ async fn start_database_container_inner(
                     }
                 }
 
-                // Get the assigned host port if public access is enabled
+                // Read the port the container is actually published on rather than
+                // trusting the stored value: a container created with a dynamic
+                // binding gets a new random host port every time it starts.
                 let external_port = if database.is_public() {
-                    if database.external_port > 0 {
-                        database.external_port
-                    } else {
-                        let info = state.runtime.inspect(existing_container_id).await?;
-                        info.host_port.unwrap_or(0) as i32
-                    }
+                    let info = state.runtime.inspect(existing_container_id).await?;
+                    info.host_port_for(config.port)
+                        .or(info.host_port)
+                        .map(|p| p as i32)
+                        .unwrap_or(database.external_port)
                 } else {
                     0
                 };
@@ -896,14 +932,17 @@ async fn start_database_container_inner(
     // Build run config
     let container_name = database.container_name();
     let mut port_mappings = Vec::new();
+    let mut pinned_host_port: Option<u16> = None;
 
     if database.is_public() {
-        // Use custom external port if specified (non-zero), otherwise auto-assign
+        // Pin the host port (user-chosen or freshly allocated) so Docker does
+        // not hand out a different one on the next container start.
         let host_port = if database.external_port > 0 {
             database.external_port as u16
         } else {
-            0 // auto-assign
+            allocate_host_port(&state.db).await?
         };
+        pinned_host_port = Some(host_port);
         port_mappings.push(PortMapping::new(host_port, config.port));
     }
 
@@ -976,18 +1015,16 @@ async fn start_database_container_inner(
         ),
     );
 
-    // Get the assigned host port if public access is enabled
-    let external_port = if database.is_public() {
-        if database.external_port > 0 {
-            // Custom port was specified, use it
-            database.external_port
-        } else {
-            // Auto-assigned port, get from container info
+    // Record the port the container is actually published on.
+    let external_port = match pinned_host_port {
+        Some(port) => {
             let info = state.runtime.inspect(&container_id).await?;
-            info.host_port.unwrap_or(0) as i32
+            info.host_port_for(config.port)
+                .or(info.host_port)
+                .map(|p| p as i32)
+                .unwrap_or(port as i32)
         }
-    } else {
-        0
+        None => 0,
     };
 
     // Update database record
@@ -1903,6 +1940,54 @@ pub async fn import_database_dump(
         "message": "Database dump imported successfully",
         "database_id": id
     })))
+}
+
+#[cfg(test)]
+mod host_port_tests {
+    use super::allocate_host_port;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_db() -> crate::DbPool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        for ddl in [
+            "CREATE TABLE databases (name TEXT, external_port INTEGER, public_access INTEGER)",
+            "CREATE TABLE services (name TEXT, external_port INTEGER, public_access INTEGER)",
+        ] {
+            sqlx::query(ddl).execute(&pool).await.unwrap();
+        }
+        pool
+    }
+
+    #[tokio::test]
+    async fn allocates_a_real_port_instead_of_zero() {
+        let pool = test_db().await;
+        let port = allocate_host_port(&pool).await.unwrap();
+        assert_ne!(port, 0);
+        // The port is free at the moment it is handed out.
+        std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn never_returns_a_port_already_claimed_by_a_database() {
+        let pool = test_db().await;
+        let first = allocate_host_port(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO databases (name, external_port, public_access) VALUES ('taken', ?, 1)",
+        )
+        .bind(first as i32)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        for _ in 0..10 {
+            let next = allocate_host_port(&pool).await.unwrap();
+            assert_ne!(next, first);
+        }
+    }
 }
 
 #[cfg(test)]

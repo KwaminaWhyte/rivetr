@@ -482,6 +482,40 @@ pub(super) async fn check_databases(
             Ok(info) => {
                 if info.running {
                     result.databases_running += 1;
+
+                    // Keep the recorded port in step with reality. Containers
+                    // created with a dynamic binding get a new random host port
+                    // on every start, so the stored value drifts and any
+                    // connection URL built from it breaks.
+                    if database.is_public() {
+                        if let Some(actual) = info
+                            .host_port_for(database.internal_port as u16)
+                            .or(info.host_port)
+                        {
+                            if actual as i32 != database.external_port {
+                                tracing::info!(
+                                    database = %database.name,
+                                    old_port = database.external_port,
+                                    new_port = actual,
+                                    "Database host port changed, updating record"
+                                );
+                                if let Err(e) = sqlx::query(
+                                    "UPDATE databases SET external_port = ?, updated_at = datetime('now') WHERE id = ?",
+                                )
+                                .bind(actual as i32)
+                                .bind(&database.id)
+                                .execute(db)
+                                .await
+                                {
+                                    tracing::warn!(
+                                        database = %database.id,
+                                        error = %e,
+                                        "Failed to update database external port"
+                                    );
+                                }
+                            }
+                        }
+                    }
                 } else {
                     result.databases_stopped += 1;
                     tracing::warn!(
