@@ -174,6 +174,8 @@ export default function ServerSecurityPage() {
     autoUpdates !== settings.auto_security_updates ||
     maintWindow !== settings.maintenance_window;
   const packages = state?.packages ?? [];
+  const actionable = packages.filter((p) => !p.held);
+  const held = packages.length - actionable.length;
   const dockerPackages = packages.filter((p) => p.restarts_docker);
   // Before the first check the package manager is unknown, so allow trying.
   const autoSupported = data.supports_auto_updates || !state;
@@ -395,9 +397,10 @@ export default function ServerSecurityPage() {
                 ))}
               </ul>
               <p className="pt-3 text-sm text-muted-foreground">
-                {packages.length} package update{packages.length === 1 ? "" : "s"}
-                {state.packages.some((p) => p.security) &&
-                  `, ${state.packages.filter((p) => p.security).length} security`}
+                {actionable.length} package update{actionable.length === 1 ? "" : "s"}
+                {actionable.some((p) => p.security) &&
+                  `, ${actionable.filter((p) => p.security).length} security`}
+                {held > 0 && `, ${held} held (not upgraded until unheld)`}
               </p>
             </>
           )}
@@ -443,7 +446,7 @@ export default function ServerSecurityPage() {
         description={
           <>
             <p>
-              Installs {packages.length} package update{packages.length === 1 ? "" : "s"} on {name}.
+              Installs {actionable.length} package update{actionable.length === 1 ? "" : "s"} on {name}.
             </p>
             {dockerPackages.length > 0 && (
               <p className="text-amber-600 dark:text-amber-400">
