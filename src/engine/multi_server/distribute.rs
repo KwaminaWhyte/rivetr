@@ -43,6 +43,16 @@ pub fn choose_strategy(
     prebuilt_ref: Option<&str>,
     login: Option<RegistryLogin>,
 ) -> (DistributionStrategy, Option<&'static str>) {
+    // An explicit "ssh" choice wins even for a registry image: the target may be
+    // unable or unwilling to pull (private networks, offline hosts, rate limits).
+    if mode == ImageDistribution::Ssh {
+        return (
+            DistributionStrategy::SshStream {
+                image: local_image.to_string(),
+            },
+            None,
+        );
+    }
     if let Some(image_ref) = prebuilt_ref {
         return (
             DistributionStrategy::Registry {
@@ -53,12 +63,6 @@ pub fn choose_strategy(
         );
     }
     match (mode, pushed_ref) {
-        (ImageDistribution::Ssh, _) => (
-            DistributionStrategy::SshStream {
-                image: local_image.to_string(),
-            },
-            None,
-        ),
         (_, Some(image_ref)) => (
             DistributionStrategy::Registry {
                 image_ref: image_ref.to_string(),
@@ -72,7 +76,7 @@ pub fn choose_strategy(
             },
             Some("Registry distribution needs registry push with a registry URL; streaming over SSH instead"),
         ),
-        (ImageDistribution::Auto, None) => (
+        (ImageDistribution::Auto, None) | (ImageDistribution::Ssh, None) => (
             DistributionStrategy::SshStream {
                 image: local_image.to_string(),
             },
@@ -381,9 +385,26 @@ mod tests {
     }
 
     #[test]
-    fn strategy_prebuilt_registry_image_always_pulls() {
+    fn strategy_ssh_streams_even_a_registry_image() {
         let (s, _) = choose_strategy(
             ImageDistribution::Ssh,
+            "nginx:1.27",
+            None,
+            Some("nginx:1.27"),
+            None,
+        );
+        assert_eq!(
+            s,
+            DistributionStrategy::SshStream {
+                image: "nginx:1.27".into()
+            }
+        );
+    }
+
+    #[test]
+    fn strategy_prebuilt_registry_image_pulls_by_default() {
+        let (s, _) = choose_strategy(
+            ImageDistribution::Auto,
             "nginx:1.27",
             None,
             Some("nginx:1.27"),
