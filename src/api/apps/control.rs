@@ -589,8 +589,7 @@ pub async fn restart_app_with(
 
     // Apps placed on several servers restart every container in place
     // (stop, then start, re-reading the published ports).
-    if let Some(res) =
-        super::super::placement::start_stop_if_multi_server(state, app, false).await
+    if let Some(res) = super::super::placement::start_stop_if_multi_server(state, app, false).await
     {
         let _stopped = res?;
         if let Some(res) =
@@ -631,9 +630,9 @@ pub async fn restart_app_with(
             // Create a restart deployment record for the fallback path
             let triggered_by = actor.triggered_by;
             let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
-            log_restart_step(&state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
+            log_restart_step(state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "info",
                 &format!(
@@ -647,20 +646,20 @@ pub async fn restart_app_with(
             let _ = state.runtime.stop(&container_id).await;
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-            log_restart_step(&state, &restart_dep_id, "info", "Starting container...").await;
+            log_restart_step(state, &restart_dep_id, "info", "Starting container...").await;
 
             match state.runtime.start(&container_id).await {
                 Ok(()) => {}
                 Err(e) => {
                     log_restart_step(
-                        &state,
+                        state,
                         &restart_dep_id,
                         "error",
                         &format!("Failed to restart container: {}", e),
                     )
                     .await;
                     finish_restart_deployment(
-                        &state,
+                        state,
                         &restart_dep_id,
                         "failed",
                         Some(&container_id),
@@ -700,14 +699,14 @@ pub async fn restart_app_with(
             }
 
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "info",
                 "Container restarted successfully",
             )
             .await;
             finish_restart_deployment(
-                &state,
+                state,
                 &restart_dep_id,
                 "running",
                 Some(&container_id),
@@ -717,7 +716,7 @@ pub async fn restart_app_with(
             .await;
 
             audit_log(
-                &state,
+                state,
                 actions::APP_RESTART,
                 resource_types::APP,
                 Some(&app.id),
@@ -760,7 +759,7 @@ pub async fn restart_app_with(
     let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -784,7 +783,7 @@ pub async fn restart_app_with(
         &uuid::Uuid::new_v4().to_string()[..8]
     );
 
-    let env_vars = collect_env_vars_for_restart(&state, &app).await;
+    let env_vars = collect_env_vars_for_restart(state, app).await;
 
     let volumes = sqlx::query_as::<_, crate::db::Volume>(
         "SELECT id, app_id, name, host_path, container_path, read_only, created_at, updated_at FROM volumes WHERE app_id = ?",
@@ -868,7 +867,7 @@ pub async fn restart_app_with(
     };
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!("Starting new container from image: {}", image_tag),
@@ -885,14 +884,14 @@ pub async fn restart_app_with(
                 "Zero-downtime restart: failed to start new container"
             );
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "error",
                 &format!("Failed to start new container: {}", e),
             )
             .await;
             finish_restart_deployment(
-                &state,
+                state,
                 &restart_dep_id,
                 "failed",
                 None,
@@ -915,7 +914,7 @@ pub async fn restart_app_with(
     );
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -963,9 +962,9 @@ pub async fn restart_app_with(
                     let _ = runtime.remove(&cid).await;
                 });
                 let err_msg = "New container started but did not expose a host port (may have crashed at startup — check the app logs)";
-                log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+                log_restart_step(state, &restart_dep_id, "error", err_msg).await;
                 finish_restart_deployment(
-                    &state,
+                    state,
                     &restart_dep_id,
                     "failed",
                     Some(&new_container_id),
@@ -993,7 +992,7 @@ pub async fn restart_app_with(
         .unwrap_or_default();
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -1047,9 +1046,9 @@ pub async fn restart_app_with(
         });
 
         let err_msg = "New container did not become healthy within 60 seconds. Old container is still running.";
-        log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+        log_restart_step(state, &restart_dep_id, "error", err_msg).await;
         finish_restart_deployment(
-            &state,
+            state,
             &restart_dep_id,
             "failed",
             Some(&new_container_id),
@@ -1069,7 +1068,7 @@ pub async fn restart_app_with(
     );
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -1113,7 +1112,7 @@ pub async fn restart_app_with(
     }
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         "Proxy routes updated. Stopping old container...",
@@ -1193,7 +1192,7 @@ pub async fn restart_app_with(
     .await;
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         "Restart complete — container is running.",
@@ -1202,7 +1201,7 @@ pub async fn restart_app_with(
 
     // 10. Finalize the restart deployment record as 'running'.
     finish_restart_deployment(
-        &state,
+        state,
         &restart_dep_id,
         "running",
         Some(&new_container_id),
@@ -1213,7 +1212,7 @@ pub async fn restart_app_with(
 
     // Log audit event
     audit_log(
-        &state,
+        state,
         actions::APP_RESTART,
         resource_types::APP,
         Some(&app.id),

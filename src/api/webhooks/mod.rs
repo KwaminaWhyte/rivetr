@@ -176,9 +176,15 @@ pub(super) async fn freeze_gate(
     commit_message: Option<&str>,
 ) -> Option<String> {
     let hit = freeze::check_app_or_open(&state.db, app, trigger).await?;
-    if let Err(e) =
-        freeze::record_skipped_deployment(&state.db, &app.id, trigger, commit_sha, commit_message, &hit)
-            .await
+    if let Err(e) = freeze::record_skipped_deployment(
+        &state.db,
+        &app.id,
+        trigger,
+        commit_sha,
+        commit_message,
+        &hit,
+    )
+    .await
     {
         tracing::warn!(app = %app.name, "Failed to record frozen deployment: {}", e);
     }

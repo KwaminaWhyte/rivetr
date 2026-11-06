@@ -156,7 +156,12 @@ pub async fn execute_run(state: &Arc<AppState>, row: &ScheduleRow, run: &DueRun)
         .ok()
         .flatten();
     let Some(app) = app else {
-        finish_run(&state.db, &run_id, &RunOutcome::Failed("App not found".into())).await;
+        finish_run(
+            &state.db,
+            &run_id,
+            &RunOutcome::Failed("App not found".into()),
+        )
+        .await;
         return;
     };
 
@@ -199,7 +204,10 @@ pub async fn execute_run(state: &Arc<AppState>, row: &ScheduleRow, run: &DueRun)
             error_message: Some(reason.clone()),
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
-        if let Err(e) = NotificationService::new(state.db.clone()).send(&payload).await {
+        if let Err(e) = NotificationService::new(state.db.clone())
+            .send(&payload)
+            .await
+        {
             tracing::warn!(app = %app.name, "Failed to send scheduled restart notification: {}", e);
         }
     }

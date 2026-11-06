@@ -746,12 +746,13 @@ pub async fn deploy_by_tag(
                     results.push(failed(r, e.message()));
                     continue;
                 }
-                let team_id: Option<String> =
-                    sqlx::query_scalar::<_, Option<String>>("SELECT team_id FROM apps WHERE id = ?")
-                        .bind(&r.id)
-                        .fetch_optional(&state.db)
-                        .await?
-                        .flatten();
+                let team_id: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT team_id FROM apps WHERE id = ?",
+                )
+                .bind(&r.id)
+                .fetch_optional(&state.db)
+                .await?
+                .flatten();
                 if let Some(hit) = crate::engine::freeze::check_app_at(
                     &state.db,
                     &r.id,

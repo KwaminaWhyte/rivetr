@@ -43,6 +43,7 @@ export default [
     ]),
 
     route("templates", "routes/templates.tsx"),
+    route("templates/submit", "routes/templates.submit.tsx"),
     route("tags", "routes/tags.tsx"),
 
     // Monitoring
@@ -183,6 +184,7 @@ export default [
       route("backup", "routes/settings/backup.tsx"),
       route("branding", "routes/settings/branding.tsx"),
       route("ai", "routes/settings/ai.tsx"),
+      route("templates", "routes/settings/templates.tsx"),
       route("audit", "routes/settings/audit.tsx"),
     ]),
 

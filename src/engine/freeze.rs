@@ -257,7 +257,12 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    fn window(start: &str, end: &str, days: &str, include_previews: bool) -> DeploymentFreezeWindow {
+    fn window(
+        start: &str,
+        end: &str,
+        days: &str,
+        include_previews: bool,
+    ) -> DeploymentFreezeWindow {
         DeploymentFreezeWindow {
             id: "w1".into(),
             app_id: Some("a1".into()),
@@ -311,7 +316,10 @@ mod tests {
     fn include_previews_blocks_previews_too() {
         let w = [window("09:00", "17:00", "0,1,2,3,4,5,6", true)];
         for trigger in ALL {
-            assert!(first_blocking(&w, trigger, at(12, 0)).is_some(), "{trigger:?}");
+            assert!(
+                first_blocking(&w, trigger, at(12, 0)).is_some(),
+                "{trigger:?}"
+            );
         }
     }
 
@@ -376,9 +384,15 @@ mod tests {
         .unwrap();
         let now = at(12, 0);
         let t = DeployTrigger::GitWebhook;
-        assert!(check_app_at(&db, "a1", Some("t1"), t, now).await.unwrap().is_some());
+        assert!(check_app_at(&db, "a1", Some("t1"), t, now)
+            .await
+            .unwrap()
+            .is_some());
         // An app window does not freeze the rest of the team.
-        assert!(check_app_at(&db, "a2", Some("t1"), t, now).await.unwrap().is_none());
+        assert!(check_app_at(&db, "a2", Some("t1"), t, now)
+            .await
+            .unwrap()
+            .is_none());
 
         sqlx::query(
             "INSERT INTO deployment_freeze_windows (id, app_id, team_id, name, start_time, end_time) \
@@ -387,9 +401,15 @@ mod tests {
         .execute(&db)
         .await
         .unwrap();
-        assert!(check_app_at(&db, "a2", Some("t1"), t, now).await.unwrap().is_some());
+        assert!(check_app_at(&db, "a2", Some("t1"), t, now)
+            .await
+            .unwrap()
+            .is_some());
 
-        let hit = check_app_at(&db, "a2", Some("t1"), t, now).await.unwrap().unwrap();
+        let hit = check_app_at(&db, "a2", Some("t1"), t, now)
+            .await
+            .unwrap()
+            .unwrap();
         let dep = record_skipped_deployment(&db, "a2", t, Some("abc"), None, &hit)
             .await
             .unwrap();

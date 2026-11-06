@@ -68,7 +68,9 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 - Docker Compose multi-container deployments with optional raw mode (skip Rivetr network injection)
 - Service deployments: Deploy button with recorded history and live logs, build images from git or a server path and push to a registry, pre/post-deploy hooks (for example migrations), rollback by image digest, per-container logs/restart/terminal, encrypted env vars written to a managed `.env` (see [docs/reference/service-deployments.md](docs/reference/service-deployments.md))
 - 365 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
+- Community template submissions: anyone can submit a Docker Compose template from the Templates page; an instance admin approves or rejects it before it appears in the catalogue marked Community
 - Scheduled jobs: cron-based command execution inside running containers
+- Scheduled container restarts: cron-based restarts through the normal restart path (zero-downtime swap, replicas, every server of a multi-server app), with run history, skipped runs recorded and a notification when a run fails
 - AI-generated Docker Compose from a plain-language description
 
 ### Team Collaboration
@@ -94,7 +96,7 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 ### CI/CD
 
 - Deployment approval workflow: require sign-off before a deploy goes live
-- Deployment freeze windows: block deploys started from the dashboard or API during maintenance periods
+- Deployment freeze windows: block deploys during maintenance periods from every trigger (dashboard, API, Git and Docker Hub webhooks, scheduled deploys, deploy by commit or tag); preview deploys are exempt unless the window opts in, and a blocked webhook deploy is recorded as frozen
 - Scheduled deployments: trigger a deploy at a specific date and time
 - DockerHub webhook: auto-deploy when a new image is pushed
 - Watch paths: only trigger a deploy when specific file paths change in a push

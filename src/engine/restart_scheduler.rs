@@ -155,7 +155,9 @@ pub async fn claim_due(db: &crate::DbPool, now: DateTime<Utc>) -> Vec<(ScheduleR
                     );
                 }
             }
-            (Err(e), _) => tracing::warn!(schedule = %row.id, "Failed to claim scheduled restart: {}", e),
+            (Err(e), _) => {
+                tracing::warn!(schedule = %row.id, "Failed to claim scheduled restart: {}", e)
+            }
             _ => {}
         }
     }
@@ -213,7 +215,10 @@ mod tests {
     fn future_runs_wait() {
         assert_eq!(
             plan("0 3 * * *", Some(t(3, 0)), t(2, 59)),
-            Plan { run: None, next: None }
+            Plan {
+                run: None,
+                next: None
+            }
         );
     }
 

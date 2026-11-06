@@ -867,7 +867,9 @@ pub async fn queue_push_deploys(
                 continue;
             }
             Ok(None) => {}
-            Err(e) => tracing::warn!(service = %id, "Freeze window check failed, allowing deploy: {}", e),
+            Err(e) => {
+                tracing::warn!(service = %id, "Freeze window check failed, allowing deploy: {}", e)
+            }
         }
 
         let req = DeployRequest {

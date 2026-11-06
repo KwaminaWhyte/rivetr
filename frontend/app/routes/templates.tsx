@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 import {
   Activity,
@@ -21,6 +21,7 @@ import {
   Zap,
   FileText,
   MessageCircle,
+  Upload,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -208,13 +209,19 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Service Templates</h1>
           <p className="text-muted-foreground">
             Deploy pre-configured services with one click
           </p>
         </div>
+        <Button variant="outline" asChild>
+          <Link to="/templates/submit">
+            <Upload className="mr-2 h-4 w-4" />
+            Submit a template
+          </Link>
+        </Button>
       </div>
 
       {/* Search and Filter */}
@@ -483,11 +490,15 @@ function TemplateCard({
           <div className={`p-2 rounded-lg ${colorClass}`}>
             <Icon className="h-5 w-5" />
           </div>
-          {template.is_builtin && (
+          {template.is_community ? (
+            <Badge variant="secondary" className="text-xs">
+              Community
+            </Badge>
+          ) : template.is_builtin ? (
             <Badge variant="secondary" className="text-xs">
               Built-in
             </Badge>
-          )}
+          ) : null}
         </div>
         <CardTitle className="text-lg mt-3">{template.name}</CardTitle>
         {template.description && (

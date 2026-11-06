@@ -211,6 +211,7 @@ The token is `auth.admin_token` from `rivetr.toml`, or a token created via `POST
 | GET | `/api/apps/:id/uptime` | Current uptime status. |
 | GET | `/api/apps/:id/uptime/history` | Uptime history. |
 | POST | `/api/apps/:id/scheduled-restarts` | Create a scheduled restart. |
+| GET | `/api/apps/:id/scheduled-restarts/runs` | Recent runs of this app's scheduled restarts (status, times, error, restart deployment). |
 | GET | `/api/apps/:id/scheduled-restarts` | List scheduled restarts. |
 | PUT | `/api/apps/:id/scheduled-restarts/:restart_id` | Update a scheduled restart. |
 | DELETE | `/api/apps/:id/scheduled-restarts/:restart_id` | Delete a scheduled restart. |
