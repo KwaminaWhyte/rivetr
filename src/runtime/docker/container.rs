@@ -84,13 +84,19 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         HashMap::new();
     let mut exposed_ports: Vec<String> = Vec::new();
 
-    // Add primary port (legacy)
+    // Add primary port (legacy).
+    // Pin the host port: a dynamic binding (host port 0) makes Docker hand out a
+    // fresh port on every start, which silently orphans the proxy route that was
+    // registered against the previous port. That is how an app went down after a
+    // reboot: the route pointed at 32769 while the container had come back on 32771.
     let primary_port_binding = format!("{}/tcp", config.port);
+    // Keys whose host port Rivetr picked itself; re-picked on a port conflict.
+    let mut auto_pinned: Vec<String> = vec![primary_port_binding.clone()];
     port_bindings.insert(
         primary_port_binding.clone(),
         Some(vec![bollard::service::PortBinding {
             host_ip: Some("0.0.0.0".to_string()),
-            host_port: None, // Let Docker assign a random port
+            host_port: allocate_host_port().map(|p| p.to_string()),
         }]),
     );
     exposed_ports.push(primary_port_binding);
@@ -114,8 +120,10 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         exposed_ports.push(port_key);
     }
 
-    // Extra container ports routed to by individual domains, published on random host
-    // ports. A port already listed above keeps its existing binding.
+    // Extra container ports routed to by individual domains. Pin the host port
+    // for the same reason as the primary port: a dynamic binding changes on every
+    // start and strands the per-domain route that was built from the old port.
+    // A port already listed above keeps its existing binding.
     for port in &config.extra_ports {
         let key = format!("{}/tcp", port);
         if port_bindings.contains_key(&key) {
@@ -125,9 +133,10 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
             key.clone(),
             Some(vec![bollard::service::PortBinding {
                 host_ip: Some("0.0.0.0".to_string()),
-                host_port: None,
+                host_port: allocate_host_port().map(|p| p.to_string()),
             }]),
         );
+        auto_pinned.push(key.clone());
         exposed_ports.push(key);
     }
 
@@ -331,7 +340,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
     exposed_ports.sort();
     exposed_ports.dedup();
 
-    let container_config = ContainerCreateBody {
+    let mut container_config = ContainerCreateBody {
         image: Some(config.image.clone()),
         env: Some(final_env),
         exposed_ports: Some(exposed_ports),
@@ -346,17 +355,80 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
         .name(&config.name)
         .build();
 
-    let response = runtime
-        .client
-        .create_container(Some(options), container_config)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to create container: {}", e))?;
+    // A pinned port is picked by binding to port 0 briefly, so another process can
+    // take it before Docker binds it for real. Rather than failing the deploy, re-pick
+    // the ports Rivetr chose and try again (explicit user mappings are never changed).
+    let mut container_id: Option<String> = None;
+    let mut last_error: Option<anyhow::Error> = None;
+    for attempt in 1..=3 {
+        match runtime
+            .client
+            .create_container(Some(options.clone()), container_config.clone())
+            .await
+        {
+            Ok(response) => match runtime.client.start_container(&response.id, None).await {
+                Ok(()) => {
+                    container_id = Some(response.id);
+                    break;
+                }
+                Err(e) if attempt < 3 && is_port_conflict(&e) => {
+                    let _ = runtime
+                        .client
+                        .remove_container(
+                            &response.id,
+                            Some(
+                                bollard::query_parameters::RemoveContainerOptionsBuilder::new()
+                                    .force(true)
+                                    .build(),
+                            ),
+                        )
+                        .await;
+                    repin_ports(&mut container_config, &auto_pinned);
+                    tracing::warn!(
+                        attempt,
+                        name = %config.name,
+                        "Host port was taken between allocation and start; retrying with new ports: {}",
+                        e
+                    );
+                    last_error = Some(anyhow::anyhow!("Failed to start container: {}", e));
+                }
+                Err(e) => {
+                    let _ = runtime
+                        .client
+                        .remove_container(
+                            &response.id,
+                            Some(
+                                bollard::query_parameters::RemoveContainerOptionsBuilder::new()
+                                    .force(true)
+                                    .build(),
+                            ),
+                        )
+                        .await;
+                    last_error = Some(anyhow::anyhow!("Failed to start container: {}", e));
+                    break;
+                }
+            },
+            Err(e) if attempt < 3 && is_port_conflict(&e) => {
+                repin_ports(&mut container_config, &auto_pinned);
+                tracing::warn!(
+                    attempt,
+                    name = %config.name,
+                    "Host port was taken between allocation and create; retrying with new ports: {}",
+                    e
+                );
+                last_error = Some(anyhow::anyhow!("Failed to create container: {}", e));
+            }
+            Err(e) => {
+                last_error = Some(anyhow::anyhow!("Failed to create container: {}", e));
+                break;
+            }
+        }
+    }
+    let Some(container_id) = container_id else {
+        return Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Failed to create container")));
+    };
 
-    runtime
-        .client
-        .start_container(&response.id, None)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to start container: {}", e))?;
+    let response_id = container_id;
 
     // Connect the container to the primary network.
     // If a destination network is specified in RunConfig, use that instead of the default "rivetr" network.
@@ -367,7 +439,7 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
     } else {
         vec![config.name.clone()]
     };
-    connect_to_named_network(runtime, &response.id, primary_network, aliases.clone()).await;
+    connect_to_named_network(runtime, &response_id, primary_network, aliases.clone()).await;
 
     // Also connect to the per-app isolated network so that containers belonging
     // to the same app (e.g. replicas) can communicate privately while remaining
@@ -375,10 +447,10 @@ pub async fn run(runtime: &DockerRuntime, config: &RunConfig) -> Result<String> 
     if let Some(ref app_id) = config.app_id {
         let per_app_net = format!("rivetr-app-{}", app_id);
         ensure_named_network(runtime, &per_app_net).await;
-        connect_to_named_network(runtime, &response.id, &per_app_net, aliases).await;
+        connect_to_named_network(runtime, &response_id, &per_app_net, aliases).await;
     }
 
-    Ok(response.id)
+    Ok(response_id)
 }
 
 /// The shared Docker network that all Rivetr-managed containers join.
@@ -631,6 +703,34 @@ pub async fn remove(runtime: &DockerRuntime, container_id: &str) -> Result<()> {
 }
 
 /// Map a runtime-neutral healthcheck to Docker's `HealthConfig` (durations in ns).
+/// Docker reports a taken host port differently at create and start time.
+fn is_port_conflict(err: &bollard::errors::Error) -> bool {
+    let text = err.to_string().to_ascii_lowercase();
+    text.contains("port is already allocated") || text.contains("address already in use")
+}
+
+/// Re-pick the host ports Rivetr allocated for `keys`.
+fn repin_ports(container_config: &mut bollard::models::ContainerCreateBody, keys: &[String]) {
+    let Some(host_config) = container_config.host_config.as_mut() else {
+        return;
+    };
+    let Some(bindings) = host_config.port_bindings.as_mut() else {
+        return;
+    };
+    for key in keys {
+        let Some(port) = allocate_host_port() else {
+            continue;
+        };
+        bindings.insert(
+            key.clone(),
+            Some(vec![bollard::service::PortBinding {
+                host_ip: Some("0.0.0.0".to_string()),
+                host_port: Some(port.to_string()),
+            }]),
+        );
+    }
+}
+
 fn docker_health_config(
     hc: &crate::runtime::ContainerHealthcheck,
 ) -> bollard::models::HealthConfig {
@@ -643,6 +743,18 @@ fn docker_health_config(
         start_period: Some(i64::from(hc.start_period_secs) * NS),
         ..Default::default()
     }
+}
+
+/// Pick a host port to publish a container port on.
+///
+/// Binding to port 0 lets the kernel pick a free port; the listener is dropped
+/// immediately so Docker can bind it. Returns `None` if no port could be found,
+/// in which case the caller falls back to Docker's dynamic allocation.
+fn allocate_host_port() -> Option<u16> {
+    std::net::TcpListener::bind(("0.0.0.0", 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| addr.port())
+        .ok()
 }
 
 /// Published TCP ports as `(container_port, host_port)` pairs.
@@ -666,6 +778,23 @@ fn published_port_map(
             Some((container_port, host_port))
         })
         .collect();
+    out.sort_unstable();
+    out
+}
+
+/// Merge the ports pinned in `HostConfig` with the ports Docker reports in
+/// `NetworkSettings`.
+///
+/// `HostConfig` is filled in when the container is created, so it is the only
+/// source that is correct while a container is still starting. `NetworkSettings`
+/// reflects what is actually bound once the container is up and wins on conflict.
+fn merge_port_maps(
+    pinned: &HashMap<String, Option<Vec<bollard::service::PortBinding>>>,
+    actual: &HashMap<String, Option<Vec<bollard::service::PortBinding>>>,
+) -> Vec<(u16, u16)> {
+    let mut merged: HashMap<u16, u16> = published_port_map(pinned).into_iter().collect();
+    merged.extend(published_port_map(actual));
+    let mut out: Vec<(u16, u16)> = merged.into_iter().collect();
     out.sort_unstable();
     out
 }
@@ -704,7 +833,14 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         .network_settings
         .as_ref()
         .and_then(|ns| ns.ports.as_ref());
-    let port_map = ports.map(published_port_map).unwrap_or_default();
+    // Ports pinned at creation. They survive daemon restarts and are present even
+    // before the container has started, unlike NetworkSettings.
+    let pinned_ports = info
+        .host_config
+        .as_ref()
+        .and_then(|hc| hc.port_bindings.as_ref());
+    let empty = HashMap::new();
+    let port_map = merge_port_maps(pinned_ports.unwrap_or(&empty), ports.unwrap_or(&empty));
     // Containers created by this version record their primary port in a label; prefer
     // its binding so extra published ports never take over the route.
     let primary_port: Option<u16> = info
@@ -713,11 +849,10 @@ pub async fn inspect(runtime: &DockerRuntime, container_id: &str) -> Result<Cont
         .and_then(|c| c.labels.as_ref())
         .and_then(|l| l.get(crate::runtime::PRIMARY_PORT_LABEL))
         .and_then(|p| p.parse().ok());
-    let host_port = match primary_port {
-        Some(p) => crate::runtime::primary_host_port(&port_map, Some(p))
-            .or_else(|| ports.and_then(published_host_port)),
-        None => ports.and_then(published_host_port),
-    };
+    let host_port = primary_port
+        .and_then(|p| crate::runtime::primary_host_port(&port_map, Some(p)))
+        .or_else(|| ports.and_then(published_host_port))
+        .or_else(|| pinned_ports.and_then(published_host_port));
 
     let (running, status) = info
         .state
@@ -1441,6 +1576,55 @@ mod published_port_tests {
             }]),
         );
         assert_eq!(published_host_port(&ports), None);
+    }
+
+    #[test]
+    fn detects_port_conflicts_from_docker_errors() {
+        let taken = bollard::errors::Error::DockerResponseServerError {
+            status_code: 500,
+            message: "driver failed programming external connectivity: Bind for 0.0.0.0:32769 failed: port is already allocated".to_string(),
+        };
+        assert!(super::is_port_conflict(&taken));
+        let other = bollard::errors::Error::DockerResponseServerError {
+            status_code: 404,
+            message: "No such image".to_string(),
+        };
+        assert!(!super::is_port_conflict(&other));
+    }
+
+    #[test]
+    fn merge_keeps_pinned_ports_before_the_container_starts() {
+        // NetworkSettings is empty while the container is still starting; the
+        // ports pinned in HostConfig are the only correct answer then.
+        let mut pinned = HashMap::new();
+        pinned.insert("8080/tcp".to_string(), bound("32769"));
+        let empty = HashMap::new();
+        assert_eq!(super::merge_port_maps(&pinned, &empty), vec![(8080, 32769)]);
+    }
+
+    #[test]
+    fn merge_prefers_the_port_docker_actually_bound() {
+        let mut pinned = HashMap::new();
+        pinned.insert("8080/tcp".to_string(), bound("32769"));
+        let mut actual = HashMap::new();
+        actual.insert("8080/tcp".to_string(), bound("32771"));
+        assert_eq!(
+            super::merge_port_maps(&pinned, &actual),
+            vec![(8080, 32771)]
+        );
+    }
+
+    #[test]
+    fn merge_keeps_per_domain_ports_from_both_sources() {
+        let mut pinned = HashMap::new();
+        pinned.insert("8080/tcp".to_string(), bound("32769"));
+        pinned.insert("9000/tcp".to_string(), bound("32770"));
+        let mut actual = HashMap::new();
+        actual.insert("8080/tcp".to_string(), bound("32771"));
+        assert_eq!(
+            super::merge_port_maps(&pinned, &actual),
+            vec![(8080, 32771), (9000, 32770)]
+        );
     }
 }
 

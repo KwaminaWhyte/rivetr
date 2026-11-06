@@ -61,6 +61,32 @@ pub struct UpdateInstanceSettingsRequest {
     pub ai_max_tokens: Option<u32>,
 }
 
+/// Store the instance domain as a bare hostname.
+///
+/// People paste "https://example.com/" into the field. Stored with a scheme the
+/// proxy route never matches a Host header, and the dashboard 404s on its own
+/// domain (the API port keeps working). Normalising on the way in and on load
+/// makes both new and older values safe.
+pub fn normalize_instance_domain(input: &str) -> Option<String> {
+    let mut v = input.trim().to_ascii_lowercase();
+    for prefix in ["https://", "http://"] {
+        if let Some(rest) = v.strip_prefix(prefix) {
+            v = rest.to_string();
+            break;
+        }
+    }
+    // Drop any path, query or fragment.
+    if let Some(i) = v.find(['/', '?', '#']) {
+        v.truncate(i);
+    }
+    let v = v.trim_end_matches('.').to_string();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
 impl InstanceSettings {
     /// Load all instance settings from the database.
     pub async fn load(db: &SqlitePool) -> Result<Self, sqlx::Error> {
@@ -85,7 +111,10 @@ impl InstanceSettings {
 
         for row in rows {
             match row.key.as_str() {
-                "instance_domain" => settings.instance_domain = row.value,
+                "instance_domain" => {
+                    settings.instance_domain =
+                        row.value.as_deref().and_then(normalize_instance_domain)
+                }
                 "instance_name" => settings.instance_name = row.value,
                 "max_deployments_per_app" => {
                     settings.max_deployments_per_app =
@@ -124,6 +153,7 @@ impl InstanceSettings {
         let now = chrono::Utc::now().to_rfc3339();
 
         if let Some(domain) = &req.instance_domain {
+            let domain = normalize_instance_domain(domain);
             sqlx::query(
                 r#"
                 INSERT INTO instance_settings (key, value, updated_at)
@@ -131,7 +161,7 @@ impl InstanceSettings {
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
                 "#,
             )
-            .bind(if domain.is_empty() { None } else { Some(domain.as_str()) })
+            .bind(domain.as_deref())
             .bind(&now)
             .execute(db)
             .await?;
@@ -301,4 +331,27 @@ pub async fn set_setting_value(
     .execute(db)
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod instance_domain_tests {
+    use super::normalize_instance_domain;
+
+    #[test]
+    fn strips_scheme_paths_and_case() {
+        assert_eq!(
+            normalize_instance_domain("https://Rivetr.Example.com/"),
+            Some("rivetr.example.com".to_string())
+        );
+        assert_eq!(
+            normalize_instance_domain("  http://a.example.com:8080/panel?x=1  "),
+            Some("a.example.com:8080".to_string())
+        );
+        assert_eq!(
+            normalize_instance_domain("example.com."),
+            Some("example.com".to_string())
+        );
+        assert_eq!(normalize_instance_domain("   "), None);
+        assert_eq!(normalize_instance_domain("https://"), None);
+    }
 }
