@@ -478,13 +478,17 @@ impl ProxyHandler {
     /// Handle a single HTTP request
     async fn handle_request(
         &self,
-        req: Request<Incoming>,
+        mut req: Request<Incoming>,
         remote_addr: SocketAddr,
     ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
         let start = Instant::now();
         let method = req.method().clone();
         let uri = req.uri().clone();
         let path = uri.path();
+
+        // Keep the peer address on the request so the forwarding code can put it
+        // in X-Forwarded-For. Added even for the early returns below, harmless there.
+        req.extensions_mut().insert(super::ClientAddr(remote_addr));
 
         // Check for ACME HTTP-01 challenge (must happen before HTTPS redirect)
         if let Some(response) = self.handle_acme_challenge(path) {

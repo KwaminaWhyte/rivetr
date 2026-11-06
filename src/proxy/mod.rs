@@ -33,6 +33,12 @@ pub use tls::TlsConfig;
 
 pub use crate::db::RedirectRule;
 
+/// The address of the client that connected to the proxy. The handler attaches
+/// it to each request so the forwarding code can report it to the backend in
+/// `X-Forwarded-For`; the request itself carries no peer address.
+#[derive(Debug, Clone, Copy)]
+pub struct ClientAddr(pub SocketAddr);
+
 /// HTTP Basic Auth configuration for a backend
 #[derive(Debug, Clone, Default)]
 pub struct BasicAuthConfig {

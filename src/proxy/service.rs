@@ -13,7 +13,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::time::Duration;
 use tracing::{debug, info};
 
-use super::Backend;
+use super::{Backend, ClientAddr};
 
 /// Prepare a request that may have arrived over HTTP/2 for an HTTP/1.1 backend:
 /// set the version, restore the `Host` header from the `:authority`
@@ -48,6 +48,18 @@ pub(crate) fn downgrade_to_http1<B>(req: &mut Request<B>) {
         req.headers_mut().remove(TE);
     }
     *req.version_mut() = Version::HTTP_11;
+}
+
+/// Set the headers a backend reads to recover the real client address.
+///
+/// The value is always the peer that connected to Rivetr: a client-supplied
+/// `X-Forwarded-For` is discarded, because appending to it would let the client
+/// choose the address a backend trusts and defeat per-IP allowlists.
+fn set_forwarded_for(headers: &mut hyper::HeaderMap, peer: std::net::IpAddr) {
+    if let Ok(value) = HeaderValue::from_str(&peer.to_string()) {
+        headers.insert("x-forwarded-for", value.clone());
+        headers.insert("x-real-ip", value);
+    }
 }
 
 /// Service for forwarding HTTP requests to backends
@@ -120,11 +132,15 @@ impl ProxyService {
         *req.uri_mut() = backend_uri.parse()?;
 
         // Add/update forwarding headers
+        let client_ip = req.extensions().get::<ClientAddr>().map(|c| c.0.ip());
         let headers = req.headers_mut();
 
-        // Set X-Forwarded-For (append if exists)
-        // Note: In production, we'd extract the remote IP from the connection
-        // For now, we just ensure the header structure is correct
+        // Rivetr is the edge proxy, so the peer address is the client and it
+        // replaces any X-Forwarded-For the client sent (appending would let a
+        // client forge its address and defeat per-IP allowlists and rate limits).
+        if let Some(ip) = client_ip {
+            set_forwarded_for(headers, ip);
+        }
 
         // Set X-Forwarded-Proto to the scheme the client actually used.
         headers.insert(
@@ -198,8 +214,12 @@ impl ProxyService {
         // Rewrite the request URI and headers for the backend
         downgrade_to_http1(&mut req);
         *req.uri_mut() = format!("http://{}{}", backend_addr, path_and_query).parse()?;
+        let client_ip = req.extensions().get::<ClientAddr>().map(|c| c.0.ip());
         {
             let headers = req.headers_mut();
+            if let Some(ip) = client_ip {
+                set_forwarded_for(headers, ip);
+            }
             headers.insert(
                 "X-Forwarded-Proto",
                 hyper::header::HeaderValue::from_str(scheme)
@@ -270,5 +290,27 @@ impl ProxyService {
 impl Default for ProxyService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forwarded_for_is_the_peer_not_the_client_header() {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("1.2.3.4"));
+        set_forwarded_for(&mut headers, "203.0.113.9".parse().unwrap());
+        assert_eq!(headers.get("x-forwarded-for").unwrap(), "203.0.113.9");
+        assert_eq!(headers.get("x-real-ip").unwrap(), "203.0.113.9");
+    }
+
+    #[test]
+    fn forwarded_for_is_set_when_absent() {
+        let mut headers = hyper::HeaderMap::new();
+        set_forwarded_for(&mut headers, "2001:db8::1".parse().unwrap());
+        assert_eq!(headers.get("x-forwarded-for").unwrap(), "2001:db8::1");
+        assert_eq!(headers.get("x-real-ip").unwrap(), "2001:db8::1");
     }
 }
