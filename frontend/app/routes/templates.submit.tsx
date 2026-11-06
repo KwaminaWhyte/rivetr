@@ -129,7 +129,7 @@ export default function SubmitTemplatePage() {
   const [form, setForm] = useState<SubmissionInput>({
     name: "",
     description: "",
-    category: "other" as SubmissionInput["category"],
+    category: TEMPLATE_CATEGORIES[0].id as SubmissionInput["category"],
     icon: "",
     compose_content: "",
     env_hints: [],
@@ -142,7 +142,14 @@ export default function SubmitTemplatePage() {
     mutationFn: (data: SubmissionInput) => templateSubmissionsApi.submit(data),
     onSuccess: () => {
       toast.success("Submitted for review");
-      setForm({ name: "", description: "", category: "other", icon: "", compose_content: "", env_hints: [] });
+      setForm({
+        name: "",
+        description: "",
+        category: TEMPLATE_CATEGORIES[0].id as SubmissionInput["category"],
+        icon: "",
+        compose_content: "",
+        env_hints: [],
+      });
       setEnvRows([]);
       void queryClient.invalidateQueries({ queryKey: ["template-submissions"] });
     },
