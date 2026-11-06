@@ -3,7 +3,7 @@ use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};
 use bollard::models::{
     ContainerCreateBody, ContainerStatsResponse, ContainerSummaryStateEnum, ContainerUpdateBody,
-    EndpointSettings, NetworkConnectRequest, NetworkCreateRequest,
+    EndpointSettings, NetworkConnectRequest, NetworkCreateRequest, NetworkDisconnectRequest,
 };
 use bollard::query_parameters::{
     CreateContainerOptionsBuilder, CreateImageOptionsBuilder, InspectContainerOptionsBuilder,
@@ -528,6 +528,137 @@ pub async fn connect_to_rivetr_network(
                 e
             );
         }
+    }
+}
+
+/// Networks whose container aliases Rivetr owns: the shared network and the
+/// per-app ones. Anything else (the default `bridge`, a compose network) is left
+/// alone.
+pub(super) fn is_rivetr_network(name: &str) -> bool {
+    name == RIVETR_NETWORK || name.starts_with("rivetr-app-")
+}
+
+/// Rebuild the DNS records for every container on Rivetr's networks.
+///
+/// Entering or leaving swarm mode re-initialises libnetwork, which drops the
+/// endpoint records behind Docker's embedded DNS while leaving the containers
+/// attached. The next `connect_network` is then a no-op ("endpoint already
+/// exists"), so container names silently stop resolving and apps that talk to a
+/// database by container name start failing. Detaching and reattaching each
+/// endpoint makes Docker register the aliases again.
+pub async fn refresh_network_aliases(runtime: &DockerRuntime) {
+    let network = match runtime.client.inspect_network(RIVETR_NETWORK, None).await {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!("Could not inspect network '{}': {}", RIVETR_NETWORK, e);
+            return;
+        }
+    };
+    let members = network.containers.unwrap_or_default();
+
+    let mut repaired = 0usize;
+    for (container_id, member) in members {
+        let name = member
+            .name
+            .unwrap_or_default()
+            .trim_start_matches('/')
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+
+        let networks = match runtime
+            .client
+            .inspect_container(&container_id, None)
+            .await
+            .map(|info| {
+                info.network_settings
+                    .and_then(|s| s.networks)
+                    .unwrap_or_default()
+            }) {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!("Could not inspect container {}: {}", name, e);
+                continue;
+            }
+        };
+
+        for (net_name, endpoint) in networks {
+            if !is_rivetr_network(&net_name) {
+                continue;
+            }
+            let aliases = endpoint
+                .aliases
+                .filter(|a| !a.is_empty())
+                .unwrap_or_else(|| vec![name.clone()]);
+            reconnect_on_network(runtime, &net_name, &container_id, aliases).await;
+            repaired += 1;
+        }
+    }
+
+    tracing::info!(
+        endpoints = repaired,
+        "Refreshed Docker DNS records on Rivetr networks"
+    );
+}
+
+/// Detach a container from a network and attach it again with the same aliases.
+/// A missing endpoint is not an error: the attach below is what registers it.
+async fn reconnect_on_network(
+    runtime: &DockerRuntime,
+    net_name: &str,
+    container_id: &str,
+    aliases: Vec<String>,
+) {
+    match runtime
+        .client
+        .disconnect_network(
+            net_name,
+            NetworkDisconnectRequest {
+                container: container_id.to_string(),
+                force: Some(false),
+            },
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 404, ..
+        }) => {}
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 403, ..
+        }) => {
+            // Not attached, nothing to undo.
+        }
+        Err(e) => tracing::warn!(
+            "Could not detach container {} from network '{}': {}",
+            container_id,
+            net_name,
+            e
+        ),
+    }
+
+    match runtime
+        .client
+        .connect_network(
+            net_name,
+            NetworkConnectRequest {
+                container: container_id.to_string(),
+                endpoint_config: Some(EndpointSettings {
+                    aliases: Some(aliases),
+                    ..Default::default()
+                }),
+            },
+        )
+        .await
+    {
+        Ok(()) => {}
+        Err(e) => tracing::warn!(
+            "Could not attach container {} to network '{}': {}",
+            container_id,
+            net_name,
+            e
+        ),
     }
 }
 
@@ -1590,6 +1721,20 @@ mod published_port_tests {
             message: "No such image".to_string(),
         };
         assert!(!super::is_port_conflict(&other));
+    }
+
+    #[test]
+    fn only_rivetr_networks_are_repaired() {
+        assert!(super::is_rivetr_network("rivetr"));
+        assert!(super::is_rivetr_network(
+            "rivetr-app-f20be694-5f62-4cf0-866b-e658ea0f2f15"
+        ));
+        // Foreign networks must be left alone: detaching from them could drop
+        // connectivity Rivetr does not own.
+        assert!(!super::is_rivetr_network("bridge"));
+        assert!(!super::is_rivetr_network("host"));
+        assert!(!super::is_rivetr_network("coolify"));
+        assert!(!super::is_rivetr_network("rivetr-tools"));
     }
 
     #[test]

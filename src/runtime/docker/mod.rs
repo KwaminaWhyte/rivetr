@@ -221,4 +221,8 @@ impl ContainerRuntime for DockerRuntime {
             container::connect_to_rivetr_network(self, &id, vec![name]).await;
         }
     }
+
+    async fn refresh_shared_network(&self) {
+        container::refresh_network_aliases(self).await;
+    }
 }

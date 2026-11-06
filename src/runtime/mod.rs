@@ -495,6 +495,10 @@ pub trait ContainerRuntime: Send + Sync {
     /// Ensure the shared container network exists and connect all existing
     /// Rivetr-managed containers to it (no-op for non-Docker runtimes).
     async fn setup_shared_network(&self) {}
+    /// Re-register container name records on the shared and per-app networks.
+    /// Swarm init/leave resets libnetwork and silently drops them; callers run
+    /// this after any operation that re-initialises it (no-op outside Docker).
+    async fn refresh_shared_network(&self) {}
     /// Rename a container (used for zero-downtime swaps).
     /// Default implementation is a no-op; runtimes that support renaming override this.
     async fn rename_container(&self, _container_id: &str, _new_name: &str) -> Result<()> {

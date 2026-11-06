@@ -71,6 +71,7 @@ See `docs/architecture/architecture.md` (components, source layout, tech stack).
 - Compose services deploy through `src/engine/service_deploy/`; see `docs/reference/service-deployments.md`.
 - Frontend URL structure follows `docs/planning/ui-information-architecture.md`; when moving a page add a redirect in `frontend/app/lib/redirects.ts` and update `lib/nav.ts` / `lib/resource-nav.ts` (breadcrumbs and sidebars read from them).
 - Shared page blocks in `frontend/app/components/page/`; per-browser UI state via `usePersistedState` in `lib/persisted-state.ts`; theme engine in `lib/theme/`.
+- `docker swarm init` and `docker swarm leave` reset libnetwork and drop the endpoint records behind Docker's embedded DNS. Containers stay attached but their names stop resolving, so apps that reach a database by container name fail. `refresh_shared_network` repairs it; call it after anything that re-initialises libnetwork.
 
 ## Sub-Agents
 

@@ -102,6 +102,11 @@ pub async fn init_swarm(
         run_docker(&["swarm", "init"]).await?;
     }
 
+    // Entering swarm mode re-initialises libnetwork, which drops the endpoint
+    // records behind Docker's embedded DNS. Reconnect the containers so that
+    // apps keep resolving their databases by container name.
+    state.runtime.refresh_shared_network().await;
+
     // Get the manager join token
     let manager_token = run_docker(&["swarm", "join-token", "-q", "manager"])
         .await?
@@ -193,6 +198,10 @@ pub async fn leave_swarm(
     authz::require_privileged(&user)?;
 
     run_docker(&["swarm", "leave", "--force"]).await?;
+
+    // Leaving also re-initialises libnetwork and drops the Docker DNS records
+    // for attached containers, so rebuild them right away.
+    state.runtime.refresh_shared_network().await;
 
     // Clear stored swarm config
     sqlx::query("DELETE FROM swarm_config")

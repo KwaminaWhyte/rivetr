@@ -720,6 +720,8 @@ One app on several servers behind the proxy. See [remote-servers.md](remote-serv
 | POST | `/api/swarm/services/:id/scale` | Scale a Swarm service. |
 | GET | `/api/swarm/services/:id/logs` | Swarm service logs. |
 
+`POST /api/swarm/init` and `POST /api/swarm/leave` reset Docker's networking layer, which clears the container name records behind embedded DNS. Both endpoints reconnect every container on the `rivetr` and `rivetr-app-*` networks before returning, so applications keep resolving databases and services by container name.
+
 ## Bulk operations
 
 | Method | Path | Purpose |
