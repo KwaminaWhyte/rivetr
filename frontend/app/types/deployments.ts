@@ -101,7 +101,9 @@ export type DeploymentStatus =
   | "failed"
   | "stopped"
   | "replaced"
-  | "cancelled";
+  | "cancelled"
+  /** Blocked by a deployment freeze window (reason in error_message) */
+  | "skipped";
 
 export interface DeploymentLog {
   id: string;
@@ -125,6 +127,8 @@ export interface DeploymentFreezeWindow {
   days_of_week: string;
   is_active: boolean;
   created_at: string;
+  /** 1 when the window also blocks preview deployments (exempt by default) */
+  include_previews?: number | boolean;
 }
 
 /** Request body for creating a freeze window */
@@ -135,6 +139,10 @@ export interface CreateFreezeWindowRequest {
   days_of_week: string;
   app_id?: string;
   team_id?: string;
+  /** Also block preview deployments (default false) */
+  include_previews?: boolean;
+  /** Apply to every app and compose service of the app's team */
+  team_wide?: boolean;
 }
 
 /** Request body for rejecting a deployment */
@@ -204,6 +212,21 @@ export interface ScheduledRestart {
   last_restart: string | null;
   next_restart: string | null;
   created_at: string;
+}
+
+/** One run (or skip) of a scheduled restart */
+export interface ScheduledRestartRun {
+  id: string;
+  schedule_id: string;
+  app_id: string;
+  scheduled_for: string | null;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "succeeded" | "failed" | "skipped";
+  /** 1 when the run was late (Rivetr was down at the scheduled time) */
+  catch_up: number;
+  deployment_id: string | null;
+  error_message: string | null;
 }
 
 /** Request to create a scheduled restart */

@@ -56,6 +56,7 @@ mod replicas;
 mod resource_clone;
 mod routes;
 mod s3;
+pub mod scheduled_restarts;
 pub mod scopes;
 mod sdk;
 mod secret_managers;
@@ -75,6 +76,7 @@ mod swarm_spec;
 pub mod system;
 pub(crate) mod tags;
 mod teams;
+mod template_submissions;
 mod traffic_analytics;
 mod two_factor;
 mod user_preferences;
@@ -668,6 +670,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(monitoring::list_scheduled_restarts),
         )
         .route(
+            "/apps/{id}/scheduled-restarts/runs",
+            get(scheduled_restarts::list_runs),
+        )
+        .route(
             "/apps/{id}/scheduled-restarts/{restart_id}",
             put(monitoring::update_scheduled_restart),
         )
@@ -1096,6 +1102,34 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/templates/categories",
             get(service_templates::list_categories),
+        )
+        // Community template submissions (submit, review queue)
+        .route(
+            "/templates/submissions",
+            get(template_submissions::list_submissions)
+                .post(template_submissions::create_submission),
+        )
+        .route(
+            "/templates/submissions/mine",
+            get(template_submissions::list_my_submissions),
+        )
+        .route(
+            "/templates/submissions/pending-count",
+            get(template_submissions::pending_count),
+        )
+        .route(
+            "/templates/submissions/{id}",
+            get(template_submissions::get_submission)
+                .put(template_submissions::update_submission)
+                .delete(template_submissions::delete_submission),
+        )
+        .route(
+            "/templates/submissions/{id}/approve",
+            post(template_submissions::approve_submission),
+        )
+        .route(
+            "/templates/submissions/{id}/reject",
+            post(template_submissions::reject_submission),
         )
         .route("/templates/{id}", get(service_templates::get_template))
         .route(

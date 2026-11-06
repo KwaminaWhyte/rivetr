@@ -153,7 +153,7 @@ const APP_SECTIONS: { label?: string; items: Def[] }[] = [
   {
     label: "Automate",
     items: [
-      { id: "jobs", title: "Scheduled tasks", path: "/jobs", icon: CalendarClock, description: "Commands that run on a schedule inside the app container." },
+      { id: "jobs", title: "Scheduled tasks", path: "/jobs", icon: CalendarClock, description: "Commands that run on a schedule inside the app container, and scheduled restarts." },
       { id: "alerts", title: "Alerts", path: "/alerts", icon: Bell, description: "Resource usage thresholds that send notifications." },
       { id: "log-drains", title: "Log drains", path: "/log-drains", icon: Logs, description: "Forward logs to an external service." },
     ],

@@ -110,6 +110,8 @@ export interface ServiceTemplate {
   compose_template: string;
   env_schema: EnvSchemaEntry[];
   is_builtin: boolean;
+  /** Approved community submission (shows a Community badge) */
+  is_community?: boolean;
   created_at: string;
 }
 
@@ -216,7 +218,9 @@ export type ServiceDeploymentStatus =
   | "building"
   | "deploying"
   | "succeeded"
-  | "failed";
+  | "failed"
+  /** Blocked by a team-wide deployment freeze window */
+  | "skipped";
 
 export type ServiceDeploymentTrigger = "manual" | "webhook" | "rollback" | "api";
 

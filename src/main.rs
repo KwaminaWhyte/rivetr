@@ -401,6 +401,9 @@ async fn main() -> Result<()> {
         state.deploy_tx.clone(),
     );
 
+    // Start scheduled restart runner (scheduled_restarts cron entries)
+    rivetr::engine::restart_scheduler::spawn_restart_scheduler(state.clone());
+
     // Start backup scheduler (runs backup_schedules entries on their cron expressions)
     rivetr::engine::scheduler::spawn_backup_scheduler(
         rivetr::engine::backup_jobs::JobContext::from_state(&state),

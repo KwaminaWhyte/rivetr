@@ -10,11 +10,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks,
-    should_deploy_for_changed_files, ChangedFiles,
+    collect_changed_files, event_outcome, freeze_gate, handle_generic_preview_cleanup,
+    incr_webhooks, log_wh_event, preview_freeze_gate, should_deploy_for_changed_files,
+    ChangedFiles,
 };
 use crate::crypto;
 use crate::db::App;
+use crate::engine::freeze::DeployTrigger;
 use crate::engine::preview::{
     find_or_create_preview, run_preview_deployment, PreviewDeploymentInfo,
 };
@@ -203,6 +205,8 @@ async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let changed_files = collect_changed_files(payload.commits.iter());
+    let mut frozen: Vec<String> = Vec::new();
+    let mut queued = 0usize;
 
     for app in apps {
         if !should_deploy_for_changed_files(&app, &changed_files) {
@@ -213,6 +217,19 @@ async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
         let deployment_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
         let commit = payload.commits.first();
+
+        if let Some(note) = freeze_gate(
+            &state,
+            &app,
+            DeployTrigger::GitWebhook,
+            commit.map(|c| c.id.as_str()),
+            commit.map(|c| c.message.as_str()),
+        )
+        .await
+        {
+            frozen.push(note);
+            continue;
+        }
 
         sqlx::query(
             r#"
@@ -232,6 +249,26 @@ async fn handle_gitlab_push(state: Arc<AppState>, body: &[u8]) -> Result<StatusC
         if let Err(e) = state.deploy_tx.send((deployment_id, app.clone())).await {
             tracing::error!("Failed to queue deployment: {}", e);
         }
+        queued += 1;
+    }
+
+    // Record frozen deploys so they are visible under Webhook events.
+    if !frozen.is_empty() {
+        let (status, note) = event_outcome(queued, &frozen);
+        log_wh_event(
+            &state.db,
+            "gitlab",
+            "push",
+            Some(&payload.project.path_with_namespace),
+            Some(branch),
+            payload.commits.first().map(|c| c.id.as_str()),
+            body.len(),
+            (queued + frozen.len()) as i64,
+            status,
+            note.as_deref(),
+            None,
+        )
+        .await;
     }
 
     Ok(StatusCode::OK)
@@ -327,6 +364,19 @@ async fn handle_gitlab_mr_deploy(
         provider_type: "gitlab".to_string(),
         repo_full_name: payload.project.path_with_namespace.clone(),
     };
+
+    if preview_freeze_gate(
+        state,
+        app,
+        "gitlab",
+        &payload.project.path_with_namespace,
+        &payload.object_attributes.source_branch,
+        info.commit_sha.as_deref(),
+    )
+    .await
+    {
+        return Ok(());
+    }
 
     let preview = find_or_create_preview(&state.db, app, &info, &base_domain)
         .await

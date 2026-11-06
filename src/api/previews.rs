@@ -162,6 +162,18 @@ pub async fn redeploy_preview(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
+    // Freeze windows that include previews block a manual preview redeploy.
+    if let Some(hit) = crate::engine::freeze::check_app_or_open(
+        &state.db,
+        &app,
+        crate::engine::freeze::DeployTrigger::Preview,
+    )
+    .await
+    {
+        tracing::info!(preview_id = %preview.id, "Preview redeploy blocked: {}", hit.reason());
+        return Err(StatusCode::CONFLICT);
+    }
+
     tracing::info!(
         preview_id = %preview.id,
         app = %app.name,

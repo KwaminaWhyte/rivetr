@@ -9,9 +9,13 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::{handle_generic_preview_cleanup, incr_webhooks, log_wh_event, verify_github_signature};
+use super::{
+    event_outcome, freeze_gate, handle_generic_preview_cleanup, incr_webhooks, log_wh_event,
+    preview_freeze_gate, verify_github_signature,
+};
 use crate::crypto;
 use crate::db::App;
+use crate::engine::freeze::DeployTrigger;
 use crate::engine::preview::{
     find_or_create_preview, run_preview_deployment, PreviewDeploymentInfo,
 };
@@ -226,7 +230,22 @@ async fn handle_bitbucket_push(
             continue;
         }
 
+        let mut frozen: Vec<String> = Vec::new();
+        let mut queued = 0usize;
         for app in apps {
+            if let Some(note) = freeze_gate(
+                &state,
+                &app,
+                DeployTrigger::GitWebhook,
+                Some(new_ref.target.hash.as_str()),
+                new_ref.target.message.as_deref(),
+            )
+            .await
+            {
+                frozen.push(note);
+                continue;
+            }
+
             let deployment_id = Uuid::new_v4().to_string();
             let now = chrono::Utc::now().to_rfc3339();
 
@@ -254,8 +273,10 @@ async fn handle_bitbucket_push(
             }
 
             tracing::info!("Queued deployment {} for app {}", deployment_id, app.name);
+            queued += 1;
         }
 
+        let (status, note) = event_outcome(queued, &frozen);
         log_wh_event(
             &state.db,
             "bitbucket",
@@ -264,9 +285,9 @@ async fn handle_bitbucket_push(
             Some(branch),
             Some(new_ref.target.hash.as_str()),
             body.len(),
-            0, // logged per-change; approximate
-            "processed",
-            None,
+            (queued + frozen.len()) as i64,
+            status,
+            note.as_deref(),
             None,
         )
         .await;
@@ -351,6 +372,19 @@ async fn handle_bitbucket_preview_deploy(
         provider_type: "bitbucket".to_string(),
         repo_full_name: payload.repository.full_name.clone(),
     };
+
+    if preview_freeze_gate(
+        state,
+        app,
+        "bitbucket",
+        &payload.repository.full_name,
+        &payload.pullrequest.source.branch.name,
+        None,
+    )
+    .await
+    {
+        return Ok(());
+    }
 
     let preview = find_or_create_preview(&state.db, app, &info, &base_domain)
         .await

@@ -1,6 +1,7 @@
 //! DockerHub webhook handler — deploy apps when an image is pushed.
 
-use super::{incr_webhooks, log_wh_event};
+use super::{event_outcome, freeze_gate, incr_webhooks, log_wh_event};
+use crate::engine::freeze::DeployTrigger;
 use crate::{db::App, AppState};
 use axum::{
     body::Bytes,
@@ -119,7 +120,23 @@ pub async fn dockerhub_webhook(
     }
 
     let apps_count = apps.len() as i64;
+    let mut frozen: Vec<String> = Vec::new();
+    let mut queued = 0usize;
     for app in apps {
+        let image_ref = format!("{}:{}", image_name, tag);
+        if let Some(note) = freeze_gate(
+            &state,
+            &app,
+            DeployTrigger::RegistryWebhook,
+            Some(image_ref.as_str()),
+            Some(format!("DockerHub push: {}", image_ref).as_str()),
+        )
+        .await
+        {
+            frozen.push(note);
+            continue;
+        }
+
         let deployment_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -148,8 +165,10 @@ pub async fn dockerhub_webhook(
             deployment_id,
             app.name
         );
+        queued += 1;
     }
 
+    let (status, note) = event_outcome(queued, &frozen);
     log_wh_event(
         &state.db,
         "dockerhub",
@@ -159,8 +178,8 @@ pub async fn dockerhub_webhook(
         Some(tag.as_str()),
         body.len(),
         apps_count,
-        "processed",
-        None,
+        status,
+        note.as_deref(),
         None,
     )
     .await;

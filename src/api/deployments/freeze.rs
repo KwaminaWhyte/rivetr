@@ -3,12 +3,12 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use chrono::Datelike;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::{App, DeploymentFreezeWindow, User};
+use crate::engine::freeze;
 use crate::AppState;
 
 use crate::api::error::ApiError;
@@ -26,72 +26,47 @@ pub struct CreateFreezeWindowRequest {
     pub days_of_week: Option<String>,
     #[serde(default = "default_is_active")]
     pub is_active: bool,
+    /// Also block preview deployments (exempt by default).
+    #[serde(default)]
+    pub include_previews: bool,
+    /// Apply to every app and compose service of the app's team instead of
+    /// this app only.
+    #[serde(default)]
+    pub team_wide: bool,
 }
 
 fn default_is_active() -> bool {
     true
 }
 
-/// Check if current time is within any active freeze window for this app/team.
-/// Returns 409 Conflict if deployment is frozen.
+/// Check the app's freeze windows for a dashboard/API deploy.
+/// Returns 409 Conflict if deployment is frozen. Thin wrapper over the
+/// central check in `crate::engine::freeze`.
 pub async fn check_freeze_windows(
     state: &Arc<AppState>,
     app: &App,
     now: &str,
 ) -> Result<(), ApiError> {
-    // Parse current time to get HH:MM and day-of-week
+    check_freeze_for(state, app, now, freeze::DeployTrigger::Manual).await
+}
+
+/// Same as [`check_freeze_windows`] for any trigger.
+pub async fn check_freeze_for(
+    state: &Arc<AppState>,
+    app: &App,
+    now: &str,
+    trigger: freeze::DeployTrigger,
+) -> Result<(), ApiError> {
     let now_dt = chrono::DateTime::parse_from_rfc3339(now)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .unwrap_or_else(|_| chrono::Utc::now());
-
-    let current_time = now_dt.format("%H:%M").to_string();
-    // 0=Sun as per the schema convention
-    let current_dow = now_dt.weekday().num_days_from_sunday().to_string();
-
-    // Fetch active freeze windows for this app and/or team
-    let windows: Vec<DeploymentFreezeWindow> = if let Some(ref team_id) = app.team_id {
-        sqlx::query_as(
-            r#"
-            SELECT * FROM deployment_freeze_windows
-            WHERE is_active = 1
-              AND (app_id = ? OR team_id = ?)
-            "#,
-        )
-        .bind(&app.id)
-        .bind(team_id)
-        .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query_as("SELECT * FROM deployment_freeze_windows WHERE is_active = 1 AND app_id = ?")
-            .bind(&app.id)
-            .fetch_all(&state.db)
-            .await?
-    };
-
-    for window in &windows {
-        // Check if current day-of-week is in the window
-        let days: Vec<&str> = window.days_of_week.split(',').collect();
-        if !days.contains(&current_dow.as_str()) {
-            continue;
-        }
-
-        // Check if current time is within start_time..end_time (HH:MM strings)
-        let in_window = if window.start_time <= window.end_time {
-            current_time >= window.start_time && current_time < window.end_time
-        } else {
-            // Wraps midnight
-            current_time >= window.start_time || current_time < window.end_time
-        };
-
-        if in_window {
-            return Err(ApiError::conflict(format!(
-                "Deployment frozen: '{}' freeze window is active ({} - {} UTC)",
-                window.name, window.start_time, window.end_time
-            )));
-        }
+    let hit = freeze::check_app_at(&state.db, &app.id, app.team_id.as_deref(), trigger, now_dt)
+        .await
+        .map_err(|e| ApiError::internal(format!("Freeze window check failed: {e}")))?;
+    match hit {
+        Some(hit) => Err(ApiError::conflict(hit.reason())),
+        None => Ok(()),
     }
-
-    Ok(())
 }
 
 /// List freeze windows for an app
@@ -104,19 +79,21 @@ pub async fn list_freeze_windows(
         return Err(ApiError::validation_field("app_id", e));
     }
 
-    let app_exists: Option<(String,)> = sqlx::query_as("SELECT id FROM apps WHERE id = ?")
+    let app = sqlx::query_as::<_, App>("SELECT * FROM apps WHERE id = ?")
         .bind(&app_id)
         .fetch_optional(&state.db)
-        .await?;
+        .await?
+        .ok_or_else(|| ApiError::not_found("App not found"))?;
 
-    if app_exists.is_none() {
-        return Err(ApiError::not_found("App not found"));
-    }
-
+    // The app's own windows plus its team's team-wide windows.
     let windows = sqlx::query_as::<_, DeploymentFreezeWindow>(
-        "SELECT * FROM deployment_freeze_windows WHERE app_id = ? ORDER BY created_at DESC",
+        "SELECT * FROM deployment_freeze_windows \
+         WHERE app_id = ? OR (app_id IS NULL AND ? IS NOT NULL AND team_id = ?) \
+         ORDER BY created_at DESC",
     )
     .bind(&app_id)
+    .bind(&app.team_id)
+    .bind(&app.team_id)
     .fetch_all(&state.db)
     .await?;
 
@@ -154,6 +131,17 @@ pub async fn create_freeze_window(
         ));
     }
 
+    if req.team_wide && app.team_id.is_none() {
+        return Err(ApiError::bad_request(
+            "This app has no team, so a team-wide window cannot be created",
+        ));
+    }
+    let window_app_id: Option<&str> = if req.team_wide {
+        None
+    } else {
+        Some(app_id.as_str())
+    };
+
     let window_id = Uuid::new_v4().to_string();
     let days_of_week = req
         .days_of_week
@@ -163,12 +151,12 @@ pub async fn create_freeze_window(
     sqlx::query(
         r#"
         INSERT INTO deployment_freeze_windows
-          (id, app_id, team_id, name, start_time, end_time, days_of_week, is_active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, app_id, team_id, name, start_time, end_time, days_of_week, is_active, created_at, include_previews)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(&window_id)
-    .bind(&app_id)
+    .bind(window_app_id)
     .bind(&app.team_id)
     .bind(&req.name)
     .bind(&req.start_time)
@@ -176,6 +164,7 @@ pub async fn create_freeze_window(
     .bind(&days_of_week)
     .bind(req.is_active as i32)
     .bind(&now)
+    .bind(req.include_previews as i32)
     .execute(&state.db)
     .await?;
 
@@ -208,11 +197,16 @@ pub async fn delete_freeze_window(
         return Err(ApiError::forbidden("Only admins can delete freeze windows"));
     }
 
-    let result = sqlx::query("DELETE FROM deployment_freeze_windows WHERE id = ? AND app_id = ?")
-        .bind(&window_id)
-        .bind(&app_id)
-        .execute(&state.db)
-        .await?;
+    // The app's own window, or a team-wide window of the app's team.
+    let result = sqlx::query(
+        "DELETE FROM deployment_freeze_windows WHERE id = ? AND (app_id = ? \
+         OR (app_id IS NULL AND team_id = (SELECT team_id FROM apps WHERE id = ?)))",
+    )
+    .bind(&window_id)
+    .bind(&app_id)
+    .bind(&app_id)
+    .execute(&state.db)
+    .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("Freeze window not found"));

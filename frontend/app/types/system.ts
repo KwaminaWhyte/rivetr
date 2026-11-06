@@ -318,7 +318,7 @@ export interface WebhookEvent {
   commit_sha: string | null;
   payload_size: number | null;
   apps_triggered: number;
-  status: "received" | "processed" | "ignored" | "error";
+  status: "received" | "processed" | "ignored" | "frozen" | "error";
   error_message: string | null;
   received_at: string;
 }

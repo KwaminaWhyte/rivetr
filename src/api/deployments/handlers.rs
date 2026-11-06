@@ -207,8 +207,9 @@ pub async fn trigger_deploy(
     // Extract deploy options from request body
     let deploy_opts = body.unwrap_or_default();
 
-    // Check freeze windows before queuing (skip for upload apps — they are manual)
-    if !is_upload_app {
+    // Check freeze windows before queuing (skip for upload apps, they are
+    // manual). A deployment scheduled for later is checked when it is due.
+    if !is_upload_app && deploy_opts.scheduled_at.is_none() {
         check_freeze_windows(&state, &app, &now).await?;
     }
 

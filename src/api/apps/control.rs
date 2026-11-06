@@ -468,7 +468,7 @@ async fn create_restart_deployment(
     )
     .bind(&restart_deployment_id)
     .bind(&app.id)
-    .bind(format!("Manual restart triggered by {}", triggered_by))
+    .bind(format!("Restart triggered by {}", triggered_by))
     .bind(&now)
     .execute(&state.db)
     .await
@@ -561,16 +561,42 @@ pub async fn restart_app(
         .await?
         .ok_or_else(|| ApiError::not_found("App not found"))?;
 
+    let actor = RestartActor {
+        triggered_by: user.email.as_str(),
+        user_id: Some(user.id.as_str()),
+        client_ip: client_ip.as_deref(),
+    };
+    restart_app_with(&state, &app, &actor).await.map(Json)
+}
+
+/// Who asked for a restart (recorded on the deployment row and audit log).
+pub struct RestartActor<'a> {
+    /// Shown as "Restart triggered by ..." on the restart deployment.
+    pub triggered_by: &'a str,
+    pub user_id: Option<&'a str>,
+    pub client_ip: Option<&'a str>,
+}
+
+/// The app restart path shared by the Restart button and scheduled restarts:
+/// multi-server apps restart every container in place; single-server apps get
+/// a zero-downtime blue-green swap, falling back to restarting the existing
+/// container when there is no running deployment.
+pub async fn restart_app_with(
+    state: &Arc<AppState>,
+    app: &App,
+    actor: &RestartActor<'_>,
+) -> Result<AppStatusResponse, ApiError> {
+    let id = app.id.clone();
+
     // Apps placed on several servers restart every container in place
     // (stop, then start, re-reading the published ports).
-    if let Some(res) =
-        super::super::placement::start_stop_if_multi_server(&state, &app, false).await
+    if let Some(res) = super::super::placement::start_stop_if_multi_server(state, app, false).await
     {
         let _stopped = res?;
         if let Some(res) =
-            super::super::placement::start_stop_if_multi_server(&state, &app, true).await
+            super::super::placement::start_stop_if_multi_server(state, app, true).await
         {
-            return res;
+            return res.map(|Json(r)| r);
         }
     }
 
@@ -603,11 +629,11 @@ pub async fn restart_app(
                 })?;
 
             // Create a restart deployment record for the fallback path
-            let triggered_by = user.email.as_str();
-            let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
-            log_restart_step(&state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
+            let triggered_by = actor.triggered_by;
+            let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
+            log_restart_step(state, &restart_dep_id, "info", "Restart triggered (fallback: no running deployment found, restarting existing container)").await;
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "info",
                 &format!(
@@ -621,20 +647,20 @@ pub async fn restart_app(
             let _ = state.runtime.stop(&container_id).await;
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-            log_restart_step(&state, &restart_dep_id, "info", "Starting container...").await;
+            log_restart_step(state, &restart_dep_id, "info", "Starting container...").await;
 
             match state.runtime.start(&container_id).await {
                 Ok(()) => {}
                 Err(e) => {
                     log_restart_step(
-                        &state,
+                        state,
                         &restart_dep_id,
                         "error",
                         &format!("Failed to restart container: {}", e),
                     )
                     .await;
                     finish_restart_deployment(
-                        &state,
+                        state,
                         &restart_dep_id,
                         "failed",
                         Some(&container_id),
@@ -674,14 +700,14 @@ pub async fn restart_app(
             }
 
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "info",
                 "Container restarted successfully",
             )
             .await;
             finish_restart_deployment(
-                &state,
+                state,
                 &restart_dep_id,
                 "running",
                 Some(&container_id),
@@ -691,18 +717,18 @@ pub async fn restart_app(
             .await;
 
             audit_log(
-                &state,
+                state,
                 actions::APP_RESTART,
                 resource_types::APP,
                 Some(&app.id),
                 Some(&app.name),
-                Some(&user.id),
-                client_ip.as_deref(),
+                actor.user_id,
+                actor.client_ip,
                 None,
             )
             .await;
 
-            return Ok(Json(AppStatusResponse {
+            return Ok(AppStatusResponse {
                 app_id: id,
                 container_id: Some(container_id),
                 running: true,
@@ -711,7 +737,7 @@ pub async fn restart_app(
                 deployment_phase: "stable".to_string(),
                 active_deployment_id: Some(restart_dep_id),
                 uptime_seconds: None,
-            }));
+            });
         }
     };
 
@@ -730,11 +756,11 @@ pub async fn restart_app(
     })?;
 
     // 2. Create the restart deployment record (tracks this restart in the Deployments tab)
-    let triggered_by = user.email.as_str();
-    let restart_dep_id = create_restart_deployment(&state, &app, triggered_by).await?;
+    let triggered_by = actor.triggered_by;
+    let restart_dep_id = create_restart_deployment(state, app, triggered_by).await?;
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -758,14 +784,14 @@ pub async fn restart_app(
         &uuid::Uuid::new_v4().to_string()[..8]
     );
 
-    let env_vars = collect_env_vars_for_restart(&state, &app).await;
+    let env_vars = collect_env_vars_for_restart(state, app).await;
     // Resolve secret manager references for the new container. Values are masked in
     // this restart's log for as long as the guard lives (the rest of this handler).
     let _secrets_session = crate::secret_managers::session::SessionGuard::new(&restart_dep_id);
     let env_vars = match crate::secret_managers::resolve_app_env(
         &state.db,
-        get_encryption_key(&state).as_ref(),
-        &app,
+        get_encryption_key(state).as_ref(),
+        app,
         Some(&restart_dep_id),
         env_vars,
     )
@@ -773,15 +799,15 @@ pub async fn restart_app(
     {
         Ok(outcome) => {
             for w in &outcome.warnings {
-                log_restart_step(&state, &restart_dep_id, "warn", w).await;
+                log_restart_step(state, &restart_dep_id, "warn", w).await;
             }
             outcome.vars
         }
         Err(e) => {
             let msg = format!("{:#}", e);
-            log_restart_step(&state, &restart_dep_id, "error", &msg).await;
+            log_restart_step(state, &restart_dep_id, "error", &msg).await;
             finish_restart_deployment(
-                &state,
+                state,
                 &restart_dep_id,
                 "failed",
                 None,
@@ -875,7 +901,7 @@ pub async fn restart_app(
     };
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!("Starting new container from image: {}", image_tag),
@@ -892,14 +918,14 @@ pub async fn restart_app(
                 "Zero-downtime restart: failed to start new container"
             );
             log_restart_step(
-                &state,
+                state,
                 &restart_dep_id,
                 "error",
                 &format!("Failed to start new container: {}", e),
             )
             .await;
             finish_restart_deployment(
-                &state,
+                state,
                 &restart_dep_id,
                 "failed",
                 None,
@@ -922,7 +948,7 @@ pub async fn restart_app(
     );
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -970,9 +996,9 @@ pub async fn restart_app(
                     let _ = runtime.remove(&cid).await;
                 });
                 let err_msg = "New container started but did not expose a host port (may have crashed at startup — check the app logs)";
-                log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+                log_restart_step(state, &restart_dep_id, "error", err_msg).await;
                 finish_restart_deployment(
-                    &state,
+                    state,
                     &restart_dep_id,
                     "failed",
                     Some(&new_container_id),
@@ -1000,7 +1026,7 @@ pub async fn restart_app(
         .unwrap_or_default();
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -1054,9 +1080,9 @@ pub async fn restart_app(
         });
 
         let err_msg = "New container did not become healthy within 60 seconds. Old container is still running.";
-        log_restart_step(&state, &restart_dep_id, "error", err_msg).await;
+        log_restart_step(state, &restart_dep_id, "error", err_msg).await;
         finish_restart_deployment(
-            &state,
+            state,
             &restart_dep_id,
             "failed",
             Some(&new_container_id),
@@ -1076,7 +1102,7 @@ pub async fn restart_app(
     );
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         &format!(
@@ -1120,7 +1146,7 @@ pub async fn restart_app(
     }
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         "Proxy routes updated. Stopping old container...",
@@ -1200,7 +1226,7 @@ pub async fn restart_app(
     .await;
 
     log_restart_step(
-        &state,
+        state,
         &restart_dep_id,
         "info",
         "Restart complete — container is running.",
@@ -1209,7 +1235,7 @@ pub async fn restart_app(
 
     // 10. Finalize the restart deployment record as 'running'.
     finish_restart_deployment(
-        &state,
+        state,
         &restart_dep_id,
         "running",
         Some(&new_container_id),
@@ -1220,18 +1246,18 @@ pub async fn restart_app(
 
     // Log audit event
     audit_log(
-        &state,
+        state,
         actions::APP_RESTART,
         resource_types::APP,
         Some(&app.id),
         Some(&app.name),
-        Some(&user.id),
-        client_ip.as_deref(),
+        actor.user_id,
+        actor.client_ip,
         None,
     )
     .await;
 
-    Ok(Json(AppStatusResponse {
+    Ok(AppStatusResponse {
         app_id: id,
         container_id: Some(new_container_id),
         running: true,
@@ -1240,7 +1266,7 @@ pub async fn restart_app(
         deployment_phase: "stable".to_string(),
         active_deployment_id: Some(restart_dep_id),
         uptime_seconds: None,
-    }))
+    })
 }
 
 /// Get recent activity (audit log events) for a specific app.

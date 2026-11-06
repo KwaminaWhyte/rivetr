@@ -831,6 +831,32 @@ async fn check_scheduled_deployments(db: &DbPool, deploy_tx: &mpsc::Sender<(Stri
             continue;
         };
 
+        // A freeze window active when the deployment comes due skips it.
+        if let Some(hit) =
+            super::freeze::check_app_or_open(db, &app, super::freeze::DeployTrigger::Scheduled)
+                .await
+        {
+            let now = Utc::now().to_rfc3339();
+            let _ = sqlx::query(
+                "UPDATE deployments SET status = 'skipped', scheduled_at = NULL, \
+                 error_message = ?, finished_at = ? WHERE id = ?",
+            )
+            .bind(hit.reason())
+            .bind(&now)
+            .bind(&deployment_id)
+            .execute(db)
+            .await;
+            let _ = sqlx::query(
+                "INSERT INTO deployment_logs (deployment_id, level, message) VALUES (?, 'warn', ?)",
+            )
+            .bind(&deployment_id)
+            .bind(format!("{} Scheduled deployment skipped.", hit.reason()))
+            .execute(db)
+            .await;
+            tracing::info!(deployment_id = %deployment_id, app = %app.name, "Scheduled deployment skipped by freeze window");
+            continue;
+        }
+
         // Clear scheduled_at so this doesn't get picked up again, then queue
         if let Err(e) = sqlx::query("UPDATE deployments SET scheduled_at = NULL WHERE id = ?")
             .bind(&deployment_id)

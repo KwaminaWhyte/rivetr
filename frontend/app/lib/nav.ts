@@ -153,6 +153,7 @@ export const navAreas: NavArea[] = [
           { title: "Updates", url: "/settings/updates", adminOnly: true },
           { title: "AI", url: "/settings/ai" },
           { title: "Advanced", url: "/settings/advanced", adminOnly: true },
+          { title: "Template submissions", url: "/settings/templates", adminOnly: true },
         ],
       },
       {

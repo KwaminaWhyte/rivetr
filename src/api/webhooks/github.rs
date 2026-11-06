@@ -10,11 +10,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    collect_changed_files, handle_generic_preview_cleanup, incr_webhooks, record_delivery_id,
-    should_deploy_for_changed_files, update_wh_event, verify_github_signature, ChangedFiles,
+    collect_changed_files, event_outcome, freeze_gate, handle_generic_preview_cleanup,
+    incr_webhooks, preview_freeze_gate, record_delivery_id, should_deploy_for_changed_files,
+    update_wh_event, verify_github_signature, ChangedFiles,
 };
 use crate::crypto;
 use crate::db::{App, PreviewDeployment};
+use crate::engine::freeze::DeployTrigger;
 use crate::engine::preview::{
     find_or_create_preview, post_preview_comment, run_preview_deployment, PreviewDeploymentInfo,
 };
@@ -312,6 +314,8 @@ async fn handle_github_push(
 
     let changed_files = collect_changed_files(payload.commits.iter());
     let apps_count = apps.len() as i64;
+    let mut frozen: Vec<String> = Vec::new();
+    let mut queued = 0usize;
 
     for app in apps {
         if !should_deploy_for_changed_files(&app, &changed_files) {
@@ -324,6 +328,19 @@ async fn handle_github_push(
 
         let commit_sha = payload.head_commit.as_ref().map(|c| c.id.clone());
         let commit_message = payload.head_commit.as_ref().map(|c| c.message.clone());
+
+        if let Some(note) = freeze_gate(
+            &state,
+            &app,
+            DeployTrigger::GitWebhook,
+            commit_sha.as_deref(),
+            commit_message.as_deref(),
+        )
+        .await
+        {
+            frozen.push(note);
+            continue;
+        }
 
         // Atomically check for an active deployment and insert a new one if none exists.
         // Using BEGIN IMMEDIATE acquires SQLite's write lock upfront, so two concurrent
@@ -349,7 +366,7 @@ async fn handle_github_push(
                 sqlx::query_scalar(
                     "SELECT COUNT(*) FROM deployments \
                      WHERE app_id = ? AND commit_sha = ? \
-                     AND status NOT IN ('succeeded', 'failed', 'cancelled', 'replaced')",
+                     AND status NOT IN ('succeeded', 'failed', 'cancelled', 'replaced', 'skipped')",
                 )
                 .bind(&app.id)
                 .bind(sha)
@@ -403,8 +420,10 @@ async fn handle_github_push(
         }
 
         tracing::info!("Queued deployment {} for app {}", deployment_id, app.name);
+        queued += 1;
     }
 
+    let (status, note) = event_outcome(queued, &frozen);
     update_wh_event(
         &state.db,
         "github",
@@ -414,8 +433,8 @@ async fn handle_github_push(
         payload.head_commit.as_ref().map(|c| c.id.as_str()),
         body.len(),
         apps_count,
-        "processed",
-        None,
+        status,
+        note.as_deref(),
         delivery_id,
     )
     .await;
@@ -505,6 +524,19 @@ async fn handle_preview_deploy(
         provider_type: "github".to_string(),
         repo_full_name: payload.repository.full_name.clone(),
     };
+
+    if preview_freeze_gate(
+        state,
+        app,
+        "github",
+        &payload.repository.full_name,
+        &payload.pull_request.head.branch,
+        Some(&payload.pull_request.head.sha),
+    )
+    .await
+    {
+        return Ok(());
+    }
 
     let preview = find_or_create_preview(&state.db, app, &info, &base_domain)
         .await
