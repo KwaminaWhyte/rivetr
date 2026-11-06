@@ -729,7 +729,10 @@ impl ProxyHandler {
                             if let Some(h) = host.as_deref() {
                                 routes.mark_upstream_failed(h, &backend.addr());
                             }
-                            self.error_response(StatusCode::BAD_GATEWAY, "Backend unavailable")
+                            self.error_response(
+                                StatusCode::BAD_GATEWAY,
+                                "The application did not respond. It may be starting, crashed, or still deploying.",
+                            )
                         }
                     }
                 }
@@ -738,7 +741,7 @@ impl ProxyHandler {
                 warn!(host = ?host, "Backend is unhealthy");
                 self.error_response(
                     StatusCode::SERVICE_UNAVAILABLE,
-                    "Service temporarily unavailable",
+                    "The application is temporarily unavailable. It may be restarting or failing its health check.",
                 )
             }
             None => {
@@ -746,8 +749,8 @@ impl ProxyHandler {
                 self.error_response(
                     StatusCode::NOT_FOUND,
                     &format!(
-                        "No application found for host: {}",
-                        host.as_deref().unwrap_or("unknown")
+                        "No application is configured for {} yet.",
+                        host.as_deref().unwrap_or("this address")
                     ),
                 )
             }
@@ -817,7 +820,10 @@ impl ProxyHandler {
             Ok(response) => Ok(response),
             Err(e) => {
                 error!(error = %e, "WebSocket upgrade failed");
-                Ok(self.error_response(StatusCode::BAD_GATEWAY, "WebSocket upgrade failed"))
+                Ok(self.error_response(
+                    StatusCode::BAD_GATEWAY,
+                    "The WebSocket connection to the application could not be established.",
+                ))
             }
         }
     }
@@ -1003,41 +1009,10 @@ impl ProxyHandler {
 
     /// Create a 401 Unauthorized response with WWW-Authenticate header
     fn unauthorized_response(&self, realm: &str) -> Response<BoxBody<Bytes, hyper::Error>> {
-        let body = r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>401 Unauthorized - Rivetr</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: #f5f5f5;
-        }
-        .error {
-            text-align: center;
-            padding: 40px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 { color: #e74c3c; margin-bottom: 10px; }
-        p { color: #666; margin: 0; }
-        .code { font-size: 48px; color: #333; margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div class="error">
-        <div class="code">401</div>
-        <h1>Unauthorized</h1>
-        <p>This application requires authentication.</p>
-        <p style="margin-top: 10px; font-size: 12px;">Powered by Rivetr</p>
-    </div>
-</body>
-</html>"#;
+        let body = error_page(
+            StatusCode::UNAUTHORIZED,
+            "This application requires a username and password.",
+        );
 
         Response::builder()
             .status(StatusCode::UNAUTHORIZED)
@@ -1054,45 +1029,7 @@ impl ProxyHandler {
         status: StatusCode,
         message: &str,
     ) -> Response<BoxBody<Bytes, hyper::Error>> {
-        let body = format!(
-            r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>{} - Rivetr</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: #f5f5f5;
-        }}
-        .error {{
-            text-align: center;
-            padding: 40px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }}
-        h1 {{ color: #e74c3c; margin-bottom: 10px; }}
-        p {{ color: #666; margin: 0; }}
-        .code {{ font-size: 48px; color: #333; margin-bottom: 20px; }}
-    </style>
-</head>
-<body>
-    <div class="error">
-        <div class="code">{}</div>
-        <h1>{}</h1>
-        <p>Powered by Rivetr</p>
-    </div>
-</body>
-</html>"#,
-            status.as_u16(),
-            status.as_u16(),
-            message
-        );
+        let body = error_page(status, message);
 
         Response::builder()
             .status(status)
@@ -1101,6 +1038,85 @@ impl ProxyHandler {
             .body(Full::new(Bytes::from(body)).map_err(|e| match e {}).boxed())
             .unwrap_or_else(|_| empty_response(status))
     }
+}
+
+/// Escape text that goes into HTML content or an attribute value.
+///
+/// The proxy error page prints the request's `Host`, which any client controls,
+/// so the message cannot be interpolated raw.
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The page the proxy serves when it cannot reach an application.
+///
+/// Plain HTML on purpose: it is rendered by the proxy, which cannot depend on
+/// the dashboard bundle. It follows the dashboard's light and dark appearance
+/// through `prefers-color-scheme`.
+fn error_page(status: StatusCode, message: &str) -> String {
+    let code = status.as_u16();
+    let reason = escape_html(status.canonical_reason().unwrap_or("Request failed"));
+    let detail = escape_html(message);
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{code} {reason} - Rivetr</title>
+<style>
+:root {{
+  color-scheme: light dark;
+  --bg: #fafafa; --card: #ffffff; --fg: #18181b; --muted: #71717a;
+  --border: #e4e4e7; --chip: #f4f4f5; --dot: #ef4444;
+}}
+@media (prefers-color-scheme: dark) {{
+  :root {{ --bg: #09090b; --card: #18181b; --fg: #fafafa; --muted: #a1a1aa;
+           --border: #27272a; --chip: #27272a; --dot: #f87171; }}
+}}
+* {{ box-sizing: border-box; }}
+body {{
+  margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg); color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}}
+.card {{
+  width: 100%; max-width: 440px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 32px; text-align: center;
+}}
+.chip {{
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 20px;
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--chip); color: var(--muted); font-size: 12px; font-weight: 500;
+}}
+.chip span {{ width: 6px; height: 6px; border-radius: 999px; background: var(--dot); display: inline-block; }}
+h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; }}
+p {{ margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }}
+footer {{ margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="chip"><span></span>{code}</div>
+    <h1>{reason}</h1>
+    <p>{detail}</p>
+    <footer>Rivetr could not complete this request.</footer>
+  </main>
+</body>
+</html>"#
+    )
 }
 
 /// Build a header-less response with just a status and empty body.
@@ -1132,6 +1148,26 @@ mod tests {
         let values: Vec<_> = resp.headers().get_all("x-robots-tag").iter().collect();
         assert_eq!(values.len(), 1);
         assert_eq!(values[0], super::NOINDEX_HEADER_VALUE);
+    }
+
+    #[test]
+    fn error_page_escapes_the_host_in_the_message() {
+        let page = super::error_page(
+            StatusCode::NOT_FOUND,
+            "No application is configured for <script>alert(1)</script> yet.",
+        );
+        assert!(!page.contains("<script>"));
+        assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("<title>404 Not Found - Rivetr</title>"));
+        assert!(page.contains("<h1>Not Found</h1>"));
+    }
+
+    #[test]
+    fn escape_html_covers_every_dangerous_character() {
+        assert_eq!(
+            super::escape_html("a & b < c > d \" e ' f"),
+            "a &amp; b &lt; c &gt; d &quot; e &#39; f"
+        );
     }
 
     #[test]
