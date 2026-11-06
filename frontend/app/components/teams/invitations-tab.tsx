@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, Mail, MailPlus, Clock, RefreshCw, Trash2, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,6 +58,42 @@ function formatRelativeTime(dateStr: string): string {
   return `Expires in ${diffDays} days`;
 }
 
+/**
+ * Copy text on both secure and plain-HTTP dashboards. `navigator.clipboard`
+ * only exists in a secure context, so a dashboard served over HTTP (an IP or
+ * a bare host on port 8000) needs the textarea fallback or the button does
+ * nothing at all.
+ */
+async function copyText(text: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Permission denied or blocked: fall through to the legacy path.
+    }
+  }
+
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "-1000px";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  area.setSelectionRange(0, text.length);
+
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(area);
+  return ok;
+}
+
 export function InvitationsTab({
   pendingInvitations,
   currentUserRole,
@@ -73,12 +110,16 @@ export function InvitationsTab({
   const [inviteRole, setInviteRole] = useState<TeamRole>("developer");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const handleCopyLink = (invitation: TeamInvitation) => {
-    const url = `${window.location.origin}/invitations/accept?token=${invitation.token}`;
-    navigator.clipboard.writeText(url).then(() => {
+  const handleCopyLink = async (invitation: TeamInvitation) => {
+    const url = `${window.location.origin}/invitations/accept?token=${encodeURIComponent(invitation.token)}`;
+    if (await copyText(url)) {
       setCopiedId(invitation.id);
       setTimeout(() => setCopiedId(null), 2000);
-    });
+    } else {
+      toast.error("Could not copy the link. Copy it from here instead.", {
+        description: url,
+      });
+    }
   };
 
   const handleCreateInvitation = (e: React.FormEvent<HTMLFormElement>) => {
