@@ -19,7 +19,7 @@ done
 if [ "$BACKEND_ONLY" = false ]; then
   echo "→ Building frontend..."
   cd "$(dirname "$0")/../frontend"
-  npm run build --silent
+  npm run build > /dev/null 2>&1 || { echo "frontend build failed"; exit 1; }
   cd ..
   echo "  ✓ Frontend built"
 fi
