@@ -41,7 +41,9 @@ Webhook / dashboard / API -> API -> Engine (MPSC queue) -> Runtime (Docker/Podma
 - Axum REST API for apps, databases, services, servers, teams and settings; WebSocket and SSE for logs and terminals.
 - Git webhooks for GitHub, GitLab, Gitea, Bitbucket and DockerHub, with signature verification.
 - Auth: session tokens, `rvt_` API tokens, the admin token from `rivetr.toml`, OAuth, OIDC SSO, TOTP 2FA and passkeys.
-- `resource_authz_middleware` (`src/api/authz.rs`) enforces team ownership on every `/:id` resource route.
+- `resource_authz_middleware` (`src/api/authz.rs`) enforces team ownership on every `/:id` resource route. Fine-grained abilities (`db::models::rbac`) drive team roles, per-resource overrides and the team 2FA requirement through `authz::require`.
+- `src/api/scopes.rs` classifies every API route by token scope; one rule table drives both token checks and RBAC, and a test fails when a route under `/api` has no entry.
+- `src/api/secret_managers.rs` and `src/secret_managers/` hold external secret manager connections and deploy-time resolution; `src/api/placement.rs` and `engine/multi_server/` hold multi-server placements.
 - The built dashboard is served from the binary with SPA fallback.
 
 ### Deployment engine (`src/engine/`)
@@ -50,7 +52,9 @@ Webhook / dashboard / API -> API -> Engine (MPSC queue) -> Runtime (Docker/Podma
 - Jobs arrive on a Tokio MPSC channel (no Redis). A semaphore caps concurrent builds; the limit is adjustable at runtime from instance settings.
 - Builders: Dockerfile, Nixpacks, Railpack, Cloud Native Buildpacks (Heroku/Paketo), static sites, Docker Compose, registry images. Builds can run on a remote build server over SSH.
 - Compose services deploy through `engine/service_deploy/` (build, pre/post hooks, image digests, rollback), tracked in `service_deployments`. See [service-deployments.md](../reference/service-deployments.md).
-- Background loops (container monitor, scheduler, backups, stats, cleanup, disk monitor, updater, server ops) are wrapped in `utils::supervise::guarded()` so a panic restarts the loop instead of the process.
+- Multi-server apps (`engine/multi_server/`) build once, distribute the image by registry pull or `docker save | ssh docker load`, roll containers out in batches with per-target health checks and roll back on failure; the proxy pools the healthy upstreams (`proxy/balancer.rs`).
+- Scheduled restarts (`engine/restart_scheduler.rs`) run through the normal restart path; every deploy trigger, including webhooks, goes through the freeze-window check (`engine/freeze.rs`).
+- Background loops (container monitor, scheduler, backups, backup jobs, stats, cleanup, disk monitor, updater, server ops) are wrapped in `utils::supervise::guarded()` so a panic restarts the loop instead of the process.
 - Deployment state lives in the `deployments` table.
 
 ### Container runtime (`src/runtime/`)

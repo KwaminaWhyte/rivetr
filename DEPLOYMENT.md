@@ -107,6 +107,8 @@ build_cpu_limit = "2"
 build_memory_limit = "2g"
 
 [proxy]
+proxy_port = 80
+proxy_https_port = 443
 acme_enabled = true
 acme_email = "admin@example.com"
 acme_staging = false
@@ -181,6 +183,12 @@ sudo journalctl -u rivetr -n 100 --no-pager
 ## Configuration
 
 The installer writes `/opt/rivetr/rivetr.toml`. Every section and key is documented in [docs/reference/configuration.md](docs/reference/configuration.md); [`rivetr.example.toml`](rivetr.example.toml) is a copyable starter. Restart the service after editing it. Instance settings changed from the dashboard are stored in the database and override the matching keys in the file.
+
+## TLS certificates
+
+The HTTPS listener speaks HTTP/2 and HTTP/1.1 (ALPN) and picks a certificate per hostname by SNI, so every domain gets its own Let's Encrypt certificate and one failing domain cannot block the others.
+
+On the first start after upgrading from a version that used one shared certificate, Rivetr keeps serving that certificate while it issues per-domain ones in the background. Issuance is paced under Let's Encrypt limits (about 45 new certificates per registered domain per week), so a large install can take a while; adding a wildcard through a DNS provider covers many subdomains at once. Set the mode per domain in the dashboard (Domains page, Certificates card): automatic HTTP-01, wildcard via DNS-01 (Cloudflare, Route 53, Hetzner, DigitalOcean) or a custom uploaded certificate.
 
 ## Upgrading
 

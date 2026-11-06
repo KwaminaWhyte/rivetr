@@ -5,6 +5,8 @@ Goal: close every gap below and make the dashboard look and feel as polished as 
 
 Status key: `[ ]` todo, `[x]` done.
 
+**Status 2026-11-06: every batch below is done, verified and deployed to the dev server.**
+
 ## Shared rules for every batch
 
 - Migrations: each batch owns its numbers (A 123, B 124, C 125, E1 126, E2 127, E3 128). SQL must be idempotent; register it at the end of `run_migrations` in `src/db/mod.rs`. ALTER TABLE needs a column-exists guard like the existing ones.

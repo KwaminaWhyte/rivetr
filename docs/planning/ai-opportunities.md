@@ -1,6 +1,6 @@
 # AI Integration Opportunities for Rivetr
 
-Rivetr is a single-binary PaaS written in Rust that deploys applications from Git webhooks with minimal resource usage (~30MB RAM idle). Because all deployment state, logs, metrics, uptime checks, cost snapshots, and resource usage, is stored locally in a single SQLite database, Rivetr is uniquely positioned to offer AI-powered features without shipping user data to third-party analytics services. The AI layer is an optional enhancement: every feature degrades gracefully when no API key is configured, and the platform operates identically without it. This document catalogues twelve concrete AI integration opportunities, organized by implementation complexity and expected user impact.
+Rivetr is a single-binary PaaS written in Rust that deploys applications from Git webhooks with minimal resource usage (52 MB RSS while managing 30 containers, measured on 1.0.0). Because all deployment state, logs, metrics, uptime checks, cost snapshots, and resource usage, is stored locally in a single SQLite database, Rivetr is uniquely positioned to offer AI-powered features without shipping user data to third-party analytics services. The AI layer is an optional enhancement: every feature degrades gracefully when no API key is configured, and the platform operates identically without it. This document catalogues twelve concrete AI integration opportunities, organized by implementation complexity and expected user impact.
 
 ---
 

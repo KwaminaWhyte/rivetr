@@ -11,6 +11,8 @@ Reference documentation for developers and operators.
 | Reference | [reference/api.md](reference/api.md) | REST API reference |
 | Reference | [reference/service-templates.md](reference/service-templates.md) | Service template registry, grouped by category |
 | Reference | [reference/service-deployments.md](reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
+| Reference | [reference/backups.md](reference/backups.md) | Database, volume and instance backups: schedules, S3, restore, notifications |
+| Reference | [reference/secret-managers.md](reference/secret-managers.md) | Vault/OpenBao, Infisical, Doppler and AWS Secrets Manager at deploy time |
 | Reference | [reference/remote-servers.md](reference/remote-servers.md) | Remote servers: adding a server, non-root SSH users with passwordless sudo, Tailscale |
 | Planning | [planning/coolify-parity.md](planning/coolify-parity.md) | Coolify v4.6 parity batches |
 | Planning | [planning/ui-information-architecture.md](planning/ui-information-architecture.md) | Dashboard URL structure and naming |

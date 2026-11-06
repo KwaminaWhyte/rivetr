@@ -567,6 +567,35 @@ The pre-1.1 values `owner`, `admin`, `developer` and `viewer` are these presets 
 
 All `/api/tokens` routes need the `admin` scope when called with an API token.
 
+## External secret managers
+
+Team-scoped connections to Vault/OpenBao, Infisical, Doppler and AWS Secrets Manager. Credentials are encrypted at rest and never returned. See [secret-managers.md](secret-managers.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/secret-connections` | List connections (no secrets). |
+| POST | `/api/secret-connections` | Create: `name`, `provider`, `config`, `credentials`, optional `team_id`. |
+| GET | `/api/secret-connections/:id` | One connection. |
+| PUT | `/api/secret-connections/:id` | Update; blank credential fields keep the stored value. |
+| DELETE | `/api/secret-connections/:id` | Delete. |
+| POST | `/api/secret-connections/:id/test` | Test the stored credentials. |
+| POST | `/api/secret-connections/test` | Test unsaved settings. |
+| GET | `/api/secret-connections/:id/browse?path=` | List folders and key names (never values). |
+| GET/POST | `/api/:resource/:id/secret-imports` | List or add a whole-path import (`app`, `service`, `project`). |
+| DELETE | `/api/:resource/:id/secret-imports/:import_id` | Remove an import. |
+| GET/PUT | `/api/:resource/:id/secret-policy` | Failure policy: `fail` (default) or `last_known`. |
+
+## Multi-server placement
+
+One app on several servers behind the proxy. See [remote-servers.md](remote-servers.md#one-app-on-several-servers).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/apps/:id/placement` | Placement, rollout settings and current healthy upstreams. |
+| PUT | `/api/apps/:id/placement` | Replace the placement: `{"placements":[{"server_id":"localhost","replicas":1}, ...],"settings":{...}}`. An empty list returns the app to single-host deploys. |
+| GET | `/api/apps/placement-counts` | Number of servers per app (for the dashboard badge). |
+| GET | `/api/deployments/:id/targets` | Per-server status, upstream and log for a deployment. |
+
 ## CA certificates
 
 | Method | Path | Purpose |

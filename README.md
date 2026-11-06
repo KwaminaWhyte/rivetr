@@ -86,12 +86,15 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 
 ### Security and Authentication
 
-- Automatic HTTPS with Let's Encrypt and auto-renewal
+- Automatic HTTPS: one Let's Encrypt certificate per domain chosen by SNI (no shared-certificate domain limit), wildcard certificates via DNS-01 with Cloudflare, Route 53, Hetzner or DigitalOcean DNS, and custom certificate upload
+- HTTP/2 (with HTTP/1.1 fallback) on the HTTPS proxy, negotiated through ALPN; WebSocket upgrades keep working
+- Automatic renewal 30 days before expiry, per-domain backoff and Let's Encrypt rate-limit awareness
 - OAuth login: GitHub, Google, GitLab, Microsoft (Azure), Bitbucket
 - SSO with any OpenID Connect provider (for example Auth0, Keycloak, Azure AD, Okta)
 - TOTP-based 2FA with recovery codes
 - Passkey sign-in
 - AES-256-GCM encryption for secrets and SSH keys at rest
+- External secret managers at deploy time: HashiCorp Vault/OpenBao, Infisical, Doppler and AWS Secrets Manager through `secret://` references, resolved only during the deploy, masked in logs and never stored in Rivetr (see [docs/reference/secret-managers.md](docs/reference/secret-managers.md))
 - Personal API tokens for CI/CD and scripts (prefixed `rvt_`, stored as SHA-256 hashes): scopes `read`, `deploy`, `write`, `delete`, `secrets`, `admin` enforced on every API route and MCP tool, optional restriction to a team or projects, optional expiry, pause and resume, roll with a grace period, last use time and IP. A token never exceeds its owner's permissions.
 - API access policy for tokens (on/off and IP allowlist)
 - Rate limiting on API, webhook, and auth endpoints
@@ -297,6 +300,8 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 | [docs/reference/remote-servers.md](docs/reference/remote-servers.md) | Remote servers: adding, non-root sudo, Tailscale |
 | [docs/reference/service-templates.md](docs/reference/service-templates.md) | Catalogue of all 365 service templates by category |
 | [docs/reference/service-deployments.md](docs/reference/service-deployments.md) | Deploying, building, hooks, rollback and env for Docker Compose services |
+| [docs/reference/backups.md](docs/reference/backups.md) | Database, volume and instance backups: schedules, S3, restore, notifications |
+| [docs/reference/secret-managers.md](docs/reference/secret-managers.md) | External secret managers: Vault/OpenBao, Infisical, Doppler, AWS Secrets Manager |
 | [docs/research/competitive-gap-analysis.md](docs/research/competitive-gap-analysis.md) | Open gaps against Coolify, Dokploy and others (Nov 2026) |
 | [ansible/rivetr.yml](ansible/rivetr.yml) | Ansible playbook for automated server provisioning |
 | [live-testing/TESTING-GUIDE.md](live-testing/TESTING-GUIDE.md) | Manual testing procedures |

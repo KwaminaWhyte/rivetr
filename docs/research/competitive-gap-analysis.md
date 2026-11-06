@@ -36,4 +36,4 @@ Deferred or not a goal: SAML (see `docs/research/saml-decision.md`), HTTP/3, WAF
 
 ## Where Rivetr leads
 
-Single ~30MB binary with embedded SQLite; Podman support; preview environments on GitHub, GitLab, Gitea and Bitbucket; SSO, audit log, white label and fine-grained permissions without a paid tier; traffic analytics without an extra agent; rollback with pre-deploy database snapshots; cost tracking.
+Single binary of about 50 MB with embedded SQLite (52 MB RSS while managing 30 containers, measured on 1.0.0); Podman support; preview environments on GitHub, GitLab, Gitea and Bitbucket; SSO, audit log, white label and fine-grained permissions without a paid tier; traffic analytics without an extra agent; rollback with pre-deploy database snapshots; cost tracking.

@@ -66,6 +66,8 @@ See `docs/architecture/architecture.md` (components, source layout, tech stack).
 
 - Container operations go through the `ContainerRuntime` trait (`src/runtime/mod.rs`); implement new operations for both Docker and Podman.
 - Migrations are numbered files in `migrations/`, registered at the end of `run_migrations` in `src/db/mod.rs`, and must be idempotent.
+- Every route under `/api` needs a scope entry in `src/api/scopes.rs`; the unit test `every_api_route_has_a_scope` fails otherwise. Authorization goes through `authz::require`.
+- `frontend/node_modules` is ignored per machine; never commit it (it is not a symlink in git).
 - Compose services deploy through `src/engine/service_deploy/`; see `docs/reference/service-deployments.md`.
 - Frontend URL structure follows `docs/planning/ui-information-architecture.md`; when moving a page add a redirect in `frontend/app/lib/redirects.ts` and update `lib/nav.ts` / `lib/resource-nav.ts` (breadcrumbs and sidebars read from them).
 - Shared page blocks in `frontend/app/components/page/`; per-browser UI state via `usePersistedState` in `lib/persisted-state.ts`; theme engine in `lib/theme/`.

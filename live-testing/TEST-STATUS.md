@@ -124,6 +124,18 @@ Track which feature areas have been fully tested. Update after each testing sess
 
 ## Session Log
 
+### 2026-11-06: v1.0.0 (parity gaps and wired-up claims)
+- **Servers:** local instance (macOS, Docker Desktop) and the dev server (187.124.50.183)
+- **Tested for real:**
+  - [x] Database backup to S3 (adobe/s3mock bucket) and restore from S3; marker row verified after restore.
+  - [x] Vault (dev mode) connection, test, browse; app deployed with `secret://` references; container received the values; deployment logs and stored rows leaked none.
+  - [x] Multi-server deploy (Rivetr host plus a Docker-in-Docker SSH target): both containers healthy, proxy served 200s; forced-failure rollback observed.
+  - [x] Token scopes: read token list 200 and deploy 403; deploy token deploy 202 and delete 403; pause 401 then resume 200; roll returns a new secret.
+  - [x] Scheduled restart: per-minute cron produced a succeeded run.
+  - [x] HTTP/2 through the TLS listener with a custom uploaded certificate (h2 and HTTP/1.1 both 200); on the dev server every app domain serves HTTP/2 and per-domain certificates are issued one by one via HTTP-01.
+  - [x] OS patching: package update through a detached host job survived a Rivetr restart; reboot verified by boot time (server came back, 30 containers).
+- **Not tested live:** backup notifications (webhook channels require HTTPS), template submission review in a browser, Tailscale against a real tailnet, Swarm against a real cluster, TUI.
+
 ### 2026-05-02 evening: v0.10.21 (carry-forward fix sprint)
 - **Server:** rivetr-vm (10.211.55.5)
 - **Tester:** claude (3 sub-agents in parallel + inline live validation)
