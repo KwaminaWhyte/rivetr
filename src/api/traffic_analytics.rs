@@ -478,6 +478,19 @@ pub async fn set_server_analytics(
     }))
 }
 
+/// App ids whose traffic belongs in a team's report.
+///
+/// Unassigned apps (`team_id IS NULL`, created before teams existed) are shown
+/// in every team's app list by `GET /api/apps`, so their traffic must count
+/// here too; otherwise the app shows traffic on its own page and nothing on
+/// the monitoring page.
+async fn team_app_ids(db: &SqlitePool, team_id: &str) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM apps WHERE team_id = ? OR team_id IS NULL")
+        .bind(team_id)
+        .fetch_all(db)
+        .await
+}
+
 /// GET /api/analytics?range=&team_id=
 pub async fn team_analytics(
     State(state): State<Arc<AppState>>,
@@ -490,11 +503,7 @@ pub async fn team_analytics(
         None if authz::is_privileged_user(&user) => Scope::All,
         Some(tid) => {
             authz::authorize_team_filter(&state, &user, Some(tid)).await?;
-            let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM apps WHERE team_id = ?")
-                .bind(tid)
-                .fetch_all(&state.db)
-                .await?;
-            Scope::Apps(ids)
+            Scope::Apps(team_app_ids(&state.db, tid).await?)
         }
         None => {
             let rows: Vec<(String, Option<String>)> =
@@ -678,5 +687,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rep.totals.requests, 0);
+    }
+
+    #[tokio::test]
+    async fn team_scope_includes_unassigned_apps() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = crate::db::init(dir.path()).await.unwrap();
+        sqlx::query(
+            "INSERT INTO teams (id, name, slug) VALUES \
+             ('team-1', 'One', 'one'), ('team-2', 'Two', 'two')",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO apps (id, name, git_url, team_id) VALUES \
+             ('a1', 'one', 'https://example.com/one.git', 'team-1'), \
+             ('a2', 'two', 'https://example.com/two.git', 'team-2'), \
+             ('a3', 'legacy', 'https://example.com/legacy.git', NULL)",
+        )
+        .execute(&db)
+        .await
+        .unwrap();
+
+        let mut ids = team_app_ids(&db, "team-1").await.unwrap();
+        ids.sort();
+        assert_eq!(ids, vec!["a1".to_string(), "a3".to_string()]);
     }
 }
