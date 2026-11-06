@@ -7,7 +7,7 @@ Thank you for your interest in contributing to Rivetr. This document covers prer
 | Tool | Version | Notes |
 |---|---|---|
 | [Rust](https://rustup.rs/) | 1.95+ | Install via rustup |
-| [Node.js](https://nodejs.org/) | 20+ | For frontend development |
+| [Node.js](https://nodejs.org/) | 22.22+ | For frontend development (React Router 8 requires it) |
 | Docker or Podman | Docker 24+ / Podman 4+ | Required for testing deployments |
 | Git | Any recent version | |
 

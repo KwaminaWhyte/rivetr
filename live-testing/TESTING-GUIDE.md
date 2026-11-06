@@ -1,6 +1,6 @@
 # Rivetr Comprehensive Testing Guide
 
-Covers v0.3 through v0.10. Each item is a checklist box so you can check off tests as you run them.
+Covers v0.3 through v1.0. Each item is a checklist box so you can check off tests as you run them. New in 1.0.0: per-domain certificates and HTTP/2, S3 backup restore, external secret managers, scoped API tokens and roles, multi-server apps, scheduled restarts and community templates; the 2026-11-06 entry in [TEST-STATUS.md](./TEST-STATUS.md) records which of these were verified.
 
 **How to use:** Set `TOKEN` and `SERVER` before running curl commands.
 ```bash
