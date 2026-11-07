@@ -1,15 +1,13 @@
 import { useState } from "react";
 import { useOutletContext } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import type { ManagedDatabase } from "@/types/api";
-import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, Check, HardDrive, FolderOpen, Database, Loader2, RefreshCw } from "lucide-react";
+import { Copy, Check, HardDrive, FolderOpen, Database } from "lucide-react";
 
 export function meta() {
   return [
@@ -58,30 +56,9 @@ const DATA_PATHS: Record<string, { path: string; description: string }> = {
   },
 };
 
-/** Human-readable bytes, matching the resource tiles on the overview page. */
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-}
-
 export default function DatabaseStorageTab() {
   const { database } = useOutletContext<OutletContext>();
   const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  // Measured by `du -sb` inside the running container, so it follows the data
-  // directory rather than the volume mount. Slower than a live metric, hence
-  // the longer interval and the manual refresh.
-  const stats = useQuery({
-    queryKey: ["database-stats", database.id],
-    queryFn: () => api.getDatabaseStats(database.id),
-    refetchInterval: 60_000,
-    enabled: database.status === "running",
-    retry: false,
-  });
-  const storageBytes = stats.data?.storage_bytes;
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -262,64 +239,6 @@ export default function DatabaseStorageTab() {
         </CardContent>
       </Card>
 
-      {/* Storage Stats Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Storage Statistics</CardTitle>
-          <CardDescription>Current storage usage</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="text-3xl font-semibold tracking-tight tabular-nums">
-                {database.status !== "running" ? (
-                  <span className="text-lg font-normal text-muted-foreground">
-                    Database is not running
-                  </span>
-                ) : stats.isLoading ? (
-                  <span className="inline-flex items-center gap-2 text-lg font-normal text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    Measuring…
-                  </span>
-                ) : storageBytes === undefined ? (
-                  <span className="text-lg font-normal text-muted-foreground">
-                    Not available
-                  </span>
-                ) : (
-                  formatBytes(storageBytes)
-                )}
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Data directory:{" "}
-                <code className="rounded bg-muted px-1 text-xs">
-                  {DATA_PATHS[database.db_type]?.path ?? "/data"}
-                </code>
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => stats.refetch()}
-              disabled={database.status !== "running" || stats.isFetching}
-            >
-              <RefreshCw className={stats.isFetching ? "animate-spin" : undefined} />
-              Refresh
-            </Button>
-          </div>
-          {storageBytes !== undefined && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Measured inside the container with <code className="rounded bg-muted px-1">du -sb</code>{" "}
-              and refreshed every minute. Backups and WAL files are included.
-            </p>
-          )}
-          {stats.error && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Could not measure the data directory. The container may be starting, or its image
-              has no <code className="rounded bg-muted px-1">du</code>.
-            </p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

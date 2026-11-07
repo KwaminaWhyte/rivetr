@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EnvironmentBadge } from "@/components/environment-badge";
+import { AppFavicon } from "@/components/apps/app-favicon";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -356,7 +357,15 @@ export function AppsTab({ project, projectId }: AppsTabProps) {
                             />
                           </TableCell>
                           <TableCell className="font-medium">
-                            <Link to={`/apps/${app.id}`} className="hover:underline">
+                            <Link
+                              to={`/apps/${app.id}`}
+                              className="inline-flex items-center gap-2 hover:underline"
+                            >
+                              <AppFavicon
+                                appId={app.id}
+                                className="size-4"
+                                fallback={<Box className="size-4 text-muted-foreground" />}
+                              />
                               {app.name}
                             </Link>
                           </TableCell>

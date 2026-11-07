@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Link } from "react-router";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Box, Database, Globe, Layers, Plus, Settings } from "lucide-react";
+import { AppFavicon } from "@/components/apps/app-favicon";
 import { ResourceStatus } from "@/components/page";
 import { ServerCountBadge } from "@/components/server-count-badge";
 import { cn } from "@/lib/utils";
@@ -108,7 +109,15 @@ function ResourceNodeView({ data }: NodeProps<ResourceNode>) {
       )}
       <div className="flex items-start gap-2.5">
         <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/50 text-muted-foreground">
-          <Icon className="size-4" />
+          {resource.kind === "app" ? (
+            <AppFavicon
+              appId={resource.id}
+              className="size-5"
+              fallback={<Icon className="size-4" />}
+            />
+          ) : (
+            <Icon className="size-4" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium leading-5">{resource.name}</div>

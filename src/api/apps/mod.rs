@@ -14,6 +14,7 @@ use super::validation::{
 
 mod control;
 mod crud;
+mod favicon;
 mod logs;
 mod sharing;
 mod upload;
@@ -26,6 +27,7 @@ pub use crud::{
     create_app, delete_app, get_app, get_github_actions_workflow, list_app_statuses, list_apps,
     update_app,
 };
+pub use favicon::get_app_favicon;
 pub use logs::stream_app_logs;
 pub use sharing::{create_app_share, delete_app_share, list_app_shares, list_apps_with_sharing};
 pub use upload::upload_create_app;

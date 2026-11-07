@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AppFavicon } from "@/components/apps/app-favicon";
 import { EnvironmentBadge } from "@/components/environment-badge";
 import { ServerCountBadge } from "@/components/server-count-badge";
 import { api } from "@/lib/api";
@@ -34,6 +35,7 @@ import {
   Copy,
   WrenchIcon,
   Link2,
+  Box,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -432,6 +434,13 @@ export default function AppDetailLayout() {
         return (
           <>
             <PageHeader
+              icon={
+                <AppFavicon
+                  appId={app.id}
+                  className="size-6"
+                  fallback={<Box className="size-5" />}
+                />
+              }
               title={app.name}
               description={
                 <span className="break-all">

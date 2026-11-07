@@ -131,6 +131,7 @@ export const api = {
   // Apps
   getApps: appsApi.getApps,
   getApp: appsApi.getApp,
+  getAppFavicon: appsApi.getAppFavicon,
   createApp: appsApi.createApp,
   updateApp: appsApi.updateApp,
   deleteApp: appsApi.deleteApp,

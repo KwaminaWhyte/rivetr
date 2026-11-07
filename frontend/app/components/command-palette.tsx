@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Database, FolderKanban, Layers, Plus, CornerDownRight, History } from "lucide-react";
+import { AppFavicon } from "@/components/apps/app-favicon";
 
 import {
   CommandDialog,
@@ -190,7 +191,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   value={`app ${a.name} ${a.id}`}
                   onSelect={() => go(`/apps/${a.id}`, a.name, "app")}
                 >
-                  <Box />
+                  <AppFavicon appId={a.id} className="size-4" fallback={<Box />} />
                   <span>{a.name}</span>
                 </CommandItem>
               ))}

@@ -50,7 +50,34 @@ import type {
 } from "@/types/api";
 import { getStoredToken } from "./core";
 
+/**
+ * Favicons are fetched with the auth header, which `<img>` cannot send, so they
+ * become blob URLs. One request per app per session; the server caches the
+ * bytes for hours.
+ */
+const faviconCache = new Map<string, Promise<string | null>>();
+
+async function fetchFavicon(appId: string): Promise<string | null> {
+  const token = getStoredToken();
+  const res = await fetch(`/api/apps/${appId}/favicon`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  return blob.size > 0 ? URL.createObjectURL(blob) : null;
+}
+
+/** The app's favicon as an object URL, or null when it has none. */
+export function getAppFavicon(appId: string): Promise<string | null> {
+  const cached = faviconCache.get(appId);
+  if (cached) return cached;
+  const promise = fetchFavicon(appId).catch(() => null);
+  faviconCache.set(appId, promise);
+  return promise;
+}
+
 export const appsApi = {
+  getAppFavicon,
   // -------------------------------------------------------------------------
   // App CRUD
   // -------------------------------------------------------------------------

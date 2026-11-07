@@ -4,6 +4,7 @@ import { Box, Database, Layers, Plus, Settings2, Users } from "lucide-react";
 
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { AppFavicon } from "@/components/apps/app-favicon";
 import { CrumbSeparator, CrumbSwitcher, type CrumbOption } from "@/components/shell/crumb-switcher";
 import { TopBarTarget } from "@/components/shell/top-bar-slot";
 import { useBreadcrumb, type BreadcrumbItem } from "@/lib/breadcrumb-context";
@@ -68,7 +69,13 @@ function siblingResources(project?: ProjectWithApps): CrumbOption[] {
       label: a.name,
       href: `/apps/${a.id}`,
       hint: "App",
-      icon: <Box className="size-3.5 text-muted-foreground" />,
+      icon: (
+        <AppFavicon
+          appId={a.id}
+          className="size-3.5"
+          fallback={<Box className="size-3.5 text-muted-foreground" />}
+        />
+      ),
     })),
     ...(project.databases ?? []).map((d) => ({
       id: d.id,
@@ -185,6 +192,15 @@ function ResourceCrumbs({ match }: { match: ResourceMatch }) {
         key="resource"
         label={info.name ?? "…"}
         href={match.base}
+        icon={
+          match.kind === "app" ? (
+            <AppFavicon
+              appId={match.id}
+              className="size-4"
+              fallback={<Box className="size-4 text-muted-foreground" />}
+            />
+          ) : undefined
+        }
         current={!sub}
         heading="Resources in project"
         activeId={match.id}

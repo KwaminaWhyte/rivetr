@@ -218,6 +218,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/apps/statuses", get(apps::list_app_statuses))
         .route("/apps", post(apps::create_app))
         .route("/apps/{id}", get(apps::get_app))
+        .route("/apps/{id}/favicon", get(apps::get_app_favicon))
         .route("/apps/{id}", put(apps::update_app))
         .route("/apps/{id}", delete(apps::delete_app))
         .route("/apps/{id}/status", get(apps::get_app_status))
