@@ -360,8 +360,9 @@ Supported providers:
 | OpenAI | `https://api.openai.com/v1/chat/completions` | OpenAI Chat Completions |
 | Gemini (Google) | `https://generativelanguage.googleapis.com/v1beta` | Gemini REST API |
 | Moonshot | `https://api.moonshot.cn/v1/chat/completions` | OpenAI-compatible |
+| DeepSeek | `https://api.deepseek.com/v1/chat/completions` | OpenAI-compatible |
 
-Because Moonshot uses the OpenAI-compatible chat completions format, it shares the same request/response serialization path as the OpenAI provider, only the base URL and API key header differ.
+Because Moonshot and DeepSeek use the OpenAI-compatible chat completions format, it shares the same request/response serialization path as the OpenAI provider, only the base URL and API key header differ.
 
 ### Configuration (Dashboard: no restart required)
 

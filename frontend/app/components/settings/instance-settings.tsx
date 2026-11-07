@@ -548,6 +548,7 @@ acme_email = "you@yourdomain.com"`}
                       <SelectItem value="openai">OpenAI</SelectItem>
                       <SelectItem value="gemini">Google Gemini</SelectItem>
                       <SelectItem value="moonshot">Moonshot</SelectItem>
+                      <SelectItem value="deepseek">DeepSeek</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -593,6 +594,8 @@ acme_email = "you@yourdomain.com"`}
                         ? "e.g. gpt-4o"
                         : aiProvider === "gemini"
                         ? "e.g. gemini-1.5-pro"
+                        : aiProvider === "deepseek"
+                        ? "e.g. deepseek-reasoner"
                         : "model name"
                     }
                     value={aiModel}

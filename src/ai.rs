@@ -1,6 +1,6 @@
-//! Multi-provider AI client supporting Claude, OpenAI, Gemini, and Moonshot.
-//! All AI features are optional -- if no API key is configured the client is
-//! unavailable and callers gracefully skip AI-powered responses.
+//! Multi-provider AI client supporting Claude, OpenAI, Gemini, Moonshot, and
+//! DeepSeek. All AI features are optional -- if no API key is configured the
+//! client is unavailable and callers gracefully skip AI-powered responses.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,7 @@ pub enum AiProvider {
     OpenAi,
     Gemini,
     Moonshot,
+    DeepSeek,
 }
 
 impl std::str::FromStr for AiProvider {
@@ -22,6 +23,7 @@ impl std::str::FromStr for AiProvider {
             "openai" => Ok(AiProvider::OpenAi),
             "gemini" => Ok(AiProvider::Gemini),
             "moonshot" => Ok(AiProvider::Moonshot),
+            "deepseek" => Ok(AiProvider::DeepSeek),
             _ => Ok(AiProvider::Claude),
         }
     }
@@ -48,6 +50,7 @@ impl AiClient {
             AiProvider::OpenAi => "gpt-4o",
             AiProvider::Gemini => "gemini-2.0-flash",
             AiProvider::Moonshot => "moonshot-v1-8k",
+            AiProvider::DeepSeek => "deepseek-chat",
         };
         Self {
             provider,
@@ -73,6 +76,14 @@ impl AiClient {
             AiProvider::Moonshot => {
                 self.complete_openai_compat(
                     "https://api.moonshot.cn/v1/chat/completions",
+                    system,
+                    user,
+                )
+                .await
+            }
+            AiProvider::DeepSeek => {
+                self.complete_openai_compat(
+                    "https://api.deepseek.com/v1/chat/completions",
                     system,
                     user,
                 )

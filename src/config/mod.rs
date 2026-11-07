@@ -883,7 +883,7 @@ impl EmailConfig {
 /// AI provider configuration for AI-powered features (deployment diagnosis, insights, etc.)
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct AiConfig {
-    /// AI provider: "claude" | "openai" | "gemini" | "moonshot" (default: "claude")
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot" | "deepseek" (default: "claude")
     pub provider: Option<String>,
     /// API key for the selected provider
     pub api_key: Option<String>,

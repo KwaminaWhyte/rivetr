@@ -30,7 +30,7 @@ pub struct InstanceSettings {
     pub prune_images: Option<bool>,
     /// IANA timezone for this Rivetr instance (e.g. "UTC", "America/New_York").
     pub instance_timezone: Option<String>,
-    /// AI provider: "claude" | "openai" | "gemini" | "moonshot"
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot" | "deepseek"
     pub ai_provider: Option<String>,
     /// API key for the selected AI provider (stored in DB, set from dashboard).
     /// Returned as null in GET responses to avoid leaking the key.
@@ -53,7 +53,7 @@ pub struct UpdateInstanceSettingsRequest {
     pub max_concurrent_deployments: Option<u32>,
     pub prune_images: Option<bool>,
     pub instance_timezone: Option<String>,
-    /// AI provider: "claude" | "openai" | "gemini" | "moonshot"
+    /// AI provider: "claude" | "openai" | "gemini" | "moonshot" | "deepseek"
     pub ai_provider: Option<String>,
     /// Set to Some("") to clear the key, Some("sk-...") to set it.
     pub ai_api_key: Option<String>,
