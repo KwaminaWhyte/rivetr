@@ -39,11 +39,12 @@ Measured on Rivetr 1.0.0, Ubuntu 24.04 x86_64: the Rivetr process uses 52 MB RSS
 | **Git providers** | GitHub, GitLab, Gitea, Bitbucket, any Git URL | GitHub, GitLab, Gitea, Bitbucket, any Git URL | GitHub, GitLab, Gitea, Bitbucket, any Git URL |
 | **Preview deployments** | Yes (all four providers) | Yes (all four providers) | Yes (GitHub only) |
 | **MCP server** | Built in | Built in | Separate package (`@dokploy/mcp`) |
-| **Terminal UI (TUI)** | Yes | No (CLI only) | No (CLI only) |
+| **Web terminal (container and server)** | Yes | Yes (v4.0+) | Yes |
+| **Terminal UI (TUI) and CLI** | TUI (`rivetr tui`) and CLI subcommands | CLI (`coolify`, no TUI) | CLI (`dokploy`, no TUI) |
 | **File browser** | Containers and remote servers | Containers (beta) | No |
 | **License** | MIT | Apache 2.0 | Apache 2.0, with source-available `/proprietary` features |
 
-Competitor details checked against their docs and releases on 2026-11-05 (Coolify v4.6.0, Dokploy v0.31.0).
+Competitor details checked against their docs and releases on 2026-11-07 (Coolify v4.6.0, Dokploy v0.31.0). Terminal rows verified against [Coolify's web terminal](https://coolify.io/docs/core/infrastructure/servers/web-terminal), [Coolify CLI](https://coolify.io/docs/cli/what-is-the-coolify-cli), [Dokploy terminal](https://docs.dokploy.com/docs/core/features) and [Dokploy CLI](https://docs.dokploy.com/docs/cli). Both competitors have a dashboard terminal and an official CLI; neither ships a TUI.
 
 ## Features
 
@@ -68,7 +69,6 @@ Competitor details checked against their docs and releases on 2026-11-05 (Coolif
 - Docker Compose multi-container deployments with optional raw mode (skip Rivetr network injection)
 - Service deployments: Deploy button with recorded history and live logs, build images from git or a server path and push to a registry, pre/post-deploy hooks (for example migrations), rollback by image digest, per-container logs/restart/terminal, encrypted env vars written to a managed `.env` (see [docs/reference/service-deployments.md](docs/reference/service-deployments.md))
 - 365 pre-configured service templates across categories: AI/ML, Analytics, Automation, CMS, Communication, Dev Tools, Documentation, File/Media, Monitoring, Security, Search, Project Management, and more
-- Community template submissions: anyone can submit a Docker Compose template from the Templates page; an instance admin approves or rejects it before it appears in the catalogue marked Community
 - Scheduled jobs: cron-based command execution inside running containers
 - Scheduled container restarts: cron-based restarts through the normal restart path (zero-downtime swap, replicas, every server of a multi-server app), with run history, skipped runs recorded and a notification when a run fails
 - AI-generated Docker Compose from a plain-language description
