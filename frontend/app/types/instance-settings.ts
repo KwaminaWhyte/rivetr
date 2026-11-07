@@ -33,7 +33,7 @@ export interface UpdateSettings {
 
 export type UpdateUpdateSettingsRequest = Partial<UpdateSettings>;
 
-export type EmailProvider = "smtp" | "resend";
+export type EmailProvider = "smtp" | "resend" | "sendry";
 export type SmtpEncryption = "none" | "starttls" | "tls";
 
 export interface EmailSettings {
@@ -49,6 +49,7 @@ export interface EmailSettings {
   smtp_timeout_secs: number;
   smtp_ehlo_domain: string | null;
   resend_api_key_set: boolean;
+  sendry_api_key_set: boolean;
   /** Which configuration is active: dashboard, rivetr.toml, or none. */
   active_source: "database" | "config" | null;
   config_file_configured: boolean;
@@ -69,6 +70,8 @@ export interface UpdateEmailSettingsRequest {
   smtp_ehlo_domain?: string;
   /** Omit to keep, "" to clear. */
   resend_api_key?: string;
+  /** Omit to keep, "" to clear. */
+  sendry_api_key?: string;
 }
 
 export interface PublicIps {

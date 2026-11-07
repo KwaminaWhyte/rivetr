@@ -45,6 +45,7 @@ interface FormState {
   smtp_timeout_secs: string;
   smtp_ehlo_domain: string;
   resend_api_key: string;
+  sendry_api_key: string;
 }
 
 function toForm(s: EmailSettings): FormState {
@@ -62,6 +63,7 @@ function toForm(s: EmailSettings): FormState {
     smtp_timeout_secs: String(s.smtp_timeout_secs),
     smtp_ehlo_domain: s.smtp_ehlo_domain ?? "",
     resend_api_key: "",
+    sendry_api_key: "",
   };
 }
 
@@ -82,6 +84,7 @@ function toRequest(f: FormState): UpdateEmailSettingsRequest {
   if (!Number.isNaN(timeout)) req.smtp_timeout_secs = timeout;
   if (f.smtp_password) req.smtp_password = f.smtp_password;
   if (f.resend_api_key) req.resend_api_key = f.resend_api_key;
+  if (f.sendry_api_key) req.sendry_api_key = f.sendry_api_key;
   return req;
 }
 
@@ -117,7 +120,7 @@ export default function EmailSettingsPage() {
   });
 
   const clearSecret = useMutation({
-    mutationFn: (field: "smtp_password" | "resend_api_key") =>
+    mutationFn: (field: "smtp_password" | "resend_api_key" | "sendry_api_key") =>
       instanceSettingsApi.updateEmailSettings({ [field]: "" }),
     onSuccess: (saved) => {
       queryClient.setQueryData(["email-settings"], saved);
@@ -200,6 +203,7 @@ export default function EmailSettingsPage() {
                   <SelectContent>
                     <SelectItem value="smtp">SMTP</SelectItem>
                     <SelectItem value="resend">Resend</SelectItem>
+                    <SelectItem value="sendry">Sendry</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -313,6 +317,36 @@ export default function EmailSettingsPage() {
                     value={form.smtp_ehlo_domain}
                     onChange={(e) => set("smtp_ehlo_domain", e.target.value)}
                     placeholder="Optional, e.g. mail.example.com"
+                  />
+                </div>
+              </FormGrid>
+            </SettingsSection>
+          ) : form.provider === "sendry" ? (
+            <SettingsSection
+              title="Sendry"
+              description="Create a sending key at sendry.online. The from address domain must be verified there."
+            >
+              <FormGrid>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="sendry-key">API key</Label>
+                    {data.sendry_api_key_set && (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                        onClick={() => clearSecret.mutate("sendry_api_key")}
+                      >
+                        Remove saved key
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    id="sendry-key"
+                    type="password"
+                    autoComplete="off"
+                    value={form.sendry_api_key}
+                    onChange={(e) => set("sendry_api_key", e.target.value)}
+                    placeholder={data.sendry_api_key_set ? "Saved. Type to replace" : "sn_live_..."}
                   />
                 </div>
               </FormGrid>

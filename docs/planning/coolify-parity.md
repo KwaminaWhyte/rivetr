@@ -30,7 +30,7 @@ Status key: `[ ]` todo, `[x]` done.
   - DNS validation on/off + custom DNS servers (used by `/api/domains/check`; use hickory-resolver with the given nameservers).
   - Outbound endpoints: allowed internal targets (CIDRs) and localhost blocked/allowed, wired into `src/api/ssrf.rs`.
 - [x] **Public IP detection** on `/settings` General: "Detect" button fills public IPv4 and IPv6 (query ipify/ifconfig.co v4 and v6 endpoints with short timeouts). Values masked with show/copy buttons. Used as default `server_ip`.
-- [x] **Transactional email in UI** (`/settings/email`): from name/address; SMTP (host, port, encryption none/STARTTLS/TLS, user, password encrypted at rest, timeout, EHLO domain) or Resend API key. "Send test email". DB overrides `EmailConfig` from toml.
+- [x] **Transactional email in UI** (`/settings/email`): from name/address; SMTP (host, port, encryption none/STARTTLS/TLS, user, password encrypted at rest, timeout, EHLO domain) or a Resend or Sendry API key. "Send test email". DB overrides `EmailConfig` from toml.
 
 ## Batch B: server operations
 

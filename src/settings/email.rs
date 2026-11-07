@@ -1,4 +1,4 @@
-//! Transactional (system) email settings: SMTP or Resend.
+//! Transactional (system) email settings: SMTP, Resend or Sendry.
 //!
 //! Settings saved from the dashboard override `rivetr.toml [email]`. When the
 //! dashboard config is enabled, any SMTP field left empty there falls back to
@@ -33,6 +33,7 @@ const KEY_SMTP_PASSWORD: &str = "email_smtp_password";
 const KEY_SMTP_TIMEOUT: &str = "email_smtp_timeout_secs";
 const KEY_SMTP_EHLO: &str = "email_smtp_ehlo_domain";
 const KEY_RESEND_API_KEY: &str = "email_resend_api_key";
+const KEY_SENDRY_API_KEY: &str = "email_sendry_api_key";
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -41,6 +42,7 @@ const DEFAULT_TIMEOUT_SECS: u64 = 30;
 pub enum EmailProvider {
     Smtp,
     Resend,
+    Sendry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +88,7 @@ pub struct SmtpSettings {
 pub enum EmailTransport {
     Smtp(SmtpSettings),
     Resend { api_key: String },
+    Sendry { api_key: String },
 }
 
 /// Where the active configuration comes from.
@@ -120,6 +123,7 @@ pub struct EmailSettingsView {
     pub smtp_timeout_secs: u64,
     pub smtp_ehlo_domain: Option<String>,
     pub resend_api_key_set: bool,
+    pub sendry_api_key_set: bool,
     /// Which config is active right now ("database", "config") or null.
     pub active_source: Option<EmailSource>,
     /// Whether rivetr.toml [email] is configured (used as the fallback).
@@ -142,6 +146,7 @@ pub struct UpdateEmailSettings {
     pub smtp_timeout_secs: Option<u64>,
     pub smtp_ehlo_domain: Option<String>,
     pub resend_api_key: Option<String>,
+    pub sendry_api_key: Option<String>,
 }
 
 fn non_empty(map: &HashMap<String, String>, key: &str) -> Option<String> {
@@ -208,6 +213,9 @@ pub fn effective(
         EmailProvider::Resend => EmailTransport::Resend {
             api_key: decrypt(non_empty(map, KEY_RESEND_API_KEY), key)?,
         },
+        EmailProvider::Sendry => EmailTransport::Sendry {
+            api_key: decrypt(non_empty(map, KEY_SENDRY_API_KEY), key)?,
+        },
         EmailProvider::Smtp => EmailTransport::Smtp(SmtpSettings {
             host: non_empty(map, KEY_SMTP_HOST).or_else(|| toml.smtp_host.clone())?,
             port: non_empty(map, KEY_SMTP_PORT)
@@ -238,6 +246,7 @@ pub fn effective(
 fn provider_of(map: &HashMap<String, String>) -> EmailProvider {
     match map.get(KEY_PROVIDER).map(String::as_str) {
         Some("resend") => EmailProvider::Resend,
+        Some("sendry") => EmailProvider::Sendry,
         _ => EmailProvider::Smtp,
     }
 }
@@ -276,6 +285,7 @@ pub fn view(
             .unwrap_or(DEFAULT_TIMEOUT_SECS),
         smtp_ehlo_domain: non_empty(map, KEY_SMTP_EHLO),
         resend_api_key_set: non_empty(map, KEY_RESEND_API_KEY).is_some(),
+        sendry_api_key_set: non_empty(map, KEY_SENDRY_API_KEY).is_some(),
         active_source: active,
         config_file_configured: toml.is_configured(),
     }
@@ -307,6 +317,7 @@ pub async fn save(
         let p = match p {
             EmailProvider::Smtp => "smtp",
             EmailProvider::Resend => "resend",
+            EmailProvider::Sendry => "sendry",
         };
         writes.push((KEY_PROVIDER, Some(p.to_string())));
     }
@@ -333,6 +344,7 @@ pub async fn save(
     for (k, secret) in [
         (KEY_SMTP_PASSWORD, &req.smtp_password),
         (KEY_RESEND_API_KEY, &req.resend_api_key),
+        (KEY_SENDRY_API_KEY, &req.sendry_api_key),
     ] {
         if let Some(secret) = secret {
             let stored = if secret.is_empty() {
@@ -367,6 +379,9 @@ pub async fn send(
         EmailTransport::Smtp(smtp) => send_smtp(cfg, smtp, to, subject, html_body, text_body).await,
         EmailTransport::Resend { api_key } => {
             send_resend(cfg, api_key, to, subject, html_body, text_body).await
+        }
+        EmailTransport::Sendry { api_key } => {
+            send_sendry(cfg, api_key, to, subject, html_body, text_body).await
         }
     }
 }
@@ -454,6 +469,40 @@ async fn send_resend(
         return Err(anyhow!("Resend returned {status}: {body}"));
     }
     tracing::info!(subject = %subject, "Email sent via Resend");
+    Ok(())
+}
+
+/// Sendry exposes the same request shape as Resend at its own host.
+async fn send_sendry(
+    cfg: &EffectiveEmail,
+    api_key: &str,
+    to: &str,
+    subject: &str,
+    html_body: &str,
+    text_body: &str,
+) -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()?;
+    let res = client
+        .post("https://api.sendry.online/v1/emails")
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({
+            "from": format!("{} <{}>", cfg.from_name, cfg.from_address),
+            "to": [to],
+            "subject": subject,
+            "html": html_body,
+            "text": text_body,
+        }))
+        .send()
+        .await
+        .context("Failed to reach Sendry")?;
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(anyhow!("Sendry returned {status}: {body}"));
+    }
+    tracing::info!(subject = %subject, "Email sent via Sendry");
     Ok(())
 }
 
@@ -545,6 +594,25 @@ mod tests {
             e.transport,
             EmailTransport::Resend {
                 api_key: "re_123".into()
+            }
+        );
+    }
+
+    #[test]
+    fn sendry_needs_an_api_key() {
+        let base = [
+            ("email_enabled", "true"),
+            ("email_provider", "sendry"),
+            ("email_from_address", "a@example.com"),
+        ];
+        assert!(effective(&map(&base), &EmailConfig::default(), None).is_none());
+        let mut with_key = base.to_vec();
+        with_key.push(("email_sendry_api_key", "sn_live_123"));
+        let e = effective(&map(&with_key), &EmailConfig::default(), None).unwrap();
+        assert_eq!(
+            e.transport,
+            EmailTransport::Sendry {
+                api_key: "sn_live_123".into()
             }
         );
     }
