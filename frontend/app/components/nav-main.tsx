@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import { ChevronRight } from "lucide-react";
 
@@ -26,7 +26,16 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
 /** Small rounded-square bordered tile around a nav icon. */
-export function NavIconTile({ icon: Icon, active }: { icon: LucideIcon; active?: boolean }) {
+export function NavIconTile({
+  icon: Icon,
+  active,
+  children,
+}: {
+  icon: LucideIcon;
+  active?: boolean;
+  /** Overrides the icon, e.g. an app's own favicon. */
+  children?: ReactNode;
+}) {
   return (
     <span
       aria-hidden="true"
@@ -37,7 +46,7 @@ export function NavIconTile({ icon: Icon, active }: { icon: LucideIcon; active?:
           : "text-muted-foreground group-hover/menu-item:text-foreground"
       )}
     >
-      <Icon className="size-3.5" />
+      {children ?? <Icon className="size-3.5" />}
     </span>
   );
 }

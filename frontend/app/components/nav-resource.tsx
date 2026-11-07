@@ -9,6 +9,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { AppFavicon } from "@/components/apps/app-favicon";
 import { NavIconTile } from "@/components/nav-main";
 import {
   isResourceLinkActive,
@@ -51,7 +52,15 @@ export function NavResource({ match }: { match: ResourceMatch }) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={info.name ?? RESOURCE_KIND_LABEL[match.kind]} className="h-11 gap-2.5 px-1.5 group-data-[collapsible=icon]:p-1!">
               <Link to={match.base} onClick={closeMobile}>
-                <NavIconTile icon={KindIcon} active />
+                <NavIconTile icon={KindIcon} active>
+                  {match.kind === "app" ? (
+                    <AppFavicon
+                      appId={match.id}
+                      className="size-4"
+                      fallback={<KindIcon className="size-3.5" />}
+                    />
+                  ) : undefined}
+                </NavIconTile>
                 <span className="grid min-w-0 leading-tight">
                   <span className="truncate text-sm font-medium">{info.name ?? "Loading"}</span>
                   <span className="truncate text-[11px] text-muted-foreground">
