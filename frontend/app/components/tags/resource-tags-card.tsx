@@ -30,11 +30,12 @@ export function ResourceTagsCard({
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const { data: allTags = [] } = useTags(teamId ?? null);
-  const usable = useMemo(
-    () => allTags.filter((t) => t.team_id === null || t.team_id === (teamId ?? null)),
-    [allTags, teamId]
-  );
+  const tagsQuery = useTags(teamId ?? null);
+  const allTags = tagsQuery.data ?? [];
+  // The API already returns the tags this resource may use (its team's plus the
+  // global ones) and drops the rest. Filtering again here hid every tag from a
+  // resource whose team_id is null, which is most pre-teams resources.
+  const usable = allTags;
 
   const assignmentsKey = ["tag-assignments", "resource", kind, resourceId];
   const { data: assignments = [], isLoading } = useQuery({
@@ -104,12 +105,20 @@ export function ResourceTagsCard({
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" disabled={setTags.isPending}>
               <Plus className="size-3.5" />
-              Add tag
+              {attached.length === 0 && usable.length > 0 ? "Select tag" : "Add tag"}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-64 p-2">
             <div className="max-h-56 space-y-0.5 overflow-y-auto">
-              {usable.length === 0 && (
+              {tagsQuery.isLoading && (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading tags…</p>
+              )}
+              {tagsQuery.isError && (
+                <p className="px-2 py-1.5 text-xs text-destructive">
+                  Could not load tags. Try again below.
+                </p>
+              )}
+              {!tagsQuery.isLoading && !tagsQuery.isError && usable.length === 0 && (
                 <p className="px-2 py-1.5 text-xs text-muted-foreground">
                   No tags yet. Create one below.
                 </p>

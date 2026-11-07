@@ -15,12 +15,15 @@ export default function AppOperationsSection() {
   const { app } = useOutletContext<{ app: App }>();
   return (
     <div className="space-y-6">
-      <ResourceTagsCard kind="app" resourceId={app.id} teamId={app.team_id} />
-      <MoveToProjectCard
-        resourceKind="app"
-        resourceId={app.id}
-        currentProjectId={app.project_id ?? null}
-      />
+      {/* Both cards hold one or two short rows, so they share a row. */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <ResourceTagsCard kind="app" resourceId={app.id} teamId={app.team_id} />
+        <MoveToProjectCard
+          resourceKind="app"
+          resourceId={app.id}
+          currentProjectId={app.project_id ?? null}
+        />
+      </div>
       <CloneResourceCard
         resourceKind="app"
         resourceId={app.id}

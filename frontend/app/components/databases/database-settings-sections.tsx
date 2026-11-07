@@ -213,12 +213,14 @@ export function DatabaseSettingsSections({
     <div className="space-y-6 pb-24">
       {has("operations") && (
       <>
-      <ResourceTagsCard kind="database" resourceId={database.id} teamId={database.team_id} />
-      <MoveToProjectCard
-        resourceKind="database"
-        resourceId={database.id}
-        currentProjectId={database.project_id ?? null}
-      />
+      <div className="grid gap-6 md:grid-cols-2">
+        <ResourceTagsCard kind="database" resourceId={database.id} teamId={database.team_id} />
+        <MoveToProjectCard
+          resourceKind="database"
+          resourceId={database.id}
+          currentProjectId={database.project_id ?? null}
+        />
+      </div>
       <CloneResourceCard
         resourceKind="database"
         resourceId={database.id}

@@ -276,12 +276,14 @@ export function ServiceSettingsSections({
     <div className="space-y-6 pb-24">
       {has("operations") && (
       <>
-      <ResourceTagsCard kind="service" resourceId={service.id} teamId={service.team_id} />
-      <MoveToProjectCard
-        resourceKind="service"
-        resourceId={service.id}
-        currentProjectId={service.project_id ?? null}
-      />
+      <div className="grid gap-6 md:grid-cols-2">
+        <ResourceTagsCard kind="service" resourceId={service.id} teamId={service.team_id} />
+        <MoveToProjectCard
+          resourceKind="service"
+          resourceId={service.id}
+          currentProjectId={service.project_id ?? null}
+        />
+      </div>
       <CloneResourceCard
         resourceKind="service"
         resourceId={service.id}
