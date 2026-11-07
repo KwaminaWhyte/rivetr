@@ -90,10 +90,6 @@ pub struct ServiceTemplate {
     pub env_schema: Option<String>,
     pub is_builtin: i32,
     pub created_at: String,
-    /// 1 for a community template approved from a submission (migration 137)
-    #[sqlx(default)]
-    #[serde(default)]
-    pub is_community: i32,
 }
 
 impl ServiceTemplate {
@@ -127,7 +123,6 @@ impl ServiceTemplate {
             env_schema: self.get_env_schema(),
             is_builtin: self.is_builtin(),
             created_at: self.created_at.clone(),
-            is_community: self.is_community != 0,
         }
     }
 }
@@ -144,9 +139,6 @@ pub struct ServiceTemplateResponse {
     pub env_schema: Vec<EnvSchemaEntry>,
     pub is_builtin: bool,
     pub created_at: String,
-    /// Approved community submission
-    #[serde(default)]
-    pub is_community: bool,
 }
 
 /// Lightweight DTO for the templates LIST endpoint.  Omits `compose_template` and
@@ -162,9 +154,6 @@ pub struct ServiceTemplateSummary {
     pub icon: Option<String>,
     pub is_builtin: bool,
     pub created_at: String,
-    /// Approved community submission
-    #[serde(default)]
-    pub is_community: bool,
 }
 
 impl ServiceTemplate {
@@ -178,7 +167,6 @@ impl ServiceTemplate {
             icon: self.icon.clone(),
             is_builtin: self.is_builtin(),
             created_at: self.created_at.clone(),
-            is_community: self.is_community != 0,
         }
     }
 }

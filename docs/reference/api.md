@@ -332,12 +332,6 @@ A service's `domain` and `port` route that hostname to `127.0.0.1:<port>` on the
 | PUT | `/api/templates/suggestions/:id/approve` | Approve a suggestion. |
 | GET | `/api/templates/:id` | Get a template. |
 | POST | `/api/templates/:id/deploy` | Deploy a template. |
-| POST | `/api/templates/submit` | Submit a community template. |
-| GET | `/api/templates/submissions` | List submissions. |
-| GET | `/api/templates/my-submissions` | List own submissions. |
-| GET | `/api/templates/submissions/:id` | Get a submission. |
-| DELETE | `/api/templates/submissions/:id` | Delete a submission. |
-| PUT | `/api/templates/submissions/:id/review` | Review a submission. |
 
 ## Projects & environments
 

@@ -34,6 +34,12 @@ export const LEGACY_REDIRECTS: ReadonlyArray<readonly [from: string, to: string]
   ["projects/:id/env-vars", "/projects/:id/variables"],
   ["projects/:id/apps/new", "/projects/:id/new"],
 
+  // Templates: services are created inside a project now, so the global
+  // catalogue and the community submission queue are gone
+  ["templates", "/projects"],
+  ["templates/submit", "/projects"],
+  ["settings/templates", "/settings"],
+
   // Monitoring
   ["costs", "/monitoring/costs"],
   ["settings/proxy-logs", "/monitoring/proxy-logs"],

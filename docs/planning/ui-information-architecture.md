@@ -27,7 +27,6 @@ and links in emails/notifications do not break.
 | `/projects/:id/environments` | Environments | ... / {project} / Environments |
 | `/projects/:id/variables` | Project shared variables | ... / {project} / Variables |
 | `/projects/:id/new` | New resource wizard | ... / {project} / New resource |
-| `/templates` | Service templates | Team / Templates |
 | `/monitoring` | Overview | Team / Monitoring |
 | `/monitoring/costs` | Costs | Team / Monitoring / Costs |
 | `/monitoring/proxy-logs` | Proxy access logs | Team / Monitoring / Proxy logs |

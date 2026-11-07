@@ -12,7 +12,6 @@ import {
   FolderKanban,
   KeyRound,
   LayoutDashboard,
-  LayoutTemplate,
   Server,
   Settings,
   Tags,
@@ -61,7 +60,6 @@ export const sidebarSections: SidebarSection[] = [
         url: "/projects",
         match: ["/projects", "/apps", "/databases", "/services"],
       },
-      { title: "Templates", icon: LayoutTemplate, url: "/templates" },
       { title: "Tags", icon: Tags, url: "/tags" },
       {
         title: "Monitoring",

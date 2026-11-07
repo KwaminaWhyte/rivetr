@@ -110,8 +110,6 @@ export interface ServiceTemplate {
   compose_template: string;
   env_schema: EnvSchemaEntry[];
   is_builtin: boolean;
-  /** Approved community submission (shows a Community badge) */
-  is_community?: boolean;
   created_at: string;
 }
 

@@ -153,7 +153,6 @@ export const navAreas: NavArea[] = [
           { title: "Updates", url: "/settings/updates", adminOnly: true },
           { title: "AI", url: "/settings/ai" },
           { title: "Advanced", url: "/settings/advanced", adminOnly: true },
-          { title: "Template submissions", url: "/settings/templates", adminOnly: true },
         ],
       },
       {
@@ -178,7 +177,6 @@ export const navAreas: NavArea[] = [
 export const standalonePages: NavLink[] = [
   { title: "Dashboard", url: "/" },
   { title: "Projects", url: "/projects" },
-  { title: "Templates", url: "/templates" },
 ];
 
 /** True when pathname is exactly `url` or nested below it. */

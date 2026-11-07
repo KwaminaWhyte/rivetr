@@ -31,6 +31,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ComposeInputTabs } from "@/components/services/compose-input-tabs";
 import type { Service, ServiceStatus } from "@/types/api";
 
@@ -85,6 +92,7 @@ export default function ServicesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [newComposeContent, setNewComposeContent] = useState(DEFAULT_COMPOSE);
+  const [newProjectId, setNewProjectId] = useState("");
 
   // Derive the auto-generated domain from service name using the current hostname.
   // Strip the leading "rivetr." prefix (or any dashboard subdomain) if present so
@@ -102,9 +110,20 @@ export default function ServicesPage() {
     enabled: currentTeamId !== null,
   });
 
+  // Every service belongs to a project, same as apps and databases.
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.getProjects(),
+    enabled: isCreateDialogOpen,
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; compose_content: string; team_id?: string }) =>
-      api.createService(data),
+    mutationFn: (data: {
+      name: string;
+      compose_content: string;
+      team_id?: string;
+      project_id?: string;
+    }) => api.createService(data),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["services"] });
       toast.success(
@@ -164,10 +183,15 @@ export default function ServicesPage() {
       toast.error("Docker Compose content is required");
       return;
     }
+    if (!newProjectId) {
+      toast.error("Choose a project for the service");
+      return;
+    }
     createMutation.mutate({
       name: newServiceName.trim(),
       compose_content: newComposeContent.trim(),
       team_id: currentTeamId ?? undefined,
+      project_id: newProjectId,
       // Let backend auto-generate domain; we don't pass it explicitly
       // (backend will use `{name}.{base_domain}` from server config)
     });
@@ -186,9 +210,9 @@ export default function ServicesPage() {
 
         <div className="flex gap-2">
           <Button variant="outline" asChild>
-            <Link to="/templates">
+            <Link to="/projects">
               <Layers className="mr-2 h-4 w-4" />
-              Browse Templates
+              Open a project
             </Link>
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -214,6 +238,24 @@ export default function ServicesPage() {
                   </div>
                 )}
                 <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="service-project">Project</Label>
+                    <Select value={newProjectId} onValueChange={setNewProjectId}>
+                      <SelectTrigger id="service-project" className="w-full">
+                        <SelectValue placeholder="Choose a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Services live inside a project, like apps and databases.
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="service-name">Service Name</Label>
                     <Input
@@ -278,11 +320,12 @@ export default function ServicesPage() {
           <CardContent className="py-12 text-center">
             <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground mb-4">
-              No services yet. Create a service or deploy from a template.
+              No services yet. Open a project to deploy one from the template catalogue, or
+              create one here.
             </p>
             <div className="flex justify-center gap-2">
               <Button variant="outline" asChild>
-                <Link to="/templates">Browse Templates</Link>
+                <Link to="/projects">Open a project</Link>
               </Button>
               <Button onClick={() => setIsCreateDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />

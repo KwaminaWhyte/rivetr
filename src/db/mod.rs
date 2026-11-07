@@ -1295,20 +1295,6 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .await?;
     }
 
-    // Migration 091: Community template submissions
-    let has_community_template_submissions: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='community_template_submissions'",
-    )
-    .fetch_optional(pool)
-    .await?;
-    if has_community_template_submissions.is_none() {
-        execute_sql(
-            pool,
-            include_str!("../../migrations/091_community_template_submissions.sql"),
-        )
-        .await?;
-    }
-
     // Migration 092: Add delivery_id to webhook_events for deduplication
     let has_delivery_id: Option<(String,)> = sqlx::query_as(
         "SELECT name FROM pragma_table_info('webhook_events') WHERE name = 'delivery_id'",
@@ -1838,21 +1824,6 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             "ALTER TABLE deployment_freeze_windows ADD COLUMN include_previews INTEGER NOT NULL DEFAULT 0",
         ),
         (
-            "community_template_submissions",
-            "env_schema",
-            "ALTER TABLE community_template_submissions ADD COLUMN env_schema TEXT",
-        ),
-        (
-            "community_template_submissions",
-            "rejection_reason",
-            "ALTER TABLE community_template_submissions ADD COLUMN rejection_reason TEXT",
-        ),
-        (
-            "community_template_submissions",
-            "approved_template_id",
-            "ALTER TABLE community_template_submissions ADD COLUMN approved_template_id TEXT",
-        ),
-        (
             "service_templates",
             "is_community",
             "ALTER TABLE service_templates ADD COLUMN is_community INTEGER NOT NULL DEFAULT 0",
@@ -1873,6 +1844,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             sqlx::query(ddl).execute(pool).await?;
         }
     }
+
+    // Migration 138: community template submissions were local to one instance,
+    // so the feature is gone and its review queue table with it.
+    execute_sql(
+        pool,
+        include_str!("../../migrations/138_drop_template_submissions.sql"),
+    )
+    .await?;
 
     // Seed/update built-in templates (runs on every startup to add new templates)
     seeders::seed_service_templates(pool).await?;
